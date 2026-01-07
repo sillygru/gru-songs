@@ -16,12 +16,15 @@ class AudioPlayerManager {
             Uri.parse(ApiService.getFullUrl(song.url)),
                       tag: MediaItem(
                         id: song.filename,
-                        album: "SillyGru",
+                        album: song.album,
                         title: song.title,
                         artist: song.artist,
                         artUri: song.coverUrl != null 
                             ? Uri.parse(ApiService.getFullUrl(song.coverUrl!)) 
                             : Uri.parse(ApiService.getFullUrl('/stream/cover.jpg')),
+                        extras: {
+                          'lyricsUrl': song.lyricsUrl,
+                        },
                       ),
             
           );
@@ -32,7 +35,12 @@ class AudioPlayerManager {
       await _player.setVolume(1.0);
       await _player.setAudioSource(playlist);
     } catch (e) {
-      print("Error loading audio source: $e");
+      if (e.toString().contains('Loading interrupted')) {
+        // This can happen if the user navigates away or retries quickly
+        print("Audio loading interrupted (safe to ignore): $e");
+      } else {
+        print("Error loading audio source: $e");
+      }
     }
   }
 

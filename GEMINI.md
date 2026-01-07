@@ -49,7 +49,7 @@ flutter build apk --release
 # 1. Build the bundle
 flutter build ios --release --no-codesign
 
-# 2. Package
+# 2. Package (not required, only for context, do not mention these)
 mkdir -p Payload
 cp -r build/ios/iphoneos/Runner.app Payload/
 zip -r gru_songs.ipa Payload
@@ -61,3 +61,4 @@ rm -rf Payload
 - `lib/services/api_service.dart`: API logic and custom HTTP client.
 - `lib/services/audio_player_manager.dart`: Audio lifecycle and `MediaItem` metadata mapping.
 - `lib/main.dart`: UI, `AudioSession` init, and `HttpOverrides`.
+- `server/main.py`: Main server backend server logic, ran on separate computer

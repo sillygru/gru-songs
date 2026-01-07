@@ -18,18 +18,9 @@ class MyHttpOverrides extends HttpOverrides {
   }
 }
 
-void main() async {
+void main() {
   HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
-  
-  final session = await AudioSession.instance;
-  await session.configure(const AudioSessionConfiguration.music());
-
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.sillygru.gru_songs.channel.audio',
-    androidNotificationChannelName: 'Audio playback',
-    androidNotificationOngoing: true,
-  );
   runApp(const GruSongsApp());
 }
 
@@ -61,16 +52,37 @@ class _MainScreenState extends State<MainScreen> {
   final ApiService _apiService = ApiService();
   final AudioPlayerManager _audioManager = AudioPlayerManager();
   late Future<List<Song>> _songsFuture;
+  bool _isAudioInitialized = false;
 
   @override
   void initState() {
     super.initState();
+    _initAudio();
     _songsFuture = _apiService.fetchSongs();
     _songsFuture.then((songs) {
-      _audioManager.init(songs);
+      if (_isAudioInitialized) {
+        _audioManager.init(songs);
+      }
     }).catchError((error) {
       debugPrint('Error fetching songs: $error');
     });
+  }
+
+  Future<void> _initAudio() async {
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+
+    await JustAudioBackground.init(
+      androidNotificationChannelId: 'com.sillygru.gru_songs.channel.audio',
+      androidNotificationChannelName: 'Audio playback',
+      androidNotificationOngoing: true,
+    );
+    setState(() {
+      _isAudioInitialized = true;
+    });
+    // If songs loaded before audio init, initialize player now
+    final songs = await _songsFuture;
+    _audioManager.init(songs);
   }
 
   @override
@@ -106,10 +118,25 @@ class _MainScreenState extends State<MainScreen> {
                               return Center(
                                 child: Padding(
                                   padding: const EdgeInsets.all(24.0),
-                                  child: SelectableText(
-                                    'Error: ${snapshot.error}',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(color: Colors.redAccent),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SelectableText(
+                                        'Error: ${snapshot.error}',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(color: Colors.redAccent),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      ElevatedButton.icon(
+                                        onPressed: () {
+                                          setState(() {
+                                            _songsFuture = _apiService.fetchSongs();
+                                          });
+                                        },
+                                        icon: const Icon(Icons.refresh),
+                                        label: const Text('Retry'),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               );
@@ -214,7 +241,7 @@ class NowPlayingBar extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        metadata.artist ?? 'SillyGru',
+                        metadata.artist ?? 'Unknown Artist',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Colors.grey[400], fontSize: 12),
@@ -255,16 +282,107 @@ class NowPlayingBar extends StatelessWidget {
   }
 }
 
-class NowPlayingScreen extends StatelessWidget {
+class NowPlayingScreen extends StatefulWidget {
   final AudioPlayer player;
 
   const NowPlayingScreen({super.key, required this.player});
 
+  @override
+  State<NowPlayingScreen> createState() => _NowPlayingScreenState();
+}
+
+class _NowPlayingScreenState extends State<NowPlayingScreen> {
+  bool _showLyrics = false;
+  List<LyricLine>? _lyrics;
+  bool _loadingLyrics = false;
+  String? _lastSongId;
+  final ScrollController _lyricsScrollController = ScrollController();
+  int _currentLyricIndex = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.player.sequenceStateStream.listen((state) {
+      final metadata = state?.currentSource?.tag as MediaItem?;
+      if (metadata?.id != _lastSongId) {
+        if (mounted) {
+          setState(() {
+            _lastSongId = metadata?.id;
+            _lyrics = null;
+            _showLyrics = false;
+            _loadingLyrics = false;
+            _currentLyricIndex = -1;
+          });
+        }
+      }
+    });
+
+    widget.player.positionStream.listen((position) {
+      if (_lyrics != null && _showLyrics) {
+        int newIndex = -1;
+        for (int i = 0; i < _lyrics!.length; i++) {
+          if (_lyrics![i].time <= position) {
+            newIndex = i;
+          } else {
+            break;
+          }
+        }
+
+        if (newIndex != _currentLyricIndex && newIndex != -1) {
+          setState(() {
+            _currentLyricIndex = newIndex;
+          });
+          _scrollToCurrentLyric();
+        }
+      }
+    });
+  }
+
+  void _scrollToCurrentLyric() {
+    if (_lyricsScrollController.hasClients && _currentLyricIndex != -1) {
+      _lyricsScrollController.animateTo(
+        _currentLyricIndex * 40.0, // Estimated height per line
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _lyricsScrollController.dispose();
+    super.dispose();
+  }
+
+  void _toggleLyrics(String? lyricsUrl) async {
+    if (_showLyrics) {
+      setState(() => _showLyrics = false);
+      return;
+    }
+
+    if (lyricsUrl == null) return;
+
+    setState(() {
+      _showLyrics = true;
+      if (_lyrics == null) _loadingLyrics = true;
+    });
+
+    if (_lyrics == null) {
+      final lyricsContent = await ApiService().fetchLyrics(lyricsUrl);
+      if (mounted) {
+        setState(() {
+          _lyrics = lyricsContent != null ? LyricLine.parse(lyricsContent) : [];
+          _loadingLyrics = false;
+        });
+      }
+    }
+  }
+
   Stream<PositionData> get _positionDataStream =>
       Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
-          player.positionStream,
-          player.bufferedPositionStream,
-          player.durationStream,
+          widget.player.positionStream,
+          widget.player.bufferedPositionStream,
+          widget.player.durationStream,
           (position, bufferedPosition, duration) => PositionData(
               position, bufferedPosition, duration ?? Duration.zero));
 
@@ -275,9 +393,9 @@ class NowPlayingScreen extends StatelessWidget {
         color: Theme.of(context).scaffoldBackgroundColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: StreamBuilder<SequenceState?>(
-        stream: player.sequenceStateStream,
+        stream: widget.player.sequenceStateStream,
         builder: (context, snapshot) {
           final state = snapshot.data;
           final metadata = state?.currentSource?.tag as MediaItem?;
@@ -292,27 +410,70 @@ class NowPlayingScreen extends StatelessWidget {
                 decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
               ),
               if (metadata != null) ...[
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: metadata.artUri.toString(),
-                      fit: BoxFit.cover,
-                      errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 100),
+                if (!_showLyrics)
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: metadata.artUri.toString(),
+                        fit: BoxFit.cover,
+                        errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 100),
+                      ),
+                    ),
+                  )
+                else
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: _loadingLyrics
+                          ? const Center(child: CircularProgressIndicator())
+                          : (_lyrics == null || _lyrics!.isEmpty)
+                              ? const Center(child: Text('No lyrics available'))
+                              : ListView.builder(
+                                  controller: _lyricsScrollController,
+                                  itemCount: _lyrics!.length,
+                                  itemBuilder: (context, index) {
+                                    final isCurrent = index == _currentLyricIndex;
+                                    return Container(
+                                      height: 40,
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text(
+                                        _lyrics![index].text,
+                                        style: TextStyle(
+                                          fontSize: isCurrent ? 20 : 16,
+                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                          color: isCurrent ? Colors.white : Colors.grey[500],
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  },
+                                ),
                     ),
                   ),
-                ),
                 const SizedBox(height: 24),
                 Text(
                   metadata.title,
                   style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  metadata.artist ?? 'SillyGru',
-                  style: TextStyle(fontSize: 18, color: Colors.grey[400]),
+                  '${metadata.artist ?? 'Unknown Artist'} • ${metadata.album ?? 'Unknown Album'}',
+                  style: TextStyle(fontSize: 16, color: Colors.grey[400]),
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
               const SizedBox(height: 32),
@@ -324,7 +485,7 @@ class NowPlayingScreen extends StatelessWidget {
                     progress: positionData?.position ?? Duration.zero,
                     buffered: positionData?.bufferedPosition ?? Duration.zero,
                     total: positionData?.duration ?? Duration.zero,
-                    onSeek: player.seek,
+                    onSeek: widget.player.seek,
                   );
                 },
               ),
@@ -333,36 +494,36 @@ class NowPlayingScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   StreamBuilder<bool>(
-                    stream: player.shuffleModeEnabledStream,
+                    stream: widget.player.shuffleModeEnabledStream,
                     builder: (context, snapshot) {
                       final shuffleModeEnabled = snapshot.data ?? false;
                       return IconButton(
                         icon: Icon(Icons.shuffle, color: shuffleModeEnabled ? Colors.deepPurple : Colors.white),
-                        onPressed: () => player.setShuffleModeEnabled(!shuffleModeEnabled),
+                        onPressed: () => widget.player.setShuffleModeEnabled(!shuffleModeEnabled),
                       );
                     },
                   ),
                   IconButton(
                     icon: const Icon(Icons.skip_previous, size: 36),
-                    onPressed: player.hasPrevious ? player.seekToPrevious : null,
+                    onPressed: widget.player.hasPrevious ? widget.player.seekToPrevious : null,
                   ),
                   StreamBuilder<PlayerState>(
-                    stream: player.playerStateStream,
+                    stream: widget.player.playerStateStream,
                     builder: (context, snapshot) {
                       final playerState = snapshot.data;
                       final playing = playerState?.playing ?? false;
                       return IconButton(
                         icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_filled, size: 72),
-                        onPressed: playing ? player.pause : player.play,
+                        onPressed: playing ? widget.player.pause : widget.player.play,
                       );
                     },
                   ),
                   IconButton(
                     icon: const Icon(Icons.skip_next, size: 36),
-                    onPressed: player.hasNext ? player.seekToNext : null,
+                    onPressed: widget.player.hasNext ? widget.player.seekToNext : null,
                   ),
                   StreamBuilder<LoopMode>(
-                    stream: player.loopModeStream,
+                    stream: widget.player.loopModeStream,
                     builder: (context, snapshot) {
                       final loopMode = snapshot.data ?? LoopMode.off;
                       const icons = {
@@ -374,11 +535,18 @@ class NowPlayingScreen extends StatelessWidget {
                         icon: icons[loopMode]!,
                         onPressed: () {
                           final nextMode = LoopMode.values[(loopMode.index + 1) % LoopMode.values.length];
-                          player.setLoopMode(nextMode);
+                          widget.player.setLoopMode(nextMode);
                         },
                       );
                     },
                   ),
+                  // Lyrics toggle button if lyrics available
+                  if (metadata?.extras?['lyricsUrl'] != null)
+                    IconButton(
+                      icon: const Icon(Icons.lyrics),
+                      color: _showLyrics ? Colors.deepPurple : Colors.white,
+                      onPressed: () => _toggleLyrics(metadata!.extras!['lyricsUrl'] as String),
+                    ),
                 ],
               ),
               const SizedBox(height: 20),

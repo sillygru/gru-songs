@@ -10,7 +10,7 @@ class ApiService {
   static http.Client getClient() {
     final HttpClient ioc = HttpClient();
     ioc.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-    ioc.connectionTimeout = const Duration(seconds: 10);
+    ioc.connectionTimeout = const Duration(seconds: 30);
     return IOClient(ioc);
   }
 
@@ -31,6 +31,21 @@ class ApiService {
       } else {
         throw Exception('Failed to load songs (${response.statusCode}): ${response.body}');
       }
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<String?> fetchLyrics(String url) async {
+    final client = getClient();
+    try {
+      final response = await client.get(Uri.parse(getFullUrl(url)));
+      if (response.statusCode == 200) {
+        return response.body;
+      }
+      return null;
+    } catch (e) {
+      return null;
     } finally {
       client.close();
     }

@@ -1,6 +1,7 @@
 class Song {
   final String title;
   final String artist;
+  final String album;
   final String filename;
   final String url;
   final String? lyricsUrl;
@@ -9,6 +10,7 @@ class Song {
   Song({
     required this.title,
     required this.artist,
+    required this.album,
     required this.filename,
     required this.url,
     this.lyricsUrl,
@@ -19,10 +21,41 @@ class Song {
     return Song(
       title: json['title'] ?? 'Unknown Title',
       artist: json['artist'] ?? 'Unknown Artist',
+      album: json['album'] ?? 'Unknown Album',
       filename: json['filename'] ?? '',
       url: json['url'] ?? '',
       lyricsUrl: json['lyrics_url'],
       coverUrl: json['cover_url'],
     );
+  }
+}
+
+class LyricLine {
+  final Duration time;
+  final String text;
+
+  LyricLine({required this.time, required this.text});
+
+  static List<LyricLine> parse(String content) {
+    final List<LyricLine> lyrics = [];
+    final RegExp regExp = RegExp(r'^\[(\d+):(\d+\.?\d*)\](.*)$');
+    
+    for (var line in content.split('\n')) {
+      final match = regExp.firstMatch(line.trim());
+      if (match != null) {
+        final int minutes = int.parse(match.group(1)!);
+        final double seconds = double.parse(match.group(2)!);
+        final String text = match.group(3)!.trim();
+        
+        lyrics.add(LyricLine(
+          time: Duration(milliseconds: (minutes * 60 * 1000 + seconds * 1000).toInt()),
+          text: text,
+        ));
+      } else if (line.trim().isNotEmpty) {
+        // Fallback for non-timed lyrics
+        lyrics.add(LyricLine(time: Duration.zero, text: line.trim()));
+      }
+    }
+    return lyrics;
   }
 }
