@@ -22,3 +22,17 @@ class StatsEntry(BaseModel):
     duration_played: float
     event_type: str # 'play', 'pause', 'skip', 'complete', 'seek'
     timestamp: float
+
+class Playlist(BaseModel):
+    id: str
+    name: str
+    songs: List[str] = [] # List of filenames
+
+class PlaylistCreate(BaseModel):
+    name: str
+
+class PlaylistAddSong(BaseModel):
+    song_filename: str
+
+class FavoriteRequest(BaseModel):
+    song_filename: str

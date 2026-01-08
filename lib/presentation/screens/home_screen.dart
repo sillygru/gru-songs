@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/providers.dart';
 import '../widgets/now_playing_bar.dart';
 import 'settings_screen.dart';
+import 'playlists_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +19,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final songsAsyncValue = ref.watch(songsProvider);
     final apiService = ref.watch(apiServiceProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
+    final userData = ref.watch(userDataProvider);
 
     // Listen for data changes to initialize audio
     ref.listen(songsProvider, (previous, next) {
@@ -32,6 +34,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('Gru Songs'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.queue_music),
+            onPressed: () {
+               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PlaylistsScreen()));
+            },
+          ),
           IconButton(
              icon: const Icon(Icons.settings),
              onPressed: () {
@@ -73,6 +81,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     title: Text(song.title),
                     subtitle: Text(song.artist),
+                    trailing: Consumer(
+                      builder: (context, ref, child) {
+                         final userData = ref.watch(userDataProvider);
+                         final isFavorite = userData.favorites.contains(song.filename);
+                         return IconButton(
+                            icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                            color: isFavorite ? Colors.red : null,
+                            onPressed: () {
+                               ref.read(userDataProvider.notifier).toggleFavorite(song.filename);
+                            },
+                         );
+                      },
+                    ),
+                    onLongPress: () {
+                        showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                                title: const Text("Add to Playlist"),
+                                content: SizedBox(
+                                    width: double.maxFinite,
+                                    child: userData.playlists.isEmpty 
+                                        ? const Text("No playlists created yet.") 
+                                        : ListView.builder(
+                                            shrinkWrap: true,
+                                            itemCount: userData.playlists.length,
+                                            itemBuilder: (context, index) {
+                                                final playlist = userData.playlists[index];
+                                                return ListTile(
+                                                    title: Text(playlist.name),
+                                                    onTap: () {
+                                                        ref.read(userDataProvider.notifier).addSongToPlaylist(playlist.id, song.filename);
+                                                        Navigator.pop(context);
+                                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Added to ${playlist.name}")));
+                                                    },
+                                                );
+                                            },
+                                        ),
+                                ),
+                                actions: [
+                                    TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel"))
+                                ],
+                            ),
+                        );
+                    },
                     onTap: () {
                       audioManager.player.seek(Duration.zero, index: index);
                       audioManager.player.play();

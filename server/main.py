@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from settings import settings
 from services import music_service
 from user_service import user_service
-from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate
+from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
 
 app = FastAPI()
 
@@ -63,11 +63,69 @@ def update_username(data: UserProfileUpdate, x_username: str = Header(None)):
 @app.post("/stats/track")
 def track_stats(stats: StatsEntry, x_username: str = Header(None)):
     if not x_username:
-        # We allow anonymous stats or just ignore them? For now, require auth as per "EVERYTHING for every user"
         raise HTTPException(status_code=401, detail="User not authenticated")
     
     user_service.append_stats(x_username, stats)
     return {"status": "ok"}
+
+
+# --- User Data Routes (Favorites & Playlists) ---
+
+@app.get("/user/favorites")
+def get_favorites(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_favorites(x_username)
+
+@app.post("/user/favorites")
+def add_favorite(req: FavoriteRequest, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.add_favorite(x_username, req.song_filename)
+    return {"status": "added"}
+
+@app.delete("/user/favorites/{filename}")
+def remove_favorite(filename: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.remove_favorite(x_username, filename)
+    return {"status": "removed"}
+
+@app.get("/user/playlists")
+def get_playlists(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_playlists(x_username)
+
+@app.post("/user/playlists")
+def create_playlist(req: PlaylistCreate, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    playlist = user_service.create_playlist(x_username, req.name)
+    if not playlist:
+         raise HTTPException(status_code=400, detail="Could not create playlist")
+    return playlist
+
+@app.delete("/user/playlists/{playlist_id}")
+def delete_playlist(playlist_id: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.delete_playlist(x_username, playlist_id)
+    return {"status": "deleted"}
+
+@app.post("/user/playlists/{playlist_id}/songs")
+def add_song_to_playlist(playlist_id: str, req: PlaylistAddSong, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.add_song_to_playlist(x_username, playlist_id, req.song_filename)
+    return {"status": "added"}
+
+@app.delete("/user/playlists/{playlist_id}/songs/{filename}")
+def remove_song_from_playlist(playlist_id: str, filename: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.remove_song_from_playlist(x_username, playlist_id, filename)
+    return {"status": "removed"}
 
 
 # --- Music Routes ---

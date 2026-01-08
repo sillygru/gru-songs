@@ -68,6 +68,19 @@ class NowPlayingBar extends ConsumerWidget {
                     ],
                   ),
                 ),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final userData = ref.watch(userDataProvider);
+                    final isFavorite = userData.favorites.contains(metadata.id);
+                    return IconButton(
+                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                      color: isFavorite ? Colors.red : null,
+                      onPressed: () {
+                         ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                      },
+                    );
+                  },
+                ),
                 StreamBuilder<PlayerState>(
                   stream: player.playerStateStream,
                   builder: (context, snapshot) {

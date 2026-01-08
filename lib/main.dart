@@ -6,6 +6,7 @@ import 'package:audio_session/audio_session.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/auth_screen.dart';
 import 'providers/auth_provider.dart';
+import 'providers/providers.dart';
 
 class MyHttpOverrides extends HttpOverrides {
   @override
@@ -36,6 +37,14 @@ class GruSongsApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
+    
+    // Inject service into notifier
+    if (authState.isAuthenticated) {
+      // Defer to next frame to avoid build issues
+      Future.microtask(() {
+         ref.read(userDataProvider.notifier).setService(ref.read(userDataServiceProvider));
+      });
+    }
     
     return MaterialApp(
       title: 'Gru Songs',

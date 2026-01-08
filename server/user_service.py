@@ -1,8 +1,9 @@
 import json
 import os
+import uuid
 from passlib.context import CryptContext
 from settings import settings
-from models import StatsEntry
+from models import StatsEntry, Playlist
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -23,6 +24,10 @@ class UserService:
             return None
         with open(path, "r") as f:
             return json.load(f)
+            
+    def _save_user(self, username: str, data: dict):
+        with open(self._get_user_path(username), "w") as f:
+            json.dump(data, f, indent=4)
 
     def create_user(self, username: str, password: str):
         if self.get_user(username):
@@ -32,11 +37,12 @@ class UserService:
         user_data = {
             "username": username,
             "password": hashed_password,
-            "created_at": str(os.path.getctime(settings.USERS_DIR)) # Dummy timestamp
+            "created_at": str(os.path.getctime(settings.USERS_DIR)), # Dummy timestamp
+            "favorites": [],
+            "playlists": []
         }
         
-        with open(self._get_user_path(username), "w") as f:
-            json.dump(user_data, f, indent=4)
+        self._save_user(username, user_data)
             
         # Init stats file
         with open(self._get_user_stats_path(username), "w") as f:
@@ -61,8 +67,7 @@ class UserService:
             return False, "Invalid old password"
         
         user["password"] = pwd_context.hash(new_password)
-        with open(self._get_user_path(username), "w") as f:
-            json.dump(user, f, indent=4)
+        self._save_user(username, user)
             
         return True, "Password updated"
 
@@ -108,22 +113,100 @@ class UserService:
                 except:
                     pass # Reset if corrupted
         
-        # This is a simple append. In a real scenario we would group by session.
-        # For now, just logging the raw event.
         if "events" not in data:
             data["events"] = []
             
         data["events"].append(stats.dict())
-        
-        # Simple aggregation example
-        if stats.event_type == "play" or stats.event_type == "seek":
-            # Just a marker
-            pass
-        elif stats.event_type == "pause" or stats.event_type == "complete" or stats.event_type == "skip":
-            # Ideally we calculate delta from previous event, but for now just raw log
-            pass
 
         with open(path, "w") as f:
             json.dump(data, f, indent=4)
+            
+    # --- Favorites ---
+    
+    def get_favorites(self, username: str):
+        user = self.get_user(username)
+        if not user:
+            return []
+        return user.get("favorites", [])
+        
+    def add_favorite(self, username: str, song_filename: str):
+        user = self.get_user(username)
+        if not user: return False
+        
+        favs = user.get("favorites", [])
+        if song_filename not in favs:
+            favs.append(song_filename)
+            user["favorites"] = favs
+            self._save_user(username, user)
+        return True
+
+    def remove_favorite(self, username: str, song_filename: str):
+        user = self.get_user(username)
+        if not user: return False
+        
+        favs = user.get("favorites", [])
+        if song_filename in favs:
+            favs.remove(song_filename)
+            user["favorites"] = favs
+            self._save_user(username, user)
+        return True
+        
+    # --- Playlists ---
+    
+    def get_playlists(self, username: str):
+        user = self.get_user(username)
+        if not user: return []
+        return user.get("playlists", [])
+        
+    def create_playlist(self, username: str, name: str):
+        user = self.get_user(username)
+        if not user: return None
+        
+        new_playlist = {
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "songs": []
+        }
+        
+        playlists = user.get("playlists", [])
+        playlists.append(new_playlist)
+        user["playlists"] = playlists
+        self._save_user(username, user)
+        return new_playlist
+        
+    def delete_playlist(self, username: str, playlist_id: str):
+        user = self.get_user(username)
+        if not user: return False
+        
+        playlists = user.get("playlists", [])
+        user["playlists"] = [p for p in playlists if p["id"] != playlist_id]
+        self._save_user(username, user)
+        return True
+        
+    def add_song_to_playlist(self, username: str, playlist_id: str, song_filename: str):
+        user = self.get_user(username)
+        if not user: return False
+        
+        playlists = user.get("playlists", [])
+        for p in playlists:
+            if p["id"] == playlist_id:
+                if song_filename not in p["songs"]:
+                    p["songs"].append(song_filename)
+                    self._save_user(username, user)
+                return True
+        return False
+        
+    def remove_song_from_playlist(self, username: str, playlist_id: str, song_filename: str):
+        user = self.get_user(username)
+        if not user: return False
+        
+        playlists = user.get("playlists", [])
+        for p in playlists:
+            if p["id"] == playlist_id:
+                if song_filename in p["songs"]:
+                    p["songs"].remove(song_filename)
+                    self._save_user(username, user)
+                return True
+        return False
 
 user_service = UserService()

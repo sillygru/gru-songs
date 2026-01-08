@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../providers/auth_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -14,9 +16,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _newUsernameController = TextEditingController();
+  String _cacheSize = "Calculating...";
+
+  @override
+  void initState() {
+    super.initState();
+    _calculateCacheSize();
+  }
+
+  Future<void> _calculateCacheSize() async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final cacheDir = Directory('${tempDir.path}/libCachedImageData');
+      
+      if (await cacheDir.exists()) {
+        int totalSize = 0;
+        await for (var file in cacheDir.list(recursive: true, followLinks: false)) {
+          if (file is File) {
+            totalSize += await file.length();
+          }
+        }
+        
+        setState(() {
+          _cacheSize = _formatSize(totalSize);
+        });
+      } else {
+         setState(() {
+          _cacheSize = "0 B";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cacheSize = "Unknown";
+      });
+    }
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return "$bytes B";
+    if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)} KB";
+    if (bytes < 1024 * 1024 * 1024) return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+    return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
+  }
 
   Future<void> _clearCache() async {
     await DefaultCacheManager().emptyCache();
+    await _calculateCacheSize();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cache cleared')),
@@ -131,7 +176,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: 16),
                   ListTile(
                     title: const Text('Clear Cache'),
-                    subtitle: const Text('Remove cached images and temporary files'),
+                    subtitle: Text('Size: $_cacheSize'),
                     trailing: const Icon(Icons.delete_outline),
                     onTap: _clearCache,
                   ),

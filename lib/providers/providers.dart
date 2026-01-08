@@ -1,10 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
 import '../services/stats_service.dart';
+import '../services/user_data_service.dart';
 import '../services/audio_player_manager.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import '../providers/auth_provider.dart';
+import 'user_data_provider.dart';
 
 // Services & Repositories
 final apiServiceProvider = Provider<ApiService>((ref) {
@@ -19,6 +21,10 @@ final apiServiceProvider = Provider<ApiService>((ref) {
 
 final statsServiceProvider = Provider<StatsService>((ref) {
   return StatsService();
+});
+
+final userDataServiceProvider = Provider<UserDataService>((ref) {
+  return UserDataService(ref.watch(apiServiceProvider));
 });
 
 final songRepositoryProvider = Provider<SongRepository>((ref) {
@@ -40,4 +46,8 @@ final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
 final songsProvider = FutureProvider<List<Song>>((ref) async {
   final repository = ref.watch(songRepositoryProvider);
   return repository.getSongs();
+});
+
+final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(() {
+  return UserDataNotifier();
 });
