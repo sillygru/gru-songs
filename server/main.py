@@ -6,16 +6,18 @@ from settings import settings
 from services import music_service
 from user_service import user_service
 import asyncio
-from fastapi import FastAPI, HTTPException, Header
-from fastapi.responses import Response
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from settings import settings
-from services import music_service
-from user_service import user_service
 from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    asyncio.create_task(periodic_flush())
+    yield
+    # Shutdown logic
+    user_service.flush_stats()
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,14 +30,6 @@ app.mount("/stream", StaticFiles(directory=settings.MUSIC_DIR), name="stream")
 app.mount("/lyrics", StaticFiles(directory=settings.LYRICS_DIR), name="lyrics")
 
 # --- Background Task for Stats Flushing ---
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(periodic_flush())
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    user_service.flush_stats()
 
 async def periodic_flush():
     while True:
@@ -137,6 +131,8 @@ def remove_suggest_less(filename: str, x_username: str = Header(None)):
     return {"status": "removed"}
 
 # --- Playlist Routes ---
+
+@app.get("/user/playlists")
 def get_playlists(x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")

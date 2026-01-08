@@ -188,18 +188,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (song.playCount > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.deepPurple.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              "${song.playCount}",
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                        Container(
+                          width: 20,
+                          height: 20,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            "${song.playCount}",
+                            style: const TextStyle(
+                              fontSize: 10, 
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold
                             ),
                           ),
+                        ),
                         IconButton(
                           icon: Icon(
                             isSuggestLess 

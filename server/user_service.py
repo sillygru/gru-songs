@@ -228,7 +228,7 @@ class UserService:
                 
         for session in data.get("sessions", []):
             for event in session.get("events", []):
-                if event.get("event_type") == "listen" or event.get("event_type") == "complete":
+                if event.get("event_type") != "favorite":
                     ratio = event.get("play_ratio", 0)
                     if ratio > 0.25:
                         song = event.get("song_filename")
