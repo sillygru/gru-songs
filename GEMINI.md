@@ -1,12 +1,15 @@
 # Project Instructions: Gru Songs (Flutter)
 
+## ⛔️ Constraints
+- **NO GIT COMMANDS:** Do not ever run git commands (git add, commit, push, etc.).
+
 ## 🚀 Overview
-A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel.
+A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, playlists, and favorites.
 
 ## 🛠 Tech Stack
 - **Frontend:** Flutter (Material 3)
 - **State Management:** `flutter_riverpod` (Riverpod 3.x)
-- **Data Modeling:** `equatable`
+- **Data Modeling:** `equatable`, `uuid`
 - **Audio Engine:** `just_audio`
 - **Background Playback:** `just_audio_background`
 - **Audio Session:** `audio_session` (configured for music)
@@ -16,10 +19,20 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 ## 🌐 Networking & API
 - **Base URL:** `https://[REDACTED]/music`
 - **Endpoints:**
-  - `GET /list-songs`: Returns JSON list.
-  - `GET /stream/{filename}`: Audio stream.
-  - `GET /cover/{filename}`: Album art extraction from metadata.
-  - `GET /lyrics/{filename}`: `.lrc` file or embedded lyrics.
+  - **Music:**
+    - `GET /list-songs`
+    - `GET /stream/{filename}`
+    - `GET /cover/{filename}`
+    - `GET /lyrics/{filename}`
+  - **Auth:**
+    - `POST /auth/signup`
+    - `POST /auth/login`
+    - `POST /auth/update-password`
+    - `POST /auth/update-username`
+  - **User Data:**
+    - `GET/POST /user/favorites`
+    - `GET/POST /user/playlists`
+    - `POST /stats/track`
 
 ### ⚠️ Critical Handshake Fix
 The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClient` in `api_service.dart`. **Do not remove these.** They are required to prevent `HandshakeException` when connecting to the Tailscale Funnel URL from mobile devices.
@@ -37,30 +50,30 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 
 ## 🏗 Architecture & Best Practices
 - **Frontend:** Follows a modular **MVVM/Clean Architecture** pattern.
-  - **Data Layer:** Repositories handle data fetching and abstraction.
-  - **State Layer:** Riverpod providers manage application state and dependency injection.
-  - **Presentation Layer:** Separated into `screens` (pages) and `widgets` (reusable components).
+  - **Services:** `AuthService`, `StatsService` (Session ID mgmt), `UserDataService`.
+  - **Providers:** `authProvider`, `userDataProvider` (Favorites/Playlists), `audioPlayerManagerProvider`.
 - **Backend:** Modularized for maintainability.
-  - **Settings:** Environment-based configuration via `.env`.
-  - **Services:** Business logic (metadata extraction, file scanning) isolated from routes.
+  - **Stats Engine:** RAM-buffered statistics (flushed every 5m) with session grouping and "active listening" ratio calculation.
+  - **User Service:** Handles auth, file-based persistence (JSON), and playlists.
 
 ## 📂 Project Structure
 ### Frontend (`lib/`)
-- `models/`: Data structures (e.g., `song.dart`).
+- `models/`: Data structures (`song.dart`, `playlist.dart`).
 - `data/repositories/`: Data access abstraction.
-- `providers/`: Riverpod providers for state and services.
-- `services/`: Core logic (API client, Audio player lifecycle).
+- `providers/`: Riverpod providers.
+- `services/`: Core logic (`auth_service.dart`, `stats_service.dart`).
 - `presentation/`:
-  - `screens/`: UI pages (Home, Player).
-  - `widgets/`: Reusable UI components.
-- `main.dart`: App entry point and global initializations.
+  - `screens/`: `AuthScreen`, `HomeScreen`, `SettingsScreen`, `PlaylistsScreen`.
+  - `widgets/`: `NowPlayingBar`.
+- `main.dart`: Entry point.
 
 ### Backend (`server/`)
-- `main.py`: FastAPI routes and application entry point.
-- `settings.py`: Configuration management using `python-dotenv`.
-- `services.py`: Music processing and metadata logic.
-- `.env`: Local environment variables (not committed).
-- `requirements.txt`: Python dependencies.
+- `main.py`: Routes and background tasks.
+- `user_service.py`: Core logic for auth, stats (buffer), and user data.
+- `models.py`: Pydantic models.
+- `services.py`: Music metadata extraction.
+- `settings.py`: Configuration.
+- `users/`: JSON storage for user data.
 
 ## 📦 Build Commands
 
@@ -69,12 +82,21 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 # Debug (installs on emulator)
 flutter build apk --debug
 
-# Release
+# Release (Standard APK)
 flutter build apk --release
+
+# Release (App Bundle for Play Store)
+flutter build appbundle
 ```
 
-### iOS (Manual IPA)
+### iOS (Xcode)
 ```bash
-# Build the bundle
-flutter build ios --release --no-codesign
+# 1. Build the iOS project (prepares files for Xcode)
+flutter build ios --release
+
+# 2. Open the project in Xcode to manage signing and deployment
+open ios/Runner.xcworkspace
+
+# 3. Build a distribution package (IPA)
+flutter build ipa --release
 ```
