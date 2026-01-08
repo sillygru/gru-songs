@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -7,6 +9,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../providers/user_data_provider.dart';
 
 class PositionData {
   final Duration position;
@@ -37,7 +40,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   void initState() {
     super.initState();
     player.sequenceStateStream.listen((state) {
-      final tag = state.currentSource?.tag;
+      final tag = state?.currentSource?.tag;
       final String? songId = tag is MediaItem ? tag.id : null;
       
       if (songId != _lastSongId) {
@@ -104,7 +107,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
 
     if (_lyrics == null) {
-      // Use the repository provider to fetch lyrics
       final repo = ref.read(songRepositoryProvider);
       final lyricsContent = await repo.getLyrics(lyricsUrl);
       if (mounted) {
@@ -114,6 +116,93 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         });
       }
     }
+  }
+
+  void _showSongOptionsMenu(BuildContext context, WidgetRef ref, MediaItem metadata, UserDataState userData) {
+    final isFavorite = userData.favorites.contains(metadata.id);
+    final isSuggestLess = userData.suggestLess.contains(metadata.id);
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
+                title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
+                onTap: () {
+                  ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.playlist_add),
+                title: const Text("Add to new playlist"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final nameController = TextEditingController();
+                  final newName = await showDialog<String>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text("New Playlist"),
+                      content: TextField(
+                        controller: nameController,
+                        decoration: const InputDecoration(hintText: "Playlist Name"),
+                        autofocus: true,
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                        TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text("Create")),
+                      ],
+                    ),
+                  );
+                  if (newName != null && newName.isNotEmpty) {
+                    final newPlaylist = await ref.read(userDataProvider.notifier).createPlaylist(newName);
+                    if (newPlaylist != null) {
+                      await ref.read(userDataProvider.notifier).addSongToPlaylist(newPlaylist.id, metadata.id);
+                    }
+                  }
+                },
+              ),
+              ...userData.playlists.map((p) {
+                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
+                if (isInPlaylist) return const SizedBox.shrink();
+                return ListTile(
+                  leading: const Icon(Icons.playlist_add),
+                  title: Text("Add to ${p.name}"),
+                  onTap: () {
+                    ref.read(userDataProvider.notifier).addSongToPlaylist(p.id, metadata.id);
+                    Navigator.pop(context);
+                  },
+                );
+              }),
+              ...userData.playlists.map((p) {
+                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
+                if (!isInPlaylist) return const SizedBox.shrink();
+                return ListTile(
+                  leading: const Icon(Icons.remove_circle_outline),
+                  title: Text("Remove from ${p.name}"),
+                  onTap: () {
+                    ref.read(userDataProvider.notifier).removeSongFromPlaylist(p.id, metadata.id);
+                    Navigator.pop(context);
+                  },
+                );
+              }),
+              ListTile(
+                leading: Icon(isSuggestLess ? Icons.thumb_up : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
+                title: Text(isSuggestLess ? "Suggest more" : "Suggest less"),
+                onTap: () {
+                  ref.read(userDataProvider.notifier).toggleSuggestLess(metadata.id);
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Stream<PositionData> get _positionDataStream =>
@@ -126,6 +215,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final userData = ref.watch(userDataProvider);
+    final isDesktop = !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+    final isIPad = !kIsWeb && Platform.isIOS && MediaQuery.of(context).size.shortestSide >= 600;
+
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
@@ -247,11 +340,41 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   );
                 },
               ),
+              if (isDesktop || isIPad) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.volume_down, size: 20),
+                    Expanded(
+                      child: StreamBuilder<double>(
+                        stream: player.volumeStream,
+                        builder: (context, snapshot) {
+                          return Slider(
+                            value: snapshot.data ?? 1.0,
+                            onChanged: player.setVolume,
+                          );
+                        },
+                      ),
+                    ),
+                    const Icon(Icons.volume_up, size: 20),
+                  ],
+                ),
+              ],
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Shuffle
+                  // 1. Lyrics
+                  IconButton(
+                    icon: const Icon(Icons.lyrics),
+                    color: _showLyrics ? Colors.deepPurple : Colors.white,
+                    onPressed: () {
+                      if (metadata?.extras?['lyricsUrl'] != null) {
+                        _toggleLyrics(metadata!.extras!['lyricsUrl'] as String);
+                      }
+                    },
+                  ),
+                  // 2. Shuffle
                   StreamBuilder<bool>(
                     stream: player.shuffleModeEnabledStream,
                     builder: (context, snapshot) {
@@ -262,7 +385,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       );
                     },
                   ),
-                  // Previous
+                  // 3. Previous
                   IconButton(
                     icon: const Icon(Icons.skip_previous, size: 36),
                     onPressed: () {
@@ -273,7 +396,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       }
                     },
                   ),
-                  // Play/Pause
+                  // 4. Play/Pause
                   StreamBuilder<PlayerState>(
                     stream: player.playerStateStream,
                     builder: (context, snapshot) {
@@ -285,12 +408,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       );
                     },
                   ),
-                  // Next
+                  // 5. Next
                   IconButton(
                     icon: const Icon(Icons.skip_next, size: 36),
                     onPressed: player.hasNext ? player.seekToNext : null,
                   ),
-                  // Repeat
+                  // 6. Repeat
                   StreamBuilder<LoopMode>(
                     stream: player.loopModeStream,
                     builder: (context, snapshot) {
@@ -313,21 +436,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       );
                     },
                   ),
-                  // Favorite
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final userData = ref.watch(userDataProvider);
-                      final isFavorite = metadata != null && userData.favorites.contains(metadata.id);
-                      return IconButton(
-                        icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                        color: isFavorite ? Colors.red : Colors.white,
-                        onPressed: () {
-                          if (metadata != null) {
-                            ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
-                          }
-                        },
-                      );
+                  // 7. Favorite
+                  GestureDetector(
+                    onLongPress: () {
+                      if (metadata != null) {
+                        _showSongOptionsMenu(context, ref, metadata, userData);
+                      }
                     },
+                    child: IconButton(
+                      icon: Icon(userData.favorites.contains(metadata?.id) ? Icons.favorite : Icons.favorite_border),
+                      color: userData.favorites.contains(metadata?.id) ? Colors.red : Colors.white,
+                      onPressed: () {
+                        if (metadata != null) {
+                          ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),

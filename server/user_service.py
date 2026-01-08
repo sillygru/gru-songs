@@ -198,10 +198,42 @@ class UserService:
                 if event.get('event_type') != 'favorite':
                     data["total_play_time"] = round(data["total_play_time"] + event.get("duration_played", 0), 2)
 
+            # Ensure all numeric fields in the saved data are rounded
+            if "sessions" in data:
+                for s in data["sessions"]:
+                    s["start_time"] = round(s["start_time"], 2)
+                    s["end_time"] = round(s["end_time"], 2)
+                    for e in s["events"]:
+                        if 'duration_played' in e: e['duration_played'] = round(e['duration_played'], 2)
+                        if 'timestamp' in e: e['timestamp'] = round(e['timestamp'], 2)
+                        if 'total_length' in e: e['total_length'] = round(e['total_length'], 2)
+                        if 'play_ratio' in e: e['play_ratio'] = round(e['play_ratio'], 2)
+
             with open(path, "w") as f:
                 json.dump(data, f, indent=4)
         
         self._stats_buffer.clear()
+
+    def get_play_counts(self, username: str) -> Dict[str, int]:
+        path = self._get_user_stats_path(username)
+        counts = {}
+        if not os.path.exists(path):
+            return counts
+            
+        with open(path, "r") as f:
+            try:
+                data = json.load(f)
+            except:
+                return counts
+                
+        for session in data.get("sessions", []):
+            for event in session.get("events", []):
+                if event.get("event_type") == "listen" or event.get("event_type") == "complete":
+                    ratio = event.get("play_ratio", 0)
+                    if ratio > 0.25:
+                        song = event.get("song_filename")
+                        counts[song] = counts.get(song, 0) + 1
+        return counts
             
     # --- Favorites ---
     

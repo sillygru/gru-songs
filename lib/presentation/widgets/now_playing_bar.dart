@@ -1,17 +1,109 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../../providers/user_data_provider.dart';
 import '../screens/player_screen.dart';
 
 class NowPlayingBar extends ConsumerWidget {
   const NowPlayingBar({super.key});
 
+  void _showSongOptionsMenu(BuildContext context, WidgetRef ref, MediaItem metadata, UserDataState userData) {
+    final isFavorite = userData.favorites.contains(metadata.id);
+    final isSuggestLess = userData.suggestLess.contains(metadata.id);
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
+                title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
+                onTap: () {
+                  ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.playlist_add),
+                title: const Text("Add to new playlist"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final nameController = TextEditingController();
+                  final newName = await showDialog<String>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text("New Playlist"),
+                      content: TextField(
+                        controller: nameController,
+                        decoration: const InputDecoration(hintText: "Playlist Name"),
+                        autofocus: true,
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                        TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text("Create")),
+                      ],
+                    ),
+                  );
+                  if (newName != null && newName.isNotEmpty) {
+                    final newPlaylist = await ref.read(userDataProvider.notifier).createPlaylist(newName);
+                    if (newPlaylist != null) {
+                      await ref.read(userDataProvider.notifier).addSongToPlaylist(newPlaylist.id, metadata.id);
+                    }
+                  }
+                },
+              ),
+              ...userData.playlists.map((p) {
+                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
+                if (isInPlaylist) return const SizedBox.shrink();
+                return ListTile(
+                  leading: const Icon(Icons.playlist_add),
+                  title: Text("Add to ${p.name}"),
+                  onTap: () {
+                    ref.read(userDataProvider.notifier).addSongToPlaylist(p.id, metadata.id);
+                    Navigator.pop(context);
+                  },
+                );
+              }),
+              ...userData.playlists.map((p) {
+                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
+                if (!isInPlaylist) return const SizedBox.shrink();
+                return ListTile(
+                  leading: const Icon(Icons.remove_circle_outline),
+                  title: Text("Remove from ${p.name}"),
+                  onTap: () {
+                    ref.read(userDataProvider.notifier).removeSongFromPlaylist(p.id, metadata.id);
+                    Navigator.pop(context);
+                  },
+                );
+              }),
+              ListTile(
+                leading: Icon(isSuggestLess ? Icons.thumb_up : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
+                title: Text(isSuggestLess ? "Suggest more" : "Suggest less"),
+                onTap: () {
+                  ref.read(userDataProvider.notifier).toggleSuggestLess(metadata.id);
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(audioPlayerManagerProvider).player;
+    final isDesktop = !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+    final isIPad = !kIsWeb && Platform.isIOS && MediaQuery.of(context).size.shortestSide >= 600;
 
     return StreamBuilder<SequenceState?>(
       stream: player.sequenceStateStream,
@@ -32,155 +124,110 @@ class NowPlayingBar extends ConsumerWidget {
             );
           },
           child: Container(
-            height: 70,
+            height: (isDesktop || isIPad) ? 100 : 70,
             color: Colors.grey[900],
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: CachedNetworkImage(
-                    imageUrl: metadata.artUri.toString(),
-                    width: 50,
-                    height: 50,
-                    fit: BoxFit.cover,
-                    errorWidget: (context, url, error) => const Icon(Icons.music_note),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        metadata.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: CachedNetworkImage(
+                        imageUrl: metadata.artUri.toString(),
+                        width: 50,
+                        height: 50,
+                        fit: BoxFit.cover,
+                        errorWidget: (context, url, error) => const Icon(Icons.music_note),
                       ),
-                      Text(
-                        metadata.artist ?? 'Unknown Artist',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            metadata.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            metadata.artist ?? 'Unknown Artist',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                          ),
+                        ],
                       ),
+                    ),
+                    if (isDesktop || isIPad) ...[
+                      const SizedBox(width: 20),
+                      const Icon(Icons.volume_down, size: 20),
+                      SizedBox(
+                        width: 150,
+                        child: StreamBuilder<double>(
+                          stream: player.volumeStream,
+                          builder: (context, snapshot) {
+                            return Slider(
+                              value: snapshot.data ?? 1.0,
+                              onChanged: player.setVolume,
+                            );
+                          },
+                        ),
+                      ),
+                      const Icon(Icons.volume_up, size: 20),
+                      const SizedBox(width: 20),
                     ],
-                  ),
-                ),
-                Consumer(
-                  builder: (context, ref, child) {
-                    final userData = ref.watch(userDataProvider);
-                    final isFavorite = userData.favorites.contains(metadata.id);
-                    return PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert),
-                        onSelected: (value) async {
-                            if (value == 'favorite') {
-                                ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
-                            } else if (value == 'suggest_less') {
-                                ref.read(userDataProvider.notifier).toggleSuggestLess(metadata.id);
-                            } else if (value.startsWith('add_to_')) {
-                                final pid = value.replaceFirst('add_to_', '');
-                                await ref.read(userDataProvider.notifier).addSongToPlaylist(pid, metadata.id);
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to playlist")));
-                                }
-                            } else if (value.startsWith('remove_from_')) {
-                                final pid = value.replaceFirst('remove_from_', '');
-                                await ref.read(userDataProvider.notifier).removeSongFromPlaylist(pid, metadata.id);
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Removed from playlist")));
-                                }
-                            }
-                        },
-                        itemBuilder: (context) {
-                          final List<PopupMenuEntry<String>> items = [];
-                          final isSuggestLess = userData.suggestLess.contains(metadata.id);
-
-                          // 1. Favorite
-                          items.add(PopupMenuItem(
-                            value: 'favorite',
-                            child: Row(
-                              children: [
-                                Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
-                                const SizedBox(width: 8),
-                                Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
-                              ],
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final userData = ref.watch(userDataProvider);
+                        final isFavorite = userData.favorites.contains(metadata.id);
+                        final isSuggestLess = userData.suggestLess.contains(metadata.id);
+                        
+                        return GestureDetector(
+                          onLongPress: () => _showSongOptionsMenu(context, ref, metadata, userData),
+                          child: IconButton(
+                            icon: Icon(
+                              isSuggestLess 
+                                ? Icons.heart_broken 
+                                : (isFavorite ? Icons.favorite : Icons.favorite_border)
                             ),
-                          ));
+                            color: isSuggestLess ? Colors.grey : (isFavorite ? Colors.red : null),
+                            onPressed: () {
+                              ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                    StreamBuilder<PlayerState>(
+                      stream: player.playerStateStream,
+                      builder: (context, snapshot) {
+                        final playerState = snapshot.data;
+                        final playing = playerState?.playing ?? false;
+                        final processingState = playerState?.processingState;
 
-                          // 2. Add to [playlist]
-                          for (final p in userData.playlists) {
-                            if (!p.songs.any((s) => s.filename == metadata.id)) {
-                              items.add(PopupMenuItem(
-                                value: 'add_to_${p.id}',
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.playlist_add),
-                                    const SizedBox(width: 8),
-                                    Text("Add to ${p.name}"),
-                                  ],
-                                ),
-                              ));
-                            }
-                          }
+                        if (processingState == ProcessingState.buffering) {
+                          return const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                          );
+                        }
 
-                          // 3. Remove from [playlist]
-                          for (final p in userData.playlists) {
-                            if (p.songs.any((s) => s.filename == metadata.id)) {
-                              items.add(PopupMenuItem(
-                                value: 'remove_from_${p.id}',
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.remove_circle_outline),
-                                    const SizedBox(width: 8),
-                                    Text("Remove from ${p.name}"),
-                                  ],
-                                ),
-                              ));
-                            }
-                          }
-
-                          // 4. Suggest less
-                          items.add(PopupMenuItem(
-                            value: 'suggest_less',
-                            child: Row(
-                              children: [
-                                Icon(isSuggestLess ? Icons.thumb_down : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
-                                const SizedBox(width: 8),
-                                Text(isSuggestLess ? "Suggest more" : "Suggest less"),
-                              ],
-                            ),
-                          ));
-
-                          return items;
-                        },
-                    );
-                  },
-                ),
-                StreamBuilder<PlayerState>(
-                  stream: player.playerStateStream,
-                  builder: (context, snapshot) {
-                    final playerState = snapshot.data;
-                    final playing = playerState?.playing ?? false;
-                    final processingState = playerState?.processingState;
-
-                    if (processingState == ProcessingState.buffering) {
-                      return const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-                      );
-                    }
-
-                    return IconButton(
-                      icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                      onPressed: playing ? player.pause : player.play,
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.skip_next),
-                  onPressed: player.hasNext ? player.seekToNext : null,
+                        return IconButton(
+                          icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                          onPressed: playing ? player.pause : player.play,
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.skip_next),
+                      onPressed: player.hasNext ? player.seekToNext : null,
+                    ),
+                  ],
                 ),
               ],
             ),

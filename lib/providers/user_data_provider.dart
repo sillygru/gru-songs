@@ -95,15 +95,22 @@ class UserDataNotifier extends Notifier<UserDataState> {
     if (_username == null) return;
     
     final isFav = state.favorites.contains(songFilename);
-    final newFavs = List<String>.from(state.favorites);
+    final isSL = state.suggestLess.contains(songFilename);
     
-    // Optimistic update
+    final newFavs = List<String>.from(state.favorites);
+    final newSL = List<String>.from(state.suggestLess);
+    
     if (isFav) {
       newFavs.remove(songFilename);
     } else {
       newFavs.add(songFilename);
+      // Remove from suggest less if added to favorites
+      if (isSL) {
+        newSL.remove(songFilename);
+      }
     }
-    state = state.copyWith(favorites: newFavs);
+    
+    state = state.copyWith(favorites: newFavs, suggestLess: newSL);
     
     try {
       if (isFav) {
@@ -111,10 +118,13 @@ class UserDataNotifier extends Notifier<UserDataState> {
       } else {
         final statsService = ref.read(statsServiceProvider);
         await _service.addFavorite(_username!, songFilename, statsService.sessionId);
+        if (isSL) {
+          await _service.removeSuggestLess(_username!, songFilename);
+        }
       }
     } catch (e) {
       // Revert on error
-      state = state.copyWith(favorites: state.favorites);
+      state = state.copyWith(favorites: state.favorites, suggestLess: state.suggestLess);
     }
   }
 

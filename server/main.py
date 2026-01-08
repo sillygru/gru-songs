@@ -176,10 +176,16 @@ def remove_song_from_playlist(playlist_id: str, filename: str, x_username: str =
 # --- Music Routes ---
 
 @app.get("/list-songs")
-def list_songs():
+def list_songs(x_username: str = Header(None)):
     result = music_service.list_songs()
     if isinstance(result, dict) and "error" in result:
         return result
+    
+    if x_username:
+        counts = user_service.get_play_counts(x_username)
+        for song in result:
+            song["play_count"] = counts.get(song["filename"], 0)
+            
     return result
 
 @app.get("/lyrics-embedded/{filename}")
