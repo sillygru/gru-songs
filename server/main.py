@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from settings import settings
 from services import music_service
+from user_service import user_service
+from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate
 
 app = FastAPI()
 
@@ -16,6 +18,59 @@ app.add_middleware(
 
 app.mount("/stream", StaticFiles(directory=settings.MUSIC_DIR), name="stream")
 app.mount("/lyrics", StaticFiles(directory=settings.LYRICS_DIR), name="lyrics")
+
+# --- Auth Routes ---
+
+@app.post("/auth/signup")
+def signup(user: UserCreate):
+    success, message = user_service.create_user(user.username, user.password)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"message": message}
+
+@app.post("/auth/login")
+def login(user: UserLogin):
+    if user_service.authenticate_user(user.username, user.password):
+        return {"message": "Login successful", "username": user.username}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.post("/auth/update-password")
+def update_password(data: UserUpdate, x_username: str = Header(None)):
+    if not x_username:
+         raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    success, message = user_service.update_password(x_username, data.old_password, data.new_password)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"message": message}
+
+@app.post("/auth/update-username")
+def update_username(data: UserProfileUpdate, x_username: str = Header(None)):
+    if not x_username:
+         raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    if not data.new_username:
+        raise HTTPException(status_code=400, detail="New username required")
+
+    success, message = user_service.update_username(x_username, data.new_username)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"username": data.new_username, "message": message}
+
+
+# --- Stats Routes ---
+
+@app.post("/stats/track")
+def track_stats(stats: StatsEntry, x_username: str = Header(None)):
+    if not x_username:
+        # We allow anonymous stats or just ignore them? For now, require auth as per "EVERYTHING for every user"
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    user_service.append_stats(x_username, stats)
+    return {"status": "ok"}
+
+
+# --- Music Routes ---
 
 @app.get("/list-songs")
 def list_songs():

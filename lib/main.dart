@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
 import 'presentation/screens/home_screen.dart';
+import 'presentation/screens/auth_screen.dart';
+import 'providers/auth_provider.dart';
 
 class MyHttpOverrides extends HttpOverrides {
   @override
@@ -28,11 +30,13 @@ Future<void> main() async {
   runApp(const ProviderScope(child: GruSongsApp()));
 }
 
-class GruSongsApp extends StatelessWidget {
+class GruSongsApp extends ConsumerWidget {
   const GruSongsApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+    
     return MaterialApp(
       title: 'Gru Songs',
       theme: ThemeData(
@@ -40,7 +44,7 @@ class GruSongsApp extends StatelessWidget {
         primarySwatch: Colors.deepPurple,
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: authState.isAuthenticated ? const HomeScreen() : const AuthScreen(),
     );
   }
 }

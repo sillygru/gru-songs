@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/providers.dart';
 import '../widgets/now_playing_bar.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -31,6 +32,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('Gru Songs'),
         actions: [
+          IconButton(
+             icon: const Icon(Icons.settings),
+             onPressed: () {
+               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+             },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {

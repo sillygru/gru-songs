@@ -8,23 +8,30 @@ class ApiService {
   static const String baseUrl = 'https://[REDACTED]/music';
   final http.Client _client;
 
-  ApiService({http.Client? client}) : _client = client ?? _createClient();
+  ApiService({http.Client? client}) : _client = client ?? createClient();
 
-  static http.Client _createClient() {
+  static http.Client createClient() {
     final HttpClient ioc = HttpClient();
     ioc.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
     ioc.connectionTimeout = const Duration(seconds: 30);
     return IOClient(ioc);
   }
 
+  String? _username;
+  void setUsername(String? username) => _username = username;
+
+  Map<String, String> get _headers => {
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+    'Accept': 'application/json',
+    if (_username != null) 'x-username': _username!,
+    'Content-Type': 'application/json',
+  };
+
   Future<List<Song>> fetchSongs() async {
     try {
       final response = await _client.get(
         Uri.parse('$baseUrl/list-songs'),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
-          'Accept': 'application/json',
-        },
+        headers: _headers,
       );
 
       if (response.statusCode == 200) {
