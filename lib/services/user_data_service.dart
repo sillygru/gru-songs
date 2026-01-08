@@ -29,11 +29,14 @@ class UserDataService {
     return [];
   }
 
-  Future<void> addFavorite(String username, String songFilename) async {
+  Future<void> addFavorite(String username, String songFilename, String sessionId) async {
     await _client.post(
       Uri.parse('${ApiService.baseUrl}/user/favorites'),
       headers: _getHeaders(username),
-      body: jsonEncode({'song_filename': songFilename}),
+      body: jsonEncode({
+          'song_filename': songFilename,
+          'session_id': sessionId
+      }),
     );
   }
 

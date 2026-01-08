@@ -1,9 +1,13 @@
 import json
 import os
 import uuid
+import time
+import math
+from typing import Dict, List
 from passlib.context import CryptContext
 from settings import settings
 from models import StatsEntry, Playlist
+from services import music_service
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -11,6 +15,9 @@ class UserService:
     def __init__(self):
         if not os.path.exists(settings.USERS_DIR):
             os.makedirs(settings.USERS_DIR)
+        
+        # Buffer: {username: [stats_dicts]}
+        self._stats_buffer: Dict[str, List[dict]] = {}
 
     def _get_user_path(self, username: str) -> str:
         return os.path.join(settings.USERS_DIR, f"{username}.json")
@@ -37,14 +44,13 @@ class UserService:
         user_data = {
             "username": username,
             "password": hashed_password,
-            "created_at": str(os.path.getctime(settings.USERS_DIR)), # Dummy timestamp
+            "created_at": str(os.path.getctime(settings.USERS_DIR)),
             "favorites": [],
             "playlists": []
         }
         
         self._save_user(username, user_data)
             
-        # Init stats file
         with open(self._get_user_stats_path(username), "w") as f:
             json.dump({"sessions": [], "total_play_time": 0}, f, indent=4)
             
@@ -79,7 +85,8 @@ class UserService:
         if not user:
             return False, "User not found"
         
-        # Rename files
+        self.flush_stats()
+        
         old_path = self._get_user_path(current_username)
         new_path = self._get_user_path(new_username)
         old_stats = self._get_user_stats_path(current_username)
@@ -87,7 +94,6 @@ class UserService:
         
         user["username"] = new_username
         
-        # Write new file first
         with open(new_path, "w") as f:
             json.dump(user, f, indent=4)
             
@@ -97,29 +103,87 @@ class UserService:
              with open(new_stats, "w") as f:
                 json.dump({"sessions": [], "total_play_time": 0}, f, indent=4)
 
-        # Remove old file
         os.remove(old_path)
         
         return True, "Username updated"
 
-    def append_stats(self, username: str, stats: StatsEntry):
-        path = self._get_user_stats_path(username)
-        data = {"sessions": [], "total_play_time": 0}
-        
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                try:
-                    data = json.load(f)
-                except:
-                    pass # Reset if corrupted
-        
-        if "events" not in data:
-            data["events"] = []
-            
-        data["events"].append(stats.dict())
+    # --- Statistics ---
 
-        with open(path, "w") as f:
-            json.dump(data, f, indent=4)
+    def append_stats(self, username: str, stats: StatsEntry):
+        # Skip events with 0 duration unless it's a special marker (like favorite, but favorite is separate)
+        if stats.duration_played <= 0 and stats.event_type != 'favorite':
+            return
+
+        total_length = music_service.get_song_duration(stats.song_filename)
+        ratio = 0.0
+        if total_length > 0:
+            ratio = stats.duration_played / total_length
+            
+        entry_data = stats.dict()
+        entry_data['duration_played'] = round(stats.duration_played, 2)
+        entry_data['timestamp'] = round(stats.timestamp, 2)
+        entry_data['total_length'] = round(total_length, 2)
+        entry_data['play_ratio'] = round(ratio, 2)
+        
+        if username not in self._stats_buffer:
+            self._stats_buffer[username] = []
+            
+        self._stats_buffer[username].append(entry_data)
+        
+    def flush_stats(self):
+        if not self._stats_buffer:
+            return
+
+        for username, events in self._stats_buffer.items():
+            if not events:
+                continue
+                
+            path = self._get_user_stats_path(username)
+            data = {"sessions": [], "total_play_time": 0}
+            
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    try:
+                        data = json.load(f)
+                    except:
+                        pass 
+
+            if "sessions" not in data:
+                data["sessions"] = []
+                
+            # Process events into sessions
+            for event in events:
+                session_id = event.get('session_id')
+                if not session_id:
+                    continue # Should not happen
+                
+                # Find or create session
+                session = next((s for s in data["sessions"] if s["id"] == session_id), None)
+                if not session:
+                    session = {
+                        "id": session_id,
+                        "start_time": event['timestamp'],
+                        "end_time": event['timestamp'],
+                        "events": []
+                    }
+                    data["sessions"].append(session)
+                
+                # Update session bounds
+                if event['timestamp'] < session['start_time']:
+                    session['start_time'] = event['timestamp']
+                if event['timestamp'] > session['end_time']:
+                    session['end_time'] = event['timestamp']
+                    
+                session["events"].append(event)
+                
+                # Update total play time
+                if event.get('event_type') != 'favorite':
+                    data["total_play_time"] = round(data["total_play_time"] + event.get("duration_played", 0), 2)
+
+            with open(path, "w") as f:
+                json.dump(data, f, indent=4)
+        
+        self._stats_buffer.clear()
             
     # --- Favorites ---
     
@@ -129,26 +193,69 @@ class UserService:
             return []
         return user.get("favorites", [])
         
-    def add_favorite(self, username: str, song_filename: str):
+    def add_favorite(self, username: str, song_filename: str, session_id: str):
         user = self.get_user(username)
         if not user: return False
         
+        # 1. Update user profile
         favs = user.get("favorites", [])
         if song_filename not in favs:
             favs.append(song_filename)
             user["favorites"] = favs
             self._save_user(username, user)
+            
+        # 2. Log event
+        # Create a synthetic stats entry for the favorite event
+        entry = StatsEntry(
+            session_id=session_id,
+            song_filename=song_filename,
+            duration_played=0,
+            event_type='favorite',
+            timestamp=time.time()
+        )
+        self.append_stats(username, entry)
+            
         return True
 
     def remove_favorite(self, username: str, song_filename: str):
         user = self.get_user(username)
         if not user: return False
         
+        # 1. Update user profile
         favs = user.get("favorites", [])
         if song_filename in favs:
             favs.remove(song_filename)
             user["favorites"] = favs
             self._save_user(username, user)
+            
+        # 2. Remove from history (stats)
+        # We need to flush first to ensure everything is on disk
+        self.flush_stats()
+        
+        stats_path = self._get_user_stats_path(username)
+        if os.path.exists(stats_path):
+            with open(stats_path, "r") as f:
+                try:
+                    data = json.load(f)
+                except:
+                    return True # Corrupted, whatever
+
+            modified = False
+            if "sessions" in data:
+                for session in data["sessions"]:
+                    original_len = len(session["events"])
+                    # Remove favorite events for this song
+                    session["events"] = [
+                        e for e in session["events"] 
+                        if not (e["event_type"] == "favorite" and e["song_filename"] == song_filename)
+                    ]
+                    if len(session["events"]) != original_len:
+                        modified = True
+            
+            if modified:
+                with open(stats_path, "w") as f:
+                    json.dump(data, f, indent=4)
+
         return True
         
     # --- Playlists ---

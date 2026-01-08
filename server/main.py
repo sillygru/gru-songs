@@ -5,6 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from settings import settings
 from services import music_service
 from user_service import user_service
+import asyncio
+from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from settings import settings
+from services import music_service
+from user_service import user_service
 from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
 
 app = FastAPI()
@@ -18,6 +26,21 @@ app.add_middleware(
 
 app.mount("/stream", StaticFiles(directory=settings.MUSIC_DIR), name="stream")
 app.mount("/lyrics", StaticFiles(directory=settings.LYRICS_DIR), name="lyrics")
+
+# --- Background Task for Stats Flushing ---
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(periodic_flush())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    user_service.flush_stats()
+
+async def periodic_flush():
+    while True:
+        await asyncio.sleep(300) # 5 minutes
+        user_service.flush_stats()
 
 # --- Auth Routes ---
 
@@ -81,7 +104,7 @@ def get_favorites(x_username: str = Header(None)):
 def add_favorite(req: FavoriteRequest, x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    user_service.add_favorite(x_username, req.song_filename)
+    user_service.add_favorite(x_username, req.song_filename, req.session_id)
     return {"status": "added"}
 
 @app.delete("/user/favorites/{filename}")

@@ -1,65 +1,112 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart'; // For AppLifecycleListener
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../models/song.dart';
 import 'api_service.dart';
 import 'stats_service.dart';
 
-class AudioPlayerManager {
+class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
   final ApiService _apiService;
   final StatsService _statsService;
   final String? _username;
   
-  DateTime? _lastPlayStartTime;
+  // Stats tracking state
   String? _currentSongFilename;
+  DateTime? _playStartTime;
+  double _accumulatedDuration = 0.0;
 
   AudioPlayerManager(this._apiService, this._statsService, this._username) {
+    WidgetsBinding.instance.addObserver(this);
     _initStatsListeners();
   }
   
   AudioPlayer get player => _player;
   
   void _initStatsListeners() {
+    // 1. Listen for playback state changes (Play/Pause)
     _player.playerStateStream.listen((state) {
       if (_username == null) return;
       
       if (state.playing) {
-        if (_lastPlayStartTime == null) {
-            _lastPlayStartTime = DateTime.now();
-            _trackEvent('play');
-        }
+        // Started playing
+        _playStartTime ??= DateTime.now();
       } else {
-        if (_lastPlayStartTime != null) {
-          final duration = DateTime.now().difference(_lastPlayStartTime!).inSeconds.toDouble();
-          if (duration > 0) {
-             _trackEvent('pause', duration: duration);
-          }
-          _lastPlayStartTime = null;
+        // Paused or stopped
+        if (_playStartTime != null) {
+          _accumulatedDuration += DateTime.now().difference(_playStartTime!).inMilliseconds / 1000.0;
+          _playStartTime = null;
         }
       }
       
+      // Handle natural completion
       if (state.processingState == ProcessingState.completed) {
-         _trackEvent('complete');
+         _flushStats(eventType: 'complete');
       }
     });
     
-    _player.currentIndexStream.listen((index) {
-       // Identify current song
-       if (index != null && _player.sequence != null && index < _player.sequence!.length) {
-         final source = _player.sequence![index] as UriAudioSource;
-         // Extract filename from ID or Tag
-         // We set ID as filename in MediaItem
-         if (source.tag is MediaItem) {
-           _currentSongFilename = (source.tag as MediaItem).id;
-         }
-       }
+    // 2. Listen for song changes (Sequence State)
+    // This detects skips/next/prev
+    _player.sequenceStateStream.listen((state) {
+        final currentItem = state.currentSource?.tag;
+        
+        if (currentItem is MediaItem) {
+            final newFilename = currentItem.id;
+            
+            // If the song changed, flush stats for the OLD song
+            if (_currentSongFilename != null && _currentSongFilename != newFilename) {
+                _flushStats(eventType: 'skip');
+            }
+            
+            // Set new song
+            if (_currentSongFilename != newFilename) {
+                _currentSongFilename = newFilename;
+                _accumulatedDuration = 0.0;
+                _playStartTime = _player.playing ? DateTime.now() : null;
+            }
+        }
     });
   }
   
-  void _trackEvent(String eventType, {double duration = 0}) {
-    if (_username != null && _currentSongFilename != null) {
-      _statsService.track(_username!, _currentSongFilename!, duration, eventType);
+  void _flushStats({required String eventType}) {
+    if (_username == null || _currentSongFilename == null) return;
+    
+    // Calculate final duration
+    double finalDuration = _accumulatedDuration;
+    if (_playStartTime != null) {
+       finalDuration += DateTime.now().difference(_playStartTime!).inMilliseconds / 1000.0;
+       // We don't reset _playStartTime here because we might continue playing the same song 
+       // (e.g. if this flush was triggered by app backgrounding but audio continues)
+       // BUT if this is a 'skip' or 'complete', we reset.
+    }
+    
+    if (finalDuration > 0.5) { // Ignore tiny blips
+        _statsService.track(_username!, _currentSongFilename!, finalDuration, eventType);
+    }
+    
+    // Reset counters
+    _accumulatedDuration = 0.0;
+    if (eventType == 'skip' || eventType == 'complete') {
+        _playStartTime = null; // Prepare for next song
+    } else {
+        // If we just flushed due to backgrounding but are still playing, 
+        // we effectively "reset" the start time to NOW so we don't double count.
+        if (_playStartTime != null) {
+            _playStartTime = DateTime.now();
+        }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+       // App going to background/closed.
+       // Note: JustAudioBackground might keep it playing.
+       // If we want to track "Active App Usage Listening" vs "Background Listening", this is where we split.
+       // However, to be safe against kills, maybe we flush 'intermediate' stats?
+       // Let's flush 'listen' event (generic) and reset accumulator.
+       // _flushStats(eventType: 'listen_segment');
     }
   }
 

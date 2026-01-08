@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/playlist.dart';
 import '../services/user_data_service.dart';
 import 'auth_provider.dart';
+import 'providers.dart';
 
 class UserDataState {
   final List<String> favorites;
@@ -36,11 +37,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
     // Listen to auth changes
     final authState = ref.watch(authProvider);
     _username = authState.username;
-    // We cannot watch other providers inside methods easily, so we get service here? 
-    // Actually we can watch simple providers.
-    // However, UserDataService needs apiService which is provided.
-    // Let's rely on ref.read in methods or late init.
-    // Ideally we inject service.
     
     return UserDataState(isLoading: true);
   }
@@ -84,7 +80,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
       if (isFav) {
         await _service.removeFavorite(_username!, songFilename);
       } else {
-        await _service.addFavorite(_username!, songFilename);
+        final statsService = ref.read(statsServiceProvider);
+        await _service.addFavorite(_username!, songFilename, statsService.sessionId);
       }
     } catch (e) {
       // Revert on error

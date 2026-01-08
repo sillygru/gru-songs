@@ -18,9 +18,10 @@ class UserProfileUpdate(BaseModel):
     new_username: Optional[str] = None
     
 class StatsEntry(BaseModel):
+    session_id: str
     song_filename: str
     duration_played: float
-    event_type: str # 'play', 'pause', 'skip', 'complete', 'seek'
+    event_type: str # 'listen', 'skip', 'complete'
     timestamp: float
 
 class Playlist(BaseModel):
@@ -36,3 +37,4 @@ class PlaylistAddSong(BaseModel):
 
 class FavoriteRequest(BaseModel):
     song_filename: str
+    session_id: str

@@ -109,4 +109,17 @@ class MusicService:
 
         return None, None
 
+    def get_song_duration(self, filename: str) -> float:
+        path = os.path.join(settings.MUSIC_DIR, filename)
+        if not os.path.exists(path):
+            return 0.0
+        
+        try:
+            audio = MutagenFile(path)
+            if audio and audio.info and audio.info.length:
+                return float(audio.info.length)
+        except Exception:
+            pass
+        return 0.0
+
 music_service = MusicService()
