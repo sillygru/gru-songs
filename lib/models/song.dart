@@ -1,4 +1,6 @@
-class Song {
+import 'package:equatable/equatable.dart';
+
+class Song extends Equatable {
   final String title;
   final String artist;
   final String album;
@@ -7,7 +9,7 @@ class Song {
   final String? lyricsUrl;
   final String? coverUrl;
 
-  Song({
+  const Song({
     required this.title,
     required this.artist,
     required this.album,
@@ -28,13 +30,16 @@ class Song {
       coverUrl: json['cover_url'],
     );
   }
+
+  @override
+  List<Object?> get props => [title, artist, album, filename, url, lyricsUrl, coverUrl];
 }
 
-class LyricLine {
+class LyricLine extends Equatable {
   final Duration time;
   final String text;
 
-  LyricLine({required this.time, required this.text});
+  const LyricLine({required this.time, required this.text});
 
   static List<LyricLine> parse(String content) {
     final List<LyricLine> lyrics = [];
@@ -58,4 +63,7 @@ class LyricLine {
     }
     return lyrics;
   }
+
+  @override
+  List<Object?> get props => [time, text];
 }

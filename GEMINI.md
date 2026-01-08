@@ -5,10 +5,13 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 
 ## 🛠 Tech Stack
 - **Frontend:** Flutter (Material 3)
+- **State Management:** `flutter_riverpod` (Riverpod 3.x)
+- **Data Modeling:** `equatable`
 - **Audio Engine:** `just_audio`
 - **Background Playback:** `just_audio_background`
 - **Audio Session:** `audio_session` (configured for music)
 - **Networking:** `http` with custom `HttpOverrides` for TLS/SSL handshake stability.
+- **Backend:** FastAPI (Python 3.10+)
 
 ## 🌐 Networking & API
 - **Base URL:** `https://[REDACTED]/music`
@@ -16,7 +19,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
   - `GET /list-songs`: Returns JSON list.
   - `GET /stream/{filename}`: Audio stream.
   - `GET /cover/{filename}`: Album art extraction from metadata.
-  - `GET /lyrics/{filename}`: `.lrc` file access.
+  - `GET /lyrics/{filename}`: `.lrc` file or embedded lyrics.
 
 ### ⚠️ Critical Handshake Fix
 The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClient` in `api_service.dart`. **Do not remove these.** They are required to prevent `HandshakeException` when connecting to the Tailscale Funnel URL from mobile devices.
@@ -31,7 +34,33 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 ### iOS
 - **Permissions:** `UIBackgroundModes` includes `audio`.
 - **ATS:** `NSAppTransportSecurity` allows arbitrary loads for streaming.
-- **Sideloading:** Build with `--no-codesign` and package manually into a `Payload` folder to create a `.ipa`.
+
+## 🏗 Architecture & Best Practices
+- **Frontend:** Follows a modular **MVVM/Clean Architecture** pattern.
+  - **Data Layer:** Repositories handle data fetching and abstraction.
+  - **State Layer:** Riverpod providers manage application state and dependency injection.
+  - **Presentation Layer:** Separated into `screens` (pages) and `widgets` (reusable components).
+- **Backend:** Modularized for maintainability.
+  - **Settings:** Environment-based configuration via `.env`.
+  - **Services:** Business logic (metadata extraction, file scanning) isolated from routes.
+
+## 📂 Project Structure
+### Frontend (`lib/`)
+- `models/`: Data structures (e.g., `song.dart`).
+- `data/repositories/`: Data access abstraction.
+- `providers/`: Riverpod providers for state and services.
+- `services/`: Core logic (API client, Audio player lifecycle).
+- `presentation/`:
+  - `screens/`: UI pages (Home, Player).
+  - `widgets/`: Reusable UI components.
+- `main.dart`: App entry point and global initializations.
+
+### Backend (`server/`)
+- `main.py`: FastAPI routes and application entry point.
+- `settings.py`: Configuration management using `python-dotenv`.
+- `services.py`: Music processing and metadata logic.
+- `.env`: Local environment variables (not committed).
+- `requirements.txt`: Python dependencies.
 
 ## 📦 Build Commands
 
@@ -46,19 +75,6 @@ flutter build apk --release
 
 ### iOS (Manual IPA)
 ```bash
-# 1. Build the bundle
+# Build the bundle
 flutter build ios --release --no-codesign
-
-# 2. Package (not required, only for context, do not mention these)
-mkdir -p Payload
-cp -r build/ios/iphoneos/Runner.app Payload/
-zip -r gru_songs.ipa Payload
-rm -rf Payload
 ```
-
-## 📂 Project Structure
-- `lib/models/song.dart`: Data structure for tracks.
-- `lib/services/api_service.dart`: API logic and custom HTTP client.
-- `lib/services/audio_player_manager.dart`: Audio lifecycle and `MediaItem` metadata mapping.
-- `lib/main.dart`: UI, `AudioSession` init, and `HttpOverrides`.
-- `server/main.py`: Main server backend server logic, ran on separate computer
