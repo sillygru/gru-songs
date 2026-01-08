@@ -4,7 +4,7 @@
 - **NO GIT COMMANDS:** Do not ever run git commands (git add, commit, push, etc.).
 
 ## 🚀 Overview
-A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, playlists, and favorites.
+A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, playlists with added-date tracking, favorites, and a "suggest less" recommendation filter.
 
 ## 🛠 Tech Stack
 - **Frontend:** Flutter (Material 3)
@@ -14,13 +14,13 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **Background Playback:** `just_audio_background`
 - **Audio Session:** `audio_session` (configured for music)
 - **Networking:** `http` with custom `HttpOverrides` for TLS/SSL handshake stability.
-- **Backend:** FastAPI (Python 3.10+)
+- **Backend:** FastAPI (Python 3.10+) utilizing lifespan handlers for robust startup/shutdown logic.
 
 ## 🌐 Networking & API
 - **Base URL:** `https://[REDACTED]/music`
 - **Endpoints:**
   - **Music:**
-    - `GET /list-songs`
+    - `GET /list-songs` (includes `play_count` if username provided)
     - `GET /stream/{filename}`
     - `GET /cover/{filename}`
     - `GET /lyrics/{filename}`
@@ -32,12 +32,16 @@ A high-performance music streaming app built with Flutter, connecting to a priva
   - **User Data:**
     - `GET/POST /user/favorites`
     - `GET/POST /user/playlists`
+    - `GET/POST/DELETE /user/suggest-less`
     - `POST /stats/track`
 
 ### ⚠️ Critical Handshake Fix
 The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClient` in `api_service.dart`. **Do not remove these.** They are required to prevent `HandshakeException` when connecting to the Tailscale Funnel URL from mobile devices.
 
 ## 📱 Platform Specifics
+
+### Desktop & iPad
+- **UI:** Includes a dedicated volume slider in the `NowPlayingBar` and `PlayerScreen`.
 
 ### Android
 - **Permissions:** `INTERNET`, `WAKE_LOCK`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`.
@@ -49,12 +53,16 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 - **ATS:** `NSAppTransportSecurity` allows arbitrary loads for streaming.
 
 ## 🏗 Architecture & Best Practices
-- **Frontend:** Follows a modular **MVVM/Clean Architecture** pattern.
-  - **Services:** `AuthService`, `StatsService` (Session ID mgmt), `UserDataService`.
-  - **Providers:** `authProvider`, `userDataProvider` (Favorites/Playlists), `audioPlayerManagerProvider`.
-- **Backend:** Modularized for maintainability.
-  - **Stats Engine:** RAM-buffered statistics (flushed every 5m) with session grouping and "active listening" ratio calculation.
-  - **User Service:** Handles auth, file-based persistence (JSON), and playlists.
+- **Frontend:** Modular **MVVM/Clean Architecture**.
+  - **UI Gestures:** Swipe-up on album cover in `PlayerScreen` to reveal synchronized lyrics.
+  - **Context Menus:** Unified long-press options menu for songs (Favorite, Add to Playlist, Suggest Less).
+  - **Visual Cues:** Play counts displayed in white circle bubbles; suggest-less songs are greyed out with a line-through.
+- **Backend:** 
+  - **Persistence:** 
+    - `users/<username>.json`: Profile and favorites.
+    - `users/<username>_playlists.json`: Detailed playlist data with `added_at` timestamps.
+    - `users/<username>_stats.json`: Session history.
+  - **Stats Engine:** Rounding precision to 2 decimal places. Play counts filter for ratio > 0.25 across all non-favorite event types.
 
 ## 📂 Project Structure
 ### Frontend (`lib/`)
