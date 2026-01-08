@@ -72,12 +72,101 @@ class NowPlayingBar extends ConsumerWidget {
                   builder: (context, ref, child) {
                     final userData = ref.watch(userDataProvider);
                     final isFavorite = userData.favorites.contains(metadata.id);
-                    return IconButton(
-                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                      color: isFavorite ? Colors.red : null,
-                      onPressed: () {
-                         ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
-                      },
+                    return PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (value) async {
+                            if (value == 'favorite') {
+                                ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                            } else if (value == 'new_playlist') {
+                                final nameController = TextEditingController();
+                                final newName = await showDialog<String>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                        title: const Text("New Playlist"),
+                                        content: TextField(
+                                            controller: nameController,
+                                            decoration: const InputDecoration(hintText: "Playlist Name"),
+                                            autofocus: true,
+                                        ),
+                                        actions: [
+                                            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                                            TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text("Create")),
+                                        ],
+                                    ),
+                                );
+                                
+                                if (newName != null && newName.isNotEmpty) {
+                                    final newPlaylist = await ref.read(userDataProvider.notifier).createPlaylist(newName);
+                                    if (newPlaylist != null) {
+                                        await ref.read(userDataProvider.notifier).addSongToPlaylist(newPlaylist.id, metadata.id);
+                                        if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(content: Text("Created and added to $newName"))
+                                            );
+                                        }
+                                    }
+                                }
+                            } else if (value.startsWith('toggle_')) {
+                                final playlistId = value.replaceFirst('toggle_', '');
+                                final playlist = userData.playlists.firstWhere((p) => p.id == playlistId);
+                                final exists = playlist.songs.any((s) => s.filename == metadata.id);
+                                
+                                if (exists) {
+                                    await ref.read(userDataProvider.notifier).removeSongFromPlaylist(playlistId, metadata.id);
+                                    if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text("Removed from ${playlist.name}"))
+                                        );
+                                    }
+                                } else {
+                                    await ref.read(userDataProvider.notifier).addSongToPlaylist(playlistId, metadata.id);
+                                    if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text("Added to ${playlist.name}"))
+                                        );
+                                    }
+                                }
+                            }
+                        },
+                        itemBuilder: (context) => [
+                            PopupMenuItem(
+                                value: 'favorite',
+                                child: Row(
+                                    children: [
+                                        Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
+                                        const SizedBox(width: 8),
+                                        Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
+                                    ],
+                                ),
+                            ),
+                            const PopupMenuDivider(),
+                            PopupMenuItem(
+                                value: 'new_playlist',
+                                child: Row(
+                                    children: [
+                                        const Icon(Icons.add),
+                                        const SizedBox(width: 8),
+                                        const Text("Add to new playlist"),
+                                    ],
+                                ),
+                            ),
+                            if (userData.playlists.isNotEmpty) ...[
+                                const PopupMenuDivider(),
+                                ...userData.playlists.map((p) {
+                                    final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
+                                    return PopupMenuItem(
+                                        value: 'toggle_${p.id}',
+                                        child: Row(
+                                            children: [
+                                                Icon(isInPlaylist ? Icons.remove_circle_outline : Icons.playlist_add),
+                                                const SizedBox(width: 8),
+                                                Text(isInPlaylist ? "Remove from ${p.name}" : "Add to ${p.name}"),
+                                            ],
+                                        ),
+                                    );
+                                }),
+                            ],
+                        ],
                     );
                   },
                 ),

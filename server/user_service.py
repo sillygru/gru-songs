@@ -25,6 +25,9 @@ class UserService:
     def _get_user_stats_path(self, username: str) -> str:
         return os.path.join(settings.USERS_DIR, f"{username}_stats.json")
 
+    def _get_user_playlists_path(self, username: str) -> str:
+        return os.path.join(settings.USERS_DIR, f"{username}_playlists.json")
+
     def get_user(self, username: str):
         path = self._get_user_path(username)
         if not os.path.exists(path):
@@ -33,6 +36,13 @@ class UserService:
             return json.load(f)
             
     def _save_user(self, username: str, data: dict):
+        # We no longer store playlists in the user profile, but we keep the key for compatibility if needed
+        # We will migrate them to separate file on load/save if found
+        if "playlists" in data:
+            # If we are saving a user that still has playlists in its dict, 
+            # and we haven't migrated yet, it's safer to just let it be or migrate now.
+            # But the primary storage is now _playlists.json
+            pass
         with open(self._get_user_path(username), "w") as f:
             json.dump(data, f, indent=4)
 
@@ -45,14 +55,16 @@ class UserService:
             "username": username,
             "password": hashed_password,
             "created_at": str(os.path.getctime(settings.USERS_DIR)),
-            "favorites": [],
-            "playlists": []
+            "favorites": []
         }
         
         self._save_user(username, user_data)
             
         with open(self._get_user_stats_path(username), "w") as f:
             json.dump({"sessions": [], "total_play_time": 0}, f, indent=4)
+
+        with open(self._get_user_playlists_path(username), "w") as f:
+            json.dump([], f, indent=4)
             
         return True, "User created"
 
@@ -91,6 +103,8 @@ class UserService:
         new_path = self._get_user_path(new_username)
         old_stats = self._get_user_stats_path(current_username)
         new_stats = self._get_user_stats_path(new_username)
+        old_playlists = self._get_user_playlists_path(current_username)
+        new_playlists = self._get_user_playlists_path(new_username)
         
         user["username"] = new_username
         
@@ -102,6 +116,9 @@ class UserService:
         else:
              with open(new_stats, "w") as f:
                 json.dump({"sessions": [], "total_play_time": 0}, f, indent=4)
+
+        if os.path.exists(old_playlists):
+            os.rename(old_playlists, new_playlists)
 
         os.remove(old_path)
         
@@ -261,13 +278,50 @@ class UserService:
     # --- Playlists ---
     
     def get_playlists(self, username: str):
-        user = self.get_user(username)
-        if not user: return []
-        return user.get("playlists", [])
+        playlists_path = self._get_user_playlists_path(username)
+        
+        # Migration: if separate file doesn't exist, check user profile
+        if not os.path.exists(playlists_path):
+            user = self.get_user(username)
+            if user and "playlists" in user:
+                # Migrate existing playlists
+                raw_playlists = user["playlists"]
+                migrated = []
+                for p in raw_playlists:
+                    # Convert simple filename list to object list if needed
+                    songs = []
+                    for s in p.get("songs", []):
+                        if isinstance(s, str):
+                            songs.append({"filename": s, "added_at": time.time()})
+                        else:
+                            songs.append(s)
+                    migrated.append({
+                        "id": p.get("id", str(uuid.uuid4())),
+                        "name": p.get("name", "Untitled"),
+                        "songs": songs
+                    })
+                
+                with open(playlists_path, "w") as f:
+                    json.dump(migrated, f, indent=4)
+                
+                # Remove from user profile to finalize migration
+                del user["playlists"]
+                self._save_user(username, user)
+                return migrated
+            return []
+
+        with open(playlists_path, "r") as f:
+            try:
+                return json.load(f)
+            except:
+                return []
+
+    def _save_playlists(self, username: str, playlists: List[dict]):
+        with open(self._get_user_playlists_path(username), "w") as f:
+            json.dump(playlists, f, indent=4)
         
     def create_playlist(self, username: str, name: str):
-        user = self.get_user(username)
-        if not user: return None
+        playlists = self.get_playlists(username)
         
         new_playlist = {
             "id": str(uuid.uuid4()),
@@ -275,44 +329,42 @@ class UserService:
             "songs": []
         }
         
-        playlists = user.get("playlists", [])
         playlists.append(new_playlist)
-        user["playlists"] = playlists
-        self._save_user(username, user)
+        self._save_playlists(username, playlists)
         return new_playlist
         
     def delete_playlist(self, username: str, playlist_id: str):
-        user = self.get_user(username)
-        if not user: return False
+        playlists = self.get_playlists(username)
+        original_len = len(playlists)
+        playlists = [p for p in playlists if p["id"] != playlist_id]
         
-        playlists = user.get("playlists", [])
-        user["playlists"] = [p for p in playlists if p["id"] != playlist_id]
-        self._save_user(username, user)
-        return True
+        if len(playlists) != original_len:
+            self._save_playlists(username, playlists)
+            return True
+        return False
         
     def add_song_to_playlist(self, username: str, playlist_id: str, song_filename: str):
-        user = self.get_user(username)
-        if not user: return False
-        
-        playlists = user.get("playlists", [])
+        playlists = self.get_playlists(username)
         for p in playlists:
             if p["id"] == playlist_id:
-                if song_filename not in p["songs"]:
-                    p["songs"].append(song_filename)
-                    self._save_user(username, user)
+                # Check if already in playlist (by filename)
+                if not any(s["filename"] == song_filename for s in p["songs"]):
+                    p["songs"].append({
+                        "filename": song_filename,
+                        "added_at": time.time()
+                    })
+                    self._save_playlists(username, playlists)
                 return True
         return False
         
     def remove_song_from_playlist(self, username: str, playlist_id: str, song_filename: str):
-        user = self.get_user(username)
-        if not user: return False
-        
-        playlists = user.get("playlists", [])
+        playlists = self.get_playlists(username)
         for p in playlists:
             if p["id"] == playlist_id:
-                if song_filename in p["songs"]:
-                    p["songs"].remove(song_filename)
-                    self._save_user(username, user)
+                original_len = len(p["songs"])
+                p["songs"] = [s for s in p["songs"] if s["filename"] != song_filename]
+                if len(p["songs"]) != original_len:
+                    self._save_playlists(username, playlists)
                 return True
         return False
 

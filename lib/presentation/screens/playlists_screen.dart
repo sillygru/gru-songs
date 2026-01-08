@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/providers.dart';
 import 'playlist_detail_screen.dart';
 
@@ -45,6 +46,8 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
   @override
   Widget build(BuildContext context) {
     final userData = ref.watch(userDataProvider);
+    final songsAsync = ref.watch(songsProvider);
+    final apiService = ref.watch(apiServiceProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -60,23 +63,74 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
               itemCount: userData.playlists.length,
               itemBuilder: (context, index) {
                 final playlist = userData.playlists[index];
+                
+                Widget leading = const Icon(Icons.queue_music, size: 40);
+                if (playlist.songs.isNotEmpty && songsAsync.hasValue) {
+                   final firstSongFilename = playlist.songs.first.filename;
+                   final song = songsAsync.value!.firstWhere((s) => s.filename == firstSongFilename, orElse: () => songsAsync.value!.first);
+                   if (song.coverUrl != null) {
+                      leading = ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: CachedNetworkImage(
+                          imageUrl: apiService.getFullUrl(song.coverUrl!),
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                        ),
+                      );
+                   }
+                }
+
                 return ListTile(
-                  leading: const Icon(Icons.queue_music),
+                  leading: leading,
                   title: Text(playlist.name),
-                  subtitle: Text("${playlist.songFilenames.length} songs"),
+                  subtitle: Text("${playlist.songs.length} songs"),
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => PlaylistDetailScreen(playlist: playlist),
+                        builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
                       ),
                     );
                   },
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () {
-                       ref.read(userDataProvider.notifier).deletePlaylist(playlist.id);
+                  trailing: PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) async {
+                      if (value == 'delete') {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text("Delete Playlist"),
+                            content: Text("Are you sure you want to delete '${playlist.name}'?"),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true), 
+                                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                child: const Text("Delete"),
+                              ),
+                            ],
+                          ),
+                        );
+                        
+                        if (confirm == true) {
+                          ref.read(userDataProvider.notifier).deletePlaylist(playlist.id);
+                        }
+                      }
                     },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text("Delete Playlist", style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 );
               },

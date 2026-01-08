@@ -89,13 +89,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
   }
 
-  Future<void> createPlaylist(String name) async {
-    if (_username == null) return;
+  Future<Playlist?> createPlaylist(String name) async {
+    if (_username == null) return null;
     try {
       final playlist = await _service.createPlaylist(_username!, name);
       state = state.copyWith(playlists: [...state.playlists, playlist]);
+      return playlist;
     } catch (e) {
-      rethrow;
+      return null;
     }
   }
 

@@ -24,10 +24,14 @@ class StatsEntry(BaseModel):
     event_type: str # 'listen', 'skip', 'complete'
     timestamp: float
 
+class PlaylistSong(BaseModel):
+    filename: str
+    added_at: float
+
 class Playlist(BaseModel):
     id: str
     name: str
-    songs: List[str] = [] # List of filenames
+    songs: List[PlaylistSong] = [] 
 
 class PlaylistCreate(BaseModel):
     name: str
