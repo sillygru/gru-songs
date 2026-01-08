@@ -55,7 +55,8 @@ class UserService:
             "username": username,
             "password": hashed_password,
             "created_at": str(os.path.getctime(settings.USERS_DIR)),
-            "favorites": []
+            "favorites": [],
+            "suggest_less": []
         }
         
         self._save_user(username, user_data)
@@ -273,6 +274,36 @@ class UserService:
                 with open(stats_path, "w") as f:
                     json.dump(data, f, indent=4)
 
+        return True
+
+    # --- Suggest Less ---
+
+    def get_suggest_less(self, username: str):
+        user = self.get_user(username)
+        if not user:
+            return []
+        return user.get("suggest_less", [])
+
+    def add_suggest_less(self, username: str, song_filename: str):
+        user = self.get_user(username)
+        if not user: return False
+        
+        sl = user.get("suggest_less", [])
+        if song_filename not in sl:
+            sl.append(song_filename)
+            user["suggest_less"] = sl
+            self._save_user(username, user)
+        return True
+
+    def remove_suggest_less(self, username: str, song_filename: str):
+        user = self.get_user(username)
+        if not user: return False
+        
+        sl = user.get("suggest_less", [])
+        if song_filename in sl:
+            sl.remove(song_filename)
+            user["suggest_less"] = sl
+            self._save_user(username, user)
         return True
         
     # --- Playlists ---

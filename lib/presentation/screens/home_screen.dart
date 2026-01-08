@@ -90,96 +90,84 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             onSelected: (value) async {
                                 if (value == 'favorite') {
                                     ref.read(userDataProvider.notifier).toggleFavorite(song.filename);
-                                } else if (value == 'new_playlist') {
-                                    final nameController = TextEditingController();
-                                    final newName = await showDialog<String>(
-                                        context: context,
-                                        builder: (context) => AlertDialog(
-                                            title: const Text("New Playlist"),
-                                            content: TextField(
-                                                controller: nameController,
-                                                decoration: const InputDecoration(hintText: "Playlist Name"),
-                                                autofocus: true,
-                                            ),
-                                            actions: [
-                                                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                                                TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text("Create")),
-                                            ],
-                                        ),
-                                    );
-                                    
-                                    if (newName != null && newName.isNotEmpty) {
-                                        final newPlaylist = await ref.read(userDataProvider.notifier).createPlaylist(newName);
-                                        if (newPlaylist != null) {
-                                            await ref.read(userDataProvider.notifier).addSongToPlaylist(newPlaylist.id, song.filename);
-                                            if (context.mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(content: Text("Created and added to $newName"))
-                                                );
-                                            }
-                                        }
+                                } else if (value == 'suggest_less') {
+                                    ref.read(userDataProvider.notifier).toggleSuggestLess(song.filename);
+                                } else if (value.startsWith('add_to_')) {
+                                    final pid = value.replaceFirst('add_to_', '');
+                                    await ref.read(userDataProvider.notifier).addSongToPlaylist(pid, song.filename);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to playlist")));
                                     }
-                                } else if (value.startsWith('toggle_')) {
-                                    final playlistId = value.replaceFirst('toggle_', '');
-                                    final playlist = userData.playlists.firstWhere((p) => p.id == playlistId);
-                                    final exists = playlist.songs.any((s) => s.filename == song.filename);
-                                    
-                                    if (exists) {
-                                        await ref.read(userDataProvider.notifier).removeSongFromPlaylist(playlistId, song.filename);
-                                        if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text("Removed from ${playlist.name}"))
-                                            );
-                                        }
-                                    } else {
-                                        await ref.read(userDataProvider.notifier).addSongToPlaylist(playlistId, song.filename);
-                                        if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text("Added to ${playlist.name}"))
-                                            );
-                                        }
+                                } else if (value.startsWith('remove_from_')) {
+                                    final pid = value.replaceFirst('remove_from_', '');
+                                    await ref.read(userDataProvider.notifier).removeSongFromPlaylist(pid, song.filename);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Removed from playlist")));
                                     }
                                 }
                             },
-                            itemBuilder: (context) => [
-                                PopupMenuItem(
-                                    value: 'favorite',
-                                    child: Row(
-                                        children: [
-                                            Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
-                                            const SizedBox(width: 8),
-                                            Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
-                                        ],
-                                    ),
+                            itemBuilder: (context) {
+                              final List<PopupMenuEntry<String>> items = [];
+                              final isSuggestLess = userData.suggestLess.contains(song.filename);
+
+                              // 1. Favorite
+                              items.add(PopupMenuItem(
+                                value: 'favorite',
+                                child: Row(
+                                  children: [
+                                    Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
+                                    const SizedBox(width: 8),
+                                    Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
+                                  ],
                                 ),
-                                const PopupMenuDivider(),
-                                PopupMenuItem(
-                                    value: 'new_playlist',
+                              ));
+
+                              // 2. Add to [playlist]
+                              for (final p in userData.playlists) {
+                                if (!p.songs.any((s) => s.filename == song.filename)) {
+                                  items.add(PopupMenuItem(
+                                    value: 'add_to_${p.id}',
                                     child: Row(
-                                        children: [
-                                            const Icon(Icons.add),
-                                            const SizedBox(width: 8),
-                                            const Text("Add to new playlist"),
-                                        ],
+                                      children: [
+                                        const Icon(Icons.playlist_add),
+                                        const SizedBox(width: 8),
+                                        Text("Add to ${p.name}"),
+                                      ],
                                     ),
+                                  ));
+                                }
+                              }
+
+                              // 3. Remove from [playlist]
+                              for (final p in userData.playlists) {
+                                if (p.songs.any((s) => s.filename == song.filename)) {
+                                  items.add(PopupMenuItem(
+                                    value: 'remove_from_${p.id}',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.remove_circle_outline),
+                                        const SizedBox(width: 8),
+                                        Text("Remove from ${p.name}"),
+                                      ],
+                                    ),
+                                  ));
+                                }
+                              }
+
+                              // 4. Suggest less
+                              items.add(PopupMenuItem(
+                                value: 'suggest_less',
+                                child: Row(
+                                  children: [
+                                    Icon(isSuggestLess ? Icons.thumb_down : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
+                                    const SizedBox(width: 8),
+                                    Text(isSuggestLess ? "Suggest more" : "Suggest less"),
+                                  ],
                                 ),
-                                if (userData.playlists.isNotEmpty) ...[
-                                    const PopupMenuDivider(),
-                                    ...userData.playlists.map((p) {
-                                        final isInPlaylist = p.songs.any((s) => s.filename == song.filename);
-                                        return PopupMenuItem(
-                                            value: 'toggle_${p.id}',
-                                            child: Row(
-                                                children: [
-                                                    Icon(isInPlaylist ? Icons.remove_circle_outline : Icons.playlist_add),
-                                                    const SizedBox(width: 8),
-                                                    Text(isInPlaylist ? "Remove from ${p.name}" : "Add to ${p.name}"),
-                                                ],
-                                            ),
-                                        );
-                                    }),
-                                ],
-                            ],
+                              ));
+
+                              return items;
+                            },
                          );
                       },
                     ),

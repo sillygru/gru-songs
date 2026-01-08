@@ -114,7 +114,29 @@ def remove_favorite(filename: str, x_username: str = Header(None)):
     user_service.remove_favorite(x_username, filename)
     return {"status": "removed"}
 
-@app.get("/user/playlists")
+# --- Suggest Less Routes ---
+
+@app.get("/user/suggest-less")
+def get_suggest_less(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_suggest_less(x_username)
+
+@app.post("/user/suggest-less")
+def add_suggest_less(req: PlaylistAddSong, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.add_suggest_less(x_username, req.song_filename)
+    return {"status": "added"}
+
+@app.delete("/user/suggest-less/{filename}")
+def remove_suggest_less(filename: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.remove_suggest_less(x_username, filename)
+    return {"status": "removed"}
+
+# --- Playlist Routes ---
 def get_playlists(x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")

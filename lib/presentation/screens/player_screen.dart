@@ -148,56 +148,76 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
               ),
               if (metadata != null) ...[
-                if (!_showLyrics)
-                  AspectRatio(
-                    aspectRatio: 1,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: metadata.artUri.toString(),
-                        fit: BoxFit.cover,
-                        errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 100),
-                      ),
-                    ),
-                  )
-                else
-                  AspectRatio(
-                    aspectRatio: 1,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: _loadingLyrics
-                          ? const Center(child: CircularProgressIndicator())
-                          : (_lyrics == null || _lyrics!.isEmpty)
-                              ? const Center(child: Text('No lyrics available'))
-                              : ListView.builder(
-                                  controller: _lyricsScrollController,
-                                  itemCount: _lyrics!.length,
-                                  itemBuilder: (context, index) {
-                                    final isCurrent = index == _currentLyricIndex;
-                                    return Container(
-                                      height: 40,
-                                      alignment: Alignment.center,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                                      child: Text(
-                                        _lyrics![index].text,
-                                        style: TextStyle(
-                                          fontSize: isCurrent ? 20 : 16,
-                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                          color: isCurrent ? Colors.white : Colors.grey[500],
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    );
-                                  },
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return GestureDetector(
+                        onVerticalDragUpdate: (details) {
+                          if (details.primaryDelta! < -5) {
+                            if (!_showLyrics && metadata.extras?['lyricsUrl'] != null) {
+                              _toggleLyrics(metadata.extras!['lyricsUrl'] as String);
+                            }
+                          } else if (details.primaryDelta! > 5) {
+                            if (_showLyrics) {
+                              setState(() => _showLyrics = false);
+                            }
+                          }
+                        },
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: !_showLyrics
+                            ? Center(
+                                child: AspectRatio(
+                                  aspectRatio: 1,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: CachedNetworkImage(
+                                      imageUrl: metadata.artUri.toString(),
+                                      fit: BoxFit.cover,
+                                      errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 100),
+                                    ),
+                                  ),
                                 ),
-                    ),
+                              )
+                            : Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black26,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: _loadingLyrics
+                                    ? const Center(child: CircularProgressIndicator())
+                                    : (_lyrics == null || _lyrics!.isEmpty)
+                                        ? const Center(child: Text('No lyrics available'))
+                                        : ListView.builder(
+                                            controller: _lyricsScrollController,
+                                            itemCount: _lyrics!.length,
+                                            itemBuilder: (context, index) {
+                                              final isCurrent = index == _currentLyricIndex;
+                                              return Container(
+                                                height: 40,
+                                                alignment: Alignment.center,
+                                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                                child: Text(
+                                                  _lyrics![index].text,
+                                                  style: TextStyle(
+                                                    fontSize: isCurrent ? 20 : 16,
+                                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                                    color: isCurrent ? Colors.white : Colors.grey[500],
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                              ),
+                        ),
+                      );
+                    }
                   ),
+                ),
                 const SizedBox(height: 24),
                 Text(
                   metadata.title,
@@ -229,8 +249,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               ),
               const SizedBox(height: 24),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Shuffle
                   StreamBuilder<bool>(
                     stream: player.shuffleModeEnabledStream,
                     builder: (context, snapshot) {
@@ -241,10 +262,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       );
                     },
                   ),
+                  // Previous
                   IconButton(
                     icon: const Icon(Icons.skip_previous, size: 36),
-                    onPressed: player.hasPrevious ? player.seekToPrevious : null,
+                    onPressed: () {
+                      if (player.position.inSeconds > 3) {
+                        player.seek(Duration.zero);
+                      } else {
+                        player.seekToPrevious();
+                      }
+                    },
                   ),
+                  // Play/Pause
                   StreamBuilder<PlayerState>(
                     stream: player.playerStateStream,
                     builder: (context, snapshot) {
@@ -256,21 +285,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       );
                     },
                   ),
+                  // Next
                   IconButton(
                     icon: const Icon(Icons.skip_next, size: 36),
                     onPressed: player.hasNext ? player.seekToNext : null,
                   ),
+                  // Repeat
                   StreamBuilder<LoopMode>(
                     stream: player.loopModeStream,
                     builder: (context, snapshot) {
                       final loopMode = snapshot.data ?? LoopMode.off;
-                      const icons = {
-                        LoopMode.off: Icon(Icons.repeat, color: Colors.white),
-                        LoopMode.one: Icon(Icons.repeat_one, color: Colors.deepPurple),
-                        LoopMode.all: Icon(Icons.repeat, color: Colors.deepPurple),
-                      };
+                      IconData iconData = Icons.repeat;
+                      Color color = Colors.white;
+                      if (loopMode == LoopMode.one) {
+                        iconData = Icons.repeat_one;
+                        color = Colors.deepPurple;
+                      } else if (loopMode == LoopMode.all) {
+                        iconData = Icons.repeat;
+                        color = Colors.deepPurple;
+                      }
                       return IconButton(
-                        icon: icons[loopMode]!,
+                        icon: Icon(iconData, color: color),
                         onPressed: () {
                           final nextMode = LoopMode.values[(loopMode.index + 1) % LoopMode.values.length];
                           player.setLoopMode(nextMode);
@@ -278,13 +313,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       );
                     },
                   ),
-                  // Lyrics toggle button if lyrics available
-                  if (metadata?.extras?['lyricsUrl'] != null)
-                    IconButton(
-                      icon: const Icon(Icons.lyrics),
-                      color: _showLyrics ? Colors.deepPurple : Colors.white,
-                      onPressed: () => _toggleLyrics(metadata!.extras!['lyricsUrl'] as String),
-                    ),
+                  // Favorite
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final userData = ref.watch(userDataProvider);
+                      final isFavorite = metadata != null && userData.favorites.contains(metadata.id);
+                      return IconButton(
+                        icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                        color: isFavorite ? Colors.red : Colors.white,
+                        onPressed: () {
+                          if (metadata != null) {
+                            ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                          }
+                        },
+                      );
+                    },
+                  ),
                 ],
               ),
               const SizedBox(height: 20),

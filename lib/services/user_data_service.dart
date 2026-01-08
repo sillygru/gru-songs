@@ -47,6 +47,35 @@ class UserDataService {
     );
   }
 
+  // --- Suggest Less ---
+
+  Future<List<String>> getSuggestLess(String username) async {
+    final response = await _client.get(
+      Uri.parse('${ApiService.baseUrl}/user/suggest-less'),
+      headers: _getHeaders(username),
+    );
+
+    if (response.statusCode == 200) {
+      return List<String>.from(jsonDecode(response.body));
+    }
+    return [];
+  }
+
+  Future<void> addSuggestLess(String username, String songFilename) async {
+    await _client.post(
+      Uri.parse('${ApiService.baseUrl}/user/suggest-less'),
+      headers: _getHeaders(username),
+      body: jsonEncode({'song_filename': songFilename}),
+    );
+  }
+
+  Future<void> removeSuggestLess(String username, String songFilename) async {
+    await _client.delete(
+      Uri.parse('${ApiService.baseUrl}/user/suggest-less/$songFilename'),
+      headers: _getHeaders(username),
+    );
+  }
+
   // --- Playlists ---
 
   Future<List<Playlist>> getPlaylists(String username) async {
