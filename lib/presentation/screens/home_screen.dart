@@ -1,11 +1,11 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../../providers/user_data_provider.dart';
 import '../widgets/now_playing_bar.dart';
-import 'settings_screen.dart';
-import 'playlists_screen.dart';
+import 'playlist_detail_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -123,18 +123,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('Gru Songs'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.queue_music),
-            onPressed: () {
-               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PlaylistsScreen()));
-            },
-          ),
-          IconButton(
-             icon: const Icon(Icons.settings),
-             onPressed: () {
-               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
-             },
-          ),
-          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
               ref.invalidate(songsProvider);
@@ -142,125 +130,256 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          songsAsyncValue.when(
-            data: (songs) {
-              if (songs.isEmpty) {
-                return const Center(child: Text('No songs found'));
-              }
-              return ListView.builder(
-                itemCount: songs.length,
-                padding: const EdgeInsets.only(bottom: 80),
-                itemBuilder: (context, index) {
-                  final song = songs[index];
-                  final isSuggestLess = userData.suggestLess.contains(song.filename);
-                  final isFavorite = userData.favorites.contains(song.filename);
+      body: songsAsyncValue.when(
+        data: (songs) {
+          if (songs.isEmpty) {
+            return const Center(child: Text('No songs found'));
+          }
 
-                  return ListTile(
-                    enabled: true,
-                    leading: Opacity(
-                      opacity: isSuggestLess ? 0.5 : 1.0,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: CachedNetworkImage(
-                          imageUrl: song.coverUrl != null 
-                            ? apiService.getFullUrl(song.coverUrl!) 
-                            : apiService.getFullUrl('/stream/cover.jpg'),
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => const Icon(Icons.music_note),
-                        ),
-                      ),
+          // Simple recommendation logic: songs with playCount < average or random
+          final recommendedSongs = List<Song>.from(songs)..shuffle();
+          final recommendations = recommendedSongs.take(5).toList();
+
+          return CustomScrollView(
+            slivers: [
+              if (userData.playlists.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'Your Playlists',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    title: Text(
-                      song.title,
-                      style: TextStyle(
-                        color: isSuggestLess ? Colors.grey : null,
-                        decoration: isSuggestLess ? TextDecoration.lineThrough : null,
-                      ),
-                    ),
-                    subtitle: Text(
-                      song.artist,
-                      style: TextStyle(color: isSuggestLess ? Colors.grey : null),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            "${song.playCount}",
-                            style: const TextStyle(
-                              fontSize: 10, 
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 120,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: userData.playlists.length,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemBuilder: (context, index) {
+                        final playlist = userData.playlists[index];
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 100,
+                            margin: const EdgeInsets.only(right: 16),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    color: Colors.deepPurple.shade900,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.playlist_play, size: 40),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  playlist.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            isSuggestLess 
-                              ? Icons.heart_broken 
-                              : (isFavorite ? Icons.favorite : Icons.favorite_border)
-                          ),
-                          color: isSuggestLess ? Colors.grey : (isFavorite ? Colors.red : null),
-                          onPressed: () {
-                            ref.read(userDataProvider.notifier).toggleFavorite(song.filename);
-                          },
-                        ),
-                      ],
-                    ),
-                    onLongPress: () async {
-                       _showSongOptionsMenu(context, ref, song, userData);
-                    },
-                    onTap: () {
-                      audioManager.player.seek(Duration.zero, index: index);
-                      audioManager.player.play();
-                    },
-                  );
-                },
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SelectableText(
-                      'Error: $error',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        ref.invalidate(songsProvider);
+                        );
                       },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
                     ),
-                  ],
+                  ),
+                ),
+              ],
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Recommended for You',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                 ),
               ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 200,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: recommendations.length,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemBuilder: (context, index) {
+                      final song = recommendations[index];
+                      return GestureDetector(
+                        onTap: () {
+                          final songIndex = songs.indexOf(song);
+                          if (songIndex != -1) {
+                            audioManager.player.seek(Duration.zero, index: songIndex);
+                            audioManager.player.play();
+                          }
+                        },
+                        child: Container(
+                          width: 140,
+                          margin: const EdgeInsets.only(right: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: CachedNetworkImage(
+                                  imageUrl: song.coverUrl != null
+                                      ? apiService.getFullUrl(song.coverUrl!)
+                                      : apiService.getFullUrl('/stream/cover.jpg'),
+                                  width: 140,
+                                  height: 140,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 60),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                song.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                song.artist,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'All Songs',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final song = songs[index];
+                    final isSuggestLess = userData.suggestLess.contains(song.filename);
+                    final isFavorite = userData.favorites.contains(song.filename);
+
+                    return ListTile(
+                      enabled: true,
+                      leading: Opacity(
+                        opacity: isSuggestLess ? 0.5 : 1.0,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: CachedNetworkImage(
+                            imageUrl: song.coverUrl != null
+                                ? apiService.getFullUrl(song.coverUrl!)
+                                : apiService.getFullUrl('/stream/cover.jpg'),
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        song.title,
+                        style: TextStyle(
+                          color: isSuggestLess ? Colors.grey : null,
+                          decoration: isSuggestLess ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                      subtitle: Text(
+                        song.artist,
+                        style: TextStyle(color: isSuggestLess ? Colors.grey : null),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              "${song.playCount}",
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(isSuggestLess
+                                ? Icons.heart_broken
+                                : (isFavorite ? Icons.favorite : Icons.favorite_border)),
+                            color: isSuggestLess ? Colors.grey : (isFavorite ? Colors.red : null),
+                            onPressed: () {
+                              ref.read(userDataProvider.notifier).toggleFavorite(song.filename);
+                            },
+                          ),
+                        ],
+                      ),
+                      onLongPress: () async {
+                        _showSongOptionsMenu(context, ref, song, userData);
+                      },
+                      onTap: () {
+                        audioManager.player.seek(Duration.zero, index: index);
+                        audioManager.player.play();
+                      },
+                    );
+                  },
+                  childCount: songs.length,
+                ),
+              ),
+              const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stack) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SelectableText(
+                  'Error: $error',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    ref.invalidate(songsProvider);
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
             ),
           ),
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: NowPlayingBar(),
-          ),
-        ],
+        ),
       ),
     );
   }

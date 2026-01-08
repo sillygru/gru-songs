@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
-import 'presentation/screens/home_screen.dart';
+import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/auth_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/providers.dart';
@@ -53,7 +53,7 @@ class GruSongsApp extends ConsumerWidget {
         primarySwatch: Colors.deepPurple,
         useMaterial3: true,
       ),
-      home: authState.isAuthenticated ? const HomeScreen() : const AuthScreen(),
+      home: authState.isAuthenticated ? const MainScreen() : const AuthScreen(),
     );
   }
 }
