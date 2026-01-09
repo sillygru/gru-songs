@@ -46,24 +46,57 @@ class LyricLine extends Equatable {
 
   static List<LyricLine> parse(String content) {
     final List<LyricLine> lyrics = [];
-    final RegExp regExp = RegExp(r'^\[(\d+):(\d+\.?\d*)\](.*)$');
+    final RegExp timeExp = RegExp(r'\[(\d+):(\d+\.?\d*)\]');
     
     for (var line in content.split('\n')) {
-      final match = regExp.firstMatch(line.trim());
-      if (match != null) {
+      line = line.trim();
+      if (line.isEmpty) continue;
+      
+      final List<RegExpMatch> matches = timeExp.allMatches(line).toList();
+      if (matches.isEmpty) {
+        final bool isMetadata = RegExp(r'^\[[a-z]+:.*\]$').hasMatch(line);
+        if (!isMetadata) {
+          lyrics.add(LyricLine(time: Duration.zero, text: line));
+        }
+        continue;
+      }
+
+      for (int i = 0; i < matches.length; i++) {
+        final match = matches[i];
         final int minutes = int.parse(match.group(1)!);
         final double seconds = double.parse(match.group(2)!);
-        final String text = match.group(3)!.trim();
+        final duration = Duration(
+          milliseconds: (minutes * 60 * 1000 + seconds * 1000).toInt(),
+        );
         
-        lyrics.add(LyricLine(
-          time: Duration(milliseconds: (minutes * 60 * 1000 + seconds * 1000).toInt()),
-          text: text,
-        ));
-      } else if (line.trim().isNotEmpty) {
-        // Fallback for non-timed lyrics
-        lyrics.add(LyricLine(time: Duration.zero, text: line.trim()));
+        // Text for this timestamp is everything until the next timestamp
+        int nextStart = (i + 1 < matches.length) ? matches[i + 1].start : line.length;
+        String text = line.substring(match.end, nextStart).trim();
+        
+        // If text is empty, it might be multiple tags for the same text at the end
+        if (text.isEmpty) {
+          // Look forward for the first non-empty text in this line
+          for (int j = i + 1; j < matches.length; j++) {
+            int jNextStart = (j + 1 < matches.length) ? matches[j + 1].start : line.length;
+            String jText = line.substring(matches[j].end, jNextStart).trim();
+            if (jText.isNotEmpty) {
+              text = jText;
+              break;
+            }
+          }
+          // If still empty, it might be that the text is before the tags (unlikely but handle it)
+          if (text.isEmpty) {
+            text = line.replaceAll(timeExp, '').trim();
+          }
+        }
+        
+        if (text.isNotEmpty) {
+          lyrics.add(LyricLine(time: duration, text: text));
+        }
       }
     }
+    
+    lyrics.sort((a, b) => a.time.compareTo(b.time));
     return lyrics;
   }
 

@@ -9,7 +9,6 @@ import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../../providers/user_data_provider.dart';
 
 class PositionData {
   final Duration position;
@@ -29,6 +28,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
 class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   bool _showLyrics = false;
   List<LyricLine>? _lyrics;
+  List<GlobalKey>? _lyricKeys;
   bool _loadingLyrics = false;
   String? _lastSongId;
   final ScrollController _lyricsScrollController = ScrollController();
@@ -40,7 +40,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   void initState() {
     super.initState();
     player.sequenceStateStream.listen((state) {
-      final tag = state?.currentSource?.tag;
+      final tag = state.currentSource?.tag;
       final String? songId = tag is MediaItem ? tag.id : null;
       
       if (songId != _lastSongId) {
@@ -48,6 +48,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           setState(() {
             _lastSongId = songId;
             _lyrics = null;
+            _lyricKeys = null;
             _showLyrics = false;
             _loadingLyrics = false;
             _currentLyricIndex = -1;
@@ -57,33 +58,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
 
     player.positionStream.listen((position) {
-      if (_lyrics != null && _showLyrics) {
+      if (_lyrics != null && _showLyrics && _lyrics!.any((l) => l.time != Duration.zero)) {
         int newIndex = -1;
         for (int i = 0; i < _lyrics!.length; i++) {
-          if (_lyrics![i].time <= position) {
+          if (_lyrics![i].time <= position && _lyrics![i].time != Duration.zero) {
             newIndex = i;
-          } else {
+          } else if (_lyrics![i].time > position) {
             break;
           }
         }
 
         if (newIndex != _currentLyricIndex && newIndex != -1) {
-          setState(() {
-            _currentLyricIndex = newIndex;
-          });
-          _scrollToCurrentLyric();
+          if (mounted) {
+            setState(() {
+              _currentLyricIndex = newIndex;
+            });
+            _scrollToCurrentLyric();
+          }
         }
       }
     });
   }
 
   void _scrollToCurrentLyric() {
-    if (_lyricsScrollController.hasClients && _currentLyricIndex != -1) {
-      _lyricsScrollController.animateTo(
-        _currentLyricIndex * 40.0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+    if (_lyricKeys != null && _currentLyricIndex >= 0 && _currentLyricIndex < _lyricKeys!.length) {
+      final key = _lyricKeys![_currentLyricIndex];
+      if (key.currentContext != null) {
+        Scrollable.ensureVisible(
+          key.currentContext!,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          alignment: 0.5,
+        );
+      }
     }
   }
 
@@ -110,99 +117,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       final repo = ref.read(songRepositoryProvider);
       final lyricsContent = await repo.getLyrics(lyricsUrl);
       if (mounted) {
+        final parsedLyrics = lyricsContent != null ? LyricLine.parse(lyricsContent) : <LyricLine>[];
         setState(() {
-          _lyrics = lyricsContent != null ? LyricLine.parse(lyricsContent) : [];
+          _lyrics = parsedLyrics;
+          _lyricKeys = List.generate(parsedLyrics.length, (index) => GlobalKey());
           _loadingLyrics = false;
         });
       }
     }
-  }
-
-  void _showSongOptionsMenu(BuildContext context, WidgetRef ref, MediaItem metadata, UserDataState userData) {
-    final isFavorite = userData.favorites.contains(metadata.id);
-    final isSuggestLess = userData.suggestLess.contains(metadata.id);
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
-                title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
-                onTap: () {
-                  ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.playlist_add),
-                title: const Text("Add to new playlist"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final nameController = TextEditingController();
-                  final newName = await showDialog<String>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text("New Playlist"),
-                      content: TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(hintText: "Playlist Name"),
-                        autofocus: true,
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                        TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text("Create")),
-                      ],
-                    ),
-                  );
-                  if (newName != null && newName.isNotEmpty) {
-                    final newPlaylist = await ref.read(userDataProvider.notifier).createPlaylist(newName);
-                    if (newPlaylist != null) {
-                      await ref.read(userDataProvider.notifier).addSongToPlaylist(newPlaylist.id, metadata.id);
-                    }
-                  }
-                },
-              ),
-              ...userData.playlists.map((p) {
-                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
-                if (isInPlaylist) return const SizedBox.shrink();
-                return ListTile(
-                  leading: const Icon(Icons.playlist_add),
-                  title: Text("Add to ${p.name}"),
-                  onTap: () {
-                    ref.read(userDataProvider.notifier).addSongToPlaylist(p.id, metadata.id);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-              ...userData.playlists.map((p) {
-                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
-                if (!isInPlaylist) return const SizedBox.shrink();
-                return ListTile(
-                  leading: const Icon(Icons.remove_circle_outline),
-                  title: Text("Remove from ${p.name}"),
-                  onTap: () {
-                    ref.read(userDataProvider.notifier).removeSongFromPlaylist(p.id, metadata.id);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-              ListTile(
-                leading: Icon(isSuggestLess ? Icons.thumb_up : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
-                title: Text(isSuggestLess ? "Suggest more" : "Suggest less"),
-                onTap: () {
-                  ref.read(userDataProvider.notifier).toggleSuggestLess(metadata.id);
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   Stream<PositionData> get _positionDataStream =>
@@ -282,28 +204,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                     ? const Center(child: CircularProgressIndicator())
                                     : (_lyrics == null || _lyrics!.isEmpty)
                                         ? const Center(child: Text('No lyrics available'))
-                                        : ListView.builder(
+                                        : SingleChildScrollView(
                                             controller: _lyricsScrollController,
-                                            itemCount: _lyrics!.length,
-                                            itemBuilder: (context, index) {
-                                              final isCurrent = index == _currentLyricIndex;
-                                              return Container(
-                                                height: 40,
-                                                alignment: Alignment.center,
-                                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                                child: Text(
-                                                  _lyrics![index].text,
-                                                  style: TextStyle(
-                                                    fontSize: isCurrent ? 20 : 16,
-                                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                                    color: isCurrent ? Colors.white : Colors.grey[500],
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: List.generate(_lyrics!.length, (index) {
+                                                final isCurrent = index == _currentLyricIndex;
+                                                final hasTime = _lyrics![index].time != Duration.zero;
+                                                return InkWell(
+                                                  key: _lyricKeys?[index],
+                                                  onTap: hasTime ? () => player.seek(_lyrics![index].time) : null,
+                                                  child: Container(
+                                                    width: double.infinity,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                                    child: Text(
+                                                      _lyrics![index].text,
+                                                      style: TextStyle(
+                                                        fontSize: isCurrent ? 22 : 18,
+                                                        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                                        color: isCurrent ? Colors.white : Colors.white54,
+                                                      ),
+                                                      textAlign: TextAlign.left,
+                                                    ),
                                                   ),
-                                                  textAlign: TextAlign.center,
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              );
-                                            },
+                                                );
+                                              }),
+                                            ),
                                           ),
                               ),
                         ),
