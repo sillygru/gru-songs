@@ -360,66 +360,38 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   ],
                 ),
               ],
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // 1. Lyrics
+                  // Lyrics
                   IconButton(
-                    icon: const Icon(Icons.lyrics),
-                    color: _showLyrics ? Colors.deepPurple : Colors.white,
+                    icon: const Icon(Icons.lyrics_outlined),
+                    color: _showLyrics ? Colors.deepPurple : Colors.white70,
                     onPressed: () {
                       if (metadata?.extras?['lyricsUrl'] != null) {
                         _toggleLyrics(metadata!.extras!['lyricsUrl'] as String);
                       }
                     },
                   ),
-                  // 2. Shuffle
+                  // Shuffle
                   StreamBuilder<bool>(
                     stream: player.shuffleModeEnabledStream,
                     builder: (context, snapshot) {
                       final shuffleModeEnabled = snapshot.data ?? false;
                       return IconButton(
-                        icon: Icon(Icons.shuffle, color: shuffleModeEnabled ? Colors.deepPurple : Colors.white),
+                        icon: Icon(Icons.shuffle, color: shuffleModeEnabled ? Colors.deepPurple : Colors.white70),
                         onPressed: () => player.setShuffleModeEnabled(!shuffleModeEnabled),
                       );
                     },
                   ),
-                  // 3. Previous
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous, size: 36),
-                    onPressed: () {
-                      if (player.position.inSeconds > 3) {
-                        player.seek(Duration.zero);
-                      } else {
-                        player.seekToPrevious();
-                      }
-                    },
-                  ),
-                  // 4. Play/Pause
-                  StreamBuilder<PlayerState>(
-                    stream: player.playerStateStream,
-                    builder: (context, snapshot) {
-                      final playerState = snapshot.data;
-                      final playing = playerState?.playing ?? false;
-                      return IconButton(
-                        icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_filled, size: 72),
-                        onPressed: playing ? player.pause : player.play,
-                      );
-                    },
-                  ),
-                  // 5. Next
-                  IconButton(
-                    icon: const Icon(Icons.skip_next, size: 36),
-                    onPressed: player.hasNext ? player.seekToNext : null,
-                  ),
-                  // 6. Repeat
+                  // Repeat
                   StreamBuilder<LoopMode>(
                     stream: player.loopModeStream,
                     builder: (context, snapshot) {
                       final loopMode = snapshot.data ?? LoopMode.off;
                       IconData iconData = Icons.repeat;
-                      Color color = Colors.white;
+                      Color color = Colors.white70;
                       if (loopMode == LoopMode.one) {
                         iconData = Icons.repeat_one;
                         color = Colors.deepPurple;
@@ -436,22 +408,58 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       );
                     },
                   ),
-                  // 7. Favorite
-                  GestureDetector(
-                    onLongPress: () {
+                  // Favorite
+                  IconButton(
+                    icon: Icon(userData.favorites.contains(metadata?.id) ? Icons.favorite : Icons.favorite_border),
+                    color: userData.favorites.contains(metadata?.id) ? Colors.red : Colors.white70,
+                    onPressed: () {
                       if (metadata != null) {
-                        _showSongOptionsMenu(context, ref, metadata, userData);
+                        ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
                       }
                     },
-                    child: IconButton(
-                      icon: Icon(userData.favorites.contains(metadata?.id) ? Icons.favorite : Icons.favorite_border),
-                      color: userData.favorites.contains(metadata?.id) ? Colors.red : Colors.white,
-                      onPressed: () {
-                        if (metadata != null) {
-                          ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
-                        }
-                      },
-                    ),
+                  ),
+                  // Queue Button
+                  IconButton(
+                    icon: const Icon(Icons.queue_music_outlined, color: Colors.white70),
+                    onPressed: () {
+                      _showQueue(context);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Previous
+                  IconButton(
+                    icon: const Icon(Icons.skip_previous, size: 48),
+                    onPressed: () {
+                      if (player.position.inSeconds > 3) {
+                        player.seek(Duration.zero);
+                      } else {
+                        player.seekToPrevious();
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 24),
+                  // Play/Pause
+                  StreamBuilder<PlayerState>(
+                    stream: player.playerStateStream,
+                    builder: (context, snapshot) {
+                      final playerState = snapshot.data;
+                      final playing = playerState?.playing ?? false;
+                      return IconButton(
+                        icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_filled, size: 84),
+                        onPressed: playing ? player.pause : player.play,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 24),
+                  // Next
+                  IconButton(
+                    icon: const Icon(Icons.skip_next, size: 48),
+                    onPressed: player.hasNext ? player.seekToNext : null,
                   ),
                 ],
               ),
@@ -459,6 +467,108 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  void _showQueue(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const QueueSheet(),
+    );
+  }
+}
+
+class QueueSheet extends ConsumerWidget {
+  const QueueSheet({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final player = ref.watch(audioPlayerManagerProvider).player;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text("Playing Next", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: StreamBuilder<SequenceState?>(
+              stream: player.sequenceStateStream,
+              builder: (context, snapshot) {
+                final state = snapshot.data;
+                final sequence = state?.sequence ?? [];
+                final currentIndex = state?.currentIndex ?? -1;
+
+                return ReorderableListView.builder(
+                  itemCount: sequence.length,
+                  onReorder: (oldIndex, newIndex) {
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final source = player.audioSource as ConcatenatingAudioSource;
+                    source.move(oldIndex, newIndex);
+                  },
+                  itemBuilder: (context, index) {
+                    final item = sequence[index].tag as MediaItem;
+                    final isCurrent = index == currentIndex;
+
+                    return Dismissible(
+                      key: ValueKey(item.id + index.toString()),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        color: Colors.red,
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        child: const Icon(Icons.delete, color: Colors.white),
+                      ),
+                      onDismissed: (direction) {
+                        final source = player.audioSource as ConcatenatingAudioSource;
+                        source.removeAt(index);
+                      },
+                      child: ListTile(
+                        key: ValueKey(item.id + index.toString()),
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: CachedNetworkImage(
+                            imageUrl: item.artUri.toString(),
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        title: Text(
+                          item.title,
+                          style: TextStyle(
+                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                            color: isCurrent ? Colors.deepPurple : null,
+                          ),
+                        ),
+                        subtitle: Text(item.artist ?? "Unknown Artist"),
+                        trailing: const Icon(Icons.drag_handle),
+                        onTap: () {
+                          player.seek(Duration.zero, index: index);
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

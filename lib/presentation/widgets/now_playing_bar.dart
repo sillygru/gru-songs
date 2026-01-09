@@ -152,22 +152,22 @@ class NowPlayingBar extends ConsumerWidget {
                             metadata.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           Text(
                             metadata.artist ?? 'Unknown Artist',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                            style: TextStyle(color: Colors.grey[400], fontSize: 11),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
                     if (isDesktop || isIPad) ...[
-                      const SizedBox(width: 20),
                       const Icon(Icons.volume_down, size: 20),
                       SizedBox(
-                        width: 150,
+                        width: 120,
                         child: StreamBuilder<double>(
                           stream: player.volumeStream,
                           builder: (context, snapshot) {
@@ -179,53 +179,65 @@ class NowPlayingBar extends ConsumerWidget {
                         ),
                       ),
                       const Icon(Icons.volume_up, size: 20),
-                      const SizedBox(width: 20),
+                      const SizedBox(width: 12),
                     ],
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final userData = ref.watch(userDataProvider);
-                        final isFavorite = userData.favorites.contains(metadata.id);
-                        final isSuggestLess = userData.suggestLess.contains(metadata.id);
-                        
-                        return GestureDetector(
-                          onLongPress: () => _showSongOptionsMenu(context, ref, metadata, userData),
-                          child: IconButton(
-                            icon: Icon(
-                              isSuggestLess 
-                                ? Icons.heart_broken 
-                                : (isFavorite ? Icons.favorite : Icons.favorite_border)
-                            ),
-                            color: isSuggestLess ? Colors.grey : (isFavorite ? Colors.red : null),
-                            onPressed: () {
-                              ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                    StreamBuilder<PlayerState>(
-                      stream: player.playerStateStream,
-                      builder: (context, snapshot) {
-                        final playerState = snapshot.data;
-                        final playing = playerState?.playing ?? false;
-                        final processingState = playerState?.processingState;
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Consumer(
+                          builder: (context, ref, child) {
+                            final userData = ref.watch(userDataProvider);
+                            final isFavorite = userData.favorites.contains(metadata.id);
+                            final isSuggestLess = userData.suggestLess.contains(metadata.id);
+                            
+                            return GestureDetector(
+                              onLongPress: () => _showSongOptionsMenu(context, ref, metadata, userData),
+                              child: IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                icon: Icon(
+                                  isSuggestLess 
+                                    ? Icons.heart_broken 
+                                    : (isFavorite ? Icons.favorite : Icons.favorite_border),
+                                  size: 22,
+                                ),
+                                color: isSuggestLess ? Colors.grey : (isFavorite ? Colors.red : null),
+                                onPressed: () {
+                                  ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                        StreamBuilder<PlayerState>(
+                          stream: player.playerStateStream,
+                          builder: (context, snapshot) {
+                            final playerState = snapshot.data;
+                            final playing = playerState?.playing ?? false;
+                            final processingState = playerState?.processingState;
 
-                        if (processingState == ProcessingState.buffering) {
-                          return const Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-                          );
-                        }
+                            if (processingState == ProcessingState.buffering) {
+                              return const Padding(
+                                padding: EdgeInsets.all(8.0),
+                                child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                              );
+                            }
 
-                        return IconButton(
-                          icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                          onPressed: playing ? player.pause : player.play,
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.skip_next),
-                      onPressed: player.hasNext ? player.seekToNext : null,
+                            return IconButton(
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(8),
+                              icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 28),
+                              onPressed: playing ? player.pause : player.play,
+                            );
+                          },
+                        ),
+                        IconButton(
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(8),
+                          icon: const Icon(Icons.skip_next, size: 24),
+                          onPressed: player.hasNext ? player.seekToNext : null,
+                        ),
+                      ],
                     ),
                   ],
                 ),

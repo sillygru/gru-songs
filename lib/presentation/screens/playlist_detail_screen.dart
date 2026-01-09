@@ -158,6 +158,24 @@ class PlaylistDetailScreen extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
+                leading: const Icon(Icons.playlist_play),
+                title: const Text("Play Next"),
+                onTap: () {
+                  ref.read(audioPlayerManagerProvider).addSongToQueue(song, playNext: true);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to play next"), duration: Duration(seconds: 1)));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.queue_music),
+                title: const Text("Add to Queue"),
+                onTap: () {
+                  ref.read(audioPlayerManagerProvider).addSongToQueue(song, playNext: false);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to queue"), duration: Duration(seconds: 1)));
+                },
+              ),
+              ListTile(
                 leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
                 title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
                 onTap: () {

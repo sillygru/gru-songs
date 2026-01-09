@@ -6,6 +6,7 @@ import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/now_playing_bar.dart';
 import 'playlist_detail_screen.dart';
+import 'search_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -26,6 +27,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              ListTile(
+                leading: const Icon(Icons.playlist_play),
+                title: const Text("Play Next"),
+                onTap: () {
+                  ref.read(audioPlayerManagerProvider).addSongToQueue(song, playNext: true);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to play next"), duration: Duration(seconds: 1)));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.queue_music),
+                title: const Text("Add to Queue"),
+                onTap: () {
+                  ref.read(audioPlayerManagerProvider).addSongToQueue(song, playNext: false);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to queue"), duration: Duration(seconds: 1)));
+                },
+              ),
               ListTile(
                 leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
                 title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
@@ -112,8 +131,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Listen for data changes to initialize audio
     ref.listen(songsProvider, (previous, next) {
       next.whenData((songs) {
-        if (songs.isNotEmpty) {
-          audioManager.init(songs);
+        if (songs.isNotEmpty && (previous == null || !previous.hasValue)) {
+          audioManager.init(songs, autoSelect: true);
         }
       });
     });
@@ -122,6 +141,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('Gru Songs'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SearchScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
