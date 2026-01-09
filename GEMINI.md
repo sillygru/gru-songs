@@ -24,6 +24,8 @@ A high-performance music streaming app built with Flutter, connecting to a priva
     - `GET /stream/{filename}`
     - `GET /cover/{filename}`
     - `GET /lyrics/{filename}`
+    - `POST /music/upload` (Upload local audio files)
+    - `POST /music/yt-dlp` (Download audio from YouTube)
   - **Auth:**
     - `POST /auth/signup`
     - `POST /auth/login`
@@ -62,6 +64,8 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
     - `users/<username>.json`: Profile and favorites.
     - `users/<username>_playlists.json`: Detailed playlist data with `added_at` timestamps.
     - `users/<username>_stats.json`: Session history.
+    - `users/uploads.json`: Global record of song uploads and their owners.
+    - `songs/downloaded/`: Subdirectory for uploaded or yt-dlp downloaded songs.
   - **Stats Engine:** Rounding precision to 2 decimal places. Play counts filter for ratio > 0.25 across all non-favorite event types.
 
 ## 📂 Project Structure

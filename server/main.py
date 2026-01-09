@@ -1,13 +1,18 @@
-from fastapi import FastAPI, HTTPException, Header
-from fastapi.responses import Response
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
+from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+import os
+import subprocess
+import shutil
+import tempfile
+import asyncio
+from contextlib import asynccontextmanager
+
 from settings import settings
 from services import music_service
 from user_service import user_service
-import asyncio
 from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,7 +31,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/stream", StaticFiles(directory=settings.MUSIC_DIR), name="stream")
+# Custom stream route to handle multiple directories
+@app.get("/stream/{filename}")
+async def stream_song(filename: str):
+    path = os.path.join(settings.MUSIC_DIR, filename)
+    if not os.path.exists(path):
+        path = os.path.join(settings.DOWNLOADED_DIR, filename)
+    
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Song not found")
+    
+    return FileResponse(path)
+
 app.mount("/lyrics", StaticFiles(directory=settings.LYRICS_DIR), name="lyrics")
 
 # --- Background Task for Stats Flushing ---
@@ -199,6 +215,115 @@ def get_cover(filename: str):
         raise HTTPException(status_code=404, detail="No cover found in metadata")
     
     return Response(content=data, media_type=mime)
+
+@app.post("/music/upload")
+async def upload_song(
+    file: UploadFile = File(...), 
+    filename: str = Form(None),
+    x_username: str = Header(None)
+):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    # Use provided filename or original filename
+    final_filename = filename if filename else file.filename
+    # Ensure it has a valid extension if not provided
+    if not any(final_filename.lower().endswith(ext) for ext in [".mp3", ".m4a", ".flac", ".wav", ".alac"]):
+        ext = os.path.splitext(file.filename)[1]
+        if not ext:
+            ext = ".mp3" # Fallback
+        final_filename += ext
+
+    # Save to RAM (initially)
+    content = await file.read()
+
+    # Create a temp file for verification (Mutagen often needs a path)
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # Verify
+        if not music_service.verify_song(tmp_path):
+            os.remove(tmp_path)
+            raise HTTPException(status_code=400, detail="Invalid audio file")
+
+        # Save to downloaded dir
+        dest_path = os.path.join(settings.DOWNLOADED_DIR, final_filename)
+        # Move the temp file to destination
+        shutil.move(tmp_path, dest_path)
+        
+        # Record uploader with title
+        display_title = final_filename.rsplit('.', 1)[0]
+        user_service.record_upload(x_username, final_filename, display_title)
+        
+        return {"message": "Upload successful", "filename": final_filename}
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/music/yt-dlp")
+async def ytdlp_download(
+    url: str = Form(...),
+    filename: str = Form(None),
+    x_username: str = Header(None)
+):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    # yt-dlp --no-js-runtimes --js-runtimes node --remote-components ejs:github -f "ba[ext=m4a]/ba" -x --audio-format m4a --embed-thumbnail --embed-metadata --convert-thumbnails jpg --cookies-from-browser firefox "URL"
+    
+    # We'll use a temp directory to catch the output file
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # yt-dlp command
+        cmd = [
+            "yt-dlp",
+            "--no-js-runtimes",
+            "--js-runtimes", "node",
+            "--remote-components", "ejs:github",
+            "-f", "ba[ext=m4a]/ba",
+            "-x",
+            "--audio-format", "m4a",
+            "--embed-thumbnail",
+            "--embed-metadata",
+            "--convert-thumbnails", "jpg",
+            "--cookies-from-browser", "firefox",
+            "--paths", tmpdir,
+            url
+        ]
+        
+        try:
+            process = subprocess.run(cmd, capture_output=True, text=True)
+            if process.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"yt-dlp failed: {process.stderr}")
+            
+            # Find the downloaded file in tmpdir
+            downloaded_files = os.listdir(tmpdir)
+            if not downloaded_files:
+                raise HTTPException(status_code=500, detail="No file downloaded by yt-dlp")
+            
+            # Get the first m4a or mp3 etc file
+            audio_files = [f for f in downloaded_files if any(f.lower().endswith(ext) for ext in [".m4a", ".mp3", ".flac", ".wav"])]
+            if not audio_files:
+                 raise HTTPException(status_code=500, detail="No audio file found after yt-dlp download")
+            
+            orig_filename = audio_files[0]
+            final_filename = filename if filename else orig_filename
+            if not any(final_filename.lower().endswith(ext) for ext in [".m4a", ".mp3", ".flac", ".wav"]):
+                final_filename += ".m4a"
+
+            dest_path = os.path.join(settings.DOWNLOADED_DIR, final_filename)
+            shutil.move(os.path.join(tmpdir, orig_filename), dest_path)
+            
+            # Record uploader with title
+            display_title = final_filename.rsplit('.', 1)[0]
+            user_service.record_upload(x_username, final_filename, display_title)
+            
+            return {"message": "Download successful", "filename": final_filename}
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

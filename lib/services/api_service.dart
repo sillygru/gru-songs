@@ -45,6 +45,53 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> uploadSong(File file, String? filename) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/music/upload'));
+      request.headers.addAll(_headers);
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+      if (filename != null && filename.isNotEmpty) {
+        request.fields['filename'] = filename;
+      }
+
+      final streamedResponse = await _client.send(request);
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Upload failed (${response.statusCode}): ${response.body}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> downloadYoutube(String url, String? filename) async {
+    try {
+      // Send as form data because FastAPI uses Form(...)
+      final response = await _client.post(
+        Uri.parse('$baseUrl/music/yt-dlp'),
+        headers: {
+          ..._headers,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: {
+          'url': url,
+          if (filename != null && filename.isNotEmpty) 'filename': filename,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('YouTube download failed (${response.statusCode}): ${response.body}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<String?> fetchLyrics(String url) async {
     try {
       final response = await _client.get(Uri.parse(getFullUrl(url)));

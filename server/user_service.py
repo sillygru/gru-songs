@@ -431,4 +431,48 @@ class UserService:
                 return True
         return False
 
+    def record_upload(self, username: str, filename: str, title: str = None):
+        path = os.path.join(settings.USERS_DIR, "uploads.json")
+        uploads = {}
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                try:
+                    uploads = json.load(f)
+                except:
+                    pass
+        
+        if title is None:
+            title = filename.rsplit('.', 1)[0]
+
+        uploads[filename] = {
+            "uploader": username,
+            "timestamp": time.time(),
+            "title": title
+        }
+        
+        with open(path, "w") as f:
+            json.dump(uploads, f, indent=4)
+
+    def get_custom_title(self, filename: str) -> str:
+        path = os.path.join(settings.USERS_DIR, "uploads.json")
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                try:
+                    uploads = json.load(f)
+                    return uploads.get(filename, {}).get("title")
+                except:
+                    pass
+        return None
+
+    def get_uploader(self, filename: str) -> str:
+        path = os.path.join(settings.USERS_DIR, "uploads.json")
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                try:
+                    uploads = json.load(f)
+                    return uploads.get(filename, {}).get("uploader", "Unknown")
+                except:
+                    pass
+        return "Unknown"
+
 user_service = UserService()

@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/providers.dart';
 import '../../models/song.dart';
 import 'playlist_detail_screen.dart';
+import 'add_songs_screen.dart';
 
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
@@ -18,6 +19,18 @@ class LibraryScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Library'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_to_photos_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AddSongsScreen()),
+              );
+            },
+            tooltip: 'Add Songs',
+          ),
+        ],
       ),
       body: CustomScrollView(
         slivers: [
