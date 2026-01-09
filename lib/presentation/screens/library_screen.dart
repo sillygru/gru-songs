@@ -42,7 +42,7 @@ class LibraryScreen extends ConsumerWidget {
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final playlist = userData.playlists[index];
-                  Widget leading = const Icon(Icons.queue_music, size: 40);
+                  Widget leading = const Icon(Icons.library_music, size: 40);
                   if (playlist.songs.isNotEmpty && songsAsync.hasValue) {
                     final firstSongFilename = playlist.songs.first.filename;
                     final song = songsAsync.value!.firstWhere(

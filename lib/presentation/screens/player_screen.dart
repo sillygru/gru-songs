@@ -382,15 +382,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                         icon: Icon(Icons.shuffle, color: isShuffled ? Colors.deepPurple : Colors.white70),
                         onPressed: () async {
                            await ref.read(audioPlayerManagerProvider).toggleShuffle();
-                           if (context.mounted) {
-                              ScaffoldMessenger.of(context).clearSnackBars();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(ref.read(audioPlayerManagerProvider).shuffleNotifier.value ? "Shuffle ON" : "Shuffle OFF"), 
-                                      duration: const Duration(seconds: 1)
-                                  )
-                              );
-                           }
                         },
                       );
                     },

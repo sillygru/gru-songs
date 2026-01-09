@@ -18,8 +18,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   DateTime? _playStartTime;
   double _accumulatedDuration = 0.0;
   
-  // Queue management
-  List<Song> _originalSongs = [];
   final ValueNotifier<bool> shuffleNotifier = ValueNotifier(false);
 
   AudioPlayerManager(this._apiService, this._statsService, this._username) {
@@ -119,8 +117,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
-    _originalSongs = List.from(songs);
     shuffleNotifier.value = false; // Reset shuffle state on new init
+    await _player.setShuffleModeEnabled(false);
     
     try {
       final audioSources = songs.map((song) {
@@ -136,7 +134,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 : null,
             extras: {
               'lyricsUrl': song.lyricsUrl,
-              'origin': 'context', // Mark as part of the original context
             },
           ),
         );
@@ -170,104 +167,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> toggleShuffle() async {
-    if (shuffleNotifier.value) {
-      await _unshuffleQueue();
-    } else {
-      await _shuffleQueue();
+    final enable = !_player.shuffleModeEnabled;
+    await _player.setShuffleModeEnabled(enable);
+    if (enable) {
+      await _player.shuffle();
     }
-  }
-  
-  Future<void> _shuffleQueue() async {
-    try {
-        final currentAudioSource = _player.audioSource;
-        if (currentAudioSource is! ConcatenatingAudioSource) return;
-
-        final source = currentAudioSource;
-        final currentIndex = _player.currentIndex ?? 0;
-        final children = source.children;
-        
-        final upcomingContext = <AudioSource>[]; // These we will shuffle
-        
-        // Scan upcoming
-        for (int i = currentIndex + 1; i < children.length; i++) {
-            upcomingContext.add(children[i]);
-        }
-        
-        // Shuffle the context songs
-        upcomingContext.shuffle();
-        
-        // Remove everything after current
-        if (currentIndex + 1 < children.length) {
-            await source.removeRange(currentIndex + 1, children.length);
-        }
-        
-        // Add back shuffled context
-        await source.addAll(upcomingContext);
-        
-        shuffleNotifier.value = true;
-        
-    } catch (e) {
-        debugPrint("Error shuffling queue: $e");
-    }
-  }
-  
-  Future<void> _unshuffleQueue() async {
-      try {
-        final currentAudioSource = _player.audioSource;
-        if (currentAudioSource is! ConcatenatingAudioSource) return;
-
-        final source = currentAudioSource;
-        final currentIndex = _player.currentIndex ?? 0;
-        final children = source.children;
-        
-        // 2. Determine where to resume in _originalSongs
-        int resumeIndex = -1;
-        
-        // Check current song
-        final currentSource = children[currentIndex];
-        String? currentId;
-        if (currentSource is UriAudioSource) {
-            currentId = (currentSource.tag as MediaItem).id;
-        }
-        
-        if (currentId != null) {
-             resumeIndex = _originalSongs.indexWhere((s) => s.filename == currentId);
-        }
-        
-        final restoredContext = <AudioSource>[];
-        final startPixel = resumeIndex + 1;
-        
-        if (startPixel < _originalSongs.length) {
-            for (int i = startPixel; i < _originalSongs.length; i++) {
-                final song = _originalSongs[i];
-                restoredContext.add(AudioSource.uri(
-                     Uri.parse(_apiService.getFullUrl(song.url)),
-                     tag: MediaItem(
-                        id: song.filename,
-                        album: song.album,
-                        title: song.title,
-                        artist: song.artist,
-                        artUri: song.coverUrl != null ? Uri.parse(_apiService.getFullUrl(song.coverUrl!)) : null,
-                        extras: {'lyricsUrl': song.lyricsUrl, 'origin': 'context'},
-                     )
-                 ));
-            }
-        }
-        
-        // 3. Rebuild Queue
-        // Remove everything after current
-        if (currentIndex + 1 < children.length) {
-            await source.removeRange(currentIndex + 1, children.length);
-        }
-        
-        // Add restored context
-        await source.addAll(restoredContext);
-        
-        shuffleNotifier.value = false;
-        
-      } catch (e) {
-          debugPrint("Error unshuffling queue: $e");
-      }
+    shuffleNotifier.value = enable;
   }
 
   void dispose() {
