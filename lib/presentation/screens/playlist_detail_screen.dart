@@ -161,18 +161,9 @@ class PlaylistDetailScreen extends ConsumerWidget {
                 leading: const Icon(Icons.playlist_play),
                 title: const Text("Play Next"),
                 onTap: () {
-                  ref.read(audioPlayerManagerProvider).addSongToQueue(song, playNext: true);
+                  ref.read(audioPlayerManagerProvider).playNext(song);
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to play next"), duration: Duration(seconds: 1)));
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.queue_music),
-                title: const Text("Add to Queue"),
-                onTap: () {
-                  ref.read(audioPlayerManagerProvider).addSongToQueue(song, playNext: false);
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added to queue"), duration: Duration(seconds: 1)));
                 },
               ),
               ListTile(

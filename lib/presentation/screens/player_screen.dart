@@ -375,13 +375,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     },
                   ),
                   // Shuffle
-                  StreamBuilder<bool>(
-                    stream: player.shuffleModeEnabledStream,
-                    builder: (context, snapshot) {
-                      final shuffleModeEnabled = snapshot.data ?? false;
+                  ValueListenableBuilder<bool>(
+                    valueListenable: ref.read(audioPlayerManagerProvider).shuffleNotifier,
+                    builder: (context, isShuffled, child) {
                       return IconButton(
-                        icon: Icon(Icons.shuffle, color: shuffleModeEnabled ? Colors.deepPurple : Colors.white70),
-                        onPressed: () => player.setShuffleModeEnabled(!shuffleModeEnabled),
+                        icon: Icon(Icons.shuffle, color: isShuffled ? Colors.deepPurple : Colors.white70),
+                        onPressed: () async {
+                           await ref.read(audioPlayerManagerProvider).toggleShuffle();
+                           if (context.mounted) {
+                              ScaffoldMessenger.of(context).clearSnackBars();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(ref.read(audioPlayerManagerProvider).shuffleNotifier.value ? "Shuffle ON" : "Shuffle OFF"), 
+                                      duration: const Duration(seconds: 1)
+                                  )
+                              );
+                           }
+                        },
                       );
                     },
                   ),
@@ -486,7 +496,8 @@ class QueueSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final player = ref.watch(audioPlayerManagerProvider).player;
+    final manager = ref.watch(audioPlayerManagerProvider);
+    final player = manager.player;
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
@@ -495,16 +506,19 @@ class QueueSheet extends ConsumerWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
+            ),
           ),
           const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text("Playing Next", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Text("Queue", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           ),
           Expanded(
             child: StreamBuilder<SequenceState?>(
@@ -512,58 +526,109 @@ class QueueSheet extends ConsumerWidget {
               builder: (context, snapshot) {
                 final state = snapshot.data;
                 final sequence = state?.sequence ?? [];
-                final currentIndex = state?.currentIndex ?? -1;
+                final currentIndex = state?.currentIndex ?? 0;
+                
+                // Safety check
+                if (sequence.isEmpty) return const Center(child: Text("Queue is empty"));
 
-                return ReorderableListView.builder(
-                  itemCount: sequence.length,
-                  onReorder: (oldIndex, newIndex) {
-                    if (newIndex > oldIndex) newIndex -= 1;
-                    final source = player.audioSource as ConcatenatingAudioSource;
-                    source.move(oldIndex, newIndex);
-                  },
-                  itemBuilder: (context, index) {
-                    final item = sequence[index].tag as MediaItem;
-                    final isCurrent = index == currentIndex;
+                // Current Song
+                final currentItem = sequence.length > currentIndex ? sequence[currentIndex].tag as MediaItem : null;
+                
+                // Upcoming Songs
+                final upcomingStartIndex = currentIndex + 1;
+                final upcomingCount = sequence.length - upcomingStartIndex;
 
-                    return Dismissible(
-                      key: ValueKey(item.id + index.toString()),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        color: Colors.red,
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        child: const Icon(Icons.delete, color: Colors.white),
-                      ),
-                      onDismissed: (direction) {
-                        final source = player.audioSource as ConcatenatingAudioSource;
-                        source.removeAt(index);
-                      },
-                      child: ListTile(
-                        key: ValueKey(item.id + index.toString()),
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: CachedNetworkImage(
-                            imageUrl: item.artUri.toString(),
-                            width: 40,
-                            height: 40,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        title: Text(
-                          item.title,
-                          style: TextStyle(
-                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                            color: isCurrent ? Colors.deepPurple : null,
-                          ),
-                        ),
-                        subtitle: Text(item.artist ?? "Unknown Artist"),
-                        trailing: const Icon(Icons.drag_handle),
-                        onTap: () {
-                          player.seek(Duration.zero, index: index);
-                        },
-                      ),
-                    );
-                  },
+                return Column(
+                   children: [
+                       if (currentItem != null) ...[
+                           const Padding(
+                               padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                               child: Align(alignment: Alignment.centerLeft, child: Text("Now Playing", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                           ),
+                           ListTile(
+                                leading: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: CachedNetworkImage(
+                                    imageUrl: currentItem.artUri.toString(),
+                                    width: 40, height: 40, fit: BoxFit.cover,
+                                    errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                                  ),
+                                ),
+                                title: Text(currentItem.title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                                subtitle: Text(currentItem.artist ?? "Unknown"),
+                                trailing: const Icon(Icons.volume_up, size: 20, color: Colors.deepPurple),
+                           ),
+                           const Divider(),
+                       ],
+                       
+                       Expanded(
+                           child: upcomingCount > 0 
+                           ? ReorderableListView.builder(
+                              itemCount: upcomingCount,
+                              onReorder: (oldIndex, newIndex) {
+                                // Adjust index because we are only showing list starting from currentIndex + 1
+                                if (newIndex > oldIndex) newIndex -= 1;
+                                
+                                final realOldIndex = oldIndex + upcomingStartIndex;
+                                final realNewIndex = newIndex + upcomingStartIndex;
+                                
+                                if (player.audioSource is ConcatenatingAudioSource) {
+                                  final source = player.audioSource as ConcatenatingAudioSource;
+                                  source.move(realOldIndex, realNewIndex);
+                                }
+                              },
+                              itemBuilder: (context, index) {
+                                final realIndex = index + upcomingStartIndex;
+                                final item = sequence[realIndex].tag as MediaItem;
+                                final isManual = item.extras?['origin'] == 'manual';
+                                
+                                return Dismissible(
+                                  key: ValueKey('${item.id}_$realIndex'), // Ensure unique key if same song in queue twice
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    color: Colors.red,
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    child: const Icon(Icons.delete, color: Colors.white),
+                                  ),
+                                  onDismissed: (direction) {
+                                    if (player.audioSource is ConcatenatingAudioSource) {
+                                      final source = player.audioSource as ConcatenatingAudioSource;
+                                      source.removeAt(realIndex);
+                                    }
+                                  },
+                                  child: ListTile(
+                                    key: ValueKey('${item.id}_$realIndex'),
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: CachedNetworkImage(
+                                        imageUrl: item.artUri.toString(),
+                                        width: 40, height: 40, fit: BoxFit.cover,
+                                        errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                                      ),
+                                    ),
+                                    title: Text(item.title),
+                                    subtitle: Row(
+                                        children: [
+                                            if (isManual) ...[
+                                                const Icon(Icons.playlist_add_check, size: 12, color: Colors.orange),
+                                                const SizedBox(width: 4),
+                                                const Text("Playing Next • ", style: TextStyle(color: Colors.orange, fontSize: 12)),
+                                            ],
+                                            Flexible(child: Text(item.artist ?? "Unknown", overflow: TextOverflow.ellipsis)),
+                                        ]
+                                    ),
+                                    trailing: const Icon(Icons.drag_handle, color: Colors.grey),
+                                    onTap: () {
+                                      player.seek(Duration.zero, index: realIndex);
+                                    },
+                                  ),
+                                );
+                              },
+                           )
+                           : const Center(child: Padding(padding: EdgeInsets.all(32), child: Text("End of Queue", style: TextStyle(color: Colors.grey)))),
+                       ),
+                   ],
                 );
               },
             ),
