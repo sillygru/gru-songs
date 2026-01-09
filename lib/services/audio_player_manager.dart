@@ -169,70 +169,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
-  Future<void> playNext(Song song) async {
-    try {
-      final newSource = AudioSource.uri(
-        Uri.parse(_apiService.getFullUrl(song.url)),
-        tag: MediaItem(
-          id: song.filename,
-          album: song.album,
-          title: song.title,
-          artist: song.artist,
-          artUri: song.coverUrl != null 
-              ? Uri.parse(_apiService.getFullUrl(song.coverUrl!)) 
-              : null,
-          extras: {
-            'lyricsUrl': song.lyricsUrl,
-            'origin': 'manual', // Mark as manually added
-          },
-        ),
-      );
-
-      if (_player.audioSource is ConcatenatingAudioSource) {
-          final source = _player.audioSource as ConcatenatingAudioSource;
-          final currentIndex = _player.currentIndex ?? 0;
-          final children = source.children;
-          
-          // Find where to insert: After current + after any consecutive 'manual' songs
-          int insertIndex = currentIndex + 1;
-          for (int i = currentIndex + 1; i < children.length; i++) {
-             final child = children[i];
-             if (child is UriAudioSource) {
-                 final tag = child.tag as MediaItem;
-                 if (tag.extras?['origin'] == 'manual') {
-                     insertIndex++;
-                 } else {
-                     break; // Stop at first non-manual song
-                 }
-             }
-          }
-          
-          // Bounds check
-          if (insertIndex > children.length) {
-              insertIndex = children.length;
-          }
-          
-          await source.insert(insertIndex, newSource);
-      } else {
-          // Single source fallback
-          final currentSource = _player.audioSource;
-          if (currentSource != null) {
-              final newPlaylist = ConcatenatingAudioSource(
-                  children: [
-                      currentSource,
-                      newSource,
-                  ],
-              );
-              final position = _player.position;
-              await _player.setAudioSource(newPlaylist, initialIndex: 0, initialPosition: position);
-          }
-      }
-      
-    } catch (e) {
-      debugPrint("Error adding song to play next: $e");
-    }
-  }
-
   Future<void> toggleShuffle() async {
     if (shuffleNotifier.value) {
       await _unshuffleQueue();
@@ -250,37 +186,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         final currentIndex = _player.currentIndex ?? 0;
         final children = source.children;
         
-        // 1. Identify "Priority" items (Current + Upcoming Manuals)
-        final priorityItems = <AudioSource>[];
-        
-        // Add current song (if not null, though currentIndex implies it exists)
-        // Wait, we don't move the current song. We only shuffle UPCOMING.
-        // So we leave 0...currentIndex as is? 
-        // No, standard behavior: Previous songs are history. We can leave them.
-        // We only shuffle from currentIndex + 1 onwards.
-        
-        final upcomingManuals = <AudioSource>[];
         final upcomingContext = <AudioSource>[]; // These we will shuffle
         
         // Scan upcoming
         for (int i = currentIndex + 1; i < children.length; i++) {
-            final child = children[i];
-            if (child is UriAudioSource) {
-               final tag = child.tag as MediaItem;
-               if (tag.extras?['origin'] == 'manual') {
-                   upcomingManuals.add(child);
-               } else {
-                   // It's a context song (or unknown), add to shuffle pool
-                   upcomingContext.add(child);
-               }
-            }
+            upcomingContext.add(children[i]);
         }
-        
-        // Also need to pull in any "Context" songs that are NOT in the current queue
-        // (e.g. if we are already shuffled, and re-shuffling? Or if we playNext'd and pushed things down?)
-        // Actually, if we are turning Shuffle ON, we assume the current queue reflects the "Unshuffled" state (mostly).
-        // But if we are in "Unshuffled" mode, the queue matches _originalSongs order (with manuals interspersed).
-        // So 'upcomingContext' currently contains the rest of the album in order.
         
         // Shuffle the context songs
         upcomingContext.shuffle();
@@ -289,9 +200,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         if (currentIndex + 1 < children.length) {
             await source.removeRange(currentIndex + 1, children.length);
         }
-        
-        // Add back manuals (ordered)
-        await source.addAll(upcomingManuals);
         
         // Add back shuffled context
         await source.addAll(upcomingContext);
@@ -312,26 +220,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         final currentIndex = _player.currentIndex ?? 0;
         final children = source.children;
         
-        // 1. Identify upcoming manuals to preserve
-        final upcomingManuals = <AudioSource>[];
-        
-        // Scan upcoming for manuals
-        for (int i = currentIndex + 1; i < children.length; i++) {
-            final child = children[i];
-            if (child is UriAudioSource) {
-               final tag = child.tag as MediaItem;
-               if (tag.extras?['origin'] == 'manual') {
-                   upcomingManuals.add(child);
-               }
-            }
-        }
-
         // 2. Determine where to resume in _originalSongs
-        // Find the "Anchor" song to decide what comes next.
-        // If current song is Context, it's the anchor.
-        // If current song is Manual, look for the first upcoming Context song in the current queue? 
-        // Or just resume from the beginning if we are lost?
-        
         int resumeIndex = -1;
         
         // Check current song
@@ -344,37 +233,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         if (currentId != null) {
              resumeIndex = _originalSongs.indexWhere((s) => s.filename == currentId);
         }
-        
-        // If current is not in original (e.g. manual), try to find a hint from upcoming context songs
-        if (resumeIndex == -1) {
-             for (int i = currentIndex + 1; i < children.length; i++) {
-                final child = children[i];
-                if (child is UriAudioSource) {
-                    final tag = child.tag as MediaItem;
-                    if (tag.extras?['origin'] == 'context') {
-                         final id = tag.id;
-                         final found = _originalSongs.indexWhere((s) => s.filename == id);
-                         if (found != -1) {
-                             // We found a context song coming up. 
-                             // We should resume from BEFORE this one? 
-                             // No, if we unshuffle, we want to restore the NATURAL order.
-                             // If we are currently playing a manual song, and the next context song was #5.
-                             // Natural order says #5 comes after #4. 
-                             // So maybe we resume from #5?
-                             resumeIndex = found - 1; // So that #5 is next? 
-                             // Wait, we append starting from resumeIndex + 1.
-                             // So if found is #5, we want #5 to be the first added.
-                             // So resumeIndex should be #4 (found - 1).
-                             break;
-                         }
-                    }
-                }
-             }
-        }
-        
-        // If still -1, fallback to 0 (restart context from beginning)
-        // Or if the current manual song was added at the very end, maybe we just append nothing?
-        // Let's default to -1 implies "start from beginning" if we can't find place.
         
         final restoredContext = <AudioSource>[];
         final startPixel = resumeIndex + 1;
@@ -401,9 +259,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         if (currentIndex + 1 < children.length) {
             await source.removeRange(currentIndex + 1, children.length);
         }
-        
-        // Add manuals back
-        await source.addAll(upcomingManuals);
         
         // Add restored context
         await source.addAll(restoredContext);
