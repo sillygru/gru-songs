@@ -136,9 +136,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             return const Center(child: Text('No songs found'));
           }
 
-          // Simple recommendation logic: songs with playCount < average or random
-          final recommendedSongs = List<Song>.from(songs)..shuffle();
-          final recommendations = recommendedSongs.take(5).toList();
+          final userData = ref.watch(userDataProvider);
+          final random = Random();
+
+          // Weighted recommendation logic
+          final recommendations = List<Song>.from(songs)
+              .where((song) => !userData.suggestLess.contains(song.filename)) // Exclude suggest-less
+              .toList();
+
+          recommendations.sort((a, b) {
+            double score(Song s) {
+              // Base score from play count (logarithmic to avoid one song dominating)
+              double val = log(s.playCount + 1.5) * 2.0;
+              
+              // Boost for favorites
+              if (userData.favorites.contains(s.filename)) {
+                val += 5.0;
+              }
+              
+              // Add a "little bit of randomness" (0.0 to 4.0)
+              val += random.nextDouble() * 4.0;
+              
+              return val;
+            }
+            return score(b).compareTo(score(a));
+          });
+
+          final topRecommendations = recommendations.take(10).toList();
 
           return CustomScrollView(
             slivers: [
@@ -215,10 +239,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   height: 200,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    itemCount: recommendations.length,
+                    itemCount: topRecommendations.length,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemBuilder: (context, index) {
-                      final song = recommendations[index];
+                      final song = topRecommendations[index];
                       return GestureDetector(
                         onTap: () {
                           final songIndex = songs.indexOf(song);
