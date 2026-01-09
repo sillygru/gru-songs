@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../widgets/now_playing_bar.dart';
 import 'playlist_detail_screen.dart';
 import 'search_screen.dart';
 
@@ -164,7 +163,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             return const Center(child: Text('No songs found'));
           }
 
-          final userData = ref.watch(userDataProvider);
           final random = Random();
 
           // Weighted recommendation logic

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart'; // For AppLifecycleListener
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -117,44 +116,42 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
     try {
-      // ignore: deprecated_member_use
-      final playlist = ConcatenatingAudioSource(
-        children: songs.map((song) {
-          return AudioSource.uri(
-            Uri.parse(_apiService.getFullUrl(song.url)),
-            tag: MediaItem(
-              id: song.filename,
-              album: song.album,
-              title: song.title,
-              artist: song.artist,
-              artUri: song.coverUrl != null 
-                  ? Uri.parse(_apiService.getFullUrl(song.coverUrl!)) 
-                  : null,
-              extras: {
-                'lyricsUrl': song.lyricsUrl,
-              },
-            ),
-          );
-        }).toList(),
-      );
+      final audioSources = songs.map((song) {
+        return AudioSource.uri(
+          Uri.parse(_apiService.getFullUrl(song.url)),
+          tag: MediaItem(
+            id: song.filename,
+            album: song.album,
+            title: song.title,
+            artist: song.artist,
+            artUri: song.coverUrl != null 
+                ? Uri.parse(_apiService.getFullUrl(song.coverUrl!)) 
+                : null,
+            extras: {
+              'lyricsUrl': song.lyricsUrl,
+            },
+          ),
+        );
+      }).toList();
 
-      await _player.setVolume(1.0);
-      await _player.setAudioSource(playlist);
-
+      int initialIndex = 0;
       if (autoSelect && songs.isNotEmpty) {
         final lastSongFilename = await _getLastSong();
-        int initialIndex = -1;
+        int foundIndex = -1;
         
         if (lastSongFilename != null) {
-          initialIndex = songs.indexWhere((s) => s.filename == lastSongFilename);
+          foundIndex = songs.indexWhere((s) => s.filename == lastSongFilename);
         }
         
-        if (initialIndex == -1) {
+        if (foundIndex != -1) {
+          initialIndex = foundIndex;
+        } else {
           initialIndex = Random().nextInt(songs.length);
         }
-        
-        await _player.seek(Duration.zero, index: initialIndex);
       }
+
+      await _player.setVolume(1.0);
+      await _player.setAudioSources(audioSources, initialIndex: initialIndex);
     } catch (e) {
       if (e.toString().contains('Loading interrupted')) {
         debugPrint("Audio loading interrupted (safe to ignore): $e");
