@@ -11,9 +11,11 @@ class PlaylistSong extends Equatable {
 
   factory PlaylistSong.fromJson(Map<String, dynamic> json) {
     return PlaylistSong(
-      filename: json['filename'],
-      addedAt: DateTime.fromMillisecondsSinceEpoch(
-          ((json['added_at'] as num) * 1000).toInt()),
+      filename: json['filename'] ?? '',
+      addedAt: (json['added_at'] is num)
+          ? DateTime.fromMillisecondsSinceEpoch(
+              ((json['added_at'] as num) * 1000).toInt())
+          : DateTime.now(),
     );
   }
 
@@ -34,11 +36,12 @@ class Playlist extends Equatable {
 
   factory Playlist.fromJson(Map<String, dynamic> json) {
     return Playlist(
-      id: json['id'],
-      name: json['name'],
-      songs: (json['songs'] as List)
-          .map((e) => PlaylistSong.fromJson(e))
-          .toList(),
+      id: json['id'] ?? '',
+      name: json['name'] ?? 'Untitled',
+      songs: (json['songs'] as List?)
+              ?.map((e) => PlaylistSong.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 

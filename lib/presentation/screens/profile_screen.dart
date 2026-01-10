@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
-import '../../providers/user_data_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -62,7 +61,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _clearCache() async {
-    await DefaultCacheManager().emptyCache();
+    try {
+      await DefaultCacheManager().emptyCache();
+    } catch (e) {
+      debugPrint("Error emptying cache manager: $e");
+    }
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final cacheDir = Directory('${tempDir.path}/libCachedImageData');
+      if (await cacheDir.exists()) {
+        await cacheDir.delete(recursive: true);
+      }
+    } catch (e) {
+      debugPrint("Error deleting cache dir: $e");
+    }
+
+    if (mounted) {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+    }
+
     await _calculateCacheSize();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
