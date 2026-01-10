@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
-import 'settings_screen.dart';
+import 'profile_screen.dart';
 import '../widgets/now_playing_bar.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
@@ -18,7 +18,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   final List<Widget> _screens = [
     const HomeScreen(),
     const LibraryScreen(),
-    const SettingsScreen(),
+    const ProfileScreen(),
   ];
 
   @override
@@ -57,9 +57,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             label: 'Library',
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
           ),
         ],
       ),

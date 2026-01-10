@@ -8,96 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../providers/user_data_provider.dart';
 import '../screens/player_screen.dart';
+import 'song_options_menu.dart';
 
 class NowPlayingBar extends ConsumerWidget {
   const NowPlayingBar({super.key});
-
-  void _showSongOptionsMenu(BuildContext context, WidgetRef ref, MediaItem metadata, UserDataState userData) {
-    final isFavorite = userData.favorites.contains(metadata.id);
-    final isSuggestLess = userData.suggestLess.contains(metadata.id);
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
-                title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
-                onTap: () {
-                  ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.playlist_add),
-                title: const Text("Add to new playlist"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final nameController = TextEditingController();
-                  final newName = await showDialog<String>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text("New Playlist"),
-                      content: TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(hintText: "Playlist Name"),
-                        autofocus: true,
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                        TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text("Create")),
-                      ],
-                    ),
-                  );
-                  if (newName != null && newName.isNotEmpty) {
-                    final newPlaylist = await ref.read(userDataProvider.notifier).createPlaylist(newName);
-                    if (newPlaylist != null) {
-                      await ref.read(userDataProvider.notifier).addSongToPlaylist(newPlaylist.id, metadata.id);
-                    }
-                  }
-                },
-              ),
-              ...userData.playlists.map((p) {
-                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
-                if (isInPlaylist) return const SizedBox.shrink();
-                return ListTile(
-                  leading: const Icon(Icons.playlist_add),
-                  title: Text("Add to ${p.name}"),
-                  onTap: () {
-                    ref.read(userDataProvider.notifier).addSongToPlaylist(p.id, metadata.id);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-              ...userData.playlists.map((p) {
-                final isInPlaylist = p.songs.any((s) => s.filename == metadata.id);
-                if (!isInPlaylist) return const SizedBox.shrink();
-                return ListTile(
-                  leading: const Icon(Icons.remove_circle_outline),
-                  title: Text("Remove from ${p.name}"),
-                  onTap: () {
-                    ref.read(userDataProvider.notifier).removeSongFromPlaylist(p.id, metadata.id);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-              ListTile(
-                leading: Icon(isSuggestLess ? Icons.thumb_up : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
-                title: Text(isSuggestLess ? "Suggest more" : "Suggest less"),
-                onTap: () {
-                  ref.read(userDataProvider.notifier).toggleSuggestLess(metadata.id);
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -191,7 +105,7 @@ class NowPlayingBar extends ConsumerWidget {
                             final isSuggestLess = userData.suggestLess.contains(metadata.id);
                             
                             return GestureDetector(
-                              onLongPress: () => _showSongOptionsMenu(context, ref, metadata, userData),
+                              onLongPress: () => showSongOptionsMenu(context, ref, metadata.id, metadata.title),
                               child: IconButton(
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(8),

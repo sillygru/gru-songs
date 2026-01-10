@@ -9,6 +9,36 @@ import 'add_songs_screen.dart';
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
+  void _showCreatePlaylistDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("New Playlist"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(hintText: "Playlist Name"),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (controller.text.isNotEmpty) {
+                await ref.read(userDataProvider.notifier).createPlaylist(controller.text);
+                if (context.mounted) Navigator.pop(context);
+              }
+            },
+            child: const Text("Create"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userData = ref.watch(userDataProvider);
@@ -20,6 +50,11 @@ class LibraryScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Library'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.playlist_add),
+            onPressed: () => _showCreatePlaylistDialog(context, ref),
+            tooltip: 'New Playlist',
+          ),
           IconButton(
             icon: const Icon(Icons.add_to_photos_outlined),
             onPressed: () {
@@ -46,8 +81,25 @@ class LibraryScreen extends ConsumerWidget {
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
-                  // Favorites is always the first item
+                  // Create new playlist is now the first item
                   if (index == 0) {
+                    return ListTile(
+                      leading: Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(Icons.add, color: Theme.of(context).colorScheme.primary, size: 30),
+                      ),
+                      title: const Text('Create New Playlist'),
+                      onTap: () => _showCreatePlaylistDialog(context, ref),
+                    );
+                  }
+
+                  // Favorites is the second item
+                  if (index == 1) {
                     return ListTile(
                       leading: Container(
                         width: 50,
@@ -71,7 +123,7 @@ class LibraryScreen extends ConsumerWidget {
                     );
                   }
 
-                  final playlist = userData.playlists[index - 1];
+                  final playlist = userData.playlists[index - 2];
                   Widget leading = const Icon(Icons.library_music, size: 40);
                   if (playlist.songs.isNotEmpty && songsAsync.hasValue) {
                     final firstSongFilename = playlist.songs.first.filename;
@@ -107,7 +159,7 @@ class LibraryScreen extends ConsumerWidget {
                     },
                   );
                 },
-                childCount: userData.playlists.length + 1,
+                childCount: userData.playlists.length + 2,
               ),
             ),
           SliverToBoxAdapter(

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../../providers/user_data_provider.dart';
+import '../widgets/song_options_menu.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -21,33 +21,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  void _showSongOptionsMenu(BuildContext context, WidgetRef ref, Song song, UserDataState userData) {
-    final isFavorite = userData.favorites.contains(song.filename);
-    final isSuggestLess = userData.suggestLess.contains(song.filename);
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
-                title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
-                onTap: () {
-                  ref.read(userDataProvider.notifier).toggleFavorite(song.filename);
-                  Navigator.pop(context);
-                },
-              ),
-              // ... Add other options if needed, mirroring HomeScreen
-            ],
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -162,7 +135,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         audioManager.player.play();
                       },
                       onLongPress: () {
-                        _showSongOptionsMenu(context, ref, song, userData);
+                        showSongOptionsMenu(context, ref, song.filename, song.title);
                       },
                     );
                   },

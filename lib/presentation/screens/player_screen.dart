@@ -10,6 +10,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../widgets/song_options_menu.dart';
 
 class PositionData {
   final Duration position;
@@ -387,14 +388,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     },
                   ),
                   // Favorite
-                  IconButton(
-                    icon: Icon(userData.favorites.contains(metadata?.id) ? Icons.favorite : Icons.favorite_border),
-                    color: userData.favorites.contains(metadata?.id) ? Colors.red : Colors.white70,
-                    onPressed: () {
+                  GestureDetector(
+                    onLongPress: () {
                       if (metadata != null) {
-                        ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                        showSongOptionsMenu(context, ref, metadata.id, metadata.title);
                       }
                     },
+                    child: IconButton(
+                      icon: Icon(userData.favorites.contains(metadata?.id) ? Icons.favorite : Icons.favorite_border),
+                      color: userData.favorites.contains(metadata?.id) ? Colors.red : Colors.white70,
+                      onPressed: () {
+                        if (metadata != null) {
+                          ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),

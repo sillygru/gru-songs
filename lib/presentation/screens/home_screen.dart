@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../widgets/song_options_menu.dart';
 import 'playlist_detail_screen.dart';
+
 import 'search_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -15,93 +17,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  void _showSongOptionsMenu(BuildContext context, WidgetRef ref, song, userData) {
-    final isFavorite = userData.favorites.contains(song.filename);
-    final isSuggestLess = userData.suggestLess.contains(song.filename);
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
-                title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),
-                onTap: () {
-                  ref.read(userDataProvider.notifier).toggleFavorite(song.filename);
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.playlist_add),
-                title: const Text("Add to new playlist"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final nameController = TextEditingController();
-                  final newName = await showDialog<String>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text("New Playlist"),
-                      content: TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(hintText: "Playlist Name"),
-                        autofocus: true,
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                        TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text("Create")),
-                      ],
-                    ),
-                  );
-                  if (newName != null && newName.isNotEmpty) {
-                    final newPlaylist = await ref.read(userDataProvider.notifier).createPlaylist(newName);
-                    if (newPlaylist != null) {
-                      await ref.read(userDataProvider.notifier).addSongToPlaylist(newPlaylist.id, song.filename);
-                    }
-                  }
-                },
-              ),
-              ...userData.playlists.map((p) {
-                final isInPlaylist = p.songs.any((s) => s.filename == song.filename);
-                if (isInPlaylist) return const SizedBox.shrink();
-                return ListTile(
-                  leading: const Icon(Icons.playlist_add),
-                  title: Text("Add to ${p.name}"),
-                  onTap: () {
-                    ref.read(userDataProvider.notifier).addSongToPlaylist(p.id, song.filename);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-              ...userData.playlists.map((p) {
-                final isInPlaylist = p.songs.any((s) => s.filename == song.filename);
-                if (!isInPlaylist) return const SizedBox.shrink();
-                return ListTile(
-                  leading: const Icon(Icons.remove_circle_outline),
-                  title: Text("Remove from ${p.name}"),
-                  onTap: () {
-                    ref.read(userDataProvider.notifier).removeSongFromPlaylist(p.id, song.filename);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-              ListTile(
-                leading: Icon(isSuggestLess ? Icons.thumb_up : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
-                title: Text(isSuggestLess ? "Suggest more" : "Suggest less"),
-                onTap: () {
-                  ref.read(userDataProvider.notifier).toggleSuggestLess(song.filename);
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final songsAsyncValue = ref.watch(songsProvider);
@@ -421,7 +336,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ],
                       ),
                       onLongPress: () async {
-                        _showSongOptionsMenu(context, ref, song, userData);
+                        showSongOptionsMenu(context, ref, song.filename, song.title);
                       },
                       onTap: () {
                         audioManager.player.seek(Duration.zero, index: index);
