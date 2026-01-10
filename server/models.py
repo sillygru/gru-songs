@@ -23,6 +23,9 @@ class StatsEntry(BaseModel):
     duration_played: float
     event_type: str # 'listen', 'skip', 'complete'
     timestamp: float
+    platform: Optional[str] = "unknown"
+    foreground_duration: Optional[Any] = "unknown"
+    background_duration: Optional[Any] = "unknown"
 
 class PlaylistSong(BaseModel):
     filename: str

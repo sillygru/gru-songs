@@ -16,7 +16,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Stats tracking state
   String? _currentSongFilename;
   DateTime? _playStartTime;
-  double _accumulatedDuration = 0.0;
+  
+  // New stats counters
+  double _foregroundDuration = 0.0;
+  double _backgroundDuration = 0.0;
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   
   final ValueNotifier<bool> shuffleNotifier = ValueNotifier(false);
 
@@ -39,7 +43,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       } else {
         // Paused or stopped
         if (_playStartTime != null) {
-          _accumulatedDuration += DateTime.now().difference(_playStartTime!).inMilliseconds / 1000.0;
+          _updateDurations();
           _playStartTime = null;
         }
       }
@@ -66,7 +70,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             // Set new song
             if (_currentSongFilename != newFilename) {
                 _currentSongFilename = newFilename;
-                _accumulatedDuration = 0.0;
+                _foregroundDuration = 0.0;
+                _backgroundDuration = 0.0;
                 _playStartTime = _player.playing ? DateTime.now() : null;
                 _saveLastSong(newFilename);
             }
@@ -88,21 +93,45 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return prefs.getString('last_song_filename');
   }
   
+  void _updateDurations() {
+    if (_playStartTime != null) {
+      final now = DateTime.now();
+      final diff = now.difference(_playStartTime!).inMilliseconds / 1000.0;
+      
+      if (_appLifecycleState == AppLifecycleState.resumed) {
+        _foregroundDuration += diff;
+      } else {
+        _backgroundDuration += diff;
+      }
+      // Note: We don't nullify _playStartTime here unless pausing
+    }
+  }
+  
   void _flushStats({required String eventType}) {
     if (_username == null || _currentSongFilename == null) return;
     
-    // Calculate final duration
-    double finalDuration = _accumulatedDuration;
+    // Capture final chunk of time if playing
     if (_playStartTime != null) {
-       finalDuration += DateTime.now().difference(_playStartTime!).inMilliseconds / 1000.0;
+       _updateDurations();
     }
     
+    double finalDuration = _foregroundDuration + _backgroundDuration;
+    
     if (finalDuration > 0.5) { // Ignore tiny blips
-        _statsService.track(_username!, _currentSongFilename!, finalDuration, eventType);
+        _statsService.track(
+          _username!, 
+          _currentSongFilename!, 
+          finalDuration, 
+          eventType,
+          foregroundDuration: _foregroundDuration,
+          backgroundDuration: _backgroundDuration
+        );
     }
     
     // Reset counters
-    _accumulatedDuration = 0.0;
+    _foregroundDuration = 0.0;
+    _backgroundDuration = 0.0;
+    
     if (eventType == 'skip' || eventType == 'complete') {
         _playStartTime = null; // Prepare for next song
     } else {
@@ -114,6 +143,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // If playing, attribute time spent in previous state
+    if (_playStartTime != null) {
+        _updateDurations();
+        _playStartTime = DateTime.now(); // Reset start time for the new state
+    }
+    _appLifecycleState = state;
   }
 
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {

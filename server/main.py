@@ -255,7 +255,13 @@ async def upload_song(
         
         # Record uploader with title
         display_title = final_filename.rsplit('.', 1)[0]
-        user_service.record_upload(x_username, final_filename, display_title)
+        user_service.record_upload(
+            x_username, 
+            final_filename, 
+            display_title, 
+            source="file", 
+            original_filename=file.filename
+        )
         
         return {"message": "Upload successful", "filename": final_filename}
     except Exception as e:
@@ -318,7 +324,14 @@ async def ytdlp_download(
             
             # Record uploader with title
             display_title = final_filename.rsplit('.', 1)[0]
-            user_service.record_upload(x_username, final_filename, display_title)
+            user_service.record_upload(
+                x_username, 
+                final_filename, 
+                display_title, 
+                source="youtube", 
+                original_filename=orig_filename, 
+                youtube_url=url
+            )
             
             return {"message": "Download successful", "filename": final_filename}
             

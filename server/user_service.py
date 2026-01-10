@@ -143,76 +143,348 @@ class UserService:
         entry_data['total_length'] = round(total_length, 2)
         entry_data['play_ratio'] = round(ratio, 2)
         
+        # Round new fields if they are numbers, otherwise keep as "unknown"
+        for field in ['foreground_duration', 'background_duration']:
+            val = entry_data.get(field)
+            if isinstance(val, (int, float)):
+                entry_data[field] = round(float(val), 2)
+            else:
+                entry_data[field] = "unknown"
+        
         if username not in self._stats_buffer:
             self._stats_buffer[username] = []
             
         self._stats_buffer[username].append(entry_data)
         
-    def flush_stats(self):
-        if not self._stats_buffer:
-            return
-
-        for username, events in self._stats_buffer.items():
-            if not events:
-                continue
-                
-            path = self._get_user_stats_path(username)
-            data = {"sessions": [], "total_play_time": 0}
-            
-            if os.path.exists(path):
-                with open(path, "r") as f:
-                    try:
-                        data = json.load(f)
-                    except:
-                        pass 
-
-            if "sessions" not in data:
-                data["sessions"] = []
-                
-            # Process events into sessions
-            for event in events:
-                session_id = event.get('session_id')
-                if not session_id:
-                    continue # Should not happen
-                
-                # Find or create session
-                session = next((s for s in data["sessions"] if s["id"] == session_id), None)
-                if not session:
-                    session = {
-                        "id": session_id,
-                        "start_time": event['timestamp'],
-                        "end_time": event['timestamp'],
-                        "events": []
-                    }
-                    data["sessions"].append(session)
-                
-                # Update session bounds
-                if event['timestamp'] < session['start_time']:
-                    session['start_time'] = event['timestamp']
-                if event['timestamp'] > session['end_time']:
-                    session['end_time'] = event['timestamp']
-                    
-                session["events"].append(event)
-                
-                # Update total play time
-                if event.get('event_type') != 'favorite':
-                    data["total_play_time"] = round(data["total_play_time"] + event.get("duration_played", 0), 2)
-
-            # Ensure all numeric fields in the saved data are rounded
-            if "sessions" in data:
-                for s in data["sessions"]:
-                    s["start_time"] = round(s["start_time"], 2)
-                    s["end_time"] = round(s["end_time"], 2)
-                    for e in s["events"]:
-                        if 'duration_played' in e: e['duration_played'] = round(e['duration_played'], 2)
-                        if 'timestamp' in e: e['timestamp'] = round(e['timestamp'], 2)
-                        if 'total_length' in e: e['total_length'] = round(e['total_length'], 2)
-                        if 'play_ratio' in e: e['play_ratio'] = round(e['play_ratio'], 2)
-
-            with open(path, "w") as f:
-                json.dump(data, f, indent=4)
+        def flush_stats(self):
         
-        self._stats_buffer.clear()
+            if not self._stats_buffer:
+        
+                return
+        
+    
+        
+            for username, events in self._stats_buffer.items():
+        
+                if not events:
+        
+                    continue
+        
+                    
+        
+                path = self._get_user_stats_path(username)
+        
+                data = {"sessions": [], "total_play_time": 0}
+        
+                
+        
+                if os.path.exists(path):
+        
+                    with open(path, "r") as f:
+        
+                        try:
+        
+                            data = json.load(f)
+        
+                        except:
+        
+                            pass 
+        
+    
+        
+                if "sessions" not in data:
+        
+                    data["sessions"] = []
+        
+                    
+        
+                # Process events into sessions
+        
+                for event in events:
+        
+                    session_id = event.get('session_id')
+        
+                    if not session_id:
+        
+                        continue # Should not happen
+        
+                    
+        
+                    # Find or create session
+        
+                    session = next((s for s in data["sessions"] if s["id"] == session_id), None)
+        
+                    if not session:
+        
+                        session = {
+        
+                            "id": session_id,
+        
+                            "start_time": event['timestamp'],
+        
+                            "end_time": event['timestamp'],
+        
+                            "platform": event.get("platform", "unknown"),
+        
+                            "events": []
+        
+                        }
+        
+                        data["sessions"].append(session)
+        
+                    
+        
+                    # Update session bounds
+        
+                    if event['timestamp'] < session['start_time']:
+        
+                        session['start_time'] = event['timestamp']
+        
+                    if event['timestamp'] > session['end_time']:
+        
+                        session['end_time'] = event['timestamp']
+        
+                    
+        
+                    # Update session platform if it was unknown and now we have one
+        
+                    if session.get("platform", "unknown") == "unknown" and event.get("platform", "unknown") != "unknown":
+        
+                        session["platform"] = event.get("platform")
+        
+                        
+        
+                    session["events"].append(event)
+        
+                    
+        
+                # Re-calculate summaries for ALL sessions (migrations + updates)
+        
+                global_summary = {
+        
+                    "total_sessions": 0,
+        
+                    "platform_usage": {},
+        
+                    "total_background_playtime": 0.0,
+        
+                    "total_foreground_playtime": 0.0,
+        
+                    "total_play_time": 0.0,
+        
+                    "total_songs_played": 0,
+        
+                    "total_songs_played_ratio_over_025": 0,
+        
+                    "total_skipped": 0
+        
+                }
+        
+                
+        
+                # Tracking if we have any valid numbers for global FG/BG
+        
+                has_global_fg = False
+        
+                has_global_bg = False
+        
+                
+        
+                for session in data["sessions"]:
+        
+                    s_play_time = 0.0
+        
+                    s_fg_time = 0.0
+        
+                    s_bg_time = 0.0
+        
+                    s_skipped = 0
+        
+                    s_played = 0
+        
+                    s_played_025 = 0
+        
+                    
+        
+                    has_s_fg = False
+        
+                    has_s_bg = False
+        
+                    
+        
+                    current_platform = session.get("platform", "unknown")
+        
+                    
+        
+                    for e in session["events"]:
+        
+                        if e.get("event_type") == "favorite":
+        
+                            continue
+        
+                            
+        
+                        dur = e.get("duration_played", 0.0)
+        
+                        fg = e.get("foreground_duration", "unknown")
+        
+                        bg = e.get("background_duration", "unknown")
+        
+                        
+        
+                        s_play_time += dur
+        
+                        
+        
+                        if isinstance(fg, (int, float)):
+        
+                            s_fg_time += fg
+        
+                            has_s_fg = True
+        
+                            has_global_fg = True
+        
+                        if isinstance(bg, (int, float)):
+        
+                            s_bg_time += bg
+        
+                            has_s_bg = True
+        
+                            has_global_bg = True
+        
+                        
+        
+                        s_played += 1
+        
+                        if e.get("event_type") == "skip":
+        
+                            s_skipped += 1
+        
+                            
+        
+                        if e.get("play_ratio", 0) > 0.25:
+        
+                            s_played_025 += 1
+        
+                        
+        
+                        # Infer platform from events if session doesn't have it
+        
+                        if current_platform == "unknown" and e.get("platform", "unknown") != "unknown":
+        
+                            current_platform = e.get("platform")
+        
+    
+        
+                    session["platform"] = current_platform
+        
+                    session["total_play_time"] = round(s_play_time, 2)
+        
+                    session["total_foreground_playtime"] = round(s_fg_time, 2) if has_s_fg else "unknown"
+        
+                    session["total_background_playtime"] = round(s_bg_time, 2) if has_s_bg else "unknown"
+        
+                    session["total_songs_skipped"] = s_skipped
+        
+                    session["total_songs_played"] = s_played
+        
+                    session["total_songs_played_ratio_over_025"] = s_played_025
+        
+                    
+        
+                    # Update global
+        
+                    global_summary["total_sessions"] += 1
+        
+                    global_summary["total_play_time"] += s_play_time
+        
+                    if has_s_fg: global_summary["total_foreground_playtime"] += s_fg_time
+        
+                    if has_s_bg: global_summary["total_background_playtime"] += s_bg_time
+        
+                    
+        
+                    global_summary["total_songs_played"] += s_played
+        
+                    global_summary["total_songs_played_ratio_over_025"] += s_played_025
+        
+                    global_summary["total_skipped"] += s_skipped
+        
+                    
+        
+                    p_count = global_summary["platform_usage"].get(current_platform, 0)
+        
+                    global_summary["platform_usage"][current_platform] = p_count + 1
+        
+    
+        
+                # Round globals and handle "unknown"
+        
+                global_summary["total_play_time"] = round(global_summary["total_play_time"], 2)
+        
+                if not has_global_fg: global_summary["total_foreground_playtime"] = "unknown"
+        
+                else: global_summary["total_foreground_playtime"] = round(global_summary["total_foreground_playtime"], 2)
+        
+                
+        
+                if not has_global_bg: global_summary["total_background_playtime"] = "unknown"
+        
+                else: global_summary["total_background_playtime"] = round(global_summary["total_background_playtime"], 2)
+        
+                
+        
+                # Apply to data
+        
+                data["total_summary"] = global_summary
+        
+                data["total_play_time"] = global_summary["total_play_time"] # Keep legacy field in sync
+        
+    
+        
+                # Ensure all numeric fields in the saved data are rounded
+        
+                if "sessions" in data:
+        
+                    for s in data["sessions"]:
+        
+                        s["start_time"] = round(s["start_time"], 2)
+        
+                        s["end_time"] = round(s["end_time"], 2)
+        
+                        for e in s["events"]:
+        
+                            if 'duration_played' in e: e['duration_played'] = round(e['duration_played'], 2)
+        
+                            if 'timestamp' in e: e['timestamp'] = round(e['timestamp'], 2)
+        
+                            if 'total_length' in e: e['total_length'] = round(e['total_length'], 2)
+        
+                            if 'play_ratio' in e: e['play_ratio'] = round(e['play_ratio'], 2)
+        
+                            
+        
+                            # Round foreground/background only if they are numbers
+        
+                            for field in ['foreground_duration', 'background_duration']:
+        
+                                if field in e and isinstance(e[field], (int, float)):
+        
+                                    e[field] = round(float(e[field]), 2)
+        
+                                elif field not in e:
+        
+                                    e[field] = "unknown"
+        
+    
+        
+                with open(path, "w") as f:
+        
+                    json.dump(data, f, indent=4)
+        
+            
+        
+            self._stats_buffer.clear()
 
     def get_play_counts(self, username: str) -> Dict[str, int]:
         path = self._get_user_stats_path(username)
@@ -431,7 +703,7 @@ class UserService:
                 return True
         return False
 
-    def record_upload(self, username: str, filename: str, title: str = None):
+    def record_upload(self, username: str, filename: str, title: str = None, source: str = "file", original_filename: str = None, youtube_url: str = None):
         path = os.path.join(settings.USERS_DIR, "uploads.json")
         uploads = {}
         if os.path.exists(path):
@@ -447,7 +719,10 @@ class UserService:
         uploads[filename] = {
             "uploader": username,
             "timestamp": time.time(),
-            "title": title
+            "title": title,
+            "source": source,
+            "original_filename": original_filename if original_filename else filename,
+            "youtube_url": youtube_url
         }
         
         with open(path, "w") as f:
