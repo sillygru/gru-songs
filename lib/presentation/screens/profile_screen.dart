@@ -213,6 +213,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
+                      _buildStatColumn('Favorites', userData.favorites.length.toString()),
                       _buildStatColumn('Playlists', userData.playlists.length.toString()),
                     ],
                   ),

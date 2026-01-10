@@ -10,20 +10,22 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **Frontend:** Flutter (Material 3)
 - **State Management:** `flutter_riverpod` (Riverpod 3.x)
 - **Data Modeling:** `equatable`, `uuid`
-- **Audio Engine:** `just_audio`
+- **Audio Engine:** `just_audio`, `rxdart` (for stream combining)
 - **Background Playback:** `just_audio_background`
 - **Audio Session:** `audio_session` (configured for music)
+- **UI Components:** `audio_video_progress_bar`, `cached_network_image`
 - **Networking:** `http` with custom `HttpOverrides` for TLS/SSL handshake stability.
 - **Backend:** FastAPI (Python 3.10+) utilizing lifespan handlers for robust startup/shutdown logic.
 
 ## 🌐 Networking & API
 - **Base URL:** `https://[REDACTED]/music`
-- **Endpoints:**
+  - **Endpoints:**
   - **Music:**
     - `GET /list-songs` (includes `play_count` if username provided)
     - `GET /stream/{filename}`
     - `GET /cover/{filename}`
-    - `GET /lyrics/{filename}`
+    - `GET /lyrics/{filename}` (.lrc files)
+    - `GET /lyrics-embedded/{filename}` (metadata-embedded)
     - `POST /music/upload` (Upload local audio files)
     - `POST /music/yt-dlp` (Download audio from YouTube)
   - **Auth:**
@@ -32,9 +34,10 @@ A high-performance music streaming app built with Flutter, connecting to a priva
     - `POST /auth/update-password`
     - `POST /auth/update-username`
   - **User Data:**
-    - `GET/POST /user/favorites`
-    - `GET/POST /user/playlists`
-    - `GET/POST/DELETE /user/suggest-less`
+    - `GET/POST /user/favorites`, `DELETE /user/favorites/{filename}`
+    - `GET/POST /user/playlists`, `DELETE /user/playlists/{playlist_id}`
+    - `POST /user/playlists/{playlist_id}/songs`, `DELETE /user/playlists/{playlist_id}/songs/{filename}`
+    - `GET/POST /user/suggest-less`, `DELETE /user/suggest-less/{filename}`
     - `POST /stats/track`
 
 ### ⚠️ Critical Handshake Fix
@@ -72,11 +75,11 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 ### Frontend (`lib/`)
 - `models/`: Data structures (`song.dart`, `playlist.dart`).
 - `data/repositories/`: Data access abstraction.
-- `providers/`: Riverpod providers.
-- `services/`: Core logic (`auth_service.dart`, `stats_service.dart`).
+- `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`).
+- `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `auth_service.dart`, `stats_service.dart`).
 - `presentation/`:
-  - `screens/`: `AuthScreen`, `HomeScreen`, `SettingsScreen`, `PlaylistsScreen`.
-  - `widgets/`: `NowPlayingBar`.
+  - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`.
+  - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`.
 - `main.dart`: Entry point.
 
 ### Backend (`server/`)
@@ -86,7 +89,6 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 - `services.py`: Music metadata extraction.
 - `settings.py`: Configuration.
 - `users/`: JSON storage for user data.
-
 ## 📦 Build Commands
 
 ### Android
