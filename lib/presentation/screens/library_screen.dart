@@ -43,18 +43,35 @@ class LibraryScreen extends ConsumerWidget {
               ),
             ),
           ),
-          if (userData.playlists.isEmpty)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text('No playlists yet.'),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final playlist = userData.playlists[index];
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                  // Favorites is always the first item
+                  if (index == 0) {
+                    return ListTile(
+                      leading: Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Icon(Icons.favorite, color: Colors.red, size: 30),
+                      ),
+                      title: const Text('Favorites'),
+                      subtitle: Text('${userData.favorites.length} songs'),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PlaylistDetailScreen(playlistId: '__favorites__'),
+                          ),
+                        );
+                      },
+                    );
+                  }
+
+                  final playlist = userData.playlists[index - 1];
                   Widget leading = const Icon(Icons.library_music, size: 40);
                   if (playlist.songs.isNotEmpty && songsAsync.hasValue) {
                     final firstSongFilename = playlist.songs.first.filename;
@@ -90,7 +107,7 @@ class LibraryScreen extends ConsumerWidget {
                     },
                   );
                 },
-                childCount: userData.playlists.length,
+                childCount: userData.playlists.length + 1,
               ),
             ),
           SliverToBoxAdapter(

@@ -33,42 +33,44 @@ class UserDataState {
 }
 
 class UserDataNotifier extends Notifier<UserDataState> {
-  late final UserDataService _service;
   String? _username;
 
   @override
   UserDataState build() {
-    // Listen to auth changes
     final authState = ref.watch(authProvider);
-    _username = authState.username;
+    final newUsername = authState.username;
     
-    return UserDataState(isLoading: true);
-  }
-  
-  void setService(UserDataService service) {
-    _service = service;
-    if (_username != null) {
-      refresh();
+    // If username changed and is now logged in, trigger refresh
+    if (newUsername != null && newUsername != _username) {
+      _username = newUsername;
+      Future.microtask(() => refresh());
+    } else if (newUsername == null) {
+      _username = null;
+      return UserDataState();
     }
+    
+    _username = newUsername;
+    return UserDataState(isLoading: true);
   }
 
   Future<void> refresh() async {
     if (_username == null) return;
     
+    final service = ref.read(userDataServiceProvider);
     state = state.copyWith(isLoading: true);
     try {
-      final favs = await _service.getFavorites(_username!);
-      final sl = await _service.getSuggestLess(_username!);
-      final playlists = await _service.getPlaylists(_username!);
+      final favs = await service.getFavorites(_username!);
+      final sl = await service.getSuggestLess(_username!);
+      final playlists = await service.getPlaylists(_username!);
       state = state.copyWith(favorites: favs, suggestLess: sl, playlists: playlists, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false);
-      // Handle error appropriately
     }
   }
 
   Future<void> toggleSuggestLess(String songFilename) async {
     if (_username == null) return;
+    final service = ref.read(userDataServiceProvider);
 
     final isSL = state.suggestLess.contains(songFilename);
     final newSL = List<String>.from(state.suggestLess);
@@ -82,9 +84,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     try {
       if (isSL) {
-        await _service.removeSuggestLess(_username!, songFilename);
+        await service.removeSuggestLess(_username!, songFilename);
       } else {
-        await _service.addSuggestLess(_username!, songFilename);
+        await service.addSuggestLess(_username!, songFilename);
       }
     } catch (e) {
       state = state.copyWith(suggestLess: state.suggestLess);
@@ -93,6 +95,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> toggleFavorite(String songFilename) async {
     if (_username == null) return;
+    final service = ref.read(userDataServiceProvider);
     
     final isFav = state.favorites.contains(songFilename);
     final isSL = state.suggestLess.contains(songFilename);
@@ -104,7 +107,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
       newFavs.remove(songFilename);
     } else {
       newFavs.add(songFilename);
-      // Remove from suggest less if added to favorites
       if (isSL) {
         newSL.remove(songFilename);
       }
@@ -114,24 +116,24 @@ class UserDataNotifier extends Notifier<UserDataState> {
     
     try {
       if (isFav) {
-        await _service.removeFavorite(_username!, songFilename);
+        await service.removeFavorite(_username!, songFilename);
       } else {
         final statsService = ref.read(statsServiceProvider);
-        await _service.addFavorite(_username!, songFilename, statsService.sessionId);
+        await service.addFavorite(_username!, songFilename, statsService.sessionId);
         if (isSL) {
-          await _service.removeSuggestLess(_username!, songFilename);
+          await service.removeSuggestLess(_username!, songFilename);
         }
       }
     } catch (e) {
-      // Revert on error
       state = state.copyWith(favorites: state.favorites, suggestLess: state.suggestLess);
     }
   }
 
   Future<Playlist?> createPlaylist(String name) async {
     if (_username == null) return null;
+    final service = ref.read(userDataServiceProvider);
     try {
-      final playlist = await _service.createPlaylist(_username!, name);
+      final playlist = await service.createPlaylist(_username!, name);
       state = state.copyWith(playlists: [...state.playlists, playlist]);
       return playlist;
     } catch (e) {
@@ -141,12 +143,13 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> deletePlaylist(String id) async {
     if (_username == null) return;
+    final service = ref.read(userDataServiceProvider);
     
     final oldPlaylists = state.playlists;
     state = state.copyWith(playlists: state.playlists.where((p) => p.id != id).toList());
     
     try {
-      await _service.deletePlaylist(_username!, id);
+      await service.deletePlaylist(_username!, id);
     } catch (e) {
       state = state.copyWith(playlists: oldPlaylists);
     }
@@ -154,15 +157,15 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> addSongToPlaylist(String playlistId, String songFilename) async {
     if (_username == null) return;
-    
-    // Optimistic? No, let's just wait, simpler for nested lists.
-    await _service.addSongToPlaylist(_username!, playlistId, songFilename);
-    await refresh(); // Refresh to get updated list
+    final service = ref.read(userDataServiceProvider);
+    await service.addSongToPlaylist(_username!, playlistId, songFilename);
+    await refresh();
   }
   
   Future<void> removeSongFromPlaylist(String playlistId, String songFilename) async {
     if (_username == null) return;
-    await _service.removeSongFromPlaylist(_username!, playlistId, songFilename);
+    final service = ref.read(userDataServiceProvider);
+    await service.removeSongFromPlaylist(_username!, playlistId, songFilename);
     await refresh();
   }
 }

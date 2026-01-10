@@ -122,6 +122,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('Gru Songs'),
         actions: [
+          songsAsyncValue.when(
+            data: (songs) => IconButton(
+              icon: const Icon(Icons.shuffle),
+              onPressed: () {
+                if (songs.isNotEmpty) {
+                  audioManager.shuffleAndPlay(songs);
+                }
+              },
+              tooltip: 'Shuffle All',
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
@@ -174,31 +187,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           return CustomScrollView(
             slivers: [
-              if (userData.playlists.isNotEmpty) ...[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      'Your Playlists',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Your Playlists',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 120,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: userData.playlists.length,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemBuilder: (context, index) {
-                        final playlist = userData.playlists[index];
+              ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 120,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: userData.playlists.length + 1,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
                         return GestureDetector(
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
+                                builder: (_) => const PlaylistDetailScreen(playlistId: '__favorites__'),
                               ),
                             );
                           },
@@ -211,28 +223,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   width: 80,
                                   height: 80,
                                   decoration: BoxDecoration(
-                                    color: Colors.deepPurple.shade900,
+                                    color: Colors.red.shade900,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Icon(Icons.playlist_play, size: 40),
+                                  child: const Icon(Icons.favorite, size: 40),
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  playlist.name,
+                                const Text(
+                                  'Favorites',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(fontSize: 12),
+                                  style: TextStyle(fontSize: 12),
                                 ),
                               ],
                             ),
                           ),
                         );
-                      },
-                    ),
+                      }
+                      final playlist = userData.playlists[index - 1];
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 100,
+                          margin: const EdgeInsets.only(right: 16),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple.shade900,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.playlist_play, size: 40),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                playlist.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ],
+              ),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),

@@ -38,14 +38,6 @@ class GruSongsApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     
-    // Inject service into notifier
-    if (authState.isAuthenticated) {
-      // Defer to next frame to avoid build issues
-      Future.microtask(() {
-         ref.read(userDataProvider.notifier).setService(ref.read(userDataServiceProvider));
-      });
-    }
-    
     return MaterialApp(
       title: 'Gru Songs',
       theme: ThemeData(

@@ -57,12 +57,34 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
         onPressed: _showCreateDialog,
         child: const Icon(Icons.add),
       ),
-      body: userData.playlists.isEmpty
-          ? const Center(child: Text("No playlists yet"))
-          : ListView.builder(
-              itemCount: userData.playlists.length,
+      body: ListView.builder(
+              itemCount: userData.playlists.length + 1,
               itemBuilder: (context, index) {
-                final playlist = userData.playlists[index];
+                if (index == 0) {
+                  return ListTile(
+                    leading: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(Icons.favorite, color: Colors.red, size: 30),
+                    ),
+                    title: const Text('Favorites'),
+                    subtitle: Text('${userData.favorites.length} songs'),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PlaylistDetailScreen(playlistId: '__favorites__'),
+                        ),
+                      );
+                    },
+                  );
+                }
+
+                final playlist = userData.playlists[index - 1];
                 
                 Widget leading = const Icon(Icons.library_music, size: 40);
                 if (playlist.songs.isNotEmpty && songsAsync.hasValue) {

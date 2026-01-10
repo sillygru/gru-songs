@@ -19,7 +19,16 @@ class PlaylistDetailScreen extends ConsumerWidget {
     final userData = ref.watch(userDataProvider);
     final apiService = ref.watch(apiServiceProvider);
     
-    final playlist = userData.playlists.firstWhere((p) => p.id == playlistId, orElse: () => const Playlist(id: '', name: 'Not Found', songs: []));
+    Playlist playlist;
+    if (playlistId == '__favorites__') {
+      playlist = Playlist(
+        id: '__favorites__',
+        name: 'Favorites',
+        songs: userData.favorites.map((f) => PlaylistSong(filename: f, addedAt: DateTime.now())).toList(),
+      );
+    } else {
+      playlist = userData.playlists.firstWhere((p) => p.id == playlistId, orElse: () => const Playlist(id: '', name: 'Not Found', songs: []));
+    }
     
     if (playlist.id.isEmpty) {
         return Scaffold(
@@ -29,7 +38,32 @@ class PlaylistDetailScreen extends ConsumerWidget {
     }
     
     return Scaffold(
-      appBar: AppBar(title: Text(playlist.name)),
+      appBar: AppBar(
+        title: Text(playlist.name),
+        actions: [
+          songsAsync.when(
+            data: (allSongs) {
+              final playlistSongs = <Song>[];
+              for (final ps in playlist.songs) {
+                final songIndex = allSongs.indexWhere((s) => s.filename == ps.filename);
+                if (songIndex != -1) {
+                  playlistSongs.add(allSongs[songIndex]);
+                }
+              }
+              if (playlistSongs.isEmpty) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.shuffle),
+                onPressed: () {
+                  audioManager.shuffleAndPlay(playlistSongs);
+                },
+                tooltip: 'Shuffle Playlist',
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           songsAsync.when(
@@ -83,7 +117,9 @@ class PlaylistDetailScreen extends ConsumerWidget {
                               ),
                             ),
                             subtitle: Text(
-                              "${song.artist} • Added $addedDate",
+                              playlistId == '__favorites__' 
+                                ? song.artist 
+                                : "${song.artist} • Added $addedDate",
                               style: TextStyle(color: isSuggestLess ? Colors.grey : null),
                             ),
                             trailing: Row(

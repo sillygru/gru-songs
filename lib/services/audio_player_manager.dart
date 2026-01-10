@@ -166,6 +166,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
+  Future<void> shuffleAndPlay(List<Song> songs) async {
+    if (songs.isEmpty) return;
+    await init(songs);
+    final randomIndex = Random().nextInt(songs.length);
+    await _player.seek(Duration.zero, index: randomIndex);
+    await _player.setShuffleModeEnabled(true);
+    await _player.shuffle();
+    shuffleNotifier.value = true;
+    await _player.play();
+  }
+
   Future<void> toggleShuffle() async {
     final enable = !_player.shuffleModeEnabled;
     await _player.setShuffleModeEnabled(enable);
