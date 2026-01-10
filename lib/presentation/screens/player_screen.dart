@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -30,8 +31,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   List<LyricLine>? _lyrics;
   List<GlobalKey>? _lyricKeys;
   bool _loadingLyrics = false;
+  bool _autoScrollEnabled = true;
   String? _lastSongId;
   final ScrollController _lyricsScrollController = ScrollController();
+  final GlobalKey _lyricsContainerKey = GlobalKey();
   int _currentLyricIndex = -1;
 
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
@@ -51,6 +54,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             _lyricKeys = null;
             _showLyrics = false;
             _loadingLyrics = false;
+            _autoScrollEnabled = true;
             _currentLyricIndex = -1;
           });
         }
@@ -73,11 +77,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             setState(() {
               _currentLyricIndex = newIndex;
             });
-            _scrollToCurrentLyric();
+            if (_autoScrollEnabled) {
+              _scrollToCurrentLyric();
+            }
           }
         }
       }
     });
+  }
+
+  void _checkAndReenableAutoScroll() {
+    if (_currentLyricIndex == -1 || _lyricKeys == null || !_showLyrics) return;
+    
+    final key = _lyricKeys![_currentLyricIndex];
+    final context = key.currentContext;
+    final containerContext = _lyricsContainerKey.currentContext;
+    
+    if (context != null && containerContext != null) {
+      final RenderBox box = context.findRenderObject() as RenderBox;
+      final RenderBox containerBox = containerContext.findRenderObject() as RenderBox;
+      
+      final lyricOffset = box.localToGlobal(Offset.zero, ancestor: containerBox).dy;
+      final viewportHeight = containerBox.size.height;
+      final lyricCenter = lyricOffset + box.size.height / 2;
+      final viewportCenter = viewportHeight / 2;
+      
+      // If current lyric center is within 150px of viewport center, re-enable sync
+      if ((lyricCenter - viewportCenter).abs() < 150) {
+        if (mounted && !_autoScrollEnabled) {
+          setState(() => _autoScrollEnabled = true);
+          _scrollToCurrentLyric();
+        }
+      }
+    }
   }
 
   void _scrollToCurrentLyric() {
@@ -110,6 +142,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     setState(() {
       _showLyrics = true;
+      _autoScrollEnabled = true;
       if (_lyrics == null) _loadingLyrics = true;
     });
 
@@ -195,6 +228,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                 ),
                               )
                             : Container(
+                                key: _lyricsContainerKey,
                                 decoration: BoxDecoration(
                                   color: Colors.black26,
                                   borderRadius: BorderRadius.circular(12),
@@ -204,31 +238,48 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                     ? const Center(child: CircularProgressIndicator())
                                     : (_lyrics == null || _lyrics!.isEmpty)
                                         ? const Center(child: Text('No lyrics available'))
-                                        : SingleChildScrollView(
-                                            controller: _lyricsScrollController,
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: List.generate(_lyrics!.length, (index) {
-                                                final isCurrent = index == _currentLyricIndex;
-                                                final hasTime = _lyrics![index].time != Duration.zero;
-                                                return InkWell(
-                                                  key: _lyricKeys?[index],
-                                                  onTap: hasTime ? () => player.seek(_lyrics![index].time) : null,
-                                                  child: Container(
-                                                    width: double.infinity,
-                                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                                    child: Text(
-                                                      _lyrics![index].text,
-                                                      style: TextStyle(
-                                                        fontSize: isCurrent ? 22 : 18,
-                                                        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                                        color: isCurrent ? Colors.white : Colors.white54,
+                                        : NotificationListener<ScrollNotification>(
+                                            onNotification: (notification) {
+                                              if (notification is UserScrollNotification) {
+                                                if (notification.direction != ScrollDirection.idle) {
+                                                  if (_autoScrollEnabled) {
+                                                    setState(() => _autoScrollEnabled = false);
+                                                  }
+                                                }
+                                              } else if (notification is ScrollEndNotification) {
+                                                _checkAndReenableAutoScroll();
+                                              }
+                                              return false;
+                                            },
+                                            child: SingleChildScrollView(
+                                              controller: _lyricsScrollController,
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: List.generate(_lyrics!.length, (index) {
+                                                  final isCurrent = index == _currentLyricIndex;
+                                                  final hasTime = _lyrics![index].time != Duration.zero;
+                                                  return InkWell(
+                                                    key: _lyricKeys?[index],
+                                                    onTap: hasTime ? () {
+                                                      player.seek(_lyrics![index].time);
+                                                      setState(() => _autoScrollEnabled = true);
+                                                    } : null,
+                                                    child: Container(
+                                                      width: double.infinity,
+                                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                                      child: Text(
+                                                        _lyrics![index].text,
+                                                        style: TextStyle(
+                                                          fontSize: isCurrent ? 22 : 18,
+                                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                                          color: isCurrent ? Colors.white : Colors.white54,
+                                                        ),
+                                                        textAlign: TextAlign.left,
                                                       ),
-                                                      textAlign: TextAlign.left,
                                                     ),
-                                                  ),
-                                                );
-                                              }),
+                                                  );
+                                                }),
+                                              ),
                                             ),
                                           ),
                               ),
