@@ -66,7 +66,8 @@ class MusicService:
                         "filename": file_name,
                         "url": f"/stream/{file_name}",
                         "lyrics_url": lyrics_url,
-                        "cover_url": f"/cover/{file_name}"
+                        "cover_url": f"/cover/{file_name}",
+                        "duration": self.get_song_duration(file_name)
                     })
         
         # Deduplicate if same filename exists in multiple dirs (prefer original MUSIC_DIR)

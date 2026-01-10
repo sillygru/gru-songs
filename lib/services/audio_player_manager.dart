@@ -129,6 +129,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             album: song.album,
             title: song.title,
             artist: song.artist,
+            duration: song.duration,
             artUri: song.coverUrl != null 
                 ? Uri.parse(_apiService.getFullUrl(song.coverUrl!)) 
                 : null,

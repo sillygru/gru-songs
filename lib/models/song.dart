@@ -9,6 +9,7 @@ class Song extends Equatable {
   final String? lyricsUrl;
   final String? coverUrl;
   final int playCount;
+  final Duration? duration;
 
   const Song({
     required this.title,
@@ -19,6 +20,7 @@ class Song extends Equatable {
     this.lyricsUrl,
     this.coverUrl,
     this.playCount = 0,
+    this.duration,
   });
 
   factory Song.fromJson(Map<String, dynamic> json) {
@@ -31,11 +33,14 @@ class Song extends Equatable {
       lyricsUrl: json['lyrics_url'],
       coverUrl: json['cover_url'],
       playCount: json['play_count'] ?? 0,
+      duration: (json['duration'] != null && json['duration'] > 0)
+          ? Duration(milliseconds: (json['duration'] * 1000).round())
+          : null,
     );
   }
 
   @override
-  List<Object?> get props => [title, artist, album, filename, url, lyricsUrl, coverUrl, playCount];
+  List<Object?> get props => [title, artist, album, filename, url, lyricsUrl, coverUrl, playCount, duration];
 }
 
 class LyricLine extends Equatable {
