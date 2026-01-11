@@ -40,10 +40,25 @@ class GruSongsApp extends ConsumerWidget {
     
     return MaterialApp(
       title: 'Gru Songs',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
-        primarySwatch: Colors.deepPurple,
         useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
+          background: const Color(0xFF121212), // True dark mode background
+          surface: const Color(0xFF1E1E1E),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF121212),
+          scrolledUnderElevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF1E1E1E),
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       ),
       home: authState.isAuthenticated ? const MainScreen() : const AuthScreen(),
     );

@@ -178,7 +178,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 20,
+            spreadRadius: 5,
+          ),
+        ],
       ),
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: StreamBuilder<SequenceState?>(
@@ -193,7 +200,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               Container(
                 width: 40,
                 height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
+                margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
               ),
               if (metadata != null) ...[
@@ -218,12 +225,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             ? Center(
                                 child: AspectRatio(
                                   aspectRatio: 1,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: CachedNetworkImage(
-                                      imageUrl: metadata.artUri.toString(),
-                                      fit: BoxFit.cover,
-                                      errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 100),
+                                  child: Hero(
+                                    tag: 'now_playing_art_${metadata.id}',
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.4),
+                                            blurRadius: 16,
+                                            offset: const Offset(0, 8),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(16),
+                                        child: CachedNetworkImage(
+                                          imageUrl: metadata.artUri.toString(),
+                                          fit: BoxFit.cover,
+                                          errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 100),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -231,8 +253,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             : Container(
                                 key: _lyricsContainerKey,
                                 decoration: BoxDecoration(
-                                  color: Colors.black26,
-                                  borderRadius: BorderRadius.circular(12),
+                                  color: Colors.black.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 child: _loadingLyrics

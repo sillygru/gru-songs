@@ -38,45 +38,74 @@ class NowPlayingBar extends ConsumerWidget {
             );
           },
           child: Container(
-            height: (isDesktop || isIPad) ? 100 : 70,
-            color: Colors.grey[900],
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            height: (isDesktop || isIPad) ? 100 : 74,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: CachedNetworkImage(
-                        imageUrl: metadata.artUri.toString(),
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                        errorWidget: (context, url, error) => const Icon(Icons.music_note),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            metadata.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                StreamBuilder<Duration>(
+                  stream: player.positionStream,
+                  builder: (context, snapshot) {
+                    final position = snapshot.data ?? Duration.zero;
+                    final duration = player.duration ?? Duration.zero;
+                    final progress = duration.inMilliseconds > 0 
+                      ? position.inMilliseconds / duration.inMilliseconds 
+                      : 0.0;
+                    return LinearProgressIndicator(
+                      value: progress.clamp(0.0, 1.0),
+                      minHeight: 2,
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
+                    );
+                  },
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Hero(
+                          tag: 'now_playing_art_${metadata.id}',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: CachedNetworkImage(
+                              imageUrl: metadata.artUri.toString(),
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                              errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                            ),
                           ),
-                          Text(
-                            metadata.artist ?? 'Unknown Artist',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                metadata.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              Text(
+                                metadata.artist ?? 'Unknown Artist',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
                     const SizedBox(width: 8),
                     if (isDesktop || isIPad) ...[
                       const Icon(Icons.volume_down, size: 20),
@@ -155,6 +184,8 @@ class NowPlayingBar extends ConsumerWidget {
                     ),
                   ],
                 ),
+              ),
+            ),
               ],
             ),
           ),
