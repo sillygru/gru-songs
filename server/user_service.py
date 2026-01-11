@@ -1,71 +1,84 @@
-import json
 import os
-import uuid
 import time
-import math
-from typing import Dict, List
-from passlib.context import CryptContext
-from settings import settings
-from models import StatsEntry, Playlist
-from services import music_service
+import uuid
+import json
+import bcrypt
+from typing import Dict, List, Optional, Any
+from sqlmodel import Session, select, func, delete
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from settings import settings
+from services import music_service
+from database_manager import db_manager
+from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, Playlist, PlaylistSong, PlaySession, PlayEvent
+from models import StatsEntry
 
 class UserService:
     def __init__(self):
-        if not os.path.exists(settings.USERS_DIR):
-            os.makedirs(settings.USERS_DIR)
-        
-        # Buffer: {username: [stats_dicts]}
-        self._stats_buffer: Dict[str, List[dict]] = {}
+        # Ensure global DBs exist
+        db_manager.init_global_dbs()
 
-    def _get_user_path(self, username: str) -> str:
-        return os.path.join(settings.USERS_DIR, f"{username}.json")
+    def _get_final_stats_path(self, username: str):
+        return os.path.join(settings.USERS_DIR, f"{username}_final_stats.json")
 
-    def _get_user_stats_path(self, username: str) -> str:
-        return os.path.join(settings.USERS_DIR, f"{username}_stats.json")
+    def _hash_password(self, password: str) -> str:
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
 
-    def _get_user_playlists_path(self, username: str) -> str:
-        return os.path.join(settings.USERS_DIR, f"{username}_playlists.json")
+    def _verify_password(self, password: str, hashed: str) -> bool:
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+        except Exception:
+            return False
 
-    def get_user(self, username: str):
-        path = self._get_user_path(username)
+    # --- User Management ---
+
+    def get_user(self, username: str) -> Optional[dict]:
+        path = os.path.join(settings.USERS_DIR, f"{username}_data.db")
         if not os.path.exists(path):
             return None
-        with open(path, "r") as f:
-            return json.load(f)
-            
-    def _save_user(self, username: str, data: dict):
-        # We no longer store playlists in the user profile, but we keep the key for compatibility if needed
-        # We will migrate them to separate file on load/save if found
-        if "playlists" in data:
-            # If we are saving a user that still has playlists in its dict, 
-            # and we haven't migrated yet, it's safer to just let it be or migrate now.
-            # But the primary storage is now _playlists.json
-            pass
-        with open(self._get_user_path(username), "w") as f:
-            json.dump(data, f, indent=4)
 
+        try:
+            with Session(db_manager.get_user_data_engine(username)) as session:
+                user = session.exec(select(UserData).where(UserData.username == username)).first()
+                if not user: return None
+                
+                favorites = session.exec(select(Favorite)).all()
+                suggest_less = session.exec(select(SuggestLess)).all()
+                
+                return {
+                    "username": user.username,
+                    "password": user.password_hash,
+                    "created_at": str(user.created_at),
+                    "favorites": [f.filename for f in favorites],
+                    "suggest_less": [s.filename for s in suggest_less]
+                }
+        except Exception:
+            return None
+            
     def create_user(self, username: str, password: str):
-        if self.get_user(username):
-            return False, "User already exists"
-        
-        hashed_password = pwd_context.hash(password)
-        user_data = {
-            "username": username,
-            "password": hashed_password,
-            "created_at": str(os.path.getctime(settings.USERS_DIR)),
-            "favorites": [],
-            "suggest_less": []
-        }
-        
-        self._save_user(username, user_data)
+        with Session(db_manager.get_global_users_engine()) as session:
+            existing = session.exec(select(GlobalUser).where(GlobalUser.username == username)).first()
+            if existing:
+                return False, "User already exists"
             
-        with open(self._get_user_stats_path(username), "w") as f:
-            json.dump({"sessions": [], "total_play_time": 0}, f, indent=4)
+            # 1. Add to Global DB
+            new_global = GlobalUser(username=username, created_at=time.time())
+            session.add(new_global)
+            session.commit()
 
-        with open(self._get_user_playlists_path(username), "w") as f:
-            json.dump([], f, indent=4)
+        # 2. Init [username]_data.db
+        db_manager.init_user_dbs(username) 
+        
+        hashed_password = self._hash_password(password)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            ud = UserData(username=username, password_hash=hashed_password, created_at=time.time())
+            session.add(ud)
+            session.commit()
+
+        # 3. Create empty final stats JSON
+        with open(self._get_final_stats_path(username), "w") as f:
+            json.dump({"total_play_time": 0, "total_sessions": 0}, f, indent=4)
             
         return True, "User created"
 
@@ -73,62 +86,68 @@ class UserService:
         user = self.get_user(username)
         if not user:
             return False
-        if not pwd_context.verify(password, user["password"]):
-            return False
-        return True
+        return self._verify_password(password, user["password"])
 
     def update_password(self, username: str, old_password: str, new_password: str):
         user = self.get_user(username)
         if not user:
             return False, "User not found"
         
-        if not pwd_context.verify(old_password, user["password"]):
+        if not self._verify_password(old_password, user["password"]):
             return False, "Invalid old password"
         
-        user["password"] = pwd_context.hash(new_password)
-        self._save_user(username, user)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            db_user = session.exec(select(UserData).where(UserData.username == username)).first()
+            if db_user:
+                db_user.password_hash = self._hash_password(new_password)
+                session.add(db_user)
+                session.commit()
             
         return True, "Password updated"
 
     def update_username(self, current_username: str, new_username: str):
-        if self.get_user(new_username):
-            return False, "Username already taken"
-        
-        user = self.get_user(current_username)
-        if not user:
-            return False, "User not found"
-        
-        self.flush_stats()
-        
-        old_path = self._get_user_path(current_username)
-        new_path = self._get_user_path(new_username)
-        old_stats = self._get_user_stats_path(current_username)
-        new_stats = self._get_user_stats_path(new_username)
-        old_playlists = self._get_user_playlists_path(current_username)
-        new_playlists = self._get_user_playlists_path(new_username)
-        
-        user["username"] = new_username
-        
-        with open(new_path, "w") as f:
-            json.dump(user, f, indent=4)
+        # 1. Check Global DB
+        with Session(db_manager.get_global_users_engine()) as session:
+            if session.exec(select(GlobalUser).where(GlobalUser.username == new_username)).first():
+                return False, "Username already taken"
             
-        if os.path.exists(old_stats):
-            os.rename(old_stats, new_stats)
-        else:
-             with open(new_stats, "w") as f:
-                json.dump({"sessions": [], "total_play_time": 0}, f, indent=4)
+            # Get old global record
+            old_global = session.exec(select(GlobalUser).where(GlobalUser.username == current_username)).first()
+            if not old_global:
+                return False, "User not found"
+                
+            # Rename in Global DB
+            session.delete(old_global)
+            session.add(GlobalUser(username=new_username, created_at=old_global.created_at, stats_summary_json=old_global.stats_summary_json))
+            session.commit()
 
-        if os.path.exists(old_playlists):
-            os.rename(old_playlists, new_playlists)
-
-        os.remove(old_path)
+        # 2. Rename Files
+        files_to_rename = [
+            (f"{current_username}_data.db", f"{new_username}_data.db"),
+            (f"{current_username}_playlists.db", f"{new_username}_playlists.db"),
+            (f"{current_username}_stats.db", f"{new_username}_stats.db"),
+            (f"{current_username}_final_stats.json", f"{new_username}_final_stats.json")
+        ]
         
+        for old, new in files_to_rename:
+            old_p = os.path.join(settings.USERS_DIR, old)
+            new_p = os.path.join(settings.USERS_DIR, new)
+            if os.path.exists(old_p):
+                os.rename(old_p, new_p)
+
+        # 3. Update internal username field in [new_user]_data.db
+        with Session(db_manager.get_user_data_engine(new_username)) as session:
+            u_data = session.exec(select(UserData)).first() # Should be only one
+            if u_data:
+                u_data.username = new_username
+                session.add(u_data)
+                session.commit()
+
         return True, "Username updated"
 
     # --- Statistics ---
 
     def append_stats(self, username: str, stats: StatsEntry):
-        # Skip events with 0 duration unless it's a special marker (like favorite, but favorite is separate)
         if stats.duration_played <= 0 and stats.event_type != 'favorite':
             return
 
@@ -137,617 +156,221 @@ class UserService:
         if total_length > 0:
             ratio = stats.duration_played / total_length
             
-        entry_data = stats.dict()
-        entry_data['duration_played'] = round(stats.duration_played, 2)
-        entry_data['timestamp'] = round(stats.timestamp, 2)
-        entry_data['total_length'] = round(total_length, 2)
-        entry_data['play_ratio'] = round(ratio, 2)
-        
-        # Round new fields if they are numbers, otherwise keep as "unknown"
-        for field in ['foreground_duration', 'background_duration']:
-            val = entry_data.get(field)
-            if isinstance(val, (int, float)):
-                entry_data[field] = round(float(val), 2)
+        with Session(db_manager.get_user_stats_engine(username)) as session:
+            # Session Logic
+            db_session = session.exec(select(PlaySession).where(PlaySession.id == stats.session_id)).first()
+            if not db_session:
+                db_session = PlaySession(
+                    id=stats.session_id,
+                    start_time=stats.timestamp,
+                    end_time=stats.timestamp,
+                    platform=stats.platform or "unknown"
+                )
+                session.add(db_session)
             else:
-                entry_data[field] = "unknown"
-        
-        if username not in self._stats_buffer:
-            self._stats_buffer[username] = []
+                if stats.timestamp < db_session.start_time: db_session.start_time = stats.timestamp
+                if stats.timestamp > db_session.end_time: db_session.end_time = stats.timestamp
+                if db_session.platform == "unknown" and stats.platform and stats.platform != "unknown":
+                    db_session.platform = stats.platform
+                session.add(db_session)
             
-        self._stats_buffer[username].append(entry_data)
-        
-        def flush_stats(self):
-        
-            if not self._stats_buffer:
-        
-                return
-        
-    
-        
-            for username, events in self._stats_buffer.items():
-        
-                if not events:
-        
-                    continue
-        
-                    
-        
-                path = self._get_user_stats_path(username)
-        
-                data = {"sessions": [], "total_play_time": 0}
-        
-                
-        
-                if os.path.exists(path):
-        
-                    with open(path, "r") as f:
-        
-                        try:
-        
-                            data = json.load(f)
-        
-                        except:
-        
-                            pass 
-        
-    
-        
-                if "sessions" not in data:
-        
-                    data["sessions"] = []
-        
-                    
-        
-                # Process events into sessions
-        
-                for event in events:
-        
-                    session_id = event.get('session_id')
-        
-                    if not session_id:
-        
-                        continue # Should not happen
-        
-                    
-        
-                    # Find or create session
-        
-                    session = next((s for s in data["sessions"] if s["id"] == session_id), None)
-        
-                    if not session:
-        
-                        session = {
-        
-                            "id": session_id,
-        
-                            "start_time": event['timestamp'],
-        
-                            "end_time": event['timestamp'],
-        
-                            "platform": event.get("platform", "unknown"),
-        
-                            "events": []
-        
-                        }
-        
-                        data["sessions"].append(session)
-        
-                    
-        
-                    # Update session bounds
-        
-                    if event['timestamp'] < session['start_time']:
-        
-                        session['start_time'] = event['timestamp']
-        
-                    if event['timestamp'] > session['end_time']:
-        
-                        session['end_time'] = event['timestamp']
-        
-                    
-        
-                    # Update session platform if it was unknown and now we have one
-        
-                    if session.get("platform", "unknown") == "unknown" and event.get("platform", "unknown") != "unknown":
-        
-                        session["platform"] = event.get("platform")
-        
-                        
-        
-                    session["events"].append(event)
-        
-                    
-        
-                # Re-calculate summaries for ALL sessions (migrations + updates)
-        
-                global_summary = {
-        
-                    "total_sessions": 0,
-        
-                    "platform_usage": {},
-        
-                    "total_background_playtime": 0.0,
-        
-                    "total_foreground_playtime": 0.0,
-        
-                    "total_play_time": 0.0,
-        
-                    "total_songs_played": 0,
-        
-                    "total_songs_played_ratio_over_025": 0,
-        
-                    "total_skipped": 0
-        
-                }
-        
-                
-        
-                # Tracking if we have any valid numbers for global FG/BG
-        
-                has_global_fg = False
-        
-                has_global_bg = False
-        
-                
-        
-                for session in data["sessions"]:
-        
-                    s_play_time = 0.0
-        
-                    s_fg_time = 0.0
-        
-                    s_bg_time = 0.0
-        
-                    s_skipped = 0
-        
-                    s_played = 0
-        
-                    s_played_025 = 0
-        
-                    
-        
-                    has_s_fg = False
-        
-                    has_s_bg = False
-        
-                    
-        
-                    current_platform = session.get("platform", "unknown")
-        
-                    
-        
-                    for e in session["events"]:
-        
-                        if e.get("event_type") == "favorite":
-        
-                            continue
-        
-                            
-        
-                        dur = e.get("duration_played", 0.0)
-        
-                        fg = e.get("foreground_duration", "unknown")
-        
-                        bg = e.get("background_duration", "unknown")
-        
-                        
-        
-                        s_play_time += dur
-        
-                        
-        
-                        if isinstance(fg, (int, float)):
-        
-                            s_fg_time += fg
-        
-                            has_s_fg = True
-        
-                            has_global_fg = True
-        
-                        if isinstance(bg, (int, float)):
-        
-                            s_bg_time += bg
-        
-                            has_s_bg = True
-        
-                            has_global_bg = True
-        
-                        
-        
-                        s_played += 1
-        
-                        if e.get("event_type") == "skip":
-        
-                            s_skipped += 1
-        
-                            
-        
-                        if e.get("play_ratio", 0) > 0.25:
-        
-                            s_played_025 += 1
-        
-                        
-        
-                        # Infer platform from events if session doesn't have it
-        
-                        if current_platform == "unknown" and e.get("platform", "unknown") != "unknown":
-        
-                            current_platform = e.get("platform")
-        
-    
-        
-                    session["platform"] = current_platform
-        
-                    session["total_play_time"] = round(s_play_time, 2)
-        
-                    session["total_foreground_playtime"] = round(s_fg_time, 2) if has_s_fg else "unknown"
-        
-                    session["total_background_playtime"] = round(s_bg_time, 2) if has_s_bg else "unknown"
-        
-                    session["total_songs_skipped"] = s_skipped
-        
-                    session["total_songs_played"] = s_played
-        
-                    session["total_songs_played_ratio_over_025"] = s_played_025
-        
-                    
-        
-                    # Update global
-        
-                    global_summary["total_sessions"] += 1
-        
-                    global_summary["total_play_time"] += s_play_time
-        
-                    if has_s_fg: global_summary["total_foreground_playtime"] += s_fg_time
-        
-                    if has_s_bg: global_summary["total_background_playtime"] += s_bg_time
-        
-                    
-        
-                    global_summary["total_songs_played"] += s_played
-        
-                    global_summary["total_songs_played_ratio_over_025"] += s_played_025
-        
-                    global_summary["total_skipped"] += s_skipped
-        
-                    
-        
-                    p_count = global_summary["platform_usage"].get(current_platform, 0)
-        
-                    global_summary["platform_usage"][current_platform] = p_count + 1
-        
-    
-        
-                # Round globals and handle "unknown"
-        
-                global_summary["total_play_time"] = round(global_summary["total_play_time"], 2)
-        
-                if not has_global_fg: global_summary["total_foreground_playtime"] = "unknown"
-        
-                else: global_summary["total_foreground_playtime"] = round(global_summary["total_foreground_playtime"], 2)
-        
-                
-        
-                if not has_global_bg: global_summary["total_background_playtime"] = "unknown"
-        
-                else: global_summary["total_background_playtime"] = round(global_summary["total_background_playtime"], 2)
-        
-                
-        
-                # Apply to data
-        
-                data["total_summary"] = global_summary
-        
-                data["total_play_time"] = global_summary["total_play_time"] # Keep legacy field in sync
-        
-    
-        
-                # Ensure all numeric fields in the saved data are rounded
-        
-                if "sessions" in data:
-        
-                    for s in data["sessions"]:
-        
-                        s["start_time"] = round(s["start_time"], 2)
-        
-                        s["end_time"] = round(s["end_time"], 2)
-        
-                        for e in s["events"]:
-        
-                            if 'duration_played' in e: e['duration_played'] = round(e['duration_played'], 2)
-        
-                            if 'timestamp' in e: e['timestamp'] = round(e['timestamp'], 2)
-        
-                            if 'total_length' in e: e['total_length'] = round(e['total_length'], 2)
-        
-                            if 'play_ratio' in e: e['play_ratio'] = round(e['play_ratio'], 2)
-        
-                            
-        
-                            # Round foreground/background only if they are numbers
-        
-                            for field in ['foreground_duration', 'background_duration']:
-        
-                                if field in e and isinstance(e[field], (int, float)):
-        
-                                    e[field] = round(float(e[field]), 2)
-        
-                                elif field not in e:
-        
-                                    e[field] = "unknown"
-        
-    
-        
-                with open(path, "w") as f:
-        
-                    json.dump(data, f, indent=4)
-        
+            session.commit() # Ensure session ID is valid
             
+            # Event Logic
+            fg = stats.foreground_duration if isinstance(stats.foreground_duration, (int, float)) else None
+            bg = stats.background_duration if isinstance(stats.background_duration, (int, float)) else None
+
+            pe = PlayEvent(
+                session_id=stats.session_id,
+                song_filename=stats.song_filename,
+                event_type=stats.event_type,
+                timestamp=round(stats.timestamp, 2),
+                duration_played=round(stats.duration_played, 2),
+                total_length=round(total_length, 2),
+                play_ratio=round(ratio, 2),
+                foreground_duration=round(fg, 2) if fg is not None else None,
+                background_duration=round(bg, 2) if bg is not None else None
+            )
+            session.add(pe)
+            session.commit()
+            
+        # Update Final Stats JSON (Aggregated)
+        final_path = self._get_final_stats_path(username)
+        summary = {}
+        if os.path.exists(final_path):
+            try:
+                with open(final_path, "r") as f:
+                    summary = json.load(f)
+            except: pass
+            
+        # Increment simple counters
+        summary["total_play_time"] = summary.get("total_play_time", 0) + stats.duration_played
+        summary["total_play_time"] = round(summary["total_play_time"], 2)
         
-            self._stats_buffer.clear()
+        with open(final_path, "w") as f:
+            json.dump(summary, f, indent=4)
+
+    def flush_stats(self):
+        pass
 
     def get_play_counts(self, username: str) -> Dict[str, int]:
-        path = self._get_user_stats_path(username)
-        counts = {}
-        if not os.path.exists(path):
-            return counts
+        # Query [username]_stats.db
+        path = os.path.join(settings.USERS_DIR, f"{username}_stats.db")
+        if not os.path.exists(path): return {}
+
+        with Session(db_manager.get_user_stats_engine(username)) as session:
+            # FAST: Filter in SQL now that we have numeric columns
+            results = session.exec(
+                select(PlayEvent.song_filename, func.count(PlayEvent.id))
+                .where(PlayEvent.event_type != "favorite")
+                .where(PlayEvent.play_ratio > 0.25)
+                .group_by(PlayEvent.song_filename)
+            ).all()
             
-        with open(path, "r") as f:
-            try:
-                data = json.load(f)
-            except:
-                return counts
-                
-        for session in data.get("sessions", []):
-            for event in session.get("events", []):
-                if event.get("event_type") != "favorite":
-                    ratio = event.get("play_ratio", 0)
-                    if ratio > 0.25:
-                        song = event.get("song_filename")
-                        counts[song] = counts.get(song, 0) + 1
-        return counts
+            return {r[0]: r[1] for r in results}
             
     # --- Favorites ---
     
     def get_favorites(self, username: str):
-        user = self.get_user(username)
-        if not user:
-            return []
-        return user.get("favorites", [])
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            favs = session.exec(select(Favorite)).all()
+            return [f.filename for f in favs]
         
     def add_favorite(self, username: str, song_filename: str, session_id: str):
-        user = self.get_user(username)
-        if not user: return False
-        
-        # 1. Update user profile
-        favs = user.get("favorites", [])
-        if song_filename not in favs:
-            favs.append(song_filename)
-            user["favorites"] = favs
-            self._save_user(username, user)
-            
-        # 2. Log event
-        # Create a synthetic stats entry for the favorite event
-        entry = StatsEntry(
-            session_id=session_id,
-            song_filename=song_filename,
-            duration_played=0,
-            event_type='favorite',
-            timestamp=time.time()
-        )
-        self.append_stats(username, entry)
-            
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            if not session.exec(select(Favorite).where(Favorite.filename == song_filename)).first():
+                session.add(Favorite(filename=song_filename))
+                session.commit()
+                
+                # Log stats
+                self.append_stats(username, StatsEntry(
+                    session_id=session_id,
+                    song_filename=song_filename,
+                    duration_played=0,
+                    event_type='favorite',
+                    timestamp=time.time()
+                ))
         return True
 
     def remove_favorite(self, username: str, song_filename: str):
-        user = self.get_user(username)
-        if not user: return False
-        
-        # 1. Update user profile
-        favs = user.get("favorites", [])
-        if song_filename in favs:
-            favs.remove(song_filename)
-            user["favorites"] = favs
-            self._save_user(username, user)
-            
-        # 2. Remove from history (stats)
-        # We need to flush first to ensure everything is on disk
-        self.flush_stats()
-        
-        stats_path = self._get_user_stats_path(username)
-        if os.path.exists(stats_path):
-            with open(stats_path, "r") as f:
-                try:
-                    data = json.load(f)
-                except:
-                    return True # Corrupted, whatever
-
-            modified = False
-            if "sessions" in data:
-                for session in data["sessions"]:
-                    original_len = len(session["events"])
-                    # Remove favorite events for this song
-                    session["events"] = [
-                        e for e in session["events"] 
-                        if not (e["event_type"] == "favorite" and e["song_filename"] == song_filename)
-                    ]
-                    if len(session["events"]) != original_len:
-                        modified = True
-            
-            if modified:
-                with open(stats_path, "w") as f:
-                    json.dump(data, f, indent=4)
-
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            fav = session.exec(select(Favorite).where(Favorite.filename == song_filename)).first()
+            if fav:
+                session.delete(fav)
+                session.commit()
         return True
 
     # --- Suggest Less ---
 
     def get_suggest_less(self, username: str):
-        user = self.get_user(username)
-        if not user:
-            return []
-        return user.get("suggest_less", [])
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            sl = session.exec(select(SuggestLess)).all()
+            return [s.filename for s in sl]
 
     def add_suggest_less(self, username: str, song_filename: str):
-        user = self.get_user(username)
-        if not user: return False
-        
-        sl = user.get("suggest_less", [])
-        if song_filename not in sl:
-            sl.append(song_filename)
-            user["suggest_less"] = sl
-            self._save_user(username, user)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            if not session.exec(select(SuggestLess).where(SuggestLess.filename == song_filename)).first():
+                session.add(SuggestLess(filename=song_filename))
+                session.commit()
         return True
 
     def remove_suggest_less(self, username: str, song_filename: str):
-        user = self.get_user(username)
-        if not user: return False
-        
-        sl = user.get("suggest_less", [])
-        if song_filename in sl:
-            sl.remove(song_filename)
-            user["suggest_less"] = sl
-            self._save_user(username, user)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            sl = session.exec(select(SuggestLess).where(SuggestLess.filename == song_filename)).first()
+            if sl:
+                session.delete(sl)
+                session.commit()
         return True
         
     # --- Playlists ---
     
     def get_playlists(self, username: str):
-        playlists_path = self._get_user_playlists_path(username)
+        path = os.path.join(settings.USERS_DIR, f"{username}_playlists.db")
+        if not os.path.exists(path): return []
         
-        # Migration: if separate file doesn't exist, check user profile
-        if not os.path.exists(playlists_path):
-            user = self.get_user(username)
-            if user and "playlists" in user:
-                # Migrate existing playlists
-                raw_playlists = user["playlists"]
-                migrated = []
-                for p in raw_playlists:
-                    # Convert simple filename list to object list if needed
-                    songs = []
-                    for s in p.get("songs", []):
-                        if isinstance(s, str):
-                            songs.append({"filename": s, "added_at": time.time()})
-                        else:
-                            songs.append(s)
-                    migrated.append({
-                        "id": p.get("id", str(uuid.uuid4())),
-                        "name": p.get("name", "Untitled"),
-                        "songs": songs
-                    })
-                
-                with open(playlists_path, "w") as f:
-                    json.dump(migrated, f, indent=4)
-                
-                # Remove from user profile to finalize migration
-                del user["playlists"]
-                self._save_user(username, user)
-                return migrated
-            return []
+        with Session(db_manager.get_user_playlists_engine(username)) as session:
+            playlists = session.exec(select(Playlist)).all()
+            result = []
+            for p in playlists:
+                # Need to fetch songs explicitly or join
+                # Since we are in the same DB, we can do a secondary query
+                songs = session.exec(select(PlaylistSong).where(PlaylistSong.playlist_id == p.id)).all()
+                result.append({
+                    "id": p.id,
+                    "name": p.name,
+                    "songs": [{"filename": s.filename, "added_at": s.added_at} for s in songs]
+                })
+            return result
 
-        with open(playlists_path, "r") as f:
-            try:
-                return json.load(f)
-            except:
-                return []
-
-    def _save_playlists(self, username: str, playlists: List[dict]):
-        with open(self._get_user_playlists_path(username), "w") as f:
-            json.dump(playlists, f, indent=4)
-        
     def create_playlist(self, username: str, name: str):
-        playlists = self.get_playlists(username)
-        
-        new_playlist = {
-            "id": str(uuid.uuid4()),
-            "name": name,
-            "songs": []
-        }
-        
-        playlists.append(new_playlist)
-        self._save_playlists(username, playlists)
-        return new_playlist
+        new_id = str(uuid.uuid4())
+        with Session(db_manager.get_user_playlists_engine(username)) as session:
+            pl = Playlist(id=new_id, name=name)
+            session.add(pl)
+            session.commit()
+            return {"id": new_id, "name": name, "songs": []}
         
     def delete_playlist(self, username: str, playlist_id: str):
-        playlists = self.get_playlists(username)
-        original_len = len(playlists)
-        playlists = [p for p in playlists if p["id"] != playlist_id]
-        
-        if len(playlists) != original_len:
-            self._save_playlists(username, playlists)
-            return True
+        with Session(db_manager.get_user_playlists_engine(username)) as session:
+            pl = session.exec(select(Playlist).where(Playlist.id == playlist_id)).first()
+            if pl:
+                session.delete(pl)
+                session.commit()
+                return True
         return False
         
     def add_song_to_playlist(self, username: str, playlist_id: str, song_filename: str):
-        playlists = self.get_playlists(username)
-        for p in playlists:
-            if p["id"] == playlist_id:
-                # Check if already in playlist (by filename)
-                if not any(s["filename"] == song_filename for s in p["songs"]):
-                    p["songs"].append({
-                        "filename": song_filename,
-                        "added_at": time.time()
-                    })
-                    self._save_playlists(username, playlists)
+        with Session(db_manager.get_user_playlists_engine(username)) as session:
+            # Check duplicates
+            exists = session.exec(select(PlaylistSong).where(PlaylistSong.playlist_id == playlist_id, PlaylistSong.filename == song_filename)).first()
+            if not exists:
+                session.add(PlaylistSong(playlist_id=playlist_id, filename=song_filename, added_at=time.time()))
+                session.commit()
                 return True
         return False
         
     def remove_song_from_playlist(self, username: str, playlist_id: str, song_filename: str):
-        playlists = self.get_playlists(username)
-        for p in playlists:
-            if p["id"] == playlist_id:
-                original_len = len(p["songs"])
-                p["songs"] = [s for s in p["songs"] if s["filename"] != song_filename]
-                if len(p["songs"]) != original_len:
-                    self._save_playlists(username, playlists)
+        with Session(db_manager.get_user_playlists_engine(username)) as session:
+            song = session.exec(select(PlaylistSong).where(PlaylistSong.playlist_id == playlist_id, PlaylistSong.filename == song_filename)).first()
+            if song:
+                session.delete(song)
+                session.commit()
                 return True
         return False
 
+    # --- Uploads (Global) ---
+
     def record_upload(self, username: str, filename: str, title: str = None, source: str = "file", original_filename: str = None, youtube_url: str = None):
-        path = os.path.join(settings.USERS_DIR, "uploads.json")
-        uploads = {}
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                try:
-                    uploads = json.load(f)
-                except:
-                    pass
-        
         if title is None:
             title = filename.rsplit('.', 1)[0]
-
-        uploads[filename] = {
-            "uploader": username,
-            "timestamp": time.time(),
-            "title": title,
-            "source": source,
-            "original_filename": original_filename if original_filename else filename,
-            "youtube_url": youtube_url
-        }
-        
-        with open(path, "w") as f:
-            json.dump(uploads, f, indent=4)
+            
+        with Session(db_manager.get_uploads_engine()) as session:
+            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+            if not upload:
+                upload = Upload(
+                    filename=filename,
+                    uploader_username=username,
+                    title=title,
+                    source=source,
+                    original_filename=original_filename if original_filename else filename,
+                    youtube_url=youtube_url,
+                    timestamp=time.time()
+                )
+                session.add(upload)
+            else:
+                upload.title = title
+                upload.uploader_username = username
+                session.add(upload)
+            session.commit()
 
     def get_custom_title(self, filename: str) -> str:
-        path = os.path.join(settings.USERS_DIR, "uploads.json")
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                try:
-                    uploads = json.load(f)
-                    return uploads.get(filename, {}).get("title")
-                except:
-                    pass
-        return None
+        with Session(db_manager.get_uploads_engine()) as session:
+            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+            return upload.title if upload else None
 
     def get_uploader(self, filename: str) -> str:
-        path = os.path.join(settings.USERS_DIR, "uploads.json")
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                try:
-                    uploads = json.load(f)
-                    return uploads.get(filename, {}).get("uploader", "Unknown")
-                except:
-                    pass
-        return "Unknown"
+        with Session(db_manager.get_uploads_engine()) as session:
+            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+            return upload.uploader_username if upload else "Unknown"
 
 user_service = UserService()

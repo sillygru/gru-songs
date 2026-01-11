@@ -163,6 +163,23 @@ class MusicService:
                 return float(audio.info.length)
         except Exception:
             pass
+
+        # Fallback to ffprobe if mutagen fails
+        try:
+            import subprocess
+            cmd = [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                return float(result.stdout.strip())
+        except Exception:
+            pass
+
         return 0.0
 
 music_service = MusicService()
