@@ -1,10 +1,10 @@
 import 'package:flutter/widgets.dart'; // For AppLifecycleListener
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import '../models/song.dart';
+import 'cache_service.dart';
 import 'api_service.dart';
 import 'stats_service.dart';
 
@@ -75,9 +75,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 _backgroundDuration = 0.0;
                 _playStartTime = _player.playing ? DateTime.now() : null;
                 _saveLastSong(newFilename);
+                
+                // Background cache verification for the NEW song
+                _verifyCurrentSongCache(currentItem);
             }
         }
     });
+  }
+
+  Future<void> _verifyCurrentSongCache(MediaItem item) async {
+    final url = item.extras?['remoteUrl'] as String?;
+    if (url == null) return;
+
+    try {
+      // flutter_cache_manager's downloadFile will perform a conditional GET 
+      // if it's already in cache, updating it only if it changed on server.
+      await CacheService.audioCache.downloadFile(url);
+      debugPrint("Background cache check completed for: ${item.title}");
+    } catch (e) {
+      debugPrint("Background cache check failed for ${item.title}: $e");
+    }
   }
 
   void _initPersistence() {
@@ -159,7 +176,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     try {
       final audioSources = await Future.wait(songs.map((song) async {
         final url = _apiService.getFullUrl(song.url);
-        final fileInfo = await DefaultCacheManager().getFileFromCache(url);
+        final fileInfo = await CacheService.audioCache.getFileFromCache(url);
         final uri = fileInfo?.file.path != null ? Uri.file(fileInfo!.file.path) : Uri.parse(url);
 
         return AudioSource.uri(
@@ -221,10 +238,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
      for (int i = currentIndex; i < min(currentIndex + 3, songs.length); i++) {
         final song = songs[i];
         final url = _apiService.getFullUrl(song.url);
-        DefaultCacheManager().getFileFromCache(url).then((info) {
+        CacheService.audioCache.getFileFromCache(url).then((info) {
            if (info == null) {
               // Download in background
-              DefaultCacheManager().downloadFile(url).then((_) {
+              CacheService.audioCache.downloadFile(url).then((_) {
               }).catchError((e) {
                  debugPrint("Failed to background cache ${song.title}: $e");
               });

@@ -200,6 +200,10 @@ def list_songs(x_username: str = Header(None)):
             
     return result
 
+@app.get("/sync-check")
+def sync_check(x_username: str = Header(None)):
+    return user_service.get_sync_hashes(x_username)
+
 @app.get("/lyrics-embedded/{filename}")
 def get_embedded_lyrics(filename: str):
     lyrics = music_service.get_embedded_lyrics(filename)

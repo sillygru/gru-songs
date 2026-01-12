@@ -2,6 +2,7 @@ import os
 import time
 import uuid
 import json
+import hashlib
 import bcrypt
 from typing import Dict, List, Optional, Any
 from sqlmodel import Session, select, func, delete
@@ -368,9 +369,41 @@ class UserService:
             upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
             return upload.title if upload else None
 
-    def get_uploader(self, filename: str) -> str:
-        with Session(db_manager.get_uploads_engine()) as session:
-            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
-            return upload.uploader_username if upload else "Unknown"
+        def get_uploader(self, filename: str) -> str:
+
+            with Session(db_manager.get_uploads_engine()) as session:
+
+                upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+
+                return upload.uploader_username if upload else "Unknown"
+
+    
+
+    def get_sync_hashes(self, username: Optional[str]) -> Dict[str, str]:
+        # Hash songs list
+        songs = music_service.list_songs()
+        songs_json = json.dumps(songs, sort_keys=True)
+        songs_hash = hashlib.md5(songs_json.encode()).hexdigest()
+        
+        hashes = {
+            "songs": songs_hash
+        }
+        
+        if username:
+            # Favorites hash
+            favs = self.get_favorites(username)
+            hashes["favorites"] = hashlib.md5(json.dumps(favs, sort_keys=True).encode()).hexdigest()
+            
+            # Playlists hash
+            playlists = self.get_playlists(username)
+            hashes["playlists"] = hashlib.md5(json.dumps(playlists, sort_keys=True).encode()).hexdigest()
+            
+            # Suggest less hash
+            sl = self.get_suggest_less(username)
+            hashes["suggest_less"] = hashlib.md5(json.dumps(sl, sort_keys=True).encode()).hexdigest()
+            
+        return hashes
 
 user_service = UserService()
+
+    

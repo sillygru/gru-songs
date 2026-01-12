@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import '../../models/song.dart';
 import 'playlist_detail_screen.dart';
@@ -142,6 +143,7 @@ class LibraryScreen extends ConsumerWidget {
                       leading = ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: CachedNetworkImage(
+                          cacheManager: CacheService.imageCache,
                           imageUrl: apiService.getFullUrl(song.coverUrl!),
                           width: 50,
                           height: 50,
@@ -201,6 +203,7 @@ class LibraryScreen extends ConsumerWidget {
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: CachedNetworkImage(
+                          cacheManager: CacheService.imageCache,
                           imageUrl: song.coverUrl != null
                               ? apiService.getFullUrl(song.coverUrl!)
                               : apiService.getFullUrl('/stream/cover.jpg'),

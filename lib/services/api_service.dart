@@ -45,6 +45,23 @@ class ApiService {
     }
   }
 
+  Future<Map<String, String>> fetchSyncHashes() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/sync-check'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return Map<String, String>.from(jsonDecode(response.body));
+      } else {
+        throw Exception('Failed to fetch sync hashes (${response.statusCode}): ${response.body}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> uploadSong(File file, String? filename) async {
     try {
       final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/music/upload'));

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/playlist.dart';
 import '../../models/song.dart';
+import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import '../widgets/now_playing_bar.dart';
 import '../widgets/song_options_menu.dart';
@@ -106,6 +107,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(4),
                                 child: CachedNetworkImage(
+                                  cacheManager: CacheService.imageCache,
                                   imageUrl: song.coverUrl != null 
                                     ? apiService.getFullUrl(song.coverUrl!) 
                                     : apiService.getFullUrl('/stream/cover.jpg'),

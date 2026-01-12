@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import '../screens/player_screen.dart';
 import 'song_options_menu.dart';
@@ -76,6 +77,7 @@ class NowPlayingBar extends ConsumerWidget {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(6),
                             child: CachedNetworkImage(
+                              cacheManager: CacheService.imageCache,
                               imageUrl: metadata.artUri.toString(),
                               width: 50,
                               height: 50,

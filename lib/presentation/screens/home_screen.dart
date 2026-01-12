@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../services/cache_service.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/song_options_menu.dart';
@@ -267,6 +268,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     clipBehavior: Clip.antiAlias,
                                     child: CachedNetworkImage(
+                                      cacheManager: CacheService.imageCache,
                                       imageUrl: song.coverUrl != null
                                           ? apiService.getFullUrl(song.coverUrl!)
                                           : apiService.getFullUrl('/stream/cover.jpg'),
@@ -328,6 +330,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
+                            cacheManager: CacheService.imageCache,
                             imageUrl: song.coverUrl != null
                                 ? apiService.getFullUrl(song.coverUrl!)
                                 : apiService.getFullUrl('/stream/cover.jpg'),

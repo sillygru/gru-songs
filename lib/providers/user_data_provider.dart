@@ -72,13 +72,57 @@ class UserDataNotifier extends Notifier<UserDataState> {
               .toList() ?? [],
           isLoading: false,
         );
+        // If we have cache, we are in usingCache status initially
+        Future.microtask(() => ref.read(syncProvider.notifier).updateTask('userData', SyncStatus.usingCache));
       }
     } catch (e) {
       debugPrint('Error loading user cache: $e');
     }
 
-    // 2. Fetch from Network
-    await refresh();
+    // 2. Fetch from Network (background sync)
+    await _backgroundSync();
+  }
+
+  Future<void> _backgroundSync() async {
+    if (_username == null) return;
+    
+    final api = ref.read(apiServiceProvider);
+    final storage = ref.read(storageServiceProvider);
+    final syncNotifier = ref.read(syncProvider.notifier);
+
+    try {
+      syncNotifier.updateTask('userData', SyncStatus.syncing);
+      
+      final remoteHashes = await api.fetchSyncHashes();
+      final localHashes = await storage.loadSyncHashes();
+      
+      bool needsFavs = remoteHashes['favorites'] != localHashes['favorites'];
+      bool needsPlaylists = remoteHashes['playlists'] != localHashes['playlists'];
+      bool needsSuggestLess = remoteHashes['suggest_less'] != localHashes['suggest_less'];
+      
+      if (!needsFavs && !needsPlaylists && !needsSuggestLess && !state.isLoading) {
+        syncNotifier.updateTask('userData', SyncStatus.upToDate);
+        return;
+      }
+      
+      // Fetch only what's needed or just refresh everything for simplicity
+      // For now, refresh all to ensure consistency
+      await refresh();
+      
+      // Update saved hashes
+      final newLocalHashes = {
+        ...localHashes,
+        if (remoteHashes.containsKey('favorites')) 'favorites': remoteHashes['favorites']!,
+        if (remoteHashes.containsKey('playlists')) 'playlists': remoteHashes['playlists']!,
+        if (remoteHashes.containsKey('suggest_less')) 'suggest_less': remoteHashes['suggest_less']!,
+      };
+      await storage.saveSyncHashes(newLocalHashes);
+      
+      syncNotifier.updateTask('userData', SyncStatus.upToDate);
+    } catch (e) {
+      debugPrint('User data background sync failed: $e');
+      syncNotifier.setError();
+    }
   }
 
   Future<void> _saveCache() async {

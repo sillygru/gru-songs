@@ -23,7 +23,8 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **Base URL:** `https://[REDACTED]/music`
   - **Endpoints:**
   - **Music:**
-    - `GET /list-songs` (includes `play_count` if username provided)
+    - `GET /list-songs` (includes `play_count` and `mtime` if available)
+    - `GET /sync-check` (Returns MD5 hashes for songs, favorites, playlists, etc.)
     - `GET /stream/{filename}`
     - `GET /cover/{filename}` (Cache-Control: 1 year)
     - `GET /lyrics/{filename}` (.lrc files)
@@ -62,10 +63,12 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 ## 🏗 Architecture & Best Practices
 - **Frontend:** Modular **MVVM/Clean Architecture**.
   - **Caching Strategy:**
-    - **Metadata:** "Stale-While-Revalidate". Loads instantly from local JSON (via `StorageService`), updates from API in background.
-    - **Audio:** "Stream & Cache". Checks `flutter_cache_manager` for local file first. If missing, streams URL and downloads in background (current + next 3 songs).
+    - **Hash-Based Sync:** "Cache-First". Loads instantly from local storage. In the background, compares local MD5 hashes with `/sync-check` response. Only fetches fresh data if hashes mismatch.
+    - **Metadata:** Loads instantly from local JSON (via `StorageService`), updates from API in background via sync.
+    - **Audio:** "Stream & Cache". Checks `flutter_cache_manager` for local file first. If missing, streams URL and downloads in background. Current song is verified in background upon playback start.
     - **Images/Lyrics:** HTTP Cache headers (1 year immutable) + `cached_network_image`.
-  - **Pull-to-Refresh:** Available on all main data screens (Home, Library, Playlist, Profile).
+  - **Sync Indicator:** Visual status bar at the top of the screen (Offline, Syncing, Using Cache).
+  - **Pull-to-Refresh:** Available on all main data screens to force a background sync check.
   - **UI Gestures:** Swipe-up on album cover in `PlayerScreen` to reveal synchronized lyrics.
   - **Context Menus:** Unified long-press options menu for songs (Favorite, Add to Playlist, Suggest Less).
   - **Visual Cues:** Play counts displayed in white circle bubbles; suggest-less songs are greyed out with a line-through.

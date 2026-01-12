@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
+import 'cache_management_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
 
@@ -17,85 +15,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _newUsernameController = TextEditingController();
-  String _cacheSize = "Calculating...";
-
-  @override
-  void initState() {
-    super.initState();
-    _calculateCacheSize();
-  }
-
-  Future<void> _calculateCacheSize() async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final cacheDir = Directory('${tempDir.path}/libCachedImageData');
-      
-      if (await cacheDir.exists()) {
-        int totalSize = 0;
-        await for (var file in cacheDir.list(recursive: true, followLinks: false)) {
-          if (file is File) {
-            totalSize += await file.length();
-          }
-        }
-        
-        if (mounted) {
-          setState(() {
-            _cacheSize = _formatSize(totalSize);
-          });
-        }
-      } else {
-         if (mounted) {
-           setState(() {
-            _cacheSize = "0 B";
-          });
-         }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _cacheSize = "Unknown";
-        });
-      }
-    }
-  }
-
-  String _formatSize(int bytes) {
-    if (bytes < 1024) return "$bytes B";
-    if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)} KB";
-    if (bytes < 1024 * 1024 * 1024) return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
-    return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
-  }
-
-  Future<void> _clearCache() async {
-    try {
-      await DefaultCacheManager().emptyCache();
-    } catch (e) {
-      debugPrint("Error emptying cache manager: $e");
-    }
-
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final cacheDir = Directory('${tempDir.path}/libCachedImageData');
-      if (await cacheDir.exists()) {
-        await cacheDir.delete(recursive: true);
-      }
-    } catch (e) {
-      debugPrint("Error deleting cache dir: $e");
-    }
-
-    if (mounted) {
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-    }
-
-    await _calculateCacheSize();
-    if (!context.mounted) return;
-    
-    // ignore: use_build_context_synchronously
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cache cleared')),
-    );
-  }
 
   void _showChangeUsernameDialog() {
     showDialog(
@@ -263,10 +182,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const SizedBox(height: 24),
                   _buildSectionTitle('Storage & Cache'),
                   _buildListTile(
-                    icon: Icons.delete_outline,
-                    title: 'Clear Cache',
-                    subtitle: 'Size: $_cacheSize',
-                    onTap: _clearCache,
+                    icon: Icons.storage_outlined,
+                    title: 'Manage Storage',
+                    subtitle: 'Clear cache and free up space',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CacheManagementScreen()),
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
                   _buildSectionTitle('Actions'),

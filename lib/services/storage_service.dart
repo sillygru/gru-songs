@@ -20,6 +20,11 @@ class StorageService {
     return File('$path/user_data_$username.json');
   }
 
+  Future<File> get _syncHashesFile async {
+    final path = await _localPath;
+    return File('$path/sync_hashes.json');
+  }
+
   Future<void> saveSongs(List<Song> songs) async {
     try {
       final file = await _songsFile;
@@ -64,6 +69,28 @@ class StorageService {
     } catch (e) {
       debugPrint('Error loading user data cache: $e');
       return null;
+    }
+  }
+
+  Future<void> saveSyncHashes(Map<String, String> hashes) async {
+    try {
+      final file = await _syncHashesFile;
+      await file.writeAsString(jsonEncode(hashes));
+    } catch (e) {
+      debugPrint('Error saving sync hashes: $e');
+    }
+  }
+
+  Future<Map<String, String>> loadSyncHashes() async {
+    try {
+      final file = await _syncHashesFile;
+      if (!await file.exists()) return {};
+      
+      final content = await file.readAsString();
+      return Map<String, String>.from(jsonDecode(content));
+    } catch (e) {
+      debugPrint('Error loading sync hashes: $e');
+      return {};
     }
   }
 }
