@@ -159,24 +159,35 @@ class MusicService:
         
         try:
             audio = MutagenFile(path)
-            if audio and audio.info and audio.info.length:
-                return float(audio.info.length)
+            if audio and audio.info and hasattr(audio.info, "length"):
+                length = float(audio.info.length)
+                if length > 0:
+                    return length
         except Exception:
             pass
 
-        # Fallback to ffprobe if mutagen fails
+        # Fallback to ffprobe if mutagen fails or returns 0
         try:
             import subprocess
+            # Check both format and stream duration as some files only have one populated
             cmd = [
                 "ffprobe",
                 "-v", "error",
-                "-show_entries", "format=duration",
+                "-show_entries", "format=duration:stream=duration",
                 "-of", "default=noprint_wrappers=1:nokey=1",
                 path
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                return float(result.stdout.strip())
+                for line in result.stdout.splitlines():
+                    val = line.strip()
+                    if val and val != "N/A":
+                        try:
+                            d = float(val)
+                            if d > 0:
+                                return d
+                        except ValueError:
+                            continue
         except Exception:
             pass
 
