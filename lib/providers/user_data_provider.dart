@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/playlist.dart';
-import '../services/user_data_service.dart';
 import 'auth_provider.dart';
 import 'providers.dart';
 
@@ -40,30 +40,73 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final authState = ref.watch(authProvider);
     final newUsername = authState.username;
     
-    // If username changed and is now logged in, trigger refresh
+    // If username changed and is now logged in, trigger refresh (with cache)
     if (newUsername != null && newUsername != _username) {
       _username = newUsername;
-      Future.microtask(() => refresh());
+      Future.microtask(() => _loadCacheAndRefresh());
     } else if (newUsername == null) {
       _username = null;
       return UserDataState();
     }
     
     _username = newUsername;
+    // Initial state is loading if we are just starting, 
+    // but if we have previous state (from param change) we might want to keep it?
+    // For now, default to loading until cache hits.
     return UserDataState(isLoading: true);
+  }
+
+  Future<void> _loadCacheAndRefresh() async {
+    if (_username == null) return;
+    
+    // 1. Load Cache
+    final storage = ref.read(storageServiceProvider);
+    try {
+      final cached = await storage.loadUserData(_username!);
+      if (cached != null) {
+        state = state.copyWith(
+          favorites: List<String>.from(cached['favorites'] ?? []),
+          suggestLess: List<String>.from(cached['suggest_less'] ?? []),
+          playlists: (cached['playlists'] as List?)
+              ?.map((p) => Playlist.fromJson(p))
+              .toList() ?? [],
+          isLoading: false,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error loading user cache: $e');
+    }
+
+    // 2. Fetch from Network
+    await refresh();
+  }
+
+  Future<void> _saveCache() async {
+    if (_username == null) return;
+    final storage = ref.read(storageServiceProvider);
+    final data = {
+      'favorites': state.favorites,
+      'suggest_less': state.suggestLess,
+      'playlists': state.playlists.map((p) => p.toJson()).toList(),
+    };
+    await storage.saveUserData(_username!, data);
   }
 
   Future<void> refresh() async {
     if (_username == null) return;
     
     final service = ref.read(userDataServiceProvider);
-    state = state.copyWith(isLoading: true);
+    // Don't set isLoading to true if we already have data (from cache)
+    // state = state.copyWith(isLoading: true); 
+    
     try {
       final favs = await service.getFavorites(_username!);
       final sl = await service.getSuggestLess(_username!);
       final playlists = await service.getPlaylists(_username!);
       state = state.copyWith(favorites: favs, suggestLess: sl, playlists: playlists, isLoading: false);
+      _saveCache();
     } catch (e) {
+      // Only set loading to false if we were loading
       state = state.copyWith(isLoading: false);
     }
   }
@@ -81,6 +124,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
       newSL.add(songFilename);
     }
     state = state.copyWith(suggestLess: newSL);
+    _saveCache();
 
     try {
       if (isSL) {
@@ -89,7 +133,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
         await service.addSuggestLess(_username!, songFilename);
       }
     } catch (e) {
-      state = state.copyWith(suggestLess: state.suggestLess);
+      // Revert on error?
+      // state = state.copyWith(suggestLess: state.suggestLess);
     }
   }
 
@@ -113,6 +158,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
     
     state = state.copyWith(favorites: newFavs, suggestLess: newSL);
+    _saveCache();
     
     try {
       if (isFav) {
@@ -125,7 +171,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
         }
       }
     } catch (e) {
-      state = state.copyWith(favorites: state.favorites, suggestLess: state.suggestLess);
+      // Revert?
     }
   }
 
@@ -135,6 +181,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     try {
       final playlist = await service.createPlaylist(_username!, name);
       state = state.copyWith(playlists: [...state.playlists, playlist]);
+      _saveCache();
       return playlist;
     } catch (e) {
       return null;
@@ -147,6 +194,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     
     final oldPlaylists = state.playlists;
     state = state.copyWith(playlists: state.playlists.where((p) => p.id != id).toList());
+    _saveCache();
     
     try {
       await service.deletePlaylist(_username!, id);
@@ -158,6 +206,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> addSongToPlaylist(String playlistId, String songFilename) async {
     if (_username == null) return;
     final service = ref.read(userDataServiceProvider);
+    // Optimistic update would be better, but for now just refresh
     await service.addSongToPlaylist(_username!, playlistId, songFilename);
     await refresh();
   }

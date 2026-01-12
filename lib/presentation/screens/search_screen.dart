@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/song_options_menu.dart';
 
@@ -88,7 +87,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 var filteredSongs = songs.where((song) {
                   final matchesQuery = song.title.toLowerCase().contains(_query) ||
                       song.artist.toLowerCase().contains(_query) ||
-                      (song.album?.toLowerCase().contains(_query) ?? false);
+                      song.album.toLowerCase().contains(_query);
                   
                   if (!matchesQuery) return false;
 

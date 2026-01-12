@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/playlist.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../../providers/user_data_provider.dart';
 import '../widgets/now_playing_bar.dart';
 import '../widgets/song_options_menu.dart';
 
@@ -65,9 +64,16 @@ class PlaylistDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          songsAsync.when(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await Future.wait([
+            ref.read(songsProvider.notifier).refresh(),
+            ref.read(userDataProvider.notifier).refresh(),
+          ]);
+        },
+        child: Stack(
+          children: [
+            songsAsync.when(
             data: (allSongs) {
                 final playlistSongs = <Song>[];
                 final validPlaylistSongs = <PlaylistSong>[];
@@ -180,6 +186,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

@@ -6,7 +6,6 @@ import 'package:audio_session/audio_session.dart';
 import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/auth_screen.dart';
 import 'providers/auth_provider.dart';
-import 'providers/providers.dart';
 
 class MyHttpOverrides extends HttpOverrides {
   @override

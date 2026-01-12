@@ -67,17 +67,24 @@ class LibraryScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Your Playlists',
-                style: Theme.of(context).textTheme.titleLarge,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await Future.wait([
+            ref.read(songsProvider.notifier).refresh(),
+            ref.read(userDataProvider.notifier).refresh(),
+          ]);
+        },
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Your Playlists',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
             ),
-          ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
@@ -228,6 +235,7 @@ class LibraryScreen extends ConsumerWidget {
           ),
           const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
         ],
+        ),
       ),
     );
   }

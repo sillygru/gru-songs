@@ -6,7 +6,6 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
-import '../../providers/user_data_provider.dart';
 import '../screens/player_screen.dart';
 import 'song_options_menu.dart';
 

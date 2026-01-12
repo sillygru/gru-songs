@@ -38,18 +38,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           }
         }
         
-        setState(() {
-          _cacheSize = _formatSize(totalSize);
-        });
+        if (mounted) {
+          setState(() {
+            _cacheSize = _formatSize(totalSize);
+          });
+        }
       } else {
-         setState(() {
-          _cacheSize = "0 B";
-        });
+         if (mounted) {
+           setState(() {
+            _cacheSize = "0 B";
+          });
+         }
       }
     } catch (e) {
-      setState(() {
-        _cacheSize = "Unknown";
-      });
+      if (mounted) {
+        setState(() {
+          _cacheSize = "Unknown";
+        });
+      }
     }
   }
 
@@ -83,11 +89,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     await _calculateCacheSize();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cache cleared')),
-      );
-    }
+    if (!context.mounted) return;
+    
+    // ignore: use_build_context_synchronously
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cache cleared')),
+    );
   }
 
   void _showChangeUsernameDialog() {
@@ -109,13 +116,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               if (_newUsernameController.text.isEmpty) return;
               try {
                 await ref.read(authProvider.notifier).updateUsername(_newUsernameController.text.trim());
-                if(mounted) {
+                if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Username updated")));
                   _newUsernameController.clear();
                 }
               } catch (e) {
-                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
               }
             },
             child: const Text('Update'),
@@ -162,14 +169,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _oldPasswordController.text.trim(),
                   _newPasswordController.text.trim(),
                 );
-                if(mounted) {
+                if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password updated")));
                   _oldPasswordController.clear();
                   _newPasswordController.clear();
                 }
               } catch (e) {
-                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
               }
             },
             child: const Text('Update'),
@@ -185,10 +192,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final userData = ref.watch(userDataProvider);
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 200,
+      body: RefreshIndicator(
+        onRefresh: () async {
+           await ref.read(userDataProvider.notifier).refresh();
+        },
+        child: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 200,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
@@ -274,6 +285,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

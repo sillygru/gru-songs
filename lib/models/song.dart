@@ -39,6 +39,20 @@ class Song extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'artist': artist,
+      'album': album,
+      'filename': filename,
+      'url': url,
+      'lyrics_url': lyricsUrl,
+      'cover_url': coverUrl,
+      'play_count': playCount,
+      if (duration != null) 'duration': duration!.inMilliseconds / 1000.0,
+    };
+  }
+
   @override
   List<Object?> get props => [title, artist, album, filename, url, lyricsUrl, coverUrl, playCount, duration];
 }

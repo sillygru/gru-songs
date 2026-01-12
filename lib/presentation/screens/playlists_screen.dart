@@ -33,7 +33,7 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
               if (_controller.text.isNotEmpty) {
                  await ref.read(userDataProvider.notifier).createPlaylist(_controller.text);
                  _controller.clear();
-                 if (mounted) Navigator.pop(context);
+                 if (context.mounted) Navigator.pop(context);
               }
             },
             child: const Text("Create"),

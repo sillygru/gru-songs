@@ -5,12 +5,14 @@
 
 ## 🚀 Overview
 A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, playlists with added-date tracking, favorites, and a "suggest less" recommendation filter.
+**Now features comprehensive offline capabilities** with "Stream & Cache" architecture.
 
 ## 🛠 Tech Stack
 - **Frontend:** Flutter (Material 3)
 - **State Management:** `flutter_riverpod` (Riverpod 3.x)
 - **Data Modeling:** `equatable`, `uuid`
 - **Audio Engine:** `just_audio`, `rxdart` (for stream combining)
+- **Caching & Offline:** `flutter_cache_manager`, `path_provider` (Stale-while-revalidate strategy)
 - **Background Playback:** `just_audio_background`
 - **Audio Session:** `audio_session` (configured for music)
 - **UI Components:** `audio_video_progress_bar`, `cached_network_image`
@@ -23,9 +25,9 @@ A high-performance music streaming app built with Flutter, connecting to a priva
   - **Music:**
     - `GET /list-songs` (includes `play_count` if username provided)
     - `GET /stream/{filename}`
-    - `GET /cover/{filename}`
+    - `GET /cover/{filename}` (Cache-Control: 1 year)
     - `GET /lyrics/{filename}` (.lrc files)
-    - `GET /lyrics-embedded/{filename}` (metadata-embedded)
+    - `GET /lyrics-embedded/{filename}` (Cache-Control: 1 year)
     - `POST /music/upload` (Upload local audio files)
     - `POST /music/yt-dlp` (Download audio from YouTube)
   - **Auth:**
@@ -59,6 +61,11 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 
 ## 🏗 Architecture & Best Practices
 - **Frontend:** Modular **MVVM/Clean Architecture**.
+  - **Caching Strategy:**
+    - **Metadata:** "Stale-While-Revalidate". Loads instantly from local JSON (via `StorageService`), updates from API in background.
+    - **Audio:** "Stream & Cache". Checks `flutter_cache_manager` for local file first. If missing, streams URL and downloads in background (current + next 3 songs).
+    - **Images/Lyrics:** HTTP Cache headers (1 year immutable) + `cached_network_image`.
+  - **Pull-to-Refresh:** Available on all main data screens (Home, Library, Playlist, Profile).
   - **UI Gestures:** Swipe-up on album cover in `PlayerScreen` to reveal synchronized lyrics.
   - **Context Menus:** Unified long-press options menu for songs (Favorite, Add to Playlist, Suggest Less).
   - **Visual Cues:** Play counts displayed in white circle bubbles; suggest-less songs are greyed out with a line-through.
@@ -76,7 +83,7 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 - `models/`: Data structures (`song.dart`, `playlist.dart`).
 - `data/repositories/`: Data access abstraction.
 - `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`).
-- `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `auth_service.dart`, `stats_service.dart`).
+- `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `storage_service.dart`, `stats_service.dart`).
 - `presentation/`:
   - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`.
   - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`.

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'api_service.dart';
@@ -55,7 +55,7 @@ class StatsService {
       );
     } catch (e) {
       // Silently fail stats to not disrupt UX
-      print('Stats tracking error: $e');
+      debugPrint('Stats tracking error: $e');
     }
   }
 }

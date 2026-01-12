@@ -206,7 +206,11 @@ def get_embedded_lyrics(filename: str):
     if not lyrics:
         raise HTTPException(status_code=404, detail="No embedded lyrics found")
     
-    return Response(content=str(lyrics), media_type="text/plain")
+    return Response(
+        content=str(lyrics), 
+        media_type="text/plain",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"}
+    )
 
 @app.get("/cover/{filename}")
 def get_cover(filename: str):
@@ -214,7 +218,11 @@ def get_cover(filename: str):
     if not data:
         raise HTTPException(status_code=404, detail="No cover found in metadata")
     
-    return Response(content=data, media_type=mime)
+    return Response(
+        content=data, 
+        media_type=mime,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"}
+    )
 
 @app.post("/music/upload")
 async def upload_song(

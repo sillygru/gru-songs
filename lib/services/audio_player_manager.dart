@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart'; // For AppLifecycleListener
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -156,9 +157,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _player.setShuffleModeEnabled(false);
     
     try {
-      final audioSources = songs.map((song) {
+      final audioSources = await Future.wait(songs.map((song) async {
+        final url = _apiService.getFullUrl(song.url);
+        final fileInfo = await DefaultCacheManager().getFileFromCache(url);
+        final uri = fileInfo?.file.path != null ? Uri.file(fileInfo!.file.path) : Uri.parse(url);
+
         return AudioSource.uri(
-          Uri.parse(_apiService.getFullUrl(song.url)),
+          uri,
           tag: MediaItem(
             id: song.filename,
             album: song.album,
@@ -170,10 +175,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 : null,
             extras: {
               'lyricsUrl': song.lyricsUrl,
+              'remoteUrl': url, // Store remote URL to cache later if needed
             },
           ),
         );
-      }).toList();
+      }));
 
       int initialIndex = 0;
       if (autoSelect && songs.isNotEmpty) {
@@ -193,6 +199,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       await _player.setVolume(1.0);
       await _player.setAudioSources(audioSources, initialIndex: initialIndex);
+      
+      // Listen for current index changes to cache upcoming songs
+      _player.currentIndexStream.listen((index) {
+        if (index != null) {
+          _cacheSurroundingSongs(index, songs);
+        }
+      });
+      
     } catch (e) {
       if (e.toString().contains('Loading interrupted')) {
         debugPrint("Audio loading interrupted (safe to ignore): $e");
@@ -200,6 +214,23 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         debugPrint("Error loading audio source: $e");
       }
     }
+  }
+  
+  void _cacheSurroundingSongs(int currentIndex, List<Song> songs) {
+     // Cache current (if playing from remote) and next 2 songs
+     for (int i = currentIndex; i < min(currentIndex + 3, songs.length); i++) {
+        final song = songs[i];
+        final url = _apiService.getFullUrl(song.url);
+        DefaultCacheManager().getFileFromCache(url).then((info) {
+           if (info == null) {
+              // Download in background
+              DefaultCacheManager().downloadFile(url).then((_) {
+              }).catchError((e) {
+                 debugPrint("Failed to background cache ${song.title}: $e");
+              });
+           }
+        });
+     }
   }
 
   Future<void> shuffleAndPlay(List<Song> songs) async {

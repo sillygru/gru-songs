@@ -1,0 +1,53 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gru_songs/models/song.dart';
+import 'package:gru_songs/models/playlist.dart';
+
+void main() {
+  group('Serialization Tests', () {
+    test('Song serialization round-trip', () {
+      const song = Song(
+        title: 'Test Title',
+        artist: 'Test Artist',
+        album: 'Test Album',
+        filename: 'test.mp3',
+        url: 'http://test.com/test.mp3',
+        lyricsUrl: 'http://test.com/lyrics',
+        coverUrl: 'http://test.com/cover',
+        playCount: 10,
+        duration: Duration(seconds: 120),
+      );
+
+      final json = song.toJson();
+      final fromJson = Song.fromJson(json);
+
+      expect(fromJson.title, song.title);
+      expect(fromJson.artist, song.artist);
+      expect(fromJson.playCount, song.playCount);
+      // Precision might slightly differ due to double conversion, checking milliseconds
+      expect(fromJson.duration?.inSeconds, song.duration?.inSeconds);
+    });
+
+    test('Playlist serialization round-trip', () {
+      final now = DateTime.now();
+      final song = PlaylistSong(filename: 'test.mp3', addedAt: now);
+      final playlist = Playlist(
+        id: '123',
+        name: 'My Playlist',
+        songs: [song],
+      );
+
+      final json = playlist.toJson();
+      final fromJson = Playlist.fromJson(json);
+
+      expect(fromJson.id, playlist.id);
+      expect(fromJson.name, playlist.name);
+      expect(fromJson.songs.length, 1);
+      expect(fromJson.songs.first.filename, 'test.mp3');
+      // Check timestamp with 1 second tolerance for precision loss
+      expect(
+        fromJson.songs.first.addedAt.difference(now).inSeconds.abs() <= 1,
+        true,
+      );
+    });
+  });
+}

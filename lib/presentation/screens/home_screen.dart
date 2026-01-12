@@ -78,10 +78,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           final topRecommendations = recommendations.take(10).toList();
 
-          return CustomScrollView(
-            slivers: [
-              SliverAppBar.large(
-                title: const Text('Gru Songs'),
+          return RefreshIndicator(
+            onRefresh: () async {
+              await Future.wait([
+                ref.read(songsProvider.notifier).refresh(),
+                ref.read(userDataProvider.notifier).refresh(),
+              ]);
+            },
+            child: CustomScrollView(
+              slivers: [
+                SliverAppBar.large(
+                  title: const Text('Gru Songs'),
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.shuffle),
@@ -313,7 +320,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   (context, index) {
                     final song = songs[index];
                     final isSuggestLess = userData.suggestLess.contains(song.filename);
-                    final isFavorite = userData.favorites.contains(song.filename);
 
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -387,11 +393,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
               const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
+                          ],
+                        ),
+                      );
+                    },
+                    loading: () => const Center(child: CircularProgressIndicator()),        error: (error, stack) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(

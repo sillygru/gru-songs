@@ -19,6 +19,13 @@ class PlaylistSong extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'filename': filename,
+      'added_at': addedAt.millisecondsSinceEpoch / 1000.0,
+    };
+  }
+
   @override
   List<Object?> get props => [filename, addedAt];
 }
@@ -43,6 +50,14 @@ class Playlist extends Equatable {
               .toList() ??
           [],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'songs': songs.map((s) => s.toJson()).toList(),
+    };
   }
 
   @override
