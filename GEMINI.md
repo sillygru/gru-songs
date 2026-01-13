@@ -4,8 +4,7 @@
 - **NO GIT COMMANDS:** Do not ever run git commands (git add, commit, push, etc.).
 
 ## 🚀 Overview
-A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, playlists with added-date tracking, favorites, and a "suggest less" recommendation filter.
-**Now features comprehensive offline capabilities** with "Stream & Cache" architecture.
+A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, playlists with added-date tracking, favorites, and a "suggest less" recommendation filter. Comprehensive offline capabilities are provided via the "Stream & Cache" architecture.
 
 ## 🛠 Tech Stack
 - **Frontend:** Flutter (Material 3)
@@ -41,6 +40,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
     - `GET/POST /user/playlists`, `DELETE /user/playlists/{playlist_id}`
     - `POST /user/playlists/{playlist_id}/songs`, `DELETE /user/playlists/{playlist_id}/songs/{filename}`
     - `GET/POST /user/suggest-less`, `DELETE /user/suggest-less/{filename}`
+    - `GET/POST /user/shuffle` (Get or update shuffle state: enabled, config, history)
     - `POST /stats/track`
 
 ### ⚠️ Critical Handshake Fix
@@ -80,12 +80,20 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
   - **Queue Management:** 
     - **Next Up List:** Drag-and-drop reordering, swipe-to-remove.
     - **Priority System:** "Play Next" inserts songs into a priority block that overrides shuffle. 
-    - **Shuffle Logic:** Priority songs remain at the top; only the subsequent "normal" queue is shuffled.
+    - **Shuffle Logic:** 
+      - **Weighted Anti-Repeat:** Uses a 50-song history to reduce the probability of recent plays.
+      - **Streak Breaker:** Softly reduces probability if the artist or album matches the current song.
+      - **User Preferences:** Favorites receive a 15% weight boost; "Suggest Less" songs receive an 80% penalty.
+      - **Persistence:** Shuffle state (enabled, config, history) is persisted locally and synced with the backend across app restarts.
+      - **Isolation:** Priority songs remain at the top; only the subsequent "normal" queue is shuffled.
+  - **Metadata Safety:**
+    - Models (`Song`) allow `null` for `artist`, `album`, and `title`.
+    - UI components provide safe fallbacks (e.g., "No Artist") for display, ensuring no model-level "Unknown" strings or crashes.
 - **Backend:** 
   - **Persistence:** 
     - `users/<username>.json`: Profile and favorites.
     - `users/<username>_playlists.json`: Detailed playlist data with `added_at` timestamps.
-    - `users/<username>_stats.json`: Session history.
+    - `users/<username>_stats.json`: Session history and persistent shuffle state (enabled, config, history).
     - `users/uploads.json`: Global record of song uploads and their owners.
     - `songs/downloaded/`: Subdirectory for uploaded or yt-dlp downloaded songs.
   - **Stats Engine:** Rounding precision to 2 decimal places. Play counts filter for ratio > 0.25 across all non-favorite event types.
@@ -95,7 +103,7 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 - `models/`: Data structures (`song.dart`, `playlist.dart`, `queue_item.dart`).
 - `data/repositories/`: Data access abstraction.
 - `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`).
-- `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `cache_service.dart`, `storage_service.dart`, `stats_service.dart`).
+- `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `cache_service.dart`, `storage_service.dart`, `stats_service.dart`, `shuffle_manager.dart`).
 - `presentation/`:
   - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`.
   - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`, `GruImage`, `NextUpSheet`.
