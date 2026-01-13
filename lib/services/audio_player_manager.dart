@@ -88,9 +88,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (url == null) return;
 
     try {
-      // flutter_cache_manager's downloadFile will perform a conditional GET 
-      // if it's already in cache, updating it only if it changed on server.
-      await CacheService.audioCache.downloadFile(url);
+      // New CacheService handles background validation and replacement
+      await CacheService.instance.getFile('songs', item.id, url);
       debugPrint("Background cache check completed for: ${item.title}");
     } catch (e) {
       debugPrint("Background cache check failed for ${item.title}: $e");
@@ -176,8 +175,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     try {
       final audioSources = await Future.wait(songs.map((song) async {
         final url = _apiService.getFullUrl(song.url);
-        final fileInfo = await CacheService.audioCache.getFileFromCache(url);
-        final uri = fileInfo?.file.path != null ? Uri.file(fileInfo!.file.path) : Uri.parse(url);
+        // DO NOT trigger download here, only check if it exists
+        final uri = await CacheService.instance.getAudioUri(
+          song.filename, 
+          url, 
+          version: song.mtime?.toString(),
+          triggerDownload: false
+        );
 
         return AudioSource.uri(
           uri,
@@ -238,14 +242,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
      for (int i = currentIndex; i < min(currentIndex + 3, songs.length); i++) {
         final song = songs[i];
         final url = _apiService.getFullUrl(song.url);
-        CacheService.audioCache.getFileFromCache(url).then((info) {
-           if (info == null) {
-              // Download in background
-              CacheService.audioCache.downloadFile(url).then((_) {
-              }).catchError((e) {
-                 debugPrint("Failed to background cache ${song.title}: $e");
-              });
-           }
+        // We explicitly WANT to trigger download for these 3 songs
+        CacheService.instance.getFile('songs', song.filename, url, version: song.mtime?.toString(), triggerDownload: true).then((_) {
+        }).catchError((e) {
+           debugPrint("Failed to background cache ${song.title}: $e");
         });
      }
   }

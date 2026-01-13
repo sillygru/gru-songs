@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/gru_image.dart';
 import '../../services/cache_service.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:rxdart/rxdart.dart';
@@ -241,11 +241,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                       ),
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(16),
-                                        child: CachedNetworkImage(
-                                          cacheManager: CacheService.imageCache,
-                                          imageUrl: metadata.artUri.toString(),
+                                        child: GruImage(
+                                          url: metadata.artUri.toString(),
                                           fit: BoxFit.cover,
-                                          errorWidget: (context, url, error) => const Icon(Icons.music_note, size: 100),
+                                          errorWidget: const Icon(Icons.music_note, size: 100),
                                         ),
                                       ),
                                     ),

@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'gru_image.dart';
 import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import '../screens/player_screen.dart';
@@ -76,13 +76,12 @@ class NowPlayingBar extends ConsumerWidget {
                           tag: 'now_playing_art_${metadata.id}',
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(6),
-                            child: CachedNetworkImage(
-                              cacheManager: CacheService.imageCache,
-                              imageUrl: metadata.artUri.toString(),
+                            child: GruImage(
+                              url: metadata.artUri.toString(),
                               width: 50,
                               height: 50,
                               fit: BoxFit.cover,
-                              errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                              errorWidget: const Icon(Icons.music_note),
                             ),
                           ),
                         ),

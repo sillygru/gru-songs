@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../../services/cache_service.dart';
 
 class CacheManagementScreen extends StatefulWidget {
@@ -14,6 +13,7 @@ class CacheManagementScreen extends StatefulWidget {
 class _CacheManagementScreenState extends State<CacheManagementScreen> {
   String _audioCacheSize = "Calculating...";
   String _imageCacheSize = "Calculating...";
+  String _lyricsCacheSize = "Calculating...";
   String _otherCacheSize = "Calculating...";
   String _totalCacheSize = "Calculating...";
 
@@ -29,27 +29,25 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     if (!mounted) return;
     
     try {
+      int songsSize = await CacheService.instance.getCacheSize(category: 'songs');
+      int imagesSize = await CacheService.instance.getCacheSize(category: 'images');
+      int lyricsSize = await CacheService.instance.getCacheSize(category: 'lyrics');
+      int totalV2 = await CacheService.instance.getCacheSize();
+      
       final tempDir = await getTemporaryDirectory();
-      
-      final audioDir = Directory('${tempDir.path}/${CacheService.keyAudio}');
-      final imageDir = Directory('${tempDir.path}/${CacheService.keyImages}');
-      // Default cache manager and legacy image cache
-      final defaultDir = Directory('${tempDir.path}/libCacheManager'); 
-      final legacyImageDir = Directory('${tempDir.path}/libCachedImageData');
-
-      int audioSize = await _getDirSize(audioDir);
-      int imageSize = await _getDirSize(imageDir);
-      int otherSize = await _getDirSize(defaultDir) + await _getDirSize(legacyImageDir);
-      
-      // Also check for any other large folders in temp? 
-      // For now, let's stick to known keys.
+      final dirsToClear = ['audio_cache', 'image_cache', 'libCacheManager', 'libCachedImageData'];
+      int oldSize = 0;
+      for (var d in dirsToClear) {
+        oldSize += await _getDirSize(Directory('${tempDir.path}/$d'));
+      }
       
       if (mounted) {
         setState(() {
-          _audioCacheSize = _formatSize(audioSize);
-          _imageCacheSize = _formatSize(imageSize);
-          _otherCacheSize = _formatSize(otherSize);
-          _totalCacheSize = _formatSize(audioSize + imageSize + otherSize);
+          _audioCacheSize = _formatSize(songsSize);
+          _imageCacheSize = _formatSize(imagesSize);
+          _lyricsCacheSize = _formatSize(lyricsSize);
+          _otherCacheSize = _formatSize(oldSize);
+          _totalCacheSize = _formatSize(totalV2 + oldSize);
         });
       }
     } catch (e) {
@@ -62,13 +60,9 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     int totalSize = 0;
     try {
       await for (var file in dir.list(recursive: true, followLinks: false)) {
-        if (file is File) {
-          totalSize += await file.length();
-        }
+        if (file is File) totalSize += await file.length();
       }
-    } catch (e) {
-      debugPrint("Error getting dir size for ${dir.path}: $e");
-    }
+    } catch (_) {}
     return totalSize;
   }
 
@@ -79,48 +73,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
   }
 
-  Future<void> _clearAudioCache() async {
-    await _performClear(() async {
-      await CacheService.audioCache.emptyCache();
-    });
-  }
-
-  Future<void> _clearImageCache() async {
-    await _performClear(() async {
-      await CacheService.imageCache.emptyCache();
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-    });
-  }
-
-  Future<void> _clearOtherCache() async {
-    await _performClear(() async {
-      await DefaultCacheManager().emptyCache();
-      final tempDir = await getTemporaryDirectory();
-      final legacyDir = Directory('${tempDir.path}/libCachedImageData');
-      if (await legacyDir.exists()) {
-        await legacyDir.delete(recursive: true);
-      }
-    });
-  }
-
-  Future<void> _clearAll() async {
-    await _performClear(() async {
-      await CacheService.audioCache.emptyCache();
-      await CacheService.imageCache.emptyCache();
-      await DefaultCacheManager().emptyCache();
-      
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-
-      final tempDir = await getTemporaryDirectory();
-      final legacyDir = Directory('${tempDir.path}/libCachedImageData');
-      if (await legacyDir.exists()) {
-        await legacyDir.delete(recursive: true);
-      }
-    });
-  }
-
   Future<void> _performClear(Future<void> Function() action) async {
     if (_isClearing) return;
     setState(() => _isClearing = true);
@@ -128,7 +80,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     try {
       await action();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cache cleared")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Cache operations paused for 10s..."),
+            duration: Duration(seconds: 3),
+          )
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -142,6 +99,15 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     }
   }
 
+  void _showCategoryDetails(String category, String title) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CacheCategoryDetailScreen(category: category, title: title),
+      ),
+    ).then((_) => _calculateSizes());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -149,49 +115,76 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
         title: const Text("Storage & Cache"),
       ),
       body: _isClearing 
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("Clearing and pausing operations..."),
+            ],
+          ))
         : ListView(
           padding: const EdgeInsets.all(16),
           children: [
             _buildSummaryCard(),
             const SizedBox(height: 24),
-            _buildSectionTitle("Manage Storage"),
+            _buildSectionTitle("V2 Managed Cache"),
             _buildActionTile(
-              title: "Clear Audio Cache",
-              subtitle: "Frees up space from streamed songs",
+              title: "Audio Cache",
+              subtitle: "Full song files",
               size: _audioCacheSize,
               icon: Icons.music_note,
               color: Colors.deepPurple,
-              onTap: _clearAudioCache,
+              onTap: () => _showCategoryDetails('songs', 'Audio Cache'),
+              onClear: () => _performClear(() => CacheService.instance.clearCache(category: 'songs')),
             ),
             _buildActionTile(
-              title: "Clear Image Cache",
-              subtitle: "Removes cached album covers",
+              title: "Image Cache",
+              subtitle: "Album covers and thumbnails",
               size: _imageCacheSize,
               icon: Icons.image,
               color: Colors.blue,
-              onTap: _clearImageCache,
+              onTap: () => _showCategoryDetails('images', 'Image Cache'),
+              onClear: () => _performClear(() => CacheService.instance.clearCache(category: 'images')),
             ),
-            if (_otherCacheSize != "0 B")
-              _buildActionTile(
-                title: "Clear Other Cache",
-                subtitle: "Legacy or temporary files",
-                size: _otherCacheSize,
-                icon: Icons.cleaning_services,
-                color: Colors.orange,
-                onTap: _clearOtherCache,
-              ),
+            _buildActionTile(
+              title: "Lyrics Cache",
+              subtitle: "Synchronized lyric files",
+              size: _lyricsCacheSize,
+              icon: Icons.lyrics,
+              color: Colors.teal,
+              onTap: () => _showCategoryDetails('lyrics', 'Lyrics Cache'),
+              onClear: () => _performClear(() => CacheService.instance.clearCache(category: 'lyrics')),
+            ),
+            const SizedBox(height: 16),
+            _buildSectionTitle("Legacy & System"),
+            _buildActionTile(
+              title: "Other Cache",
+              subtitle: "Temporary and legacy files",
+              size: _otherCacheSize,
+              icon: Icons.cleaning_services,
+              color: Colors.orange,
+              onTap: null,
+              onClear: () => _performClear(() async {
+                final tempDir = await getTemporaryDirectory();
+                final dirs = ['audio_cache', 'image_cache', 'libCacheManager', 'libCachedImageData'];
+                for (var d in dirs) {
+                  final dir = Directory('${tempDir.path}/$d');
+                  if (await dir.exists()) await dir.delete(recursive: true);
+                }
+              }),
+            ),
             const Divider(height: 32),
              ListTile(
               leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: const Text("Clear All Cache", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-              subtitle: Text("Total: $_totalCacheSize"),
+              title: const Text("Clear Everything", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              subtitle: Text("Total space: $_totalCacheSize"),
               onTap: () async {
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text("Clear All Cache?"),
-                    content: const Text("This will delete all downloaded songs and images. They will need to be re-downloaded when played."),
+                    title: const Text("Reset All Cache?"),
+                    content: const Text("This will delete all cached data and pause downloads for 10 seconds."),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
                       TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Clear All", style: TextStyle(color: Colors.red))),
@@ -199,7 +192,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   ),
                 );
                 if (confirm == true) {
-                  _clearAll();
+                  _performClear(() => CacheService.instance.clearCache());
                 }
               },
             ),
@@ -218,6 +211,11 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
             const Text("Total Cache Used", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             Text(_totalCacheSize, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+            if (CacheService.instance.isPaused)
+              const Padding(
+                padding: EdgeInsets.only(top: 8.0),
+                child: Text("Downloads Paused", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+              ),
           ],
         ),
       ),
@@ -229,12 +227,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey,
-          letterSpacing: 1.2,
-        ),
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2),
       ),
     );
   }
@@ -245,26 +238,77 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     required String size,
     required IconData icon,
     required Color color,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
+    required VoidCallback onClear,
   }) {
     return Card(
       elevation: 0,
       color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
+        onTap: onTap,
         leading: Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
           child: Icon(icon, color: color),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
         subtitle: Text("$subtitle • $size"),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (onTap != null) const Icon(Icons.chevron_right, size: 20),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 20),
+              onPressed: onClear,
+              tooltip: "Clear this category",
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class CacheCategoryDetailScreen extends StatefulWidget {
+  final String category;
+  final String title;
+
+  const CacheCategoryDetailScreen({super.key, required this.category, required this.title});
+
+  @override
+  State<CacheCategoryDetailScreen> createState() => _CacheCategoryDetailScreenState();
+}
+
+class _CacheCategoryDetailScreenState extends State<CacheCategoryDetailScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final entries = CacheService.instance.getEntries(widget.category);
+    final sortedKeys = entries.keys.toList()..sort();
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: sortedKeys.isEmpty
+          ? const Center(child: Text("No items cached in this category"))
+          : ListView.builder(
+              itemCount: sortedKeys.length,
+              itemBuilder: (context, index) {
+                final key = sortedKeys[index];
+                final entry = entries[key]!;
+                return ListTile(
+                  title: Text(key, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text("Validated: ${entry.lastValidated.toString().split('.')[0]}"),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.grey),
+                    onPressed: () async {
+                      await CacheService.instance.removeEntry(widget.category, key);
+                      setState(() {});
+                    },
+                  ),
+                );
+              },
+            ),
     );
   }
 }

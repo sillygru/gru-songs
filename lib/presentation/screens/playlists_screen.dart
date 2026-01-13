@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/gru_image.dart';
 import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import 'playlist_detail_screen.dart';
@@ -94,13 +94,12 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                    if (song.coverUrl != null) {
                       leading = ClipRRect(
                         borderRadius: BorderRadius.circular(4),
-                        child: CachedNetworkImage(
-                          cacheManager: CacheService.imageCache,
-                          imageUrl: apiService.getFullUrl(song.coverUrl!),
+                        child: GruImage(
+                          url: apiService.getFullUrl(song.coverUrl!),
                           width: 50,
                           height: 50,
                           fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                          errorWidget: const Icon(Icons.music_note),
                         ),
                       );
                    }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/gru_image.dart';
 import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import '../widgets/song_options_menu.dart';
@@ -116,15 +116,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     return ListTile(
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
-                        child: CachedNetworkImage(
-                          cacheManager: CacheService.imageCache,
-                          imageUrl: song.coverUrl != null
+                        child: GruImage(
+                          url: song.coverUrl != null
                               ? apiService.getFullUrl(song.coverUrl!)
                               : apiService.getFullUrl('/stream/cover.jpg'),
                           width: 50,
                           height: 50,
                           fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                          errorWidget: const Icon(Icons.music_note),
                         ),
                       ),
                       title: Text(song.title),

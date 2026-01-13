@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/gru_image.dart';
 import '../../services/cache_service.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
@@ -267,19 +267,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     elevation: 6,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     clipBehavior: Clip.antiAlias,
-                                    child: CachedNetworkImage(
-                                      cacheManager: CacheService.imageCache,
-                                      imageUrl: song.coverUrl != null
+                                    child: GruImage(
+                                      url: song.coverUrl != null
                                           ? apiService.getFullUrl(song.coverUrl!)
                                           : apiService.getFullUrl('/stream/cover.jpg'),
                                       width: 150,
                                       height: 150,
                                       fit: BoxFit.cover,
-                                      placeholder: (context, url) => Container(
-                                        color: Theme.of(context).colorScheme.surfaceVariant,
-                                        child: const Center(child: Icon(Icons.music_note, color: Colors.grey)),
-                                      ),
-                                      errorWidget: (context, url, error) => Container(
+                                      errorWidget: Container(
                                         color: Theme.of(context).colorScheme.surfaceVariant,
                                         child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
                                       ),
@@ -329,17 +324,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         tag: 'list_art_${song.filename}',
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: CachedNetworkImage(
-                            cacheManager: CacheService.imageCache,
-                            imageUrl: song.coverUrl != null
-                                ? apiService.getFullUrl(song.coverUrl!)
-                                : apiService.getFullUrl('/stream/cover.jpg'),
-                            width: 56,
-                            height: 56,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(color: Colors.grey[800]),
-                            errorWidget: (context, url, error) => const Icon(Icons.music_note),
-                          ),
+                                                  child: GruImage(
+                                                    url: song.coverUrl != null
+                                                        ? apiService.getFullUrl(song.coverUrl!)
+                                                        : apiService.getFullUrl('/stream/cover.jpg'),
+                                                    width: 56,
+                                                    height: 56,
+                                                    fit: BoxFit.cover,
+                                                    errorWidget: const Icon(Icons.music_note),
+                                                  ),
+                          
                         ),
                       ),
                       title: Text(

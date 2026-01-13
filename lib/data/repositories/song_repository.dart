@@ -1,5 +1,6 @@
 import '../../models/song.dart';
 import '../../services/api_service.dart';
+import '../../services/cache_service.dart';
 
 class SongRepository {
   final ApiService _apiService;
@@ -11,6 +12,7 @@ class SongRepository {
   }
 
   Future<String?> getLyrics(String url) async {
-    return _apiService.fetchLyrics(url);
+    final filename = url.split('/').last;
+    return CacheService.instance.readString('lyrics', filename, _apiService.getFullUrl(url));
   }
 }

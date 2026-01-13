@@ -12,10 +12,10 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **State Management:** `flutter_riverpod` (Riverpod 3.x)
 - **Data Modeling:** `equatable`, `uuid`
 - **Audio Engine:** `just_audio`, `rxdart` (for stream combining)
-- **Caching & Offline:** `flutter_cache_manager`, `path_provider` (Stale-while-revalidate strategy)
+- **Caching & Offline:** Custom V2 `CacheService` (using `getApplicationSupportDirectory`), `crypto`, `path`
 - **Background Playback:** `just_audio_background`
 - **Audio Session:** `audio_session` (configured for music)
-- **UI Components:** `audio_video_progress_bar`, `cached_network_image`
+- **UI Components:** `audio_video_progress_bar`, `GruImage` (custom cache-first widget)
 - **Networking:** `http` with custom `HttpOverrides` for TLS/SSL handshake stability.
 - **Backend:** FastAPI (Python 3.10+) utilizing lifespan handlers for robust startup/shutdown logic.
 
@@ -62,11 +62,16 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 
 ## 🏗 Architecture & Best Practices
 - **Frontend:** Modular **MVVM/Clean Architecture**.
-  - **Caching Strategy:**
-    - **Hash-Based Sync:** "Cache-First". Loads instantly from local storage. In the background, compares local MD5 hashes with `/sync-check` response. Only fetches fresh data if hashes mismatch.
-    - **Metadata:** Loads instantly from local JSON (via `StorageService`), updates from API in background via sync.
-    - **Audio:** "Stream & Cache". Checks `flutter_cache_manager` for local file first. If missing, streams URL and downloads in background. Current song is verified in background upon playback start.
-    - **Images/Lyrics:** HTTP Cache headers (1 year immutable) + `cached_network_image`.
+  - **Caching Strategy (V2):**
+    - **Instant Cache-First:** Always serve from local storage immediately if the file exists.
+    - **Background Validation:** After serving from cache, perform an async check of the asset's version (`mtime` or hash). If changed, download and atomically replace the cached file.
+    - **Atomic Replacement:** Downloads are written to `.tmp` files and renamed upon completion to prevent corruption. If a file is locked (during playback), an alternative path is used and metadata is updated.
+    - **Lazy Pre-caching:** Aggressive background downloading is disabled. Only the current song and the next 2 songs in the queue are pre-cached.
+    - **Metadata Reclamation:** If a file exists on disk but is missing from metadata (e.g., after an app update), the service automatically re-registers it.
+    - **Download Mutex:** Prevents duplicate parallel downloads for the same asset.
+    - **Pause Mechanism:** Clearing the cache triggers a 10-second pause for all background operations to prevent immediate re-caching.
+    - **Storage Cleanup:** Legacy `flutter_cache_manager` data is automatically cleaned up in the background on the first run of V2.
+  - **Images:** Handled by `GruImage` widget which uses the V2 `CacheService`.
   - **Sync Indicator:** Visual status bar at the top of the screen (Offline, Syncing, Using Cache).
   - **Pull-to-Refresh:** Available on all main data screens to force a background sync check.
   - **UI Gestures:** Swipe-up on album cover in `PlayerScreen` to reveal synchronized lyrics.
@@ -86,10 +91,10 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 - `models/`: Data structures (`song.dart`, `playlist.dart`).
 - `data/repositories/`: Data access abstraction.
 - `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`).
-- `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `storage_service.dart`, `stats_service.dart`).
+- `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `cache_service.dart`, `storage_service.dart`, `stats_service.dart`).
 - `presentation/`:
   - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`.
-  - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`.
+  - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`, `GruImage`.
 - `main.dart`: Entry point.
 
 ### Backend (`server/`)
