@@ -208,46 +208,6 @@ class UserService:
         summary["total_play_time"] = summary.get("total_play_time", 0) + stats.duration_played
         summary["total_play_time"] = round(summary["total_play_time"], 2)
         
-        # Automatic history update for shuffle if it was a significant play
-        if ratio > 0.5 or stats.event_type == 'complete':
-            history = summary.get("shuffle_history", [])
-            if not history or history[-1] != stats.song_filename:
-                history.append(stats.song_filename)
-                # Keep last 50 entries
-                summary["shuffle_history"] = history[-50:]
-
-        with open(final_path, "w") as f:
-            json.dump(summary, f, indent=4)
-
-    def get_shuffle_state(self, username: str) -> dict:
-        final_path = self._get_final_stats_path(username)
-        if not os.path.exists(final_path):
-            return {"shuffle_enabled": False, "shuffle_config": {}, "shuffle_history": []}
-            
-        try:
-            with open(final_path, "r") as f:
-                summary = json.load(f)
-                return {
-                    "shuffle_enabled": summary.get("shuffle_enabled", False),
-                    "shuffle_config": summary.get("shuffle_config", {}),
-                    "shuffle_history": summary.get("shuffle_history", [])
-                }
-        except:
-            return {"shuffle_enabled": False, "shuffle_config": {}, "shuffle_history": []}
-
-    def update_shuffle_state(self, username: str, shuffle_enabled: bool, shuffle_config: dict, shuffle_history: List[str]):
-        final_path = self._get_final_stats_path(username)
-        summary = {}
-        if os.path.exists(final_path):
-            try:
-                with open(final_path, "r") as f:
-                    summary = json.load(f)
-            except: pass
-            
-        summary["shuffle_enabled"] = shuffle_enabled
-        summary["shuffle_config"] = shuffle_config
-        summary["shuffle_history"] = shuffle_history
-        
         with open(final_path, "w") as f:
             json.dump(summary, f, indent=4)
 

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/widgets.dart'; // For AppLifecycleListener
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -6,18 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import '../models/song.dart';
 import '../models/queue_item.dart';
-import '../models/shuffle_config.dart';
 import 'cache_service.dart';
 import 'api_service.dart';
 import 'stats_service.dart';
-import 'storage_service.dart';
-import 'shuffle_manager.dart';
 
 class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
   final ApiService _apiService;
   final StatsService _statsService;
-  final StorageService _storageService = StorageService();
   final String? _username;
   
   late ConcatenatingAudioSource _playlist;
@@ -36,79 +31,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ValueNotifier<bool> shuffleNotifier = ValueNotifier(false);
   final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
 
-  ShuffleConfig _shuffleConfig = const ShuffleConfig();
-  List<String> _shuffleHistory = [];
-  Set<String> _favorites = {};
-  Set<String> _suggestLess = {};
-  final Completer<void> _initCompleter = Completer<void>();
-
-  AudioPlayerManager(
-    this._apiService, 
-    this._statsService, 
-    this._username, {
-    Set<String> initialFavorites = const {},
-    Set<String> initialSuggestLess = const {},
-  }) : _favorites = initialFavorites,
-       _suggestLess = initialSuggestLess {
+  AudioPlayerManager(this._apiService, this._statsService, this._username) {
     WidgetsBinding.instance.addObserver(this);
     _initStatsListeners();
-    _loadShuffleState().then((_) => _initCompleter.complete());
-  }
-  
-  void updateUserPreferences({required Set<String> favorites, required Set<String> suggestLess}) {
-    _favorites = favorites;
-    _suggestLess = suggestLess;
+    _initPersistence();
   }
   
   AudioPlayer get player => _player;
-
-  Future<void> _loadShuffleState() async {
-    if (_username == null) return;
-
-    // 1. Load from local cache for speed
-    final localState = await _storageService.loadShuffleState(_username!);
-    if (localState != null) {
-      _applyLoadedShuffleState(localState);
-    }
-
-    // 2. Load from backend if online
-    try {
-      final remoteState = await _apiService.fetchShuffleState();
-      _applyLoadedShuffleState(remoteState);
-      // Update local cache
-      await _storageService.saveShuffleState(_username!, remoteState);
-    } catch (e) {
-      debugPrint("Failed to fetch remote shuffle state: $e");
-    }
-  }
-
-  void _applyLoadedShuffleState(Map<String, dynamic> state) {
-    shuffleNotifier.value = state['shuffle_enabled'] ?? false;
-    if (state['shuffle_config'] != null) {
-      _shuffleConfig = ShuffleConfig.fromJson(state['shuffle_config']);
-    }
-    if (state['shuffle_history'] != null) {
-      _shuffleHistory = List<String>.from(state['shuffle_history']);
-    }
-  }
-
-  Future<void> _saveShuffleState() async {
-    if (_username == null) return;
-    
-    final state = {
-      'shuffle_enabled': shuffleNotifier.value,
-      'shuffle_config': _shuffleConfig.toJson(),
-      'shuffle_history': _shuffleHistory,
-    };
-
-    // Save locally
-    await _storageService.saveShuffleState(_username!, state);
-
-    // Save to backend (fire and forget or background)
-    _apiService.updateShuffleState(state).catchError((e) {
-      debugPrint("Failed to update remote shuffle state: $e");
-    });
-  }
   
   void _initStatsListeners() {
     // 1. Listen for playback state changes (Play/Pause)
@@ -135,9 +64,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // 2. Listen for song changes (Sequence State)
     // This detects skips/next/prev
     _player.sequenceStateStream.listen((state) {
-        final currentSource = state.currentSource;
-        if (currentSource == null) return;
-        final currentItem = currentSource.tag;
+        final currentItem = state.currentSource?.tag;
         
         if (currentItem is MediaItem) {
             final newFilename = currentItem.id;
@@ -155,13 +82,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 _playStartTime = _player.playing ? DateTime.now() : null;
                 _saveLastSong(newFilename);
                 
-                // Add to shuffle history
-                if (!_shuffleHistory.contains(newFilename)) {
-                  _shuffleHistory.add(newFilename);
-                  if (_shuffleHistory.length > 50) _shuffleHistory.removeAt(0);
-                  _saveShuffleState();
-                }
-
                 // Background cache verification for the NEW song
                 _verifyCurrentSongCache(currentItem);
             }
@@ -180,6 +100,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     } catch (e) {
       debugPrint("Background cache check failed for ${item.title}: $e");
     }
+  }
+
+  void _initPersistence() {
+    // Already handled in listeners
   }
 
   Future<void> _saveLastSong(String filename) async {
@@ -251,7 +175,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
-    await _initCompleter.future;
+    shuffleNotifier.value = false;
+    await _player.setShuffleModeEnabled(false);
+    
     _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
     _effectiveQueue = List.from(_originalQueue);
     
@@ -270,12 +196,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         } else {
           initialIndex = Random().nextInt(songs.length);
         }
-      }
-
-      if (shuffleNotifier.value) {
-        // Apply shuffle to the initial queue if enabled
-        _applyShuffle(initialIndex);
-        initialIndex = 0; // After _applyShuffle, currentItem is at 0
       }
 
       // Prepare playlist
@@ -319,7 +239,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       tag: MediaItem(
         id: song.filename,
         album: song.album,
-        title: song.title ?? 'No Title',
+        title: song.title,
         artist: song.artist,
         duration: song.duration,
         artUri: song.coverUrl != null 
@@ -362,7 +282,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // Enable shuffle
     shuffleNotifier.value = true;
     _applyShuffle(randomIndex);
-    await _saveShuffleState();
     
     await _player.play();
   }
@@ -377,18 +296,30 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     } else {
       _applyLinear(currentIndex);
     }
-    await _saveShuffleState();
   }
 
   void _applyShuffle(int currentIndex) {
-    _effectiveQueue = ShuffleManager.applyShuffle(
-      effectiveQueue: _effectiveQueue,
-      currentIndex: currentIndex,
-      config: _shuffleConfig,
-      history: _shuffleHistory,
-      favorites: _favorites,
-      suggestLess: _suggestLess,
-    );
+    if (_effectiveQueue.isEmpty) return;
+    
+    final currentItem = _effectiveQueue[currentIndex];
+    
+    // Split into priority and non-priority (excluding current)
+    final otherItems = <QueueItem>[];
+    for (int i = 0; i < _effectiveQueue.length; i++) {
+      if (i == currentIndex) continue;
+      otherItems.add(_effectiveQueue[i]);
+    }
+    
+    final priorityItems = otherItems.where((item) => item.isPriority).toList();
+    final normalItems = otherItems.where((item) => !item.isPriority).toList();
+    
+    normalItems.shuffle();
+    
+    _effectiveQueue = [
+      currentItem,
+      ...priorityItems,
+      ...normalItems,
+    ];
     
     _rebuildPlaylist(initialIndex: 0);
   }

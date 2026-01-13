@@ -283,13 +283,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  song.title ?? 'No Title',
+                                  song.title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                                 ),
                                 Text(
-                                  song.artist ?? 'No Artist',
+                                  song.artist,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[400]),
@@ -337,7 +337,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                       title: Text(
-                        song.title ?? 'No Title',
+                        song.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -347,13 +347,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                       subtitle: Text(
-                        song.artist ?? 'No Artist',
+                        song.artist,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: isSuggestLess ? Colors.grey : null,
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: isSuggestLess ? Colors.grey : null),
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -378,13 +375,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           IconButton(
                             icon: const Icon(Icons.more_vert),
                             onPressed: () {
-                              showSongOptionsMenu(context, ref, song.filename, song.title ?? 'No Title', song: song);
+                              showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
                             },
                           ),
                         ],
                       ),
                       onLongPress: () {
-                        showSongOptionsMenu(context, ref, song.filename, song.title ?? 'No Title', song: song);
+                        showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
                       },
                       onTap: () {
                         audioManager.player.seek(Duration.zero, index: index);

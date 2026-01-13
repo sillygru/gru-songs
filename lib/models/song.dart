@@ -1,9 +1,9 @@
 import 'package:equatable/equatable.dart';
 
 class Song extends Equatable {
-  final String? title;
-  final String? artist;
-  final String? album;
+  final String title;
+  final String artist;
+  final String album;
   final String filename;
   final String url;
   final String? lyricsUrl;
@@ -13,9 +13,9 @@ class Song extends Equatable {
   final double? mtime;
 
   const Song({
-    this.title,
-    this.artist,
-    this.album,
+    required this.title,
+    required this.artist,
+    required this.album,
     required this.filename,
     required this.url,
     this.lyricsUrl,
@@ -27,9 +27,9 @@ class Song extends Equatable {
 
   factory Song.fromJson(Map<String, dynamic> json) {
     return Song(
-      title: json['title'],
-      artist: json['artist'],
-      album: json['album'],
+      title: json['title'] ?? 'Unknown Title',
+      artist: json['artist'] ?? 'Unknown Artist',
+      album: json['album'] ?? 'Unknown Album',
       filename: json['filename'] ?? '',
       url: json['url'] ?? '',
       lyricsUrl: json['lyrics_url'],
