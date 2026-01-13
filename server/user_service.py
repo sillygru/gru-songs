@@ -79,7 +79,11 @@ class UserService:
 
         # 3. Create empty final stats JSON
         with open(self._get_final_stats_path(username), "w") as f:
-            json.dump({"total_play_time": 0, "total_sessions": 0}, f, indent=4)
+            json.dump({
+                "total_play_time": 0, 
+                "total_sessions": 0,
+                "shuffle_state": {"config": {}, "history": []}
+            }, f, indent=4)
             
         return True, "User created"
 
@@ -197,19 +201,73 @@ class UserService:
             
         # Update Final Stats JSON (Aggregated)
         final_path = self._get_final_stats_path(username)
-        summary = {}
+        summary_data = {}
         if os.path.exists(final_path):
             try:
                 with open(final_path, "r") as f:
-                    summary = json.load(f)
+                    summary_data = json.load(f)
             except: pass
             
         # Increment simple counters
-        summary["total_play_time"] = summary.get("total_play_time", 0) + stats.duration_played
-        summary["total_play_time"] = round(summary["total_play_time"], 2)
+        summary_data["total_play_time"] = summary_data.get("total_play_time", 0) + stats.duration_played
+        summary_data["total_play_time"] = round(summary_data["total_play_time"], 2)
+
+        # Update shuffle history if it's a listen/complete event
+        if stats.event_type in ['listen', 'complete']:
+            shuffle_state = summary_data.get("shuffle_state", {})
+            history = shuffle_state.get("history", [])
+            # Add to history, remove duplicates, limit size
+            if stats.song_filename in history:
+                history.remove(stats.song_filename)
+            history.insert(0, stats.song_filename)
+            
+            config = shuffle_state.get("config", {})
+            history_limit = config.get("history_limit", 50)
+            if len(history) > history_limit:
+                history = history[:history_limit]
+            
+            shuffle_state["history"] = history
+            summary_data["shuffle_state"] = shuffle_state
         
         with open(final_path, "w") as f:
-            json.dump(summary, f, indent=4)
+            json.dump(summary_data, f, indent=4)
+
+    def get_stats_summary(self, username: str) -> Dict[str, Any]:
+        final_path = self._get_final_stats_path(username)
+        summary = {"total_play_time": 0, "total_sessions": 0, "shuffle_state": {"config": {}, "history": []}}
+        if os.path.exists(final_path):
+            try:
+                with open(final_path, "r") as f:
+                    data = json.load(f)
+                    summary.update(data)
+                    # Ensure shuffle_state exists even if file was old
+                    if "shuffle_state" not in summary:
+                        summary["shuffle_state"] = {"config": {}, "history": []}
+            except: pass
+        return summary
+
+    def update_shuffle_state(self, username: str, shuffle_state_data: Dict[str, Any]):
+        final_path = self._get_final_stats_path(username)
+        summary_data = self.get_stats_summary(username)
+        
+        # Deep merge/update shuffle state
+        current_shuffle = summary_data.get("shuffle_state", {})
+        
+        # Update config
+        if "config" in shuffle_state_data:
+            current_config = current_shuffle.get("config", {})
+            current_config.update(shuffle_state_data["config"])
+            current_shuffle["config"] = current_config
+            
+        # Update history (replace if provided)
+        if "history" in shuffle_state_data:
+            current_shuffle["history"] = shuffle_state_data["history"]
+            
+        summary_data["shuffle_state"] = current_shuffle
+        
+        with open(final_path, "w") as f:
+            json.dump(summary_data, f, indent=4)
+        return summary_data
 
     def flush_stats(self):
         pass
@@ -401,6 +459,11 @@ class UserService:
             # Suggest less hash
             sl = self.get_suggest_less(username)
             hashes["suggest_less"] = hashlib.md5(json.dumps(sl, sort_keys=True).encode()).hexdigest()
+
+            # Shuffle state hash
+            summary = self.get_stats_summary(username)
+            shuffle = summary.get("shuffle_state", {})
+            hashes["shuffle"] = hashlib.md5(json.dumps(shuffle, sort_keys=True).encode()).hexdigest()
             
         return hashes
 

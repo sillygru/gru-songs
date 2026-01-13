@@ -58,4 +58,36 @@ class StatsService {
       debugPrint('Stats tracking error: $e');
     }
   }
+
+  Future<Map<String, dynamic>?> getStatsSummary(String username) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('${ApiService.baseUrl}/user/shuffle'),
+        headers: {
+          'x-username': username,
+        },
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Stats summary error: $e');
+    }
+    return null;
+  }
+
+  Future<void> updateShuffleState(String username, Map<String, dynamic> state) async {
+    try {
+      await _client.post(
+        Uri.parse('${ApiService.baseUrl}/user/shuffle'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-username': username,
+        },
+        body: jsonEncode(state),
+      );
+    } catch (e) {
+      debugPrint('Shuffle state update error: $e');
+    }
+  }
 }

@@ -215,11 +215,7 @@ class LibraryScreen extends ConsumerWidget {
                       subtitle: Text(song.artist),
                       trailing: Text('${song.playCount} plays'),
                       onTap: () {
-                        final songIndex = songs.indexOf(song);
-                        if (songIndex != -1) {
-                          audioManager.player.seek(Duration.zero, index: songIndex);
-                          audioManager.player.play();
-                        }
+                        audioManager.playSong(song, contextQueue: mostPlayed);
                       },
                     );
                   },

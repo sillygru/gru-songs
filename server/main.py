@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
 from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Dict, Any, List, Optional
 import os
 import subprocess
 import shutil
@@ -92,6 +93,20 @@ def update_username(data: UserProfileUpdate, x_username: str = Header(None)):
 
 
 # --- Stats Routes ---
+
+@app.get("/stats/summary")
+@app.get("/user/shuffle")
+async def get_stats_summary(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="Missing username header")
+    return user_service.get_stats_summary(x_username)
+
+@app.post("/stats/shuffle-state")
+@app.post("/user/shuffle")
+async def update_shuffle_state(state: Dict[str, Any], x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="Missing username header")
+    return user_service.update_shuffle_state(x_username, state)
 
 @app.post("/stats/track")
 def track_stats(stats: StatsEntry, x_username: str = Header(None)):

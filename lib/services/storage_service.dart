@@ -25,6 +25,11 @@ class StorageService {
     return File('$path/sync_hashes.json');
   }
 
+  Future<File> _getShuffleStateFile(String username) async {
+    final path = await _localPath;
+    return File('$path/shuffle_state_$username.json');
+  }
+
   Future<void> saveSongs(List<Song> songs) async {
     try {
       final file = await _songsFile;
@@ -91,6 +96,28 @@ class StorageService {
     } catch (e) {
       debugPrint('Error loading sync hashes: $e');
       return {};
+    }
+  }
+
+  Future<void> saveShuffleState(String username, Map<String, dynamic> state) async {
+    try {
+      final file = await _getShuffleStateFile(username);
+      await file.writeAsString(jsonEncode(state));
+    } catch (e) {
+      debugPrint('Error saving shuffle state: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> loadShuffleState(String username) async {
+    try {
+      final file = await _getShuffleStateFile(username);
+      if (!await file.exists()) return null;
+      
+      final content = await file.readAsString();
+      return jsonDecode(content);
+    } catch (e) {
+      debugPrint('Error loading shuffle state: $e');
+      return null;
     }
   }
 }

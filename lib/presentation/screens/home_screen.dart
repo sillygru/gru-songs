@@ -250,12 +250,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         padding: const EdgeInsets.only(right: 16),
                         child: GestureDetector(
                           onTap: () {
-                            final songIndex = songs.indexOf(song);
-                            if (songIndex != -1) {
-                              audioManager.player.seek(Duration.zero, index: songIndex);
-                              audioManager.player.play();
-                            }
-                          },
+                          audioManager.playSong(song, contextQueue: topRecommendations);
+                        },
                           child: SizedBox(
                             width: 150,
                             child: Column(
@@ -384,8 +380,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
                       },
                       onTap: () {
-                        audioManager.player.seek(Duration.zero, index: index);
-                        audioManager.player.play();
+                        audioManager.playSong(song, contextQueue: songs);
                       },
                     );
                   },

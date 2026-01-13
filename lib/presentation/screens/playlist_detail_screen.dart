@@ -167,10 +167,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                                showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
                             },
                             onTap: () {
-                               // Play this playlist
-                               audioManager.init(playlistSongs);
-                               audioManager.player.seek(Duration.zero, index: index);
-                               audioManager.player.play();
+                               audioManager.playSong(song, contextQueue: playlistSongs);
                             },
                         );
                     },

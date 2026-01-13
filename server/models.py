@@ -27,6 +27,23 @@ class StatsEntry(BaseModel):
     foreground_duration: Optional[Any] = "unknown"
     background_duration: Optional[Any] = "unknown"
 
+class ShuffleConfig(BaseModel):
+    enabled: bool = False
+    anti_repeat_enabled: bool = True
+    streak_breaker_enabled: bool = True
+    favorite_multiplier: float = 1.15
+    suggest_less_multiplier: float = 0.2
+    history_limit: int = 50
+
+class ShuffleState(BaseModel):
+    config: ShuffleConfig = ShuffleConfig()
+    history: List[str] = []
+
+class StatsSummary(BaseModel):
+    total_play_time: float = 0.0
+    total_sessions: int = 0
+    shuffle_state: ShuffleState = ShuffleState()
+
 class PlaylistSong(BaseModel):
     filename: str
     added_at: float

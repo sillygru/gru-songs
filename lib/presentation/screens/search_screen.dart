@@ -129,10 +129,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       title: Text(song.title),
                       subtitle: Text(song.artist),
                       onTap: () {
-                        // Play the filtered list from this point
-                        audioManager.init(filteredSongs);
-                        audioManager.player.seek(Duration.zero, index: index);
-                        audioManager.player.play();
+                        audioManager.playSong(song, contextQueue: filteredSongs);
                       },
                       onLongPress: () {
                         showSongOptionsMenu(context, ref, song.filename, song.title, song: song);

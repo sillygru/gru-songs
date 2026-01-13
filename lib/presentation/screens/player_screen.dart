@@ -163,6 +163,61 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
   }
 
+  void _showShuffleSettings(BuildContext context, WidgetRef ref) {
+    final manager = ref.read(audioPlayerManagerProvider);
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        return ValueListenableBuilder(
+          valueListenable: manager.shuffleStateNotifier,
+          builder: (context, state, child) {
+            final config = state.config;
+            return AlertDialog(
+              title: const Text('Shuffle Settings'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    title: const Text('Anti-repeat'),
+                    subtitle: const Text('Reduce probability for recently played'),
+                    value: config.antiRepeatEnabled,
+                    onChanged: (val) {
+                      manager.updateShuffleConfig(config.copyWith(antiRepeatEnabled: val));
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Streak Breaker'),
+                    subtitle: const Text('Avoid same artist/album in a row'),
+                    value: config.streakBreakerEnabled,
+                    onChanged: (val) {
+                      manager.updateShuffleConfig(config.copyWith(streakBreakerEnabled: val));
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    title: const Text('Favorite Boost'),
+                    subtitle: Text('${((config.favoriteMultiplier - 1) * 100).round()}% higher weight'),
+                  ),
+                  ListTile(
+                    title: const Text('Suggest-Less Penalty'),
+                    subtitle: Text('${((1 - config.suggestLessMultiplier) * 100).round()}% lower weight'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Stream<PositionData> get _positionDataStream =>
       Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
           player.positionStream,
@@ -394,6 +449,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     builder: (context, isShuffled, child) {
                       return IconButton(
                         icon: Icon(Icons.shuffle, color: isShuffled ? Colors.deepPurple : Colors.white70),
+                        onLongPress: () => _showShuffleSettings(context, ref),
                         onPressed: () async {
                            await ref.read(audioPlayerManagerProvider).toggleShuffle();
                         },
