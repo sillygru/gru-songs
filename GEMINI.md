@@ -41,6 +41,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
     - `GET/POST /user/playlists`, `DELETE /user/playlists/{playlist_id}`
     - `POST /user/playlists/{playlist_id}/songs`, `DELETE /user/playlists/{playlist_id}/songs/{filename}`
     - `GET/POST /user/suggest-less`, `DELETE /user/suggest-less/{filename}`
+    - `GET/POST /user/shuffle` (Persistence for settings and history)
     - `POST /stats/track`
 
 ### ⚠️ Critical Handshake Fix
@@ -80,19 +81,26 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
   - **Queue Management:** 
     - **Next Up List:** Drag-and-drop reordering, swipe-to-remove.
     - **Priority System:** "Play Next" inserts songs into a priority block that overrides shuffle. 
-    - **Shuffle Logic:** Priority songs remain at the top; only the subsequent "normal" queue is shuffled.
+    - **Shuffle Logic:** Employs a weighted random selection algorithm.
+      - **Anti-repeat:** Recent history receives a probability reduction (up to 95%) that decays as the song moves further back in the history.
+      - **Streak Breaker:** Reduced probability for songs from the same artist or album as the last played track.
+      - **User Preferences:** Favorites receive a +15% weight boost; suggest-less songs receive an 80% reduction.
+      - **Metadata Safety:** Missing artist or album data skips relevant rules without affecting selection.
+      - **Persistence:** Configuration and history are stored locally and synchronized with the backend.
+    - **Recommendation Engine:** Aligned with shuffle philosophy. Employs a scoring system where favorites are boosted (+5.0 points) and suggest-less songs are heavily penalized (-10.0 points) rather than hidden, ensuring all music remains accessible based on play count and variety.
 - **Backend:** 
   - **Persistence:** 
-    - `users/<username>.json`: Profile and favorites.
-    - `users/<username>_playlists.json`: Detailed playlist data with `added_at` timestamps.
-    - `users/<username>_stats.json`: Session history.
-    - `users/uploads.json`: Global record of song uploads and their owners.
+    - `users/<username>_data.db`: Profile, favorites, and suggest-less.
+    - `users/<username>_playlists.db`: Detailed playlist data with `added_at` timestamps.
+    - `users/<username>_stats.db`: Session history and raw play events.
+    - `users/<username>_final_stats.json`: Aggregated summary and persistent shuffle state.
+    - `users/uploads.db`: Global record of song uploads and their owners.
     - `songs/downloaded/`: Subdirectory for uploaded or yt-dlp downloaded songs.
-  - **Stats Engine:** Rounding precision to 2 decimal places. Play counts filter for ratio > 0.25 across all non-favorite event types.
+  - **Stats Engine:** Rounding precision to 2 decimal places. Play counts filter for ratio > 0.25 across all non-favorite event types. Shuffle history automatically updates upon song completion.
 
 ## 📂 Project Structure
 ### Frontend (`lib/`)
-- `models/`: Data structures (`song.dart`, `playlist.dart`, `queue_item.dart`).
+- `models/`: Data structures (`song.dart`, `playlist.dart`, `queue_item.dart`, `shuffle_config.dart`).
 - `data/repositories/`: Data access abstraction.
 - `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`).
 - `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `cache_service.dart`, `storage_service.dart`, `stats_service.dart`).

@@ -55,21 +55,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final random = Random();
 
           // Weighted recommendation logic
-          final recommendations = List<Song>.from(songs)
-              .where((song) => !userData.suggestLess.contains(song.filename)) // Exclude suggest-less
-              .toList();
+          final recommendations = List<Song>.from(songs);
 
           recommendations.sort((a, b) {
             double score(Song s) {
-              // Base score from play count (logarithmic to avoid one song dominating)
+              // Base score from play count
               double val = log(s.playCount + 1.5) * 2.0;
               
               // Boost for favorites
               if (userData.favorites.contains(s.filename)) {
                 val += 5.0;
               }
+
+              // Heavy penalty for suggest-less (but not absolute block)
+              if (userData.suggestLess.contains(s.filename)) {
+                val -= 10.0;
+              }
               
-              // Add a "little bit of randomness" (0.0 to 4.0)
+              // Add randomness
               val += random.nextDouble() * 4.0;
               
               return val;
