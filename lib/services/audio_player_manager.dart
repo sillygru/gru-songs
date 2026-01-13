@@ -38,12 +38,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   ShuffleConfig _shuffleConfig = const ShuffleConfig();
   List<String> _shuffleHistory = [];
+  Set<String> _favorites = {};
+  Set<String> _suggestLess = {};
   final Completer<void> _initCompleter = Completer<void>();
 
-  AudioPlayerManager(this._apiService, this._statsService, this._username) {
+  AudioPlayerManager(
+    this._apiService, 
+    this._statsService, 
+    this._username, {
+    Set<String> initialFavorites = const {},
+    Set<String> initialSuggestLess = const {},
+  }) : _favorites = initialFavorites,
+       _suggestLess = initialSuggestLess {
     WidgetsBinding.instance.addObserver(this);
     _initStatsListeners();
     _loadShuffleState().then((_) => _initCompleter.complete());
+  }
+  
+  void updateUserPreferences({required Set<String> favorites, required Set<String> suggestLess}) {
+    _favorites = favorites;
+    _suggestLess = suggestLess;
   }
   
   AudioPlayer get player => _player;
@@ -372,6 +386,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       currentIndex: currentIndex,
       config: _shuffleConfig,
       history: _shuffleHistory,
+      favorites: _favorites,
+      suggestLess: _suggestLess,
     );
     
     _rebuildPlaylist(initialIndex: 0);

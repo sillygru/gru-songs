@@ -8,11 +8,21 @@ class ShuffleManager {
     Song song, 
     Song? lastSong, 
     ShuffleConfig config, 
-    List<String> history
-  ) {
+    List<String> history, {
+    bool isFavorite = false,
+    bool isSuggestLess = false,
+  }) {
     double weight = 1.0;
 
-    // 1. Anti-repeat weighting
+    // 1. User Preference Weighting
+    if (isFavorite) {
+      weight *= 1.15; // 15% more chance
+    }
+    if (isSuggestLess) {
+      weight *= 0.20; // 80% less chance (100% - 80% = 20%)
+    }
+
+    // 2. Anti-repeat weighting
     if (config.antiRepeatEnabled && history.isNotEmpty) {
       int index = history.lastIndexOf(song.filename);
       if (index != -1) {
@@ -42,6 +52,8 @@ class ShuffleManager {
     required int currentIndex,
     required ShuffleConfig config,
     required List<String> history,
+    Set<String> favorites = const {},
+    Set<String> suggestLess = const {},
   }) {
     if (effectiveQueue.isEmpty) return effectiveQueue;
     
@@ -62,7 +74,14 @@ class ShuffleManager {
     final random = Random();
 
     while (pool.isNotEmpty) {
-      final weights = pool.map((item) => calculateSongWeight(item.song, lastSong, config, history)).toList();
+      final weights = pool.map((item) => calculateSongWeight(
+        item.song, 
+        lastSong, 
+        config, 
+        history,
+        isFavorite: favorites.contains(item.song.filename),
+        isSuggestLess: suggestLess.contains(item.song.filename),
+      )).toList();
       double totalWeight = weights.reduce((a, b) => a + b);
       
       double target = random.nextDouble() * totalWeight;

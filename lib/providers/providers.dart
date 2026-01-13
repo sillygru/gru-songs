@@ -94,11 +94,24 @@ final songRepositoryProvider = Provider<SongRepository>((ref) {
 
 final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
   final authState = ref.watch(authProvider);
+  final userData = ref.watch(userDataProvider);
+  
   final manager = AudioPlayerManager(
       ref.watch(apiServiceProvider),
       ref.watch(statsServiceProvider),
       authState.username,
+      initialFavorites: Set.from(userData.favorites),
+      initialSuggestLess: Set.from(userData.suggestLess),
   );
+  
+  // Keep manager in sync with user preferences
+  ref.listen(userDataProvider, (previous, next) {
+    manager.updateUserPreferences(
+      favorites: Set.from(next.favorites),
+      suggestLess: Set.from(next.suggestLess),
+    );
+  });
+  
   ref.onDispose(() => manager.dispose());
   return manager;
 });
