@@ -86,9 +86,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             child: songsAsync.when(
               data: (songs) {
                 var filteredSongs = songs.where((song) {
-                  final matchesQuery = song.title.toLowerCase().contains(_query) ||
-                      song.artist.toLowerCase().contains(_query) ||
-                      song.album.toLowerCase().contains(_query);
+                  final title = song.title?.toLowerCase() ?? '';
+                  final artist = song.artist?.toLowerCase() ?? '';
+                  final album = song.album?.toLowerCase() ?? '';
+                  
+                  final matchesQuery = title.contains(_query) ||
+                      artist.contains(_query) ||
+                      album.contains(_query);
                   
                   if (!matchesQuery) return false;
 
@@ -126,8 +130,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                           errorWidget: const Icon(Icons.music_note),
                         ),
                       ),
-                      title: Text(song.title),
-                      subtitle: Text(song.artist),
+                      title: Text(song.title ?? 'No Title'),
+                      subtitle: Text(song.artist ?? 'No Artist'),
                       onTap: () {
                         // Play the filtered list from this point
                         audioManager.init(filteredSongs);
@@ -135,7 +139,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         audioManager.player.play();
                       },
                       onLongPress: () {
-                        showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
+                        showSongOptionsMenu(context, ref, song.filename, song.title ?? 'No Title', song: song);
                       },
                     );
                   },

@@ -118,7 +118,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                               ),
                             ),
                             title: Text(
-                              song.title,
+                              song.title ?? 'No Title',
                               style: TextStyle(
                                 color: isSuggestLess ? Colors.grey : null,
                                 decoration: isSuggestLess ? TextDecoration.lineThrough : null,
@@ -126,8 +126,8 @@ class PlaylistDetailScreen extends ConsumerWidget {
                             ),
                             subtitle: Text(
                               playlistId == '__favorites__' 
-                                ? song.artist 
-                                : "${song.artist} • Added $addedDate",
+                                ? (song.artist ?? 'No Artist')
+                                : "${song.artist ?? 'No Artist'} • Added $addedDate",
                               style: TextStyle(color: isSuggestLess ? Colors.grey : null),
                             ),
                             trailing: Row(
@@ -164,7 +164,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                               ],
                             ),
                             onLongPress: () {
-                               showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
+                               showSongOptionsMenu(context, ref, song.filename, song.title ?? 'No Title', song: song);
                             },
                             onTap: () {
                                // Play this playlist

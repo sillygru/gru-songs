@@ -83,19 +83,17 @@ class NextUpSheet extends ConsumerWidget {
                               ),
                             ),
                             title: Text(
-                              song.title,
+                              song.title ?? 'No Title',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: item.isPriority ? FontWeight.bold : FontWeight.normal,
-                                color: item.isPriority ? Colors.deepPurple[200] : null,
-                              ),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
-                              song.artist,
+                              song.artist ?? 'No Artist',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
+
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [

@@ -134,11 +134,12 @@ class NowPlayingBar extends ConsumerWidget {
                             final isSuggestLess = userData.suggestLess.contains(metadata.id);
                             
                             return GestureDetector(
-                              onLongPress: () {
-                                final songs = ref.read(songsProvider).value ?? [];
-                                final song = songs.where((s) => s.filename == metadata.id).firstOrNull;
-                                showSongOptionsMenu(context, ref, metadata.id, metadata.title, song: song);
-                              },
+                      onTap: () {
+                        final songs = ref.read(songsProvider).value ?? [];
+                        final song = songs.where((s) => s.filename == metadata.id).firstOrNull;
+                        showSongOptionsMenu(context, ref, metadata.id, metadata.title ?? 'No Title', song: song);
+                      },
+
                               child: IconButton(
                                 constraints: const BoxConstraints(),
                                 padding: const EdgeInsets.all(8),

@@ -429,7 +429,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       if (metadata != null) {
                         final songs = ref.read(songsProvider).value ?? [];
                         final song = songs.where((s) => s.filename == metadata.id).firstOrNull;
-                        showSongOptionsMenu(context, ref, metadata.id, metadata.title, song: song);
+                        showSongOptionsMenu(context, ref, metadata.id, metadata.title ?? 'No Title', song: song);
                       }
                     },
                     child: IconButton(

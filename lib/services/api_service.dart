@@ -121,6 +121,39 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> fetchShuffleState() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/user/shuffle'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to fetch shuffle state (${response.statusCode}): ${response.body}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> updateShuffleState(Map<String, dynamic> state) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/user/shuffle'),
+        headers: _headers,
+        body: jsonEncode(state),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update shuffle state (${response.statusCode}): ${response.body}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   String getFullUrl(String relativeUrl) {
     if (relativeUrl.startsWith('http')) return relativeUrl;
     final cleanRelative = relativeUrl.startsWith('/') ? relativeUrl : '/$relativeUrl';

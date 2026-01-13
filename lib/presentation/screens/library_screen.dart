@@ -211,8 +211,8 @@ class LibraryScreen extends ConsumerWidget {
                           errorWidget: const Icon(Icons.music_note),
                         ),
                       ),
-                      title: Text(song.title),
-                      subtitle: Text(song.artist),
+                      title: Text(song.title ?? 'No Title'),
+                      subtitle: Text(song.artist ?? 'No Artist'),
                       trailing: Text('${song.playCount} plays'),
                       onTap: () {
                         final songIndex = songs.indexOf(song);

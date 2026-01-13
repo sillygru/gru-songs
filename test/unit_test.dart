@@ -25,7 +25,7 @@ void main() {
       expect(song.coverUrl, '/cover/test.mp3');
     });
 
-    test('Song.fromJson should handle missing fields with defaults', () {
+    test('Song.fromJson should handle missing fields as null', () {
       final json = {
         'filename': 'test.mp3',
         'url': '/stream/test.mp3',
@@ -33,9 +33,9 @@ void main() {
 
       final song = Song.fromJson(json);
 
-      expect(song.title, 'Unknown Title');
-      expect(song.artist, 'Unknown Artist');
-      expect(song.album, 'Unknown Album');
+      expect(song.title, null);
+      expect(song.artist, null);
+      expect(song.album, null);
     });
   });
 

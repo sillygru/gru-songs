@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from settings import settings
 from services import music_service
 from user_service import user_service
-from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
+from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest, ShuffleState
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -99,6 +99,19 @@ def track_stats(stats: StatsEntry, x_username: str = Header(None)):
         raise HTTPException(status_code=401, detail="User not authenticated")
     
     user_service.append_stats(x_username, stats)
+    return {"status": "ok"}
+
+@app.get("/user/shuffle")
+def get_shuffle_state(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_shuffle_state(x_username)
+
+@app.post("/user/shuffle")
+def update_shuffle_state(state: ShuffleState, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.update_shuffle_state(x_username, state.shuffle_enabled, state.shuffle_config.dict(), state.shuffle_history)
     return {"status": "ok"}
 
 
