@@ -135,7 +135,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         audioManager.player.play();
                       },
                       onLongPress: () {
-                        showSongOptionsMenu(context, ref, song.filename, song.title);
+                        showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
                       },
                     );
                   },

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../../models/song.dart';
 
-void showSongOptionsMenu(BuildContext context, WidgetRef ref, String songFilename, String songTitle) {
+void showSongOptionsMenu(BuildContext context, WidgetRef ref, String songFilename, String songTitle, {Song? song}) {
   showModalBottomSheet(
     context: context,
     builder: (context) {
@@ -26,6 +27,18 @@ void showSongOptionsMenu(BuildContext context, WidgetRef ref, String songFilenam
                   ),
                 ),
                 const Divider(height: 1),
+                if (song != null)
+                  ListTile(
+                    leading: const Icon(Icons.playlist_play),
+                    title: const Text("Play Next"),
+                    onTap: () {
+                      ref.read(audioPlayerManagerProvider).playNext(song);
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Added to Next Up: ${song.title}"), duration: const Duration(seconds: 1)),
+                      );
+                    },
+                  ),
                 ListTile(
                   leading: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : null),
                   title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"),

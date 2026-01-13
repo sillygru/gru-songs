@@ -75,8 +75,12 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
   - **Sync Indicator:** Visual status bar at the top of the screen (Offline, Syncing, Using Cache).
   - **Pull-to-Refresh:** Available on all main data screens to force a background sync check.
   - **UI Gestures:** Swipe-up on album cover in `PlayerScreen` to reveal synchronized lyrics.
-  - **Context Menus:** Unified long-press options menu for songs (Favorite, Add to Playlist, Suggest Less).
+  - **Context Menus:** Unified long-press options menu for songs (Favorite, Add to Playlist, Suggest Less, Play Next).
   - **Visual Cues:** Play counts displayed in white circle bubbles; suggest-less songs are greyed out with a line-through.
+  - **Queue Management:** 
+    - **Next Up List:** Drag-and-drop reordering, swipe-to-remove.
+    - **Priority System:** "Play Next" inserts songs into a priority block that overrides shuffle. 
+    - **Shuffle Logic:** Priority songs remain at the top; only the subsequent "normal" queue is shuffled.
 - **Backend:** 
   - **Persistence:** 
     - `users/<username>.json`: Profile and favorites.
@@ -88,13 +92,13 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 
 ## 📂 Project Structure
 ### Frontend (`lib/`)
-- `models/`: Data structures (`song.dart`, `playlist.dart`).
+- `models/`: Data structures (`song.dart`, `playlist.dart`, `queue_item.dart`).
 - `data/repositories/`: Data access abstraction.
 - `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`).
 - `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `cache_service.dart`, `storage_service.dart`, `stats_service.dart`).
 - `presentation/`:
   - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`.
-  - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`, `GruImage`.
+  - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`, `GruImage`, `NextUpSheet`.
 - `main.dart`: Entry point.
 
 ### Backend (`server/`)

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/song_options_menu.dart';
+import '../widgets/next_up_sheet.dart';
 
 class PositionData {
   final Duration position;
@@ -375,6 +376,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       }
                     },
                   ),
+                  // Queue
+                  IconButton(
+                    icon: const Icon(Icons.queue_music),
+                    color: Colors.white70,
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => const NextUpSheet(),
+                      );
+                    },
+                  ),
                   // Shuffle
                   ValueListenableBuilder<bool>(
                     valueListenable: ref.read(audioPlayerManagerProvider).shuffleNotifier,
@@ -414,7 +427,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   GestureDetector(
                     onLongPress: () {
                       if (metadata != null) {
-                        showSongOptionsMenu(context, ref, metadata.id, metadata.title);
+                        final songs = ref.read(songsProvider).value ?? [];
+                        final song = songs.where((s) => s.filename == metadata.id).firstOrNull;
+                        showSongOptionsMenu(context, ref, metadata.id, metadata.title, song: song);
                       }
                     },
                     child: IconButton(

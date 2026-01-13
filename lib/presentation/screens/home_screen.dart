@@ -375,11 +375,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           IconButton(
                             icon: const Icon(Icons.more_vert),
                             onPressed: () {
-                              showSongOptionsMenu(context, ref, song.filename, song.title);
+                              showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
                             },
                           ),
                         ],
                       ),
+                      onLongPress: () {
+                        showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
+                      },
                       onTap: () {
                         audioManager.player.seek(Duration.zero, index: index);
                         audioManager.player.play();

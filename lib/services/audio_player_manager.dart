@@ -4,6 +4,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import '../models/song.dart';
+import '../models/queue_item.dart';
 import 'cache_service.dart';
 import 'api_service.dart';
 import 'stats_service.dart';
@@ -13,6 +14,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ApiService _apiService;
   final StatsService _statsService;
   final String? _username;
+  
+  late ConcatenatingAudioSource _playlist;
+  List<QueueItem> _originalQueue = [];
+  List<QueueItem> _effectiveQueue = [];
   
   // Stats tracking state
   String? _currentSongFilename;
@@ -24,6 +29,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   
   final ValueNotifier<bool> shuffleNotifier = ValueNotifier(false);
+  final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
 
   AudioPlayerManager(this._apiService, this._statsService, this._username) {
     WidgetsBinding.instance.addObserver(this);
@@ -169,39 +175,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
-    shuffleNotifier.value = false; // Reset shuffle state on new init
+    shuffleNotifier.value = false;
     await _player.setShuffleModeEnabled(false);
     
+    _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
+    _effectiveQueue = List.from(_originalQueue);
+    
     try {
-      final audioSources = await Future.wait(songs.map((song) async {
-        final url = _apiService.getFullUrl(song.url);
-        // DO NOT trigger download here, only check if it exists
-        final uri = await CacheService.instance.getAudioUri(
-          song.filename, 
-          url, 
-          version: song.mtime?.toString(),
-          triggerDownload: false
-        );
-
-        return AudioSource.uri(
-          uri,
-          tag: MediaItem(
-            id: song.filename,
-            album: song.album,
-            title: song.title,
-            artist: song.artist,
-            duration: song.duration,
-            artUri: song.coverUrl != null 
-                ? Uri.parse(_apiService.getFullUrl(song.coverUrl!)) 
-                : null,
-            extras: {
-              'lyricsUrl': song.lyricsUrl,
-              'remoteUrl': url, // Store remote URL to cache later if needed
-            },
-          ),
-        );
-      }));
-
       int initialIndex = 0;
       if (autoSelect && songs.isNotEmpty) {
         final lastSongFilename = await _getLastSong();
@@ -218,13 +198,20 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
       }
 
+      // Prepare playlist
+      _playlist = ConcatenatingAudioSource(children: []);
+      final sources = await Future.wait(_effectiveQueue.map((item) => _createAudioSource(item)));
+      await _playlist.addAll(sources);
+
       await _player.setVolume(1.0);
-      await _player.setAudioSources(audioSources, initialIndex: initialIndex);
+      await _player.setAudioSource(_playlist, initialIndex: initialIndex);
       
+      _updateQueueNotifier();
+
       // Listen for current index changes to cache upcoming songs
       _player.currentIndexStream.listen((index) {
         if (index != null) {
-          _cacheSurroundingSongs(index, songs);
+          _cacheSurroundingSongs(index, _effectiveQueue);
         }
       });
       
@@ -236,13 +223,46 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
   }
+
+  Future<AudioSource> _createAudioSource(QueueItem item) async {
+    final song = item.song;
+    final url = _apiService.getFullUrl(song.url);
+    final uri = await CacheService.instance.getAudioUri(
+      song.filename, 
+      url, 
+      version: song.mtime?.toString(),
+      triggerDownload: false
+    );
+
+    return AudioSource.uri(
+      uri,
+      tag: MediaItem(
+        id: song.filename,
+        album: song.album,
+        title: song.title,
+        artist: song.artist,
+        duration: song.duration,
+        artUri: song.coverUrl != null 
+            ? Uri.parse(_apiService.getFullUrl(song.coverUrl!)) 
+            : null,
+        extras: {
+          'lyricsUrl': song.lyricsUrl,
+          'remoteUrl': url,
+          'queueId': item.queueId,
+          'isPriority': item.isPriority,
+        },
+      ),
+    );
+  }
   
-  void _cacheSurroundingSongs(int currentIndex, List<Song> songs) {
-     // Cache current (if playing from remote) and next 2 songs
-     for (int i = currentIndex; i < min(currentIndex + 3, songs.length); i++) {
-        final song = songs[i];
+  void _updateQueueNotifier() {
+    queueNotifier.value = List.from(_effectiveQueue);
+  }
+
+  void _cacheSurroundingSongs(int currentIndex, List<QueueItem> queue) {
+     for (int i = currentIndex; i < min(currentIndex + 3, queue.length); i++) {
+        final song = queue[i].song;
         final url = _apiService.getFullUrl(song.url);
-        // We explicitly WANT to trigger download for these 3 songs
         CacheService.instance.getFile('songs', song.filename, url, version: song.mtime?.toString(), triggerDownload: true).then((_) {
         }).catchError((e) {
            debugPrint("Failed to background cache ${song.title}: $e");
@@ -253,21 +273,151 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<void> shuffleAndPlay(List<Song> songs) async {
     if (songs.isEmpty) return;
     await init(songs);
+    
     final randomIndex = Random().nextInt(songs.length);
+    // Move random song to start if we want to play immediately
+    // but better to just seek.
     await _player.seek(Duration.zero, index: randomIndex);
-    await _player.setShuffleModeEnabled(true);
-    await _player.shuffle();
+    
+    // Enable shuffle
     shuffleNotifier.value = true;
+    _applyShuffle(randomIndex);
+    
     await _player.play();
   }
 
   Future<void> toggleShuffle() async {
-    final enable = !_player.shuffleModeEnabled;
-    await _player.setShuffleModeEnabled(enable);
-    if (enable) {
-      await _player.shuffle();
+    final isShuffle = !shuffleNotifier.value;
+    shuffleNotifier.value = isShuffle;
+    
+    final currentIndex = _player.currentIndex ?? 0;
+    if (isShuffle) {
+      _applyShuffle(currentIndex);
+    } else {
+      _applyLinear(currentIndex);
     }
-    shuffleNotifier.value = enable;
+  }
+
+  void _applyShuffle(int currentIndex) {
+    if (_effectiveQueue.isEmpty) return;
+    
+    final currentItem = _effectiveQueue[currentIndex];
+    
+    // Split into priority and non-priority (excluding current)
+    final otherItems = <QueueItem>[];
+    for (int i = 0; i < _effectiveQueue.length; i++) {
+      if (i == currentIndex) continue;
+      otherItems.add(_effectiveQueue[i]);
+    }
+    
+    final priorityItems = otherItems.where((item) => item.isPriority).toList();
+    final normalItems = otherItems.where((item) => !item.isPriority).toList();
+    
+    normalItems.shuffle();
+    
+    _effectiveQueue = [
+      currentItem,
+      ...priorityItems,
+      ...normalItems,
+    ];
+    
+    _rebuildPlaylist(initialIndex: 0);
+  }
+
+  void _applyLinear(int currentIndex) {
+    if (_effectiveQueue.isEmpty) return;
+    
+    final currentItem = _effectiveQueue[currentIndex];
+    
+    final priorityItems = _effectiveQueue.where((item) => item.isPriority && item != currentItem).toList();
+    final originalItems = _originalQueue.where((item) => !priorityItems.any((p) => p.queueId == item.queueId)).toList();
+    
+    int originalIdx = originalItems.indexWhere((item) => item.song.filename == currentItem.song.filename);
+
+    if (originalIdx != -1) {
+      _effectiveQueue = [
+        ...originalItems.sublist(0, originalIdx),
+        currentItem,
+        ...priorityItems,
+        ...originalItems.sublist(originalIdx + 1),
+      ];
+    } else {
+      _effectiveQueue = [
+        currentItem,
+        ...priorityItems,
+        ...originalItems,
+      ];
+    }
+    
+    int newIndex = _effectiveQueue.indexOf(currentItem);
+    _rebuildPlaylist(initialIndex: newIndex);
+  }
+
+  Future<void> _rebuildPlaylist({int? initialIndex}) async {
+    if (_effectiveQueue.isEmpty) return;
+    
+    final playing = _player.playing;
+    final position = _player.position;
+    final targetIndex = initialIndex ?? _player.currentIndex ?? 0;
+    
+    final sources = await Future.wait(_effectiveQueue.map((item) => _createAudioSource(item)));
+    
+    final newPlaylist = ConcatenatingAudioSource(children: sources);
+    await _player.setAudioSource(
+      newPlaylist,
+      initialIndex: targetIndex,
+      initialPosition: position,
+    );
+    
+    _playlist = newPlaylist;
+    
+    if (playing) await _player.play();
+    _updateQueueNotifier();
+  }
+
+  Future<void> playNext(Song song) async {
+    final currentIndex = _player.currentIndex ?? -1;
+    final item = QueueItem(song: song, isPriority: true);
+    
+    _effectiveQueue.insert(currentIndex + 1, item);
+    final source = await _createAudioSource(item);
+    await _playlist.insert(currentIndex + 1, source);
+    
+    _updateQueueNotifier();
+    _cacheSurroundingSongs(currentIndex, _effectiveQueue);
+  }
+
+  Future<void> reorderQueue(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    
+    final item = _effectiveQueue.removeAt(oldIndex);
+    _effectiveQueue.insert(newIndex, item);
+    
+    // Note: just_audio's move is very efficient
+    await _playlist.move(oldIndex, newIndex);
+    
+    _updateQueueNotifier();
+    
+    final currentIndex = _player.currentIndex ?? 0;
+    _cacheSurroundingSongs(currentIndex, _effectiveQueue);
+  }
+
+  Future<void> removeFromQueue(int index) async {
+    final currentIndex = _player.currentIndex ?? -1;
+    
+    _effectiveQueue.removeAt(index);
+    await _playlist.removeAt(index);
+    
+    _updateQueueNotifier();
+    
+    if (index == currentIndex) {
+      // If we removed the current song, it should automatically skip to next 
+      // because just_audio handles removal of current source by skipping.
+    }
+    
+    _cacheSurroundingSongs(_player.currentIndex ?? 0, _effectiveQueue);
   }
 
   void dispose() {

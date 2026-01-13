@@ -164,7 +164,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                               ],
                             ),
                             onLongPress: () {
-                               showSongOptionsMenu(context, ref, song.filename, song.title);
+                               showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
                             },
                             onTap: () {
                                // Play this playlist
