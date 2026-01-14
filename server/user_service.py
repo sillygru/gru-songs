@@ -344,10 +344,49 @@ class UserService:
                 try:
                     summary_data = self._get_summary_no_flush(username)
                     
-                    for stats in events:
-                        summary_data["total_play_time"] = round(summary_data.get("total_play_time", 0) + stats.duration_played, 2)
+                    # Ensure all keys exist
+                    for key in ["total_play_time", "total_sessions", "total_background_playtime", 
+                               "total_foreground_playtime", "total_songs_played", 
+                               "total_songs_played_ratio_over_025", "total_skipped"]:
+                        if key not in summary_data:
+                            summary_data[key] = 0
 
-                        if stats.event_type in ['listen', 'complete']:
+                    if "platform_usage" not in summary_data:
+                        summary_data["platform_usage"] = {}
+
+                    processed_sessions = set()
+
+                    for stats in events:
+                        # Metrics
+                        summary_data["total_play_time"] = round(summary_data["total_play_time"] + stats.duration_played, 2)
+                        
+                        fg = stats.foreground_duration if isinstance(stats.foreground_duration, (int, float)) else 0
+                        bg = stats.background_duration if isinstance(stats.background_duration, (int, float)) else 0
+                        summary_data["total_foreground_playtime"] = round(summary_data["total_foreground_playtime"] + fg, 2)
+                        summary_data["total_background_playtime"] = round(summary_data["total_background_playtime"] + bg, 2)
+
+                        total_length = music_service.get_song_duration(stats.song_filename)
+                        ratio = (stats.duration_played / total_length) if total_length > 0 else 0.0
+
+                        # A song is considered "played" if:
+                        # 1. It's a natural completion/listen flush
+                        # 2. It was skipped but already played more than 80% (fake skip)
+                        # 3. It was listened to for more than 20%
+                        is_meaningful_play = (
+                            stats.event_type in ['complete', 'listen'] or
+                            ratio > 0.8 or
+                            (stats.event_type != 'favorite' and ratio > 0.2)
+                        )
+
+                        if stats.event_type != 'favorite' and is_meaningful_play:
+                            summary_data["total_songs_played"] += 1
+                        
+                        # A song is considered "skipped" ONLY if it's a skip event with low ratio
+                        if stats.event_type == 'skip' and ratio < 0.2:
+                            summary_data["total_skipped"] += 1
+
+                        # Shuffle history update: Significant plays or completions
+                        if is_meaningful_play:
                             shuffle_state = summary_data.get("shuffle_state", {})
                             history = shuffle_state.get("history", [])
                             if stats.song_filename in history:
@@ -361,6 +400,21 @@ class UserService:
                             
                             shuffle_state["history"] = history
                             summary_data["shuffle_state"] = shuffle_state
+
+                        if stats.event_type != "favorite" and ratio > 0.25:
+                            summary_data["total_songs_played_ratio_over_025"] += 1
+
+                        # Session/Platform Logic
+                        if stats.session_id not in processed_sessions:
+                            # We only want to increment total_sessions if it's actually a NEW session
+                            # Check if session already exists in SQL
+                            with Session(db_manager.get_user_stats_engine(username)) as session:
+                                existing_sess = session.exec(select(PlaySession).where(PlaySession.id == stats.session_id)).first()
+                                if not existing_sess:
+                                    summary_data["total_sessions"] += 1
+                                    p = stats.platform or "unknown"
+                                    summary_data["platform_usage"][p] = summary_data["platform_usage"].get(p, 0) + 1
+                            processed_sessions.add(stats.session_id)
                     
                     with open(final_path, "w") as f:
                         json.dump(summary_data, f, indent=4)
