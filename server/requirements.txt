@@ -6,3 +6,4 @@ passlib[bcrypt]
 python-multipart
 python-jose[cryptography]
 sqlmodel
+discord.py

@@ -9,18 +9,48 @@ import shutil
 import tempfile
 import asyncio
 from contextlib import asynccontextmanager
+from multiprocessing import Process, Queue
 
 from settings import settings
 from services import music_service
 from user_service import user_service
+from discord_bot import run_bot
 from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
+
+# Global queue and process for discord bot
+discord_queue = Queue()
+bot_process = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global bot_process
     # Startup logic
+    user_service.set_discord_queue(discord_queue)
+    
+    # Start Discord Bot in a separate process
+    bot_process = Process(target=run_bot, args=(discord_queue,), daemon=True)
+    bot_process.start()
+    
+    discord_queue.put("🖥️ Server starting up...")
+    
     asyncio.create_task(periodic_flush())
     yield
     # Shutdown logic
+    if bot_process:
+        try:
+            discord_queue.put("🛑 Server shutting down...")
+            discord_queue.put(None) # Sentinel for graceful exit
+            # Give the bot a moment to process the message
+            await asyncio.sleep(0.5)
+        except:
+            pass
+        
+        bot_process.terminate()
+        bot_process.join(timeout=2)
+        if bot_process.is_alive():
+            bot_process.kill()
+            bot_process.join()
+
     user_service.flush_stats()
 
 app = FastAPI(lifespan=lifespan)

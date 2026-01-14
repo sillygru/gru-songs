@@ -8,6 +8,9 @@ class Settings:
     LYRICS_DIR: str = os.getenv("LYRICS_DIR", os.path.join(MUSIC_DIR, "lyrics"))
     DOWNLOADED_DIR: str = os.path.join(MUSIC_DIR, "downloaded")
     USERS_DIR: str = os.path.join(os.path.dirname(__file__), "users")
+    
+    DISCORD_TOKEN: str = os.getenv("DISCORD_TOKEN")
+    DISCORD_CHANNEL_ID: str = os.getenv("DISCORD_CHANNEL_ID")
 
     def __init__(self):
         for d in [self.MUSIC_DIR, self.LYRICS_DIR, self.DOWNLOADED_DIR, self.USERS_DIR]:

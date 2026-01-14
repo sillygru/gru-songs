@@ -4,7 +4,9 @@ import uuid
 import json
 import hashlib
 import bcrypt
+import logging
 from typing import Dict, List, Optional, Any
+from collections import defaultdict
 from sqlmodel import Session, select, func, delete
 
 from settings import settings
@@ -13,13 +15,40 @@ from database_manager import db_manager
 from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, Playlist, PlaylistSong, PlaySession, PlayEvent
 from models import StatsEntry
 
+logger = logging.getLogger("uvicorn.error")
+
 class UserService:
     def __init__(self):
         # Ensure global DBs exist
         db_manager.init_global_dbs()
+        self.discord_queue = None
+        self._stats_buffer = defaultdict(list) # username -> list of StatsEntry
+        self._last_flush = time.time()
+        self._is_flushing = False
+
+    def set_discord_queue(self, queue):
+        self.discord_queue = queue
+
+    def log_to_discord(self, message: str):
+        if self.discord_queue:
+            self.discord_queue.put(message)
 
     def _get_final_stats_path(self, username: str):
         return os.path.join(settings.USERS_DIR, f"{username}_final_stats.json")
+
+    def _get_summary_no_flush(self, username: str) -> Dict[str, Any]:
+        final_path = self._get_final_stats_path(username)
+        summary = {"total_play_time": 0, "total_sessions": 0, "shuffle_state": {"config": {}, "history": []}}
+        if os.path.exists(final_path):
+            try:
+                with open(final_path, "r") as f:
+                    data = json.load(f)
+                    summary.update(data)
+            except: pass
+        # Ensure shuffle_state exists
+        if "shuffle_state" not in summary:
+            summary["shuffle_state"] = {"config": {}, "history": []}
+        return summary
 
     def _hash_password(self, password: str) -> str:
         salt = bcrypt.gensalt()
@@ -85,13 +114,17 @@ class UserService:
                 "shuffle_state": {"config": {}, "history": []}
             }, f, indent=4)
             
+        self.log_to_discord(f"🆕 New user registered: **{username}**")
         return True, "User created"
 
     def authenticate_user(self, username: str, password: str):
         user = self.get_user(username)
         if not user:
             return False
-        return self._verify_password(password, user["password"])
+        is_valid = self._verify_password(password, user["password"])
+        if is_valid:
+            self.log_to_discord(f"🔑 **{username}** logged in")
+        return is_valid
 
     def update_password(self, username: str, old_password: str, new_password: str):
         user = self.get_user(username)
@@ -111,6 +144,9 @@ class UserService:
         return True, "Password updated"
 
     def update_username(self, current_username: str, new_username: str):
+        # Flush stats before renaming files to avoid data loss
+        self.flush_stats()
+
         # 1. Check Global DB
         with Session(db_manager.get_global_users_engine()) as session:
             if session.exec(select(GlobalUser).where(GlobalUser.username == new_username)).first():
@@ -148,6 +184,7 @@ class UserService:
                 session.add(u_data)
                 session.commit()
 
+        self.log_to_discord(f"🆔 **{current_username}** changed username to **{new_username}**")
         return True, "Username updated"
 
     # --- Statistics ---
@@ -156,99 +193,51 @@ class UserService:
         if stats.duration_played <= 0 and stats.event_type != 'favorite':
             return
 
+        # Add to memory buffer for periodic flush
+        self._stats_buffer[username].append(stats)
+            
+        # Log to discord for visibility (Immediate feedback)
         total_length = music_service.get_song_duration(stats.song_filename)
         ratio = 0.0
         if total_length > 0:
             ratio = stats.duration_played / total_length
-            
-        with Session(db_manager.get_user_stats_engine(username)) as session:
-            # Session Logic
-            db_session = session.exec(select(PlaySession).where(PlaySession.id == stats.session_id)).first()
-            if not db_session:
-                db_session = PlaySession(
-                    id=stats.session_id,
-                    start_time=stats.timestamp,
-                    end_time=stats.timestamp,
-                    platform=stats.platform or "unknown"
-                )
-                session.add(db_session)
-            else:
-                if stats.timestamp < db_session.start_time: db_session.start_time = stats.timestamp
-                if stats.timestamp > db_session.end_time: db_session.end_time = stats.timestamp
-                if db_session.platform == "unknown" and stats.platform and stats.platform != "unknown":
-                    db_session.platform = stats.platform
-                session.add(db_session)
-            
-            session.commit() # Ensure session ID is valid
-            
-            # Event Logic
-            fg = stats.foreground_duration if isinstance(stats.foreground_duration, (int, float)) else None
-            bg = stats.background_duration if isinstance(stats.background_duration, (int, float)) else None
 
-            pe = PlayEvent(
-                session_id=stats.session_id,
-                song_filename=stats.song_filename,
-                event_type=stats.event_type,
-                timestamp=round(stats.timestamp, 2),
-                duration_played=round(stats.duration_played, 2),
-                total_length=round(total_length, 2),
-                play_ratio=round(ratio, 2),
-                foreground_duration=round(fg, 2) if fg is not None else None,
-                background_duration=round(bg, 2) if bg is not None else None
-            )
-            session.add(pe)
-            session.commit()
-            
-        # Update Final Stats JSON (Aggregated)
-        final_path = self._get_final_stats_path(username)
-        summary_data = {}
-        if os.path.exists(final_path):
-            try:
-                with open(final_path, "r") as f:
-                    summary_data = json.load(f)
-            except: pass
-            
-        # Increment simple counters
-        summary_data["total_play_time"] = summary_data.get("total_play_time", 0) + stats.duration_played
-        summary_data["total_play_time"] = round(summary_data["total_play_time"], 2)
+        emoji = "🎵"
+        if stats.event_type == 'favorite': emoji = "❤️"
+        elif stats.event_type == 'complete': emoji = "✅"
+        elif stats.event_type == 'listen': emoji = "🎧"
 
-        # Update shuffle history if it's a listen/complete event
-        if stats.event_type in ['listen', 'complete']:
-            shuffle_state = summary_data.get("shuffle_state", {})
-            history = shuffle_state.get("history", [])
-            # Add to history, remove duplicates, limit size
-            if stats.song_filename in history:
-                history.remove(stats.song_filename)
-            history.insert(0, stats.song_filename)
-            
-            config = shuffle_state.get("config", {})
-            history_limit = config.get("history_limit", 50)
-            if len(history) > history_limit:
-                history = history[:history_limit]
-            
-            shuffle_state["history"] = history
-            summary_data["shuffle_state"] = shuffle_state
+        ratio_pct = round(ratio * 100)
+        fg_val = stats.foreground_duration if isinstance(stats.foreground_duration, (int, float)) else 0
+        bg_val = stats.background_duration if isinstance(stats.background_duration, (int, float)) else 0
         
-        with open(final_path, "w") as f:
-            json.dump(summary_data, f, indent=4)
+        log_msg = (
+            f"{emoji} **{username}** | `{stats.song_filename}`\n"
+            f"> **Action:** {stats.event_type.upper()}\n"
+            f"> **Progress:** {round(stats.duration_played, 1)}s / {round(total_length, 1)}s ({ratio_pct}%)\n"
+        )
+        
+        if fg_val > 0 or bg_val > 0:
+            log_msg += f"> **Activity:** 📱 FG: {round(fg_val, 1)}s | 🎧 BG: {round(bg_val, 1)}s\n"
+        
+        log_msg += (
+            f"> **Device:** `{stats.platform or 'unknown'}`\n"
+            f"> **Session:** `{stats.session_id[:8]}...`"
+        )
+
+        self.log_to_discord(log_msg)
 
     def get_stats_summary(self, username: str) -> Dict[str, Any]:
-        final_path = self._get_final_stats_path(username)
-        summary = {"total_play_time": 0, "total_sessions": 0, "shuffle_state": {"config": {}, "history": []}}
-        if os.path.exists(final_path):
-            try:
-                with open(final_path, "r") as f:
-                    data = json.load(f)
-                    summary.update(data)
-                    # Ensure shuffle_state exists even if file was old
-                    if "shuffle_state" not in summary:
-                        summary["shuffle_state"] = {"config": {}, "history": []}
-            except: pass
-        return summary
+        # Flush to ensure JSON is up to date
+        self.flush_stats()
+        return self._get_summary_no_flush(username)
 
     def update_shuffle_state(self, username: str, shuffle_state_data: Dict[str, Any]):
+        # Flush first to ensure we don't overwrite pending updates
+        self.flush_stats()
+
         final_path = self._get_final_stats_path(username)
-        summary_data = self.get_stats_summary(username)
+        summary_data = self._get_summary_no_flush(username)
         
         # Deep merge/update shuffle state
         current_shuffle = summary_data.get("shuffle_state", {})
@@ -270,9 +259,131 @@ class UserService:
         return summary_data
 
     def flush_stats(self):
-        pass
+        if self._is_flushing:
+            return
+            
+        # Quick check if there's anything to flush
+        if not any(self._stats_buffer.values()):
+            self._stats_buffer.clear() # Clean up empty defaultdict entries
+            return
+
+        self._is_flushing = True
+        try:
+            start_time = time.time()
+            # Snapshot the buffer to avoid size change issues and only take non-empty lists
+            buffer_snapshot = {u: evs for u, evs in self._stats_buffer.items() if evs}
+            self._stats_buffer.clear()
+
+            if not buffer_snapshot:
+                return
+
+            users_processed = list(buffer_snapshot.keys())
+            total_events = sum(len(evs) for evs in buffer_snapshot.values())
+            
+            # Detailed breakdown for logging/discord
+            breakdown = []
+
+            for username, events in buffer_snapshot.items():
+                # Track unique songs in this flush for this user
+                songs_flushed = [f"`{e.song_filename}`" for e in events]
+                # Unique-ish summary
+                song_summary = ", ".join(list(set(songs_flushed))[:10])
+                if len(set(songs_flushed)) > 10:
+                    song_summary += " ..."
+                
+                breakdown.append(f"**{username}**: {len(events)} events ({song_summary})")
+                
+                # 1. Update SQL Database
+                try:
+                    with Session(db_manager.get_user_stats_engine(username)) as session:
+                        for stats in events:
+                            # Session logic
+                            db_session = session.exec(select(PlaySession).where(PlaySession.id == stats.session_id)).first()
+                            if not db_session:
+                                db_session = PlaySession(
+                                    id=stats.session_id,
+                                    start_time=stats.timestamp,
+                                    end_time=stats.timestamp,
+                                    platform=stats.platform or "unknown"
+                                )
+                                session.add(db_session)
+                            else:
+                                if stats.timestamp < db_session.start_time: db_session.start_time = stats.timestamp
+                                if stats.timestamp > db_session.end_time: db_session.end_time = stats.timestamp
+                                if db_session.platform == "unknown" and stats.platform and stats.platform != "unknown":
+                                    db_session.platform = stats.platform
+                                session.add(db_session)
+                            
+                            session.commit() # Ensure session ID is valid
+
+                            # Event Logic
+                            total_length = music_service.get_song_duration(stats.song_filename)
+                            ratio = (stats.duration_played / total_length) if total_length > 0 else 0.0
+                            
+                            fg = stats.foreground_duration if isinstance(stats.foreground_duration, (int, float)) else None
+                            bg = stats.background_duration if isinstance(stats.background_duration, (int, float)) else None
+
+                            pe = PlayEvent(
+                                session_id=stats.session_id,
+                                song_filename=stats.song_filename,
+                                event_type=stats.event_type,
+                                timestamp=round(stats.timestamp, 2),
+                                duration_played=round(stats.duration_played, 2),
+                                total_length=round(total_length, 2),
+                                play_ratio=round(ratio, 2),
+                                foreground_duration=round(fg, 2) if fg is not None else None,
+                                background_duration=round(bg, 2) if bg is not None else None
+                            )
+                            session.add(pe)
+                        session.commit()
+                except Exception as e:
+                    logger.error(f"Failed to flush SQL stats for {username}: {e}")
+
+                # 2. Update Final Stats JSON
+                final_path = self._get_final_stats_path(username)
+                try:
+                    summary_data = self._get_summary_no_flush(username)
+                    
+                    for stats in events:
+                        summary_data["total_play_time"] = round(summary_data.get("total_play_time", 0) + stats.duration_played, 2)
+
+                        if stats.event_type in ['listen', 'complete']:
+                            shuffle_state = summary_data.get("shuffle_state", {})
+                            history = shuffle_state.get("history", [])
+                            if stats.song_filename in history:
+                                history.remove(stats.song_filename)
+                            history.insert(0, stats.song_filename)
+                            
+                            config = shuffle_state.get("config", {})
+                            history_limit = config.get("history_limit", 50)
+                            if len(history) > history_limit:
+                                history = history[:history_limit]
+                            
+                            shuffle_state["history"] = history
+                            summary_data["shuffle_state"] = shuffle_state
+                    
+                    with open(final_path, "w") as f:
+                        json.dump(summary_data, f, indent=4)
+                except Exception as e:
+                    logger.error(f"Failed to update JSON stats for {username}: {e}")
+
+            # Log summary
+            self._last_flush = time.time()
+            duration = round(time.time() - start_time, 3)
+            
+            summary_msg = f"📊 **Stats Flush Complete** ({duration}s)\n"
+            summary_msg += f"> **Total Events:** `{total_events}`\n"
+            summary_msg += "\n".join([f"> {b}" for b in breakdown])
+            
+            logger.info(f"Stats flush completed in {duration}s. Breakdown: {', '.join(breakdown)}")
+            self.log_to_discord(summary_msg)
+        finally:
+            self._is_flushing = False
 
     def get_play_counts(self, username: str) -> Dict[str, int]:
+        # Flush first to ensure DB is up to date
+        self.flush_stats()
+
         # Query [username]_stats.db
         path = os.path.join(settings.USERS_DIR, f"{username}_stats.db")
         if not os.path.exists(path): return {}
@@ -301,7 +412,7 @@ class UserService:
                 session.add(Favorite(filename=song_filename))
                 session.commit()
                 
-                # Log stats
+                # Log stats (immediate add to buffer)
                 self.append_stats(username, StatsEntry(
                     session_id=session_id,
                     song_filename=song_filename,
@@ -421,21 +532,18 @@ class UserService:
                 upload.uploader_username = username
                 session.add(upload)
             session.commit()
+            
+        self.log_to_discord(f"📥 **{username}** uploaded/added: `{filename}` (Source: {source})")
 
     def get_custom_title(self, filename: str) -> str:
         with Session(db_manager.get_uploads_engine()) as session:
             upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
             return upload.title if upload else None
 
-        def get_uploader(self, filename: str) -> str:
-
-            with Session(db_manager.get_uploads_engine()) as session:
-
-                upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
-
-                return upload.uploader_username if upload else "Unknown"
-
-    
+    def get_uploader(self, filename: str) -> str:
+        with Session(db_manager.get_uploads_engine()) as session:
+            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+            return upload.uploader_username if upload else "Unknown"
 
     def get_sync_hashes(self, username: Optional[str]) -> Dict[str, str]:
         # Hash songs list

@@ -32,6 +32,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Stats tracking state
   String? _currentSongFilename;
   DateTime? _playStartTime;
+  bool _isCompleting = false;
   
   // New stats counters
   double _foregroundDuration = 0.0;
@@ -113,6 +114,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       
       // Handle natural completion
       if (state.processingState == ProcessingState.completed) {
+         _isCompleting = true;
          _flushStats(eventType: 'complete');
       }
     });
@@ -127,11 +129,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             
             // If the song changed, flush stats for the OLD song
             if (_currentSongFilename != null && _currentSongFilename != newFilename) {
-                _flushStats(eventType: 'skip');
+                if (!_isCompleting) {
+                    _flushStats(eventType: 'skip');
+                }
             }
             
             // Set new song
             if (_currentSongFilename != newFilename) {
+                _isCompleting = false;
                 _currentSongFilename = newFilename;
                 _foregroundDuration = 0.0;
                 _backgroundDuration = 0.0;
@@ -284,6 +289,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _updateDurations();
         _playStartTime = DateTime.now(); // Reset start time for the new state
     }
+    
+    // Flush stats when app is hidden or closed to ensure no data loss
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _flushStats(eventType: 'listen');
+    }
+    
     _appLifecycleState = state;
   }
 
