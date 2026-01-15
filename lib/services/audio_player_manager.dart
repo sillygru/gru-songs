@@ -185,13 +185,29 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (summary != null && summary['shuffle_state'] != null) {
       final remoteState = ShuffleState.fromJson(summary['shuffle_state']);
       
-      // Merge logic: we generally trust remote history if it's more comprehensive,
-      // but might prefer local config if it's newer (not tracking timestamps yet, so just merge)
-      // For now, let's just replace if remote has data, but keep local enabled status if it was just toggled.
+      // Timestamp-aware merge of history
+      final mergedMap = <String, HistoryEntry>{};
       
+      // Add local first
+      for (var entry in _shuffleState.history) {
+        mergedMap[entry.filename] = entry;
+      }
+      
+      // Merge remote (only if remote has a newer timestamp for the same song)
+      for (var entry in remoteState.history) {
+        if (!mergedMap.containsKey(entry.filename) || entry.timestamp > mergedMap[entry.filename]!.timestamp) {
+          mergedMap[entry.filename] = entry;
+        }
+      }
+      
+      final mergedHistory = mergedMap.values.toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      
+      final limitedHistory = mergedHistory.take(_shuffleState.config.historyLimit).toList();
+
       _shuffleState = _shuffleState.copyWith(
         config: remoteState.config.copyWith(enabled: _shuffleState.config.enabled),
-        history: remoteState.history,
+        history: limitedHistory,
       );
       shuffleStateNotifier.value = _shuffleState;
       await _storageService.saveShuffleState(_username!, _shuffleState.toJson());
@@ -269,14 +285,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _addToShuffleHistory(String filename) {
-    final history = List<String>.from(_shuffleState.history);
-    if (history.contains(filename)) {
-      history.remove(filename);
-    }
-    history.insert(0, filename);
+    final history = List<HistoryEntry>.from(_shuffleState.history);
+    final timestamp = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    
+    // Remove existing entry for this song
+    history.removeWhere((e) => e.filename == filename);
+    
+    // Add new timestamped entry at the top
+    history.insert(0, HistoryEntry(filename: filename, timestamp: timestamp));
+    
     if (history.length > _shuffleState.config.historyLimit) {
       history.removeRange(_shuffleState.config.historyLimit, history.length);
     }
+    
     _shuffleState = _shuffleState.copyWith(history: history);
     shuffleStateNotifier.value = _shuffleState;
     _saveShuffleState();
@@ -482,7 +503,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     // 1. Anti-repeat (Recent History)
     if (config.antiRepeatEnabled && _shuffleState.history.isNotEmpty) {
-      int historyIndex = _shuffleState.history.indexOf(song.filename);
+      int historyIndex = _shuffleState.history.indexWhere((e) => e.filename == song.filename);
       if (historyIndex != -1) {
         double reduction = 0.95 * (1.0 - (historyIndex / config.historyLimit));
         weight *= (1.0 - max(0.0, reduction));

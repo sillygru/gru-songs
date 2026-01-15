@@ -68,9 +68,37 @@ class ShuffleConfig extends Equatable {
       ];
 }
 
+class HistoryEntry extends Equatable {
+  final String filename;
+  final double timestamp;
+
+  const HistoryEntry({required this.filename, required this.timestamp});
+
+  factory HistoryEntry.fromJson(dynamic json) {
+    if (json is String) {
+      // Backwards compatibility for legacy string-only history
+      return HistoryEntry(filename: json, timestamp: 0);
+    }
+    return HistoryEntry(
+      filename: json['filename'],
+      timestamp: (json['timestamp'] ?? 0).toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'filename': filename,
+      'timestamp': timestamp,
+    };
+  }
+
+  @override
+  List<Object?> get props => [filename, timestamp];
+}
+
 class ShuffleState extends Equatable {
   final ShuffleConfig config;
-  final List<String> history;
+  final List<HistoryEntry> history;
 
   const ShuffleState({
     this.config = const ShuffleConfig(),
@@ -78,24 +106,25 @@ class ShuffleState extends Equatable {
   });
 
   factory ShuffleState.fromJson(Map<String, dynamic> json) {
+    final historyJson = json['history'] as List? ?? [];
     return ShuffleState(
       config: json['config'] != null 
           ? ShuffleConfig.fromJson(json['config']) 
           : const ShuffleConfig(),
-      history: List<String>.from(json['history'] ?? []),
+      history: historyJson.map((e) => HistoryEntry.fromJson(e)).toList(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'config': config.toJson(),
-      'history': history,
+      'history': history.map((e) => e.toJson()).toList(),
     };
   }
 
   ShuffleState copyWith({
     ShuffleConfig? config,
-    List<String>? history,
+    List<HistoryEntry>? history,
   }) {
     return ShuffleState(
       config: config ?? this.config,

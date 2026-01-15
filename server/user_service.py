@@ -248,9 +248,18 @@ class UserService:
             current_config.update(shuffle_state_data["config"])
             current_shuffle["config"] = current_config
             
-        # Update history (replace if provided)
+        # Update history with timestamp awareness
         if "history" in shuffle_state_data:
-            current_shuffle["history"] = shuffle_state_data["history"]
+            new_history = shuffle_state_data["history"]
+            # Handle list of strings (legacy) or list of dicts (new)
+            if new_history and isinstance(new_history[0], str):
+                # Convert legacy incoming to timestamped
+                current_time = time.time()
+                new_history = [{"filename": f, "timestamp": current_time - i} for i, f in enumerate(new_history)]
+            
+            # Merge logic: if remote has newer history for a song, we keep it, but for simplicity
+            # since history is a chronological list, we trust the incoming sync as the "latest" state.
+            current_shuffle["history"] = new_history
             
         summary_data["shuffle_state"] = current_shuffle
         
@@ -389,9 +398,14 @@ class UserService:
                         if is_meaningful_play:
                             shuffle_state = summary_data.get("shuffle_state", {})
                             history = shuffle_state.get("history", [])
-                            if stats.song_filename in history:
-                                history.remove(stats.song_filename)
-                            history.insert(0, stats.song_filename)
+                            
+                            # Clean history to work with timestamps
+                            new_entry = {"filename": stats.song_filename, "timestamp": stats.timestamp}
+                            
+                            # Remove existing entry for this song
+                            history = [h for h in history if (isinstance(h, dict) and h["filename"] != stats.song_filename) or (isinstance(h, str) and h != stats.song_filename)]
+                            
+                            history.insert(0, new_entry)
                             
                             config = shuffle_state.get("config", {})
                             history_limit = config.get("history_limit", 50)

@@ -88,8 +88,23 @@ def migrate_user_stats(username: str):
             "suggest_less_multiplier": old_config.get("suggest_less_multiplier", 0.2),
             "history_limit": old_config.get("history_limit", 50)
         }
-    if not shuffle_state.get("history"):
-        shuffle_state["history"] = []
+    
+    # Migrate history to timestamped format
+    raw_history = shuffle_state.get("history", [])
+    if not raw_history:
+        if "shuffle_history" in existing_data:
+             raw_history = existing_data["shuffle_history"]
+        elif "history" in existing_data:
+             raw_history = existing_data["history"]
+             
+    timestamped_history = []
+    for i, entry in enumerate(raw_history):
+        if isinstance(entry, str):
+            timestamped_history.append({"filename": entry, "timestamp": 1000000 - i})
+        else:
+            timestamped_history.append(entry)
+    
+    shuffle_state["history"] = timestamped_history
     new_stats["shuffle_state"] = shuffle_state
 
     with open(final_stats_path, "w") as f:
