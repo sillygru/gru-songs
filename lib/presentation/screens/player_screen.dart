@@ -298,6 +298,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(16),
                                         child: GruImage(
+                                          key: ValueKey('art_${metadata.id}'),
                                           url: metadata.artUri.toString(),
                                           fit: BoxFit.cover,
                                           errorWidget: const Icon(Icons.music_note, size: 100),

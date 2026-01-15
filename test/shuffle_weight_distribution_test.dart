@@ -11,7 +11,7 @@ double calculateWeight(QueueItem item, QueueItem? prev, ShuffleState shuffleStat
   final config = shuffleState.config;
 
   if (config.antiRepeatEnabled && shuffleState.history.isNotEmpty) {
-    int historyIndex = shuffleState.history.indexOf(song.filename);
+    int historyIndex = shuffleState.history.indexWhere((e) => e.filename == song.filename);
     if (historyIndex != -1) {
       double reduction = 0.95 * (1.0 - (historyIndex / config.historyLimit));
       weight *= (1.0 - max(0.0, reduction));
@@ -29,7 +29,6 @@ double calculateWeight(QueueItem item, QueueItem? prev, ShuffleState shuffleStat
   }
 
   if (favorites.contains(song.filename)) {
-    // print('Favorite boost for ${song.filename}: ${config.favoriteMultiplier}');
     weight *= config.favoriteMultiplier;
   }
   if (suggestLess.contains(song.filename)) weight *= config.suggestLessMultiplier;

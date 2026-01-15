@@ -24,7 +24,7 @@ Future<void> main() async {
   await JustAudioBackground.init(
     androidNotificationChannelId: 'com.sillygru.gru_songs.channel.audio',
     androidNotificationChannelName: 'Audio playback',
-    androidNotificationOngoing: true,
+    androidNotificationOngoing: false,
   );
 
   runApp(const ProviderScope(child: GruSongsApp()));

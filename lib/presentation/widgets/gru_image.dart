@@ -58,7 +58,10 @@ class _GruImageState extends State<GruImage> {
 
   Future<void> _loadImage() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _imageFile = null; // Clear previous image to avoid mismatch during transition
+    });
 
     try {
       final file = await CacheService.instance.getFile('images', _getFilename(), widget.url);

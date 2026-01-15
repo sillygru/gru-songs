@@ -77,6 +77,7 @@ class NowPlayingBar extends ConsumerWidget {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(6),
                             child: GruImage(
+                              key: ValueKey('art_${metadata.id}'),
                               url: metadata.artUri.toString(),
                               width: 50,
                               height: 50,

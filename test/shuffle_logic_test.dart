@@ -12,7 +12,7 @@ double calculateWeight(QueueItem item, QueueItem? prev, ShuffleState shuffleStat
 
   // 1. Anti-repeat (Recent History)
   if (config.antiRepeatEnabled && shuffleState.history.isNotEmpty) {
-    int historyIndex = shuffleState.history.indexOf(song.filename);
+    int historyIndex = shuffleState.history.indexWhere((e) => e.filename == song.filename);
     if (historyIndex != -1) {
       double reduction = 0.95 * (1.0 - (historyIndex / config.historyLimit));
       weight *= (1.0 - max(0.0, reduction));
@@ -63,7 +63,7 @@ void main() {
     test('Anti-repeat reduces weight significantly for recent songs', () {
       final state = ShuffleState(
         config: const ShuffleConfig(antiRepeatEnabled: true, historyLimit: 10),
-        history: ['s1.mp3'],
+        history: [HistoryEntry(filename: 's1.mp3', timestamp: DateTime.now().millisecondsSinceEpoch / 1000)],
       );
       
       final weight = calculateWeight(item1, null, state, [], []);
@@ -71,21 +71,15 @@ void main() {
     });
 
     test('Anti-repeat reduction decays over history', () {
-      final state = ShuffleState(
-        config: const ShuffleConfig(antiRepeatEnabled: true, historyLimit: 10),
-        history: List.generate(10, (i) => 'old_$i.mp3')..add('s1.mp3'),
-      );
-      
-      // If s1 is at the end of a long history, its weight should be higher than if it was at the start
       final stateStart = ShuffleState(
         config: const ShuffleConfig(antiRepeatEnabled: true, historyLimit: 20),
-        history: ['s1.mp3'],
+        history: [HistoryEntry(filename: 's1.mp3', timestamp: 100)],
       );
       final weightStart = calculateWeight(item1, null, stateStart, [], []);
       
       final stateEnd = ShuffleState(
         config: const ShuffleConfig(antiRepeatEnabled: true, historyLimit: 20),
-        history: List.generate(15, (i) => 'other_$i.mp3')..add('s1.mp3'),
+        history: List.generate(15, (i) => HistoryEntry(filename: 'other_$i.mp3', timestamp: 100 + i.toDouble()))..add(HistoryEntry(filename: 's1.mp3', timestamp: 99)),
       );
       final weightEnd = calculateWeight(item1, null, stateEnd, [], []);
       
@@ -124,7 +118,7 @@ void main() {
           favoriteMultiplier: 2.0,
           historyLimit: 100
         ),
-        history: ['s1.mp3'], // -95%
+        history: [HistoryEntry(filename: 's1.mp3', timestamp: 100)], // -95%
       );
       
       // s1.mp3 is favorite but recently played
@@ -138,7 +132,7 @@ void main() {
     test('Weight never reaches zero', () {
       final state = ShuffleState(
         config: const ShuffleConfig(antiRepeatEnabled: true, historyLimit: 10),
-        history: ['s1.mp3'],
+        history: [HistoryEntry(filename: 's1.mp3', timestamp: 100)],
       );
       final weight = calculateWeight(item1, null, state, [], ['s1.mp3']);
       expect(weight, greaterThan(0));

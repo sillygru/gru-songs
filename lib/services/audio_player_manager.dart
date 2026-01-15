@@ -378,6 +378,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           'remoteUrl': url,
           'queueId': item.queueId,
           'isPriority': item.isPriority,
+          'androidStopForegroundOnPause': true,
         },
       ),
     );
