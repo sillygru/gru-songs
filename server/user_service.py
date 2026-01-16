@@ -292,7 +292,44 @@ class UserService:
             # Detailed breakdown for logging/discord
             breakdown = []
 
-            for username, events in buffer_snapshot.items():
+            for username, raw_events in buffer_snapshot.items():
+                # 0. Coalesce Events (Fix for fragmented stats)
+                # Sort by timestamp to ensure correct order
+                raw_events.sort(key=lambda x: x.timestamp)
+                
+                events = []
+                if raw_events:
+                    current_merged = raw_events[0]
+                    
+                    for next_event in raw_events[1:]:
+                        # Check if we should merge (same session, same song)
+                        if (next_event.session_id == current_merged.session_id and 
+                            next_event.song_filename == current_merged.song_filename):
+                            
+                            # Merge into current_merged
+                            current_merged.duration_played += next_event.duration_played
+                            
+                            # Handle FG/BG merging
+                            fg1 = current_merged.foreground_duration if isinstance(current_merged.foreground_duration, (int, float)) else 0
+                            bg1 = current_merged.background_duration if isinstance(current_merged.background_duration, (int, float)) else 0
+                            fg2 = next_event.foreground_duration if isinstance(next_event.foreground_duration, (int, float)) else 0
+                            bg2 = next_event.background_duration if isinstance(next_event.background_duration, (int, float)) else 0
+                            
+                            current_merged.foreground_duration = fg1 + fg2
+                            current_merged.background_duration = bg1 + bg2
+                            
+                            # Update with latest metadata
+                            current_merged.event_type = next_event.event_type
+                            current_merged.timestamp = next_event.timestamp
+                            current_merged.platform = next_event.platform
+                        else:
+                            # Push completed group and start new one
+                            events.append(current_merged)
+                            current_merged = next_event
+                    
+                    # Append the final one
+                    events.append(current_merged)
+
                 # Track unique songs in this flush for this user
                 songs_flushed = [f"`{e.song_filename}`" for e in events]
                 # Unique-ish summary
@@ -300,7 +337,7 @@ class UserService:
                 if len(set(songs_flushed)) > 10:
                     song_summary += " ..."
                 
-                breakdown.append(f"**{username}**: {len(events)} events ({song_summary})")
+                breakdown.append(f"**{username}**: {len(events)} events (was {len(raw_events)}) ({song_summary})")
                 
                 # 1. Update SQL Database
                 try:
