@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'cache_management_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
+import '../../models/shuffle_config.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -109,7 +110,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final userData = ref.watch(userDataProvider);
-
+    final audioManager = ref.watch(audioPlayerManagerProvider);
+    // Use ValueListenableBuilder to listen to shuffle state changes from manager
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
@@ -167,6 +169,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
+                  
+                  // Shuffle Personality Selector
+                  _buildSectionTitle('Shuffle Personality'),
+                  ValueListenableBuilder(
+                    valueListenable: audioManager.shuffleStateNotifier,
+                    builder: (context, shuffleState, child) {
+                      final current = shuffleState.config.personality;
+                      return Card(
+                        elevation: 0,
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            children: [
+                              _buildRadioTile(
+                                title: 'Default', 
+                                subtitle: 'Balanced mix with anti-repeat',
+                                value: ShufflePersonality.defaultMode, 
+                                groupValue: current, 
+                                onChanged: (v) => audioManager.updateShuffleConfig(shuffleState.config.copyWith(personality: v)),
+                              ),
+                              _buildRadioTile(
+                                title: 'Explorer', 
+                                subtitle: 'Prioritizes new & rare songs',
+                                value: ShufflePersonality.explorer, 
+                                groupValue: current, 
+                                onChanged: (v) => audioManager.updateShuffleConfig(shuffleState.config.copyWith(personality: v)),
+                              ),
+                              _buildRadioTile(
+                                title: 'Consistent', 
+                                subtitle: 'Favorites & playlists heavy',
+                                value: ShufflePersonality.consistent, 
+                                groupValue: current, 
+                                onChanged: (v) => audioManager.updateShuffleConfig(shuffleState.config.copyWith(personality: v)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  ),
+                  const SizedBox(height: 24),
+
                   _buildSectionTitle('Account'),
                   _buildListTile(
                     icon: Icons.person_outline,
@@ -214,6 +259,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Widget _buildRadioTile({
+    required String title,
+    required String subtitle,
+    required ShufflePersonality value,
+    required ShufflePersonality groupValue,
+    required ValueChanged<ShufflePersonality?> onChanged,
+  }) {
+    return RadioListTile<ShufflePersonality>(
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      value: value,
+      groupValue: groupValue,
+      onChanged: onChanged,
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      activeColor: Theme.of(context).colorScheme.primary,
+    );
+  }
+
   Widget _buildStatColumn(String label, String value) {
     return Column(
       children: [
@@ -257,7 +321,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }) {
     return Card(
       elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
         leading: Icon(icon, color: iconColor),
