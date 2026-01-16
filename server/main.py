@@ -14,6 +14,7 @@ from multiprocessing import Process, Queue
 from settings import settings
 from services import music_service
 from user_service import user_service
+from backup_service import backup_service
 from discord_bot import run_bot
 from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
 
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     global bot_process
     # Startup logic
     user_service.set_discord_queue(discord_queue)
+    backup_service.set_discord_queue(discord_queue)
     
     # Start Discord Bot in a separate process
     bot_process = Process(target=run_bot, args=(discord_queue,), daemon=True)
@@ -34,6 +36,7 @@ async def lifespan(app: FastAPI):
     discord_queue.put("🖥️ Server starting up...")
     
     asyncio.create_task(periodic_flush())
+    asyncio.create_task(backup_service.start_scheduler())
     yield
     # Shutdown logic
     if bot_process:
