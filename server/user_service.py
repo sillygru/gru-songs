@@ -327,6 +327,11 @@ class UserService:
 
                             # Event Logic
                             total_length = music_service.get_song_duration(stats.song_filename)
+
+                            # Retroactively fix "skips" that are actually full plays (within 10s of end)
+                            if total_length > 0 and (total_length - stats.duration_played) <= 10.0:
+                                stats.event_type = 'complete'
+
                             ratio = (stats.duration_played / total_length) if total_length > 0 else 0.0
                             
                             fg = stats.foreground_duration if isinstance(stats.foreground_duration, (int, float)) else None
