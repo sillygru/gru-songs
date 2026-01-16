@@ -54,6 +54,7 @@ async def listen_for_commands():
 async def lifespan(app: FastAPI):
     global bot_process
     # Startup logic
+    backup_service.log_event("STARTUP")
     user_service.set_discord_queue(discord_queue)
     backup_service.set_discord_queue(discord_queue)
     
@@ -68,6 +69,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(listen_for_commands())
     yield
     # Shutdown logic
+    backup_service.log_event("SHUTDOWN")
     if bot_process:
         try:
             discord_queue.put("🛑 Server shutting down...")

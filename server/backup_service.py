@@ -12,7 +12,10 @@ class BackupService:
         self.discord_queue = None
         self._is_backing_up = False
         self.state_file = os.path.join(os.path.dirname(__file__), "backup_state.json")
-        self.next_run_timestamp = self._load_state()
+        self.history_file = os.path.join(os.path.dirname(__file__), "server_history.log")
+        self.last_run_timestamp = self._load_state()
+        # Next run is 6 hours after the last successful backup
+        self.next_run_timestamp = self.last_run_timestamp + (6 * 60 * 60)
 
     def set_discord_queue(self, queue: Queue):
         self.discord_queue = queue
@@ -22,21 +25,38 @@ class BackupService:
         if self.discord_queue:
             self.discord_queue.put(message)
 
+    def log_event(self, event_type: str, details: str = ""):
+        try:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_line = f"[{timestamp}] {event_type}"
+            if details:
+                log_line += f": {details}"
+            
+            with open(self.history_file, 'a') as f:
+                f.write(log_line + "\n")
+        except Exception as e:
+            print(f"Failed to log event: {e}")
+
     def _load_state(self) -> float:
         try:
             if os.path.exists(self.state_file):
                 with open(self.state_file, 'r') as f:
                     data = json.load(f)
-                    return data.get("next_run_timestamp", 0)
+                    # Support legacy "next_run_timestamp" if it exists, but prefer "last_run_timestamp"
+                    if "last_run_timestamp" in data:
+                        return data["last_run_timestamp"]
+                    elif "next_run_timestamp" in data:
+                        # If we only have next_run, assume it was scheduled 6h after the last one
+                        return data["next_run_timestamp"] - (6 * 60 * 60)
         except Exception:
             pass
-        # Default to now + 6 hours if no state
-        return time.time() + (6 * 60 * 60)
+        # Default to now if no state (next backup will be in 6 hours)
+        return time.time()
 
     def _save_state(self):
         try:
             with open(self.state_file, 'w') as f:
-                json.dump({"next_run_timestamp": self.next_run_timestamp}, f)
+                json.dump({"last_run_timestamp": self.last_run_timestamp}, f)
         except Exception as e:
             print(f"Failed to save backup state: {e}")
 
@@ -47,7 +67,8 @@ class BackupService:
         success = await self.perform_backup()
         
         if success and reset_timer:
-            self.next_run_timestamp = time.time() + (6 * 60 * 60)
+            self.last_run_timestamp = time.time()
+            self.next_run_timestamp = self.last_run_timestamp + (6 * 60 * 60)
             self._save_state()
             self._log(f"⏰ Timer reset. Next backup at: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%H:%M')}")
             
@@ -59,7 +80,11 @@ class BackupService:
             
         self._is_backing_up = True
         try:
-            return await asyncio.to_thread(self._perform_backup_sync)
+            success = await asyncio.to_thread(self._perform_backup_sync)
+            if success:
+                self.last_run_timestamp = time.time()
+                self._save_state()
+            return success
         finally:
             self._is_backing_up = False
 
@@ -101,7 +126,9 @@ class BackupService:
             shutil.copytree(settings.USERS_DIR, dest_path)
             
             elapsed = time.time() - start_time
-            self._log(f"✅ Backup {next_num} completed in {elapsed:.2f}s: {folder_name}")
+            msg = f"✅ Backup {next_num} completed in {elapsed:.2f}s: {folder_name}"
+            self._log(msg)
+            self.log_event("BACKUP", folder_name)
             return True
             
         except Exception as e:
@@ -116,8 +143,7 @@ class BackupService:
                 success = await self.perform_backup()
                 if success:
                     # Schedule next
-                    self.next_run_timestamp = time.time() + (6 * 60 * 60)
-                    self._save_state()
+                    self.next_run_timestamp = self.last_run_timestamp + (6 * 60 * 60)
                     self._log(f"⏰ Next backup scheduled for: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%H:%M')}")
                 else:
                     # Retry in 1 hour if failed? Or keep trying?
