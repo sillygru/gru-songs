@@ -3,17 +3,21 @@ from discord.ext import commands
 import asyncio
 import os
 import signal
+import datetime
 from settings import settings
 
-class GruDiscordBot(commands.Bot):
-# ... (rest of the class remains same)
+# Lazy import user_service inside commands/process to avoid global state issues
+# But we can import the class/module structure
+from user_service import user_service
 
-    def __init__(self, queue, *args, **kwargs):
+class GruDiscordBot(commands.Bot):
+    def __init__(self, queue, command_queue, *args, **kwargs):
         # Using a simple prefix "!" for non-slash commands
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix="!", intents=intents, *args, **kwargs)
         self.queue = queue
+        self.command_queue = command_queue
         self.channel_id = int(settings.DISCORD_CHANNEL_ID) if settings.DISCORD_CHANNEL_ID else None
 
     async def setup_hook(self):
@@ -41,8 +45,14 @@ class GruDiscordBot(commands.Bot):
                         message = self.queue.get_nowait()
                         if message is None:
                             return
-                        if message:
-                            await channel.send(message)
+                        
+                        if isinstance(message, dict) and message.get("type") == "embed":
+                            # Handle Embed
+                            embed_data = message.get("data")
+                            if embed_data:
+                                await channel.send(embed=discord.Embed.from_dict(embed_data))
+                        elif message:
+                            await channel.send(str(message))
                     except:
                         # Queue is empty
                         break
@@ -55,7 +65,7 @@ class GruDiscordBot(commands.Bot):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
         print('------')
 
-def run_bot(queue):
+def run_bot(queue, command_queue):
     # Ignore SIGINT (Ctrl+C) in the bot process so the parent can manage shutdown
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -63,16 +73,66 @@ def run_bot(queue):
         print("DISCORD_TOKEN not set, skipping discord bot")
         return
 
-    bot = GruDiscordBot(queue)
+    bot = GruDiscordBot(queue, command_queue)
 
     @bot.command(name="status")
     async def status(ctx):
         await ctx.send("✅ Backend is online and recording stats.")
 
+    @bot.command(name="backup")
+    async def backup(ctx, reset: str = "false"):
+        reset_bool = reset.lower() == "true"
+        
+        # Send command to main process via queue
+        if bot.command_queue:
+            bot.command_queue.put({
+                "command": "backup", 
+                "reset": reset_bool,
+                "requester": str(ctx.author)
+            })
+            if reset_bool:
+                await ctx.send("⏳ Backup requested (Timer WILL be reset).")
+            else:
+                await ctx.send("⏳ Backup requested (Timer will NOT be reset).")
+        else:
+            await ctx.send("❌ Internal Error: Command queue not available.")
+
     @bot.command(name="stats")
-    async def stats(ctx):
-        # This could be expanded to show more interesting stats
-        await ctx.send("📊 Stats recording is active. Use !ping to test latency.")
+    async def stats(ctx, username: str = None):
+        if not username:
+            await ctx.send("❌ Usage: !stats [username]")
+            return
+
+        # Fetch stats directly (Read-Only access to files is safe)
+        summary = user_service.get_stats_summary(username)
+        
+        # Check if user exists (total_sessions is a good proxy, or check return structure)
+        # get_stats_summary returns default structure even if empty file
+        # Check if file exists to be sure? 
+        # user_service.get_user returns None if no DB.
+        user_info = user_service.get_user(username)
+        if not user_info:
+            await ctx.send(f"❌ User '{username}' not found.")
+            return
+
+        # Build Embed
+        embed = discord.Embed(title=f"📊 Stats for {username}", color=0x1DB954)
+        
+        total_time_hrs = round(summary.get("total_play_time", 0) / 3600, 1)
+        
+        embed.add_field(name="Total Play Time", value=f"{total_time_hrs} hrs", inline=True)
+        embed.add_field(name="Songs Played", value=f"{summary.get('total_songs_played', 0)}", inline=True)
+        embed.add_field(name="Sessions", value=f"{summary.get('total_sessions', 0)}", inline=True)
+        
+        # Platform usage
+        platforms = summary.get("platform_usage", {})
+        if platforms:
+            p_str = "\n".join([f"{k}: {v}" for k, v in platforms.items()])
+            embed.add_field(name="Platforms", value=p_str, inline=False)
+            
+        embed.set_footer(text=f"Requested by {ctx.author.display_name} • {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        
+        await ctx.send(embed=embed)
 
     @bot.command(name="ping")
     async def ping(ctx):
@@ -86,7 +146,3 @@ def run_bot(queue):
         # Force exit to prevent hanging multiprocessing join
         os._exit(0)
 
-if __name__ == "__main__":
-    # For testing independently if needed
-    from multiprocessing import Queue
-    run_bot(Queue())

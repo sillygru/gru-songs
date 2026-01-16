@@ -3,12 +3,16 @@ import shutil
 import asyncio
 import datetime
 import time
+import json
 from settings import settings
 from multiprocessing import Queue
 
 class BackupService:
     def __init__(self):
         self.discord_queue = None
+        self._is_backing_up = False
+        self.state_file = os.path.join(os.path.dirname(__file__), "backup_state.json")
+        self.next_run_timestamp = self._load_state()
 
     def set_discord_queue(self, queue: Queue):
         self.discord_queue = queue
@@ -18,8 +22,46 @@ class BackupService:
         if self.discord_queue:
             self.discord_queue.put(message)
 
+    def _load_state(self) -> float:
+        try:
+            if os.path.exists(self.state_file):
+                with open(self.state_file, 'r') as f:
+                    data = json.load(f)
+                    return data.get("next_run_timestamp", 0)
+        except Exception:
+            pass
+        # Default to now + 6 hours if no state
+        return time.time() + (6 * 60 * 60)
+
+    def _save_state(self):
+        try:
+            with open(self.state_file, 'w') as f:
+                json.dump({"next_run_timestamp": self.next_run_timestamp}, f)
+        except Exception as e:
+            print(f"Failed to save backup state: {e}")
+
+    async def trigger_backup(self, reset_timer: bool = False):
+        if self._is_backing_up:
+            return False, "Backup already in progress"
+            
+        success = await self.perform_backup()
+        
+        if success and reset_timer:
+            self.next_run_timestamp = time.time() + (6 * 60 * 60)
+            self._save_state()
+            self._log(f"⏰ Timer reset. Next backup at: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%H:%M')}")
+            
+        return success, "Backup completed"
+
     async def perform_backup(self):
-        return await asyncio.to_thread(self._perform_backup_sync)
+        if self._is_backing_up:
+            return False
+            
+        self._is_backing_up = True
+        try:
+            return await asyncio.to_thread(self._perform_backup_sync)
+        finally:
+            self._is_backing_up = False
 
     def _perform_backup_sync(self):
         start_time = time.time()
@@ -67,10 +109,23 @@ class BackupService:
             return False
 
     async def start_scheduler(self):
-        # 6 hours in seconds
-        INTERVAL = 6 * 60 * 60
+        self._log(f"⏳ Backup scheduler started. Next run: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
         while True:
-            await asyncio.sleep(INTERVAL)
-            await self.perform_backup()
+            now = time.time()
+            if now >= self.next_run_timestamp:
+                success = await self.perform_backup()
+                if success:
+                    # Schedule next
+                    self.next_run_timestamp = time.time() + (6 * 60 * 60)
+                    self._save_state()
+                    self._log(f"⏰ Next backup scheduled for: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%H:%M')}")
+                else:
+                    # Retry in 1 hour if failed? Or keep trying?
+                    # Let's retry in 1 hour
+                    self.next_run_timestamp = time.time() + (60 * 60)
+                    self._log("⚠️ Backup failed, retrying in 1 hour.")
+            
+            # Check every minute
+            await asyncio.sleep(60)
 
 backup_service = BackupService()

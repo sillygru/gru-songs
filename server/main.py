@@ -20,7 +20,34 @@ from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpd
 
 # Global queue and process for discord bot
 discord_queue = Queue()
+command_queue = Queue()
 bot_process = None
+
+async def listen_for_commands():
+    while True:
+        try:
+            # Check for commands from bot process
+            while not command_queue.empty():
+                cmd_data = command_queue.get_nowait()
+                if not cmd_data: continue
+                
+                cmd_type = cmd_data.get("command")
+                if cmd_type == "backup":
+                    reset = cmd_data.get("reset", False)
+                    requester = cmd_data.get("requester", "Unknown")
+                    discord_queue.put(f"🔄 Backup triggered by {requester} (Reset Timer: {reset})...")
+                    
+                    success, msg = await backup_service.trigger_backup(reset_timer=reset)
+                    
+                    # Log result back to discord
+                    # Result is already logged by backup_service._log which goes to discord_queue
+                    # But we can add extra confirmation if needed
+                    pass
+                    
+        except Exception as e:
+            print(f"Error in command listener: {e}")
+            
+        await asyncio.sleep(1)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,13 +57,14 @@ async def lifespan(app: FastAPI):
     backup_service.set_discord_queue(discord_queue)
     
     # Start Discord Bot in a separate process
-    bot_process = Process(target=run_bot, args=(discord_queue,), daemon=True)
+    bot_process = Process(target=run_bot, args=(discord_queue, command_queue), daemon=True)
     bot_process.start()
     
     discord_queue.put("🖥️ Server starting up...")
     
     asyncio.create_task(periodic_flush())
     asyncio.create_task(backup_service.start_scheduler())
+    asyncio.create_task(listen_for_commands())
     yield
     # Shutdown logic
     if bot_process:

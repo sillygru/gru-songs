@@ -18,6 +18,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **UI Components:** `audio_video_progress_bar`, `GruImage` (custom cache-first widget)
 - **Networking:** `http` with custom `HttpOverrides` for TLS/SSL handshake stability.
 - **Backend:** FastAPI (Python 3.10+) utilizing lifespan handlers for robust startup/shutdown logic.
+- **Backup & Notifications:** Automated backups of user data every 6 hours with persistence. Discord bot integration for logs and admin commands.
 
 ## 🌐 Networking & API
 - **Base URL:** `https://[REDACTED]/music`
@@ -96,7 +97,17 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
     - `users/<username>_final_stats.json`: Aggregated summary and persistent shuffle state.
     - `users/uploads.db`: Global record of song uploads and their owners.
     - `songs/downloaded/`: Subdirectory for uploaded or yt-dlp downloaded songs.
+    - `backups/`: Automated 6-hour interval backups of `users/` directory.
   - **Stats Engine:** Rounding precision to 2 decimal places. Play counts filter for ratio > 0.25 across all non-favorite event types. Shuffle history automatically updates upon song completion.
+  - **Backup Service:** 
+    - Runs in a background thread to prevent blocking main event loop.
+    - Copies `users/` to `backups/users/[number]_[timestamp]/`.
+    - Persists schedule state in `backup_state.json`.
+    - Sends notifications to Discord.
+  - **Discord Bot:**
+    - `!backup [true/false]`: Manually trigger backup (optional timer reset).
+    - `!stats [username]`: View rich statistics embed for a user.
+    - `!ping`, `!status`.
 
 ## 📂 Project Structure
 ### Frontend (`lib/`)
@@ -110,12 +121,16 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 - `main.dart`: Entry point.
 
 ### Backend (`server/`)
-- `main.py`: Routes and background tasks.
+- `main.py`: Routes, background tasks, and bot process management.
 - `user_service.py`: Core logic for auth, stats (buffer), and user data.
+- `backup_service.py`: Automated backup scheduler and execution logic.
+- `discord_bot.py`: Discord bot implementation with command queue support.
 - `models.py`: Pydantic models.
 - `services.py`: Music metadata extraction.
-- `settings.py`: Configuration.
-- `users/`: JSON storage for user data.
+- `settings.py`: Configuration (including `BACKUPS_DIR`).
+- `users/`: JSON/SQLite storage for user data.
+- `backups/`: Backup storage directory.
+
 ## 📦 Build Commands
 
 ### Android
