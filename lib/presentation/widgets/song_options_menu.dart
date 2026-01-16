@@ -101,7 +101,7 @@ void showSongOptionsMenu(BuildContext context, WidgetRef ref, String songFilenam
                   );
                 }),
                 ListTile(
-                  leading: Icon(isSuggestLess ? Icons.thumb_up : Icons.thumb_down_outlined, color: isSuggestLess ? Colors.orange : null),
+                  leading: Icon(Icons.heart_broken, color: isSuggestLess ? Colors.grey : null),
                   title: Text(isSuggestLess ? "Suggest more" : "Suggest less"),
                   onTap: () {
                     ref.read(userDataProvider.notifier).toggleSuggestLess(songFilename);

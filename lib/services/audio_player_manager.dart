@@ -411,7 +411,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (finalDuration > 0.5) {
         _statsService.track(_username!, _currentSongFilename!, finalDuration, eventType,
           foregroundDuration: _foregroundDuration, backgroundDuration: _backgroundDuration);
-        if (eventType == 'complete' || finalDuration > 30) {
+        
+        // Add to local history if completed OR played for at least 5 seconds (to treat as a "seen" song for anti-repeat)
+        if (eventType == 'complete' || finalDuration > 5.0) {
            _addToShuffleHistory(_currentSongFilename!);
         }
     }
@@ -425,8 +427,22 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _addToShuffleHistory(String filename) {
-     // Server handles history now via stats flushing, but we keep local for offline weight calc
-     // ... (same as before) ...
+    final history = List<HistoryEntry>.from(_shuffleState.history);
+    final newEntry = HistoryEntry(
+      filename: filename, 
+      timestamp: DateTime.now().millisecondsSinceEpoch / 1000.0
+    );
+
+    history.removeWhere((e) => e.filename == filename);
+    history.insert(0, newEntry);
+
+    if (history.length > _shuffleState.config.historyLimit) {
+      history.removeRange(_shuffleState.config.historyLimit, history.length);
+    }
+
+    _shuffleState = _shuffleState.copyWith(history: history);
+    shuffleStateNotifier.value = _shuffleState;
+    _saveShuffleState();
   }
 
   @override
@@ -633,10 +649,37 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   double _calculateWeight(QueueItem item, QueueItem? prev) {
-    // ... (Existing Logic for Offline Fallback) ...
     double weight = 1.0;
     final song = item.song;
     final config = _shuffleState.config;
+
+    // --- Personality: EXPLORER ---
+    if (config.personality == ShufflePersonality.explorer) {
+      final count = song.playCount;
+      if (count == 0) {
+        weight *= 50.0;
+      } else if (count < 5) {
+        weight *= 5.0;
+      } else if (count > 50) {
+        weight *= 0.01;
+      } else if (count > 15) {
+        weight *= 0.1;
+      }
+
+      if (_favorites.contains(song.filename)) weight *= 1.1;
+      if (_suggestLess.contains(song.filename)) weight *= 0.001;
+
+      // Anti-repeat (Strong)
+      if (_shuffleState.history.isNotEmpty) {
+        int historyIndex = _shuffleState.history.indexWhere((e) => e.filename == song.filename);
+        if (historyIndex != -1) {
+          double reduction = 0.95 * (1.0 - (historyIndex / config.historyLimit));
+          weight *= (1.0 - max(0.0, reduction));
+        }
+      }
+      return max(0.0001, weight);
+    }
+
     if (config.antiRepeatEnabled && _shuffleState.history.isNotEmpty) {
       int historyIndex = _shuffleState.history.indexWhere((e) => e.filename == song.filename);
       if (historyIndex != -1) {

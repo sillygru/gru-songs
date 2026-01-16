@@ -256,25 +256,27 @@ class QueueService:
             count = play_counts.get(fname, 0)
             
             if count == 0:
-                weight *= 10.0 # Huge boost for unplayed
+                weight *= 50.0 # Massive boost for unplayed
             elif count < 5:
-                weight *= 3.0  # Boost for rare
-            elif count > 20:
-                weight *= 0.5  # Penalize overplayed
+                weight *= 5.0  # Boost for rare
+            elif count > 50:
+                weight *= 0.01 # Ban overplayed
+            elif count > 15:
+                weight *= 0.1  # Penalize frequent
                 
             # Favorites are neutral (1.0) or slight boost? Prompt says "favorites... weight reduced influence".
             # Let's keep them neutral or slight.
             if fname in favorites: weight *= 1.1 
             
-            # Suggest less is strong penalty
-            if fname in suggest_less: weight *= 0.1
+            # Suggest less is extremely strong penalty
+            if fname in suggest_less: weight *= 0.001
             
-            # Anti-repeat is softer
+            # Anti-repeat is strong (95%)
             if history:
                 try:
                     idx = history.index(fname)
-                    # Max reduction 50%
-                    reduction = 0.5 * (1.0 - (idx / config.history_limit))
+                    # Max reduction 95%
+                    reduction = 0.95 * (1.0 - (idx / config.history_limit))
                     weight *= (1.0 - max(0.0, reduction))
                 except ValueError:
                     pass

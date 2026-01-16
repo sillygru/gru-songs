@@ -429,8 +429,11 @@ class UserService:
                         if stats.event_type == 'skip' and ratio < 0.2:
                             summary_data["total_skipped"] += 1
 
-                        # Shuffle history update: Significant plays or completions
-                        if is_meaningful_play:
+                        # Shuffle history update: Significant plays OR skips (to prevent immediate repeat)
+                        # meaningful play OR skip with at least 5 seconds (to avoid accidental next/prev spam)
+                        should_add_to_history = is_meaningful_play or (stats.duration_played > 5.0)
+
+                        if should_add_to_history:
                             shuffle_state = summary_data.get("shuffle_state", {})
                             history = shuffle_state.get("history", [])
                             
