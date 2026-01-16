@@ -1,5 +1,11 @@
 import 'package:equatable/equatable.dart';
 
+enum ShufflePersonality {
+  defaultMode,
+  explorer,
+  consistent
+}
+
 class ShuffleConfig extends Equatable {
   final bool enabled;
   final bool antiRepeatEnabled;
@@ -7,6 +13,8 @@ class ShuffleConfig extends Equatable {
   final double favoriteMultiplier;
   final double suggestLessMultiplier;
   final int historyLimit;
+  final ShufflePersonality personality;
+  final List<String> consistentPlaylists;
 
   const ShuffleConfig({
     this.enabled = false,
@@ -15,6 +23,8 @@ class ShuffleConfig extends Equatable {
     this.favoriteMultiplier = 1.15,
     this.suggestLessMultiplier = 0.2,
     this.historyLimit = 50,
+    this.personality = ShufflePersonality.defaultMode,
+    this.consistentPlaylists = const [],
   });
 
   factory ShuffleConfig.fromJson(Map<String, dynamic> json) {
@@ -25,6 +35,8 @@ class ShuffleConfig extends Equatable {
       favoriteMultiplier: (json['favorite_multiplier'] ?? 1.15).toDouble(),
       suggestLessMultiplier: (json['suggest_less_multiplier'] ?? 0.2).toDouble(),
       historyLimit: json['history_limit'] ?? 50,
+      personality: _parsePersonality(json['personality']),
+      consistentPlaylists: (json['consistent_playlists'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     );
   }
 
@@ -36,7 +48,31 @@ class ShuffleConfig extends Equatable {
       'favorite_multiplier': favoriteMultiplier,
       'suggest_less_multiplier': suggestLessMultiplier,
       'history_limit': historyLimit,
+      'personality': _personalityToString(personality),
+      'consistent_playlists': consistentPlaylists,
     };
+  }
+
+  static ShufflePersonality _parsePersonality(String? val) {
+    switch (val) {
+      case 'explorer':
+        return ShufflePersonality.explorer;
+      case 'consistent':
+        return ShufflePersonality.consistent;
+      default:
+        return ShufflePersonality.defaultMode;
+    }
+  }
+
+  static String _personalityToString(ShufflePersonality p) {
+    switch (p) {
+      case ShufflePersonality.explorer:
+        return 'explorer';
+      case ShufflePersonality.consistent:
+        return 'consistent';
+      default:
+        return 'default';
+    }
   }
 
   ShuffleConfig copyWith({
@@ -46,6 +82,8 @@ class ShuffleConfig extends Equatable {
     double? favoriteMultiplier,
     double? suggestLessMultiplier,
     int? historyLimit,
+    ShufflePersonality? personality,
+    List<String>? consistentPlaylists,
   }) {
     return ShuffleConfig(
       enabled: enabled ?? this.enabled,
@@ -54,6 +92,8 @@ class ShuffleConfig extends Equatable {
       favoriteMultiplier: favoriteMultiplier ?? this.favoriteMultiplier,
       suggestLessMultiplier: suggestLessMultiplier ?? this.suggestLessMultiplier,
       historyLimit: historyLimit ?? this.historyLimit,
+      personality: personality ?? this.personality,
+      consistentPlaylists: consistentPlaylists ?? this.consistentPlaylists,
     );
   }
 
@@ -65,6 +105,8 @@ class ShuffleConfig extends Equatable {
         favoriteMultiplier,
         suggestLessMultiplier,
         historyLimit,
+        personality,
+        consistentPlaylists,
       ];
 }
 

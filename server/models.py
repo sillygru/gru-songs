@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 
+from enum import Enum
+
 class UserBase(BaseModel):
     username: str
 
@@ -27,6 +29,11 @@ class StatsEntry(BaseModel):
     foreground_duration: Optional[Any] = "unknown"
     background_duration: Optional[Any] = "unknown"
 
+class ShufflePersonality(str, Enum):
+    DEFAULT = "default"
+    EXPLORER = "explorer"
+    CONSISTENT = "consistent"
+
 class ShuffleConfig(BaseModel):
     enabled: bool = False
     anti_repeat_enabled: bool = True
@@ -34,15 +41,34 @@ class ShuffleConfig(BaseModel):
     favorite_multiplier: float = 1.15
     suggest_less_multiplier: float = 0.2
     history_limit: int = 50
+    personality: ShufflePersonality = ShufflePersonality.DEFAULT
+    consistent_playlists: List[str] = []
 
 class ShuffleState(BaseModel):
     config: ShuffleConfig = ShuffleConfig()
-    history: List[str] = []
+    history: List[dict] = [] # List of {"filename": str, "timestamp": float}
+
+class QueueItem(BaseModel):
+    queue_id: str
+    song_filename: str
+    is_priority: bool = False
+    added_at: float = 0.0
+
+class QueueState(BaseModel):
+    items: List[QueueItem] = []
+    current_index: int = 0
+    version: int = 0
+
+class QueueSyncRequest(BaseModel):
+    queue: List[QueueItem]
+    current_index: int
+    version: int
 
 class StatsSummary(BaseModel):
     total_play_time: float = 0.0
     total_sessions: int = 0
     shuffle_state: ShuffleState = ShuffleState()
+    queue_state: Optional[QueueState] = None
 
 class PlaylistSong(BaseModel):
     filename: str

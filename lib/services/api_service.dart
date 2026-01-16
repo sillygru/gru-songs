@@ -109,6 +109,51 @@ class ApiService {
     }
   }
 
+  // Queue & Sync
+  Future<Map<String, dynamic>> fetchQueue() async {
+    try {
+      final response = await _client.get(Uri.parse('$baseUrl/queue'), headers: _headers);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      throw Exception('Failed to fetch queue: ${response.statusCode}');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> syncQueue(List<Map<String, dynamic>> queue, int currentIndex, int version) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/queue/sync'),
+        headers: _headers,
+        body: jsonEncode({
+          'queue': queue,
+          'current_index': currentIndex,
+          'version': version,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      throw Exception('Failed to sync queue: ${response.statusCode}');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> fetchNextSong() async {
+    try {
+      final response = await _client.post(Uri.parse('$baseUrl/queue/next'), headers: _headers);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<String?> fetchLyrics(String url) async {
     try {
       final response = await _client.get(Uri.parse(getFullUrl(url)));

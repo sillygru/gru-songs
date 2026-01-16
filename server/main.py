@@ -14,9 +14,10 @@ from multiprocessing import Process, Queue
 from settings import settings
 from services import music_service
 from user_service import user_service
+from queue_service import queue_service
 from backup_service import backup_service
 from discord_bot import run_bot
-from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest
+from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest, QueueState, QueueSyncRequest, QueueItem
 
 # Global queue and process for discord bot
 discord_queue = Queue()
@@ -425,6 +426,29 @@ async def ytdlp_download(
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+# --- Queue Routes ---
+
+@app.get("/queue")
+def get_queue(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return queue_service.get_queue(x_username)
+
+@app.post("/queue/sync")
+def sync_queue(req: QueueSyncRequest, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return queue_service.sync_queue(x_username, req.queue, req.current_index, req.version)
+
+@app.post("/queue/next")
+def get_next_song(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    item = queue_service.get_next_song(x_username)
+    if not item:
+        raise HTTPException(status_code=404, detail="No songs available")
+    return item
 
 if __name__ == "__main__":
     import uvicorn
