@@ -1,6 +1,14 @@
 import os
-import shutil
 import tempfile
+
+# Setup env BEFORE any other imports to prevent settings.py from failing
+os.environ["GRUSONGS_TESTING"] = "true"
+test_base = tempfile.mkdtemp()
+os.environ["MUSIC_DIR"] = os.path.join(test_base, "music")
+os.environ["USERS_DIR"] = os.path.join(test_base, "users")
+os.environ["BACKUPS_DIR"] = os.path.join(test_base, "backups")
+
+import shutil
 import sys
 import unittest
 import json
@@ -15,27 +23,15 @@ from migrate_skips_logic import rebuild_user_stats
 
 class TestMigrationComprehensive(unittest.TestCase):
     def setUp(self):
-        # Create temp dir
-        self.test_dir = tempfile.mkdtemp()
-        self.users_dir = os.path.join(self.test_dir, "users")
-        os.makedirs(self.users_dir)
+        # The env vars already set the paths for settings.py
+        self.users_dir = os.environ["USERS_DIR"]
+        os.makedirs(self.users_dir, exist_ok=True)
         
         # Override db_manager path
-        self.original_users_dir = db_manager.users_dir
         db_manager.users_dir = self.users_dir
         
-        # Patch settings
-        from settings import settings
-        self.original_settings_users_dir = settings.USERS_DIR
-        settings.USERS_DIR = self.users_dir
-
     def tearDown(self):
-        # Restore
-        db_manager.users_dir = self.original_users_dir
-        from settings import settings
-        settings.USERS_DIR = self.original_settings_users_dir
-        
-        shutil.rmtree(self.test_dir)
+        pass
 
     def test_migration_edge_cases(self):
         username = "test_user_comp"

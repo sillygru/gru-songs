@@ -154,6 +154,18 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> getFunStats() async {
+    try {
+      final response = await _client.get(Uri.parse('$baseUrl/stats/fun'), headers: _headers);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      throw Exception('Failed to fetch fun stats: ${response.statusCode}');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<String?> fetchLyrics(String url) async {
     try {
       final response = await _client.get(Uri.parse(getFullUrl(url)));

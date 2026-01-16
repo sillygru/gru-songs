@@ -504,6 +504,294 @@ class UserService:
             ).all()
             
             return {r[0]: r[1] for r in results}
+
+    def get_fun_stats(self, username: str) -> Dict[str, Any]:
+        """
+        Computes playful statistics for the user profile.
+        Returns a dictionary of stats ready for display.
+        """
+        self.flush_stats() # Ensure latest data
+
+        # 1. Fetch all needed data
+        path = os.path.join(settings.USERS_DIR, f"{username}_stats.db")
+        if not os.path.exists(path):
+            return {"error": "No stats data found"}
+
+        with Session(db_manager.get_user_stats_engine(username)) as session:
+            # Fetch all events for granular analysis
+            # We fetch strictly needed fields to be faster
+            events = session.exec(
+                select(
+                    PlayEvent.song_filename, 
+                    PlayEvent.duration_played, 
+                    PlayEvent.timestamp, 
+                    PlayEvent.play_ratio,
+                    PlayEvent.event_type
+                )
+            ).all()
+
+        if not events:
+            return {"empty": True}
+
+        # Fetch metadata map
+        all_songs = music_service.list_songs()
+        metadata_map = {s["filename"]: s for s in all_songs}
+        total_library_songs = len(all_songs)
+
+        # 2. Process Data
+        from collections import Counter
+        from datetime import datetime, timedelta
+
+        total_time_seconds = 0.0
+        artist_counts = Counter()
+        song_counts = Counter()
+        skipped_count = 0
+        play_dates = set()
+        hour_counts = Counter()
+        day_counts = Counter()
+        replays_by_day = defaultdict(Counter) # date -> filename -> count
+        genre_counts = Counter()
+        unique_played_filenames = set()
+        
+        first_event = None
+        favorites = set(self.get_favorites(username))
+        favorites_play_count = 0
+        total_meaningful_plays = 0
+
+        for ev in events:
+            # Total Time
+            total_time_seconds += ev.duration_played
+            
+            # Timestamp derived stats
+            dt = datetime.fromtimestamp(ev.timestamp)
+            date_str = dt.strftime("%Y-%m-%d")
+            play_dates.add(date_str)
+            hour_counts[dt.hour] += 1
+            day_counts[dt.strftime("%A")] += 1
+
+            # First event
+            if first_event is None or ev.timestamp < first_event[1]:
+                first_event = (ev.song_filename, ev.timestamp)
+
+            # Meaningful plays (ratio > 0.25)
+            if ev.play_ratio > 0.25:
+                song_counts[ev.song_filename] += 1
+                unique_played_filenames.add(ev.song_filename)
+                total_meaningful_plays += 1
+                
+                # Replays logic
+                replays_by_day[date_str][ev.song_filename] += 1
+
+                # Metadata dependent stats
+                meta = metadata_map.get(ev.song_filename)
+                if meta:
+                    artist = meta.get("artist", "Unknown")
+                    if artist != "Unknown":
+                        artist_counts[artist] += 1
+                    
+                    # Genre (if we had it, currently list_songs doesn't explicitly return genre but prompt asks for it if avail)
+                    # We can try to get it if we update list_songs, but for now let's skip or try to parse
+                    # Assuming list_songs might be updated or we rely on what we have. 
+                    # The prompt says "If genre missing, gracefully skip". We don't have genre in list_songs output currently.
+                    pass
+                
+                if ev.song_filename in favorites:
+                    favorites_play_count += 1
+
+            # Skipped
+            if ev.event_type == 'skip' or (ev.event_type != 'complete' and ev.play_ratio < 0.25):
+                skipped_count += 1
+
+        # 3. Construct Stats Dictionary
+
+        stats = []
+
+        # -- Total Music Time --
+        total_hours = total_time_seconds / 3600
+        time_msg = f"{int(total_hours)}h {int((total_hours % 1) * 60)}m"
+        time_sub = "That's a lot of music!"
+        if total_hours > 24:
+            days = total_hours / 24
+            time_sub = f"You've listened for {round(days, 1)} days total!"
+        
+        stats.append({
+            "id": "total_time",
+            "label": "Total Listening Time",
+            "value": time_msg,
+            "subtitle": time_sub
+        })
+
+        # -- Most Played Artist --
+        if artist_counts:
+            top_artist, count = artist_counts.most_common(1)[0]
+            stats.append({
+                "id": "top_artist",
+                "label": "Most Played Artist",
+                "value": top_artist,
+                "subtitle": f"{count} plays. You clearly love them."
+            })
+        
+        # -- Most Played Song --
+        if song_counts:
+            top_song_file, count = song_counts.most_common(1)[0]
+            meta = metadata_map.get(top_song_file, {})
+            title = meta.get("title", top_song_file)
+            stats.append({
+                "id": "top_song",
+                "label": "Most Played Song",
+                "value": title,
+                "subtitle": f"Played {count} times."
+            })
+
+        # -- Top 5 Artists --
+        if len(artist_counts) > 1:
+            top_5 = [a[0] for a in artist_counts.most_common(5)]
+            stats.append({
+                "id": "top_5_artists",
+                "label": "Top Artists",
+                "value": ", ".join(top_5[:3]), # Show top 3 in value
+                "subtitle": ", ".join(top_5[3:]) if len(top_5) > 3 else "Your favorites." # Rest in subtitle
+            })
+
+        # -- Listening Streak --
+        sorted_dates = sorted([datetime.strptime(d, "%Y-%m-%d") for d in play_dates])
+        longest_streak = 0
+        current_streak = 0
+        
+        if sorted_dates:
+            # Longest
+            temp_streak = 1
+            for i in range(1, len(sorted_dates)):
+                if (sorted_dates[i] - sorted_dates[i-1]).days == 1:
+                    temp_streak += 1
+                else:
+                    longest_streak = max(longest_streak, temp_streak)
+                    temp_streak = 1
+            longest_streak = max(longest_streak, temp_streak)
+
+            # Current
+            today = datetime.now().date()
+            yesterday = today - timedelta(days=1)
+            last_play = sorted_dates[-1].date()
+            
+            if last_play == today or last_play == yesterday:
+                # Calculate backwards from last play
+                current_streak = 1
+                check_date = last_play - timedelta(days=1)
+                while check_date in [d.date() for d in sorted_dates]:
+                    current_streak += 1
+                    check_date -= timedelta(days=1)
+            else:
+                current_streak = 0
+
+            stats.append({
+                "id": "streak",
+                "label": "Longest Streak",
+                "value": f"{longest_streak} Days",
+                "subtitle": f"Current streak: {current_streak} days" if current_streak > 0 else "Start a new streak today!"
+            })
+
+        # -- First Song --
+        if first_event:
+            fname, ts = first_event
+            meta = metadata_map.get(fname, {})
+            title = meta.get("title", fname)
+            date_str = datetime.fromtimestamp(ts).strftime("%b %d, %Y")
+            stats.append({
+                "id": "first_song",
+                "label": "First Song Played",
+                "value": title,
+                "subtitle": f"On {date_str}"
+            })
+
+        # -- Most Active Hour --
+        if hour_counts:
+            hour, _ = hour_counts.most_common(1)[0]
+            # Convert 0-23 to friendly string
+            period = "AM" if hour < 12 else "PM"
+            h_12 = hour % 12
+            if h_12 == 0: h_12 = 12
+            stats.append({
+                "id": "active_hour",
+                "label": "Most Active Hour",
+                "value": f"{h_12} {period}",
+                "subtitle": "You listen most at this time."
+            })
+
+        # -- Most Active Day --
+        if day_counts:
+            day, _ = day_counts.most_common(1)[0]
+            stats.append({
+                "id": "active_day",
+                "label": "Most Active Day",
+                "value": day,
+                "subtitle": "Your favorite day to jam."
+            })
+
+        # -- Skipped Songs --
+        stats.append({
+            "id": "skips",
+            "label": "Total Skips",
+            "value": str(skipped_count),
+            "subtitle": "Songs you passed on."
+        })
+
+        # -- Total Unique Songs --
+        stats.append({
+            "id": "unique_songs",
+            "label": "Unique Songs Played",
+            "value": str(len(unique_played_filenames)),
+            "subtitle": "Distinct tracks you've heard."
+        })
+
+        # -- Explorer Score --
+        if total_library_songs > 0:
+            explored_pct = int((len(unique_played_filenames) / total_library_songs) * 100)
+            stats.append({
+                "id": "explorer_score",
+                "label": "Explorer Score",
+                "value": f"{explored_pct}%",
+                "subtitle": "Of your library explored."
+            })
+
+        # -- Consistency Score --
+        if total_meaningful_plays > 0:
+            consistency = int((favorites_play_count / total_meaningful_plays) * 100)
+            stats.append({
+                "id": "consistency",
+                "label": "Consistency Score",
+                "value": f"{consistency}%",
+                "subtitle": "Plays that were Favorites."
+            })
+
+        # -- Most Repeat-Played Day --
+        # Find day with max sum of replays (where count > 1) OR single song max replays?
+        # Prompt: "Day with the highest number of replay events (same song played multiple times same day)"
+        max_replays = 0
+        replay_day = None
+        replay_song = None
+
+        for date_key, file_counts in replays_by_day.items():
+            # Find the song with most plays on this day
+            if not file_counts: continue
+            f_name, count = file_counts.most_common(1)[0]
+            if count > max_replays:
+                max_replays = count
+                replay_day = date_key
+                replay_song = f_name
+        
+        if replay_day and max_replays > 2: # Threshold to make it interesting
+             meta = metadata_map.get(replay_song, {})
+             title = meta.get("title", replay_song)
+             dt_str = datetime.strptime(replay_day, "%Y-%m-%d").strftime("%b %d")
+             stats.append({
+                "id": "obsessed_day",
+                "label": "Most Obsessed Day",
+                "value": f"{max_replays} times",
+                "subtitle": f"Played '{title}' on {dt_str}"
+            })
+
+        return {"stats": stats}
             
     # --- Favorites ---
     

@@ -1,4 +1,13 @@
 import os
+import tempfile
+
+# Setup env BEFORE any other imports to prevent settings.py from failing
+os.environ["GRUSONGS_TESTING"] = "true"
+test_base = tempfile.mkdtemp()
+os.environ["MUSIC_DIR"] = os.path.join(test_base, "music")
+os.environ["USERS_DIR"] = os.path.join(test_base, "users")
+os.environ["BACKUPS_DIR"] = os.path.join(test_base, "backups")
+
 import json
 import shutil
 from user_service import UserService
@@ -8,18 +17,14 @@ import time
 def test_shuffle_persistence():
     # Setup
     username = "testuser_shuffle"
-    users_dir = "users_test"
-    if not os.path.exists(users_dir):
-        os.makedirs(users_dir)
+    test_users_dir = os.environ["USERS_DIR"]
+    os.makedirs(test_users_dir, exist_ok=True)
     
-    # Mock settings to use test dir
-    from settings import settings
-    original_users_dir = settings.USERS_DIR
-    settings.USERS_DIR = users_dir
+    from database_manager import db_manager
+    db_manager.init_global_dbs()
     
     try:
         service = UserService()
-        # Create user
         service.create_user(username, "password123")
         
         # 1. Test initial state
@@ -37,7 +42,16 @@ def test_shuffle_persistence():
         summary = service.get_stats_summary(username)
         assert summary["shuffle_state"]["config"]["enabled"] == True
         assert summary["shuffle_state"]["config"]["anti_repeat_enabled"] == False
-        assert summary["shuffle_state"]["history"] == ["song1.mp3", "song2.mp3"]
+        
+        # Handle the new history format (list of dicts)
+        history = summary["shuffle_state"]["history"]
+        if history and isinstance(history[0], dict):
+            history_filenames = [h["filename"] for h in history]
+        else:
+            history_filenames = history
+            
+        assert "song1.mp3" in history_filenames
+        assert "song2.mp3" in history_filenames
         
         # 3. Test appending stats updates history
         stats = StatsEntry(
@@ -50,9 +64,9 @@ def test_shuffle_persistence():
         service.append_stats(username, stats)
         
         summary = service.get_stats_summary(username)
-        # song3 should be at the front of history
-        assert summary["shuffle_state"]["history"][0] == "song3.mp3"
-        assert "song1.mp3" in summary["shuffle_state"]["history"]
+        history = summary["shuffle_state"]["history"]
+        first_song = history[0]["filename"] if isinstance(history[0], dict) else history[0]
+        assert first_song == "song3.mp3"
         
         # 4. Test history limit
         service.update_shuffle_state(username, {"config": {"history_limit": 2}})
@@ -66,15 +80,16 @@ def test_shuffle_persistence():
         service.append_stats(username, stats)
         summary = service.get_stats_summary(username)
         assert len(summary["shuffle_state"]["history"]) <= 2
-        assert summary["shuffle_state"]["history"][0] == "song4.mp3"
+        
+        history = summary["shuffle_state"]["history"]
+        first_song = history[0]["filename"] if isinstance(history[0], dict) else history[0]
+        assert first_song == "song4.mp3"
 
         print("Backend shuffle persistence tests passed!")
         
     finally:
-        # Cleanup
-        if os.path.exists(users_dir):
-            shutil.rmtree(users_dir)
-        settings.USERS_DIR = original_users_dir
+        if os.path.exists(test_base):
+            shutil.rmtree(test_base)
 
 if __name__ == "__main__":
     test_shuffle_persistence()

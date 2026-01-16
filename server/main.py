@@ -108,6 +108,8 @@ async def stream_song(filename: str):
     
     return FileResponse(path)
 
+if not os.path.exists(settings.LYRICS_DIR):
+    os.makedirs(settings.LYRICS_DIR, exist_ok=True)
 app.mount("/lyrics", StaticFiles(directory=settings.LYRICS_DIR), name="lyrics")
 
 # --- Background Task for Stats Flushing ---
@@ -179,6 +181,12 @@ def track_stats(stats: StatsEntry, x_username: str = Header(None)):
     
     user_service.append_stats(x_username, stats)
     return {"status": "ok"}
+
+@app.get("/stats/fun")
+def get_fun_stats(x_username: str = Header(None)):
+    if not x_username:
+         raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_fun_stats(x_username)
 
 
 # --- User Data Routes (Favorites & Playlists) ---

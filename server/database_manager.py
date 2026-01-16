@@ -4,12 +4,19 @@ from settings import settings
 
 class DatabaseManager:
     def __init__(self):
-        self.users_dir = settings.USERS_DIR
-        if not os.path.exists(self.users_dir):
-            os.makedirs(self.users_dir)
+        pass
 
     def _get_engine(self, db_name: str):
-        url = f"sqlite:///{os.path.join(self.users_dir, db_name)}"
+        # Always use current settings.USERS_DIR to pick up overrides
+        users_dir = settings.USERS_DIR
+        if not os.path.exists(users_dir):
+            try:
+                os.makedirs(users_dir, exist_ok=True)
+            except Exception:
+                pass
+
+        path = os.path.join(users_dir, db_name)
+        url = f"sqlite:///{path}"
         return create_engine(url, connect_args={"check_same_thread": False})
 
     def get_global_users_engine(self):

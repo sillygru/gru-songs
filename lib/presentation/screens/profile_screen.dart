@@ -4,6 +4,7 @@ import 'cache_management_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
 import '../../models/shuffle_config.dart';
+import '../widgets/fun_stats_view.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -170,6 +171,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(height: 24),
                   
+                  // Fun Stats Section
+                  Card(
+                    elevation: 0,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    clipBehavior: Clip.antiAlias,
+                    child: const ExpansionTile(
+                      leading: Icon(Icons.insights),
+                      title: Text("Fun Stats", style: TextStyle(fontWeight: FontWeight.w500)),
+                      subtitle: Text("Your listening habits analyzed"),
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
+                          child: FunStatsView(),
+                        )
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
                   // Shuffle Personality Selector
                   _buildSectionTitle('Shuffle Personality'),
                   ValueListenableBuilder(
