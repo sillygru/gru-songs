@@ -22,7 +22,12 @@ class GruImage extends StatefulWidget {
     this.borderRadius = 0,
     this.placeholder,
     this.errorWidget,
+    this.cacheWidth,
+    this.cacheHeight,
   });
+
+  final int? cacheWidth;
+  final int? cacheHeight;
 
   @override
   State<GruImage> createState() => _GruImageState();
@@ -90,11 +95,26 @@ class _GruImageState extends State<GruImage> {
         child: const Center(child: Icon(Icons.music_note, color: Colors.grey)),
       );
     } else {
+      // Calculate cache sizes if not provided
+      int? effectiveCacheWidth = widget.cacheWidth;
+      int? effectiveCacheHeight = widget.cacheHeight;
+      
+      if (effectiveCacheWidth == null && effectiveCacheHeight == null && widget.width != null) {
+        // If width/height is provided but no cache dimensions, use width * devicePixelRatio as a hint
+        final dpr = MediaQuery.of(context).devicePixelRatio;
+        effectiveCacheWidth = (widget.width! * dpr).round();
+        if (widget.height != null) {
+          effectiveCacheHeight = (widget.height! * dpr).round();
+        }
+      }
+
       content = Image.file(
         _imageFile!,
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
+        cacheWidth: effectiveCacheWidth,
+        cacheHeight: effectiveCacheHeight,
         errorBuilder: (context, error, stackTrace) {
           return widget.errorWidget ?? Container(
             width: widget.width,

@@ -156,15 +156,21 @@ class CacheService {
   }
 
   Future<File?> _performDownload(String category, String filename, String url, String? version) async {
+    final client = http.Client();
     try {
-      final response = await http.get(Uri.parse(url));
+      final request = http.Request('GET', Uri.parse(url));
+      final response = await client.send(request);
+      
       if (response.statusCode == 200) {
-        if (isPaused) return null; // Check again after long download
+        if (isPaused) return null;
 
         final categoryDir = Directory(p.join(_baseDir.path, category));
         final filePath = p.join(categoryDir.path, filename);
         final tempFile = File('$filePath.tmp');
-        await tempFile.writeAsBytes(response.bodyBytes);
+        
+        final sink = tempFile.openWrite();
+        await response.stream.pipe(sink);
+        await sink.close();
         
         final file = File(filePath);
         String finalFilename = filename;
@@ -182,7 +188,7 @@ class CacheService {
         _metadata[category]![filename] = CacheEntry(
           filename: finalFilename,
           url: url,
-          version: version ?? md5.convert(response.bodyBytes).toString(),
+          version: version ?? 'remote_${DateTime.now().millisecondsSinceEpoch}', // Use timestamp if no version provided
           lastValidated: DateTime.now(),
         );
         await _saveMetadata();
@@ -190,6 +196,8 @@ class CacheService {
       }
     } catch (e) {
       debugPrint('Error downloading $url: $e');
+    } finally {
+      client.close();
     }
     return null;
   }

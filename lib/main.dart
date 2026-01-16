@@ -19,6 +19,10 @@ Future<void> main() async {
   HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Limit image cache to save RAM
+  PaintingBinding.instance.imageCache.maximumSize = 200; // images
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024; // 50MB
+  
   await AudioSession.instance.then((session) => session.configure(const AudioSessionConfiguration.music()));
   
   await JustAudioBackground.init(

@@ -1,8 +1,10 @@
 import 'package:flutter/widgets.dart'; // For AppLifecycleListener
+import 'package:flutter/painting.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
+import 'dart:convert';
 import '../models/song.dart';
 import '../models/queue_item.dart';
 import '../models/shuffle_config.dart';
@@ -94,6 +96,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _effectiveQueue = List.from(_originalQueue);
       await _rebuildPlaylist(initialIndex: originalIdx, startPlaying: startPlaying);
     }
+    _savePlaybackState();
   }
   
   void _initStatsListeners() {
@@ -141,7 +144,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 _foregroundDuration = 0.0;
                 _backgroundDuration = 0.0;
                 _playStartTime = _player.playing ? DateTime.now() : null;
-                _saveLastSong(newFilename);
+                _savePlaybackState();
                 
                 // Background cache verification for the NEW song
                 _verifyCurrentSongCache(currentItem);
@@ -221,14 +224,20 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _statsService.updateShuffleState(_username!, _shuffleState.toJson());
   }
 
-  Future<void> _saveLastSong(String filename) async {
+  Future<void> _savePlaybackState() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_song_filename', filename);
-  }
-
-  Future<String?> _getLastSong() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('last_song_filename');
+    final currentIndex = _player.currentIndex;
+    final currentSong = (currentIndex != null && currentIndex < _effectiveQueue.length) 
+        ? _effectiveQueue[currentIndex].song 
+        : null;
+    
+    if (currentSong != null) {
+      await prefs.setString('last_song_filename', currentSong.filename);
+    }
+    
+    await prefs.setString('last_effective_queue', jsonEncode(_effectiveQueue.map((e) => e.toJson()).toList()));
+    await prefs.setString('last_original_queue', jsonEncode(_originalQueue.map((e) => e.toJson()).toList()));
+    await prefs.setInt('last_position_ms', _player.position.inMilliseconds);
   }
   
   void _updateDurations() {
@@ -314,6 +323,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // Flush stats when app is hidden or closed to ensure no data loss
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       _flushStats(eventType: 'listen');
+      _savePlaybackState();
+      
+      // Clear image cache to save RAM while in background
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
     }
     
     _appLifecycleState = state;
@@ -321,13 +335,45 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
     await _player.setShuffleModeEnabled(false);
+    
+    // Attempt to restore saved state
+    final prefs = await SharedPreferences.getInstance();
+    final savedEffectiveQueueJson = prefs.getString('last_effective_queue');
+    final savedOriginalQueueJson = prefs.getString('last_original_queue');
+    final savedPositionMs = prefs.getInt('last_position_ms') ?? 0;
+    final lastSongFilename = prefs.getString('last_song_filename');
+
+    if (savedEffectiveQueueJson != null && savedOriginalQueueJson != null) {
+      try {
+        final List<dynamic> effJson = jsonDecode(savedEffectiveQueueJson);
+        final List<dynamic> origJson = jsonDecode(savedOriginalQueueJson);
+        
+        _effectiveQueue = effJson.map((j) => QueueItem.fromJson(j)).toList();
+        _originalQueue = origJson.map((j) => QueueItem.fromJson(j)).toList();
+        
+        int initialIndex = 0;
+        if (lastSongFilename != null) {
+          initialIndex = _effectiveQueue.indexWhere((item) => item.song.filename == lastSongFilename);
+          if (initialIndex == -1) initialIndex = 0;
+        }
+
+        await _rebuildPlaylist(
+          initialIndex: initialIndex, 
+          startPlaying: false, 
+          initialPosition: Duration(milliseconds: savedPositionMs)
+        );
+        return;
+      } catch (e) {
+        debugPrint("Error restoring saved queue: $e");
+      }
+    }
+
     _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
     _effectiveQueue = List.from(_originalQueue);
     
     try {
       int initialIndex = 0;
       if (autoSelect && songs.isNotEmpty) {
-        final lastSongFilename = await _getLastSong();
         int foundIndex = -1;
         
         if (lastSongFilename != null) {
@@ -411,6 +457,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final randomIdx = Random().nextInt(songs.length);
     await playSong(songs[randomIdx], contextQueue: songs, startPlaying: true);
+    _savePlaybackState();
   }
 
   Future<void> toggleShuffle() async {
@@ -429,6 +476,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     } else {
       _applyLinear(currentIndex);
     }
+    _savePlaybackState();
   }
 
   void _applyShuffle(int currentIndex) {
@@ -457,6 +505,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     ];
     
     _rebuildPlaylist(initialIndex: 0, startPlaying: _player.playing);
+    _savePlaybackState();
   }
 
   List<QueueItem> _weightedShuffle(List<QueueItem> items, {QueueItem? lastItem}) {
@@ -568,21 +617,25 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     
     int newIndex = _effectiveQueue.indexOf(currentItem);
     _rebuildPlaylist(initialIndex: newIndex, startPlaying: _player.playing);
+    _savePlaybackState();
   }
 
-  Future<void> _rebuildPlaylist({int? initialIndex, bool startPlaying = true}) async {
+  Future<void> _rebuildPlaylist({int? initialIndex, bool startPlaying = true, Duration? initialPosition}) async {
     if (_effectiveQueue.isEmpty) return;
     
-    final position = _player.position;
+    final position = initialPosition ?? _player.position;
     final targetIndex = initialIndex ?? _player.currentIndex ?? 0;
     
     final sources = await Future.wait(_effectiveQueue.map((item) => _createAudioSource(item)));
     
-    _playlist = ConcatenatingAudioSource(children: sources);
+    _playlist = ConcatenatingAudioSource(
+      children: sources,
+      useLazyPreparation: true,
+    );
     await _player.setAudioSource(
       _playlist,
       initialIndex: targetIndex,
-      initialPosition: (targetIndex == (_player.currentIndex ?? -1)) ? position : Duration.zero,
+      initialPosition: (targetIndex == (_player.currentIndex ?? -1) || initialPosition != null) ? position : Duration.zero,
     );
     
     if (startPlaying) await _player.play();
@@ -599,6 +652,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     
     _updateQueueNotifier();
     _cacheSurroundingSongs(currentIndex, _effectiveQueue);
+    _savePlaybackState();
   }
 
   Future<void> reorderQueue(int oldIndex, int newIndex) async {
@@ -616,6 +670,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     
     final currentIndex = _player.currentIndex ?? 0;
     _cacheSurroundingSongs(currentIndex, _effectiveQueue);
+    _savePlaybackState();
   }
 
   Future<void> removeFromQueue(int index) async {
@@ -632,6 +687,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
     
     _cacheSurroundingSongs(_player.currentIndex ?? 0, _effectiveQueue);
+    _savePlaybackState();
   }
 
   void dispose() {

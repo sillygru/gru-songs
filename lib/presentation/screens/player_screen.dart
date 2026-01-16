@@ -300,6 +300,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                         child: GruImage(
                                           key: ValueKey('art_${metadata.id}'),
                                           url: metadata.artUri.toString(),
+                                          width: constraints.maxWidth,
+                                          height: constraints.maxWidth,
+                                          cacheWidth: 600, // Reasonable cap for RAM
                                           fit: BoxFit.cover,
                                           errorWidget: const Icon(Icons.music_note, size: 100),
                                         ),

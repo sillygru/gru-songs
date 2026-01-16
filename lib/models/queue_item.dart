@@ -25,6 +25,22 @@ class QueueItem extends Equatable {
     );
   }
 
+  factory QueueItem.fromJson(Map<String, dynamic> json) {
+    return QueueItem(
+      song: Song.fromJson(json['song']),
+      queueId: json['queueId'],
+      isPriority: json['isPriority'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'song': song.toJson(),
+      'queueId': queueId,
+      'isPriority': isPriority,
+    };
+  }
+
   @override
   List<Object?> get props => [queueId, song, isPriority];
 }
