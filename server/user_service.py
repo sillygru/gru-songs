@@ -7,7 +7,7 @@ import bcrypt
 import logging
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
-from sqlmodel import Session, select, func, delete
+from sqlmodel import Session, select, func, delete, or_
 
 from settings import settings
 from services import music_service
@@ -419,17 +419,10 @@ class UserService:
                         total_length = music_service.get_song_duration(stats.song_filename)
                         ratio = (stats.duration_played / total_length) if total_length > 0 else 0.0
 
-                        # A song is considered "played" if:
-                        # 1. It's a natural completion/listen flush
-                        # 2. It was skipped but already played more than 80% (fake skip)
-                        # 3. It was listened to for more than 20%
-                        is_meaningful_play = (
-                            stats.event_type in ['complete', 'listen'] or
-                            ratio > 0.8 or
-                            (stats.event_type != 'favorite' and ratio > 0.2)
-                        )
+                        # A song is considered "played" if ratio > 0.25
+                        is_meaningful_play = ratio > 0.25
 
-                        if stats.event_type != 'favorite' and is_meaningful_play:
+                        if is_meaningful_play:
                             summary_data["total_songs_played"] += 1
                         
                         # A song is considered "skipped" ONLY if it's a skip event with low ratio
@@ -500,9 +493,9 @@ class UserService:
 
         with Session(db_manager.get_user_stats_engine(username)) as session:
             # FAST: Filter in SQL now that we have numeric columns
+            # A play is counted if play_ratio > 0.25. Nothing else.
             results = session.exec(
                 select(PlayEvent.song_filename, func.count(PlayEvent.id))
-                .where(PlayEvent.event_type != "favorite")
                 .where(PlayEvent.play_ratio > 0.25)
                 .group_by(PlayEvent.song_filename)
             ).all()
@@ -658,6 +651,16 @@ class UserService:
     def get_sync_hashes(self, username: Optional[str]) -> Dict[str, str]:
         # Hash songs list
         songs = music_service.list_songs()
+        
+        # Inject play counts before hashing so client detects changes
+        if username:
+            counts = self.get_play_counts(username)
+            for song in songs:
+                song["play_count"] = counts.get(song["filename"], 0)
+        else:
+            for song in songs:
+                song["play_count"] = 0
+
         songs_json = json.dumps(songs, sort_keys=True)
         songs_hash = hashlib.md5(songs_json.encode()).hexdigest()
         

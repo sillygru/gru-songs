@@ -183,7 +183,8 @@ class LibraryScreen extends ConsumerWidget {
             data: (songs) {
               final sortedSongs = List<Song>.from(songs)
                 ..sort((a, b) => b.playCount.compareTo(a.playCount));
-              final mostPlayed = sortedSongs.take(10).toList();
+              // Filter out songs with 0 plays to be cleaner
+              final mostPlayed = sortedSongs.where((s) => s.playCount > 0).take(10).toList();
 
               if (mostPlayed.isEmpty) {
                 return const SliverToBoxAdapter(
