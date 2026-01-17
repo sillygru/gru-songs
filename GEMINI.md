@@ -1,7 +1,7 @@
 # Project Instructions: Gru Songs (Flutter)
 
 ## ⛔️ Constraints
-- **NO GIT COMMANDS:** Do not ever run git commands (git add, commit, push, etc.).
+- **NO GIT COMMANDS:** Do not ever run git commands (git add, commit, push, etc.) unless explicitly authorized for a specific task.
 - **NON-SERVER ENVIRONMENT:** You are running in a CLI environment, not the production server. Avoid absolute paths (e.g., `/home/...`) and do not rely on `.env` values during testing. Use relative paths or mock settings to ensure portability. If the error is because of /home/sillygru its because its trying to use the server envinronment inside the .env
 
 ## 🚀 Overview
@@ -10,7 +10,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 
 ## 🛠 Tech Stack
 - **Frontend:** Flutter (Material 3)
-- **State Management:** `flutter_riverpod` (Riverpod 3.x)
+- **State Management:** `flutter_riverpod` (Riverpod 3.x) - Decoupled MVVM architecture.
 - **Data Modeling:** `equatable`, `uuid`
 - **Audio Engine:** `just_audio`, `rxdart` (for stream combining)
 - **Caching & Offline:** Custom V2 `CacheService` (using `getApplicationSupportDirectory`), `crypto`, `path`
@@ -19,14 +19,14 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **UI Components:** `audio_video_progress_bar`, `GruImage` (custom cache-first widget)
 - **Networking:** `http` with custom `HttpOverrides` for TLS/SSL handshake stability.
 - **Backend:** FastAPI (Python 3.10+) utilizing lifespan handlers for robust startup/shutdown logic.
-- **Backup & Notifications:** Automated backups of user data every 6 hours with persistence. Discord bot integration for logs and admin commands.
+- **Backup & Notifications:** Automated backups of user data with MD5-based change detection. Discord bot integration for logs and admin commands.
 
 ## 🌐 Networking & API
 - **Base URL:** `https://[REDACTED]/music`
   - **Endpoints:**
   - **Music:**
     - `GET /list-songs` (includes `play_count` and `mtime` if available)
-    - `GET /sync-check` (Returns MD5 hashes for songs, favorites, playlists, etc.)
+    - `GET /sync-check` (Returns MD5 hashes for songs, favorites, playlists, shuffle state, etc.)
     - `GET /stream/{filename}`
     - `GET /cover/{filename}` (Cache-Control: 1 year)
     - `GET /lyrics/{filename}` (.lrc files)
@@ -43,7 +43,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
     - `GET/POST /user/playlists`, `DELETE /user/playlists/{playlist_id}`
     - `POST /user/playlists/{playlist_id}/songs`, `DELETE /user/playlists/{playlist_id}/songs/{filename}`
     - `GET/POST /user/suggest-less`, `DELETE /user/suggest-less/{filename}`
-    - `GET/POST /user/shuffle` (Persistence for settings and history)
+    - `GET/POST /user/shuffle` (Persistence for settings, history, and personality)
     - `POST /stats/track`
 
 ### ⚠️ Critical Handshake Fix
@@ -65,95 +65,62 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 
 ## 🏗 Architecture & Best Practices
 - **Frontend:** Modular **MVVM/Clean Architecture**.
+  - **Provider Decoupling:** `AudioPlayerManager` and `UserDataNotifier` are decoupled to prevent `CircularDependencyError`. `UserDataNotifier` proactively pushes updates to the manager.
   - **Caching Strategy (V2):**
     - **Instant Cache-First:** Always serve from local storage immediately if the file exists.
     - **Background Validation:** After serving from cache, perform an async check of the asset's version (`mtime` or hash). If changed, download and atomically replace the cached file.
-    - **Atomic Replacement:** Downloads are written to `.tmp` files and renamed upon completion to prevent corruption. If a file is locked (during playback), an alternative path is used and metadata is updated.
-    - **Lazy Pre-caching:** Aggressive background downloading is disabled. Only the current song and the next 2 songs in the queue are pre-cached.
-    - **Metadata Reclamation:** If a file exists on disk but is missing from metadata (e.g., after an app update), the service automatically re-registers it.
-    - **Download Mutex:** Prevents duplicate parallel downloads for the same asset.
-    - **Pause Mechanism:** Clearing the cache triggers a 10-second pause for all background operations to prevent immediate re-caching.
-    - **Storage Cleanup:** Legacy `flutter_cache_manager` data is automatically cleaned up in the background on the first run of V2.
-  - **Images:** Handled by `GruImage` widget which uses the V2 `CacheService`.
+    - **Atomic Replacement:** Downloads are written to `.tmp` files and renamed upon completion to prevent corruption.
+    - **Lazy Pre-caching:** Only the current song and the next 2 songs in the queue are pre-cached.
+  - **Images:** Handled by `GruImage` widget which uses the V2 `CacheService`. Features a built-in loading spinner and error handling.
   - **Sync Indicator:** Visual status bar at the top of the screen (Offline, Syncing, Using Cache).
-  - **Pull-to-Refresh:** Available on all main data screens to force a background sync check.
-  - **UI Gestures:** Swipe-up on album cover in `PlayerScreen` to reveal synchronized lyrics.
-  - **Context Menus:** Unified long-press options menu for songs (Favorite, Add to Playlist, Suggest Less, Play Next).
-  - **Visual Cues:** Play counts displayed in white circle bubbles; suggest-less songs are greyed out with a line-through.
+  - **Pull-to-Refresh:** Available on main data screens. Triggers background sync for songs, favorites, playlists, and **shuffle personality/history**.
+  - **Playback Resume:** Position is only resumed for the specific song that was last playing when the app closed. New song selections always start at position 0.
   - **Queue Management:** 
-    - **Next Up List:** Drag-and-drop reordering, swipe-to-remove.
-    - **Priority System:** "Play Next" inserts songs into a priority block that overrides shuffle. 
-    - **Shuffle Logic:** Employs a weighted random selection algorithm.
-      - **Anti-repeat:** Recent history receives a probability reduction (up to 95%) that decays as the song moves further back in the history.
-      - **Streak Breaker:** Reduced probability for songs from the same artist or album as the last played track.
-      - **User Preferences:** Favorites receive a +15% weight boost; suggest-less songs receive an 80% reduction.
-      - **Metadata Safety:** Missing artist or album data skips relevant rules without affecting selection.
-      - **Persistence:** Configuration and history are stored locally and synchronized with the backend.
-    - **Recommendation Engine:** Aligned with shuffle philosophy. Employs a scoring system where favorites are boosted (+5.0 points) and suggest-less songs are heavily penalized (-10.0 points) rather than hidden, ensuring all music remains accessible based on play count and variety.
+    - **Shuffle Toggle:** Capture current player state to **preserve the position** of the currently playing song during re-shuffling.
+    - **Shuffle Logic:** Employs a weighted random selection algorithm with multiple **Personalities** (Default, Explorer, Consistent).
+      - **Anti-repeat:** History-based probability reduction (up to 95%).
+      - **Streak Breaker:** Reduced probability for same artist/album streaks.
+      - **Persistence:** Personality, configuration, and history are stored server-side and synchronized bidirectionally.
 - **Backend:** 
   - **Persistence:** 
     - `users/<username>_data.db`: Profile, favorites, and suggest-less.
     - `users/<username>_playlists.db`: Detailed playlist data with `added_at` timestamps.
     - `users/<username>_stats.db`: Session history and raw play events.
-    - `users/<username>_final_stats.json`: Aggregated summary and persistent shuffle state.
-    - `users/uploads.db`: Global record of song uploads and their owners.
-    - `songs/downloaded/`: Subdirectory for uploaded or yt-dlp downloaded songs.
-    - `backups/`: Automated 6-hour interval backups of `users/` directory.
-  - **Stats Engine:** Rounding precision to 2 decimal places. Play counts filter for ratio > 0.25 across all non-favorite event types. Shuffle history automatically updates upon song completion.
+    - `users/<username>_final_stats.json`: Aggregated summary and persistent shuffle state (including personality).
   - **Backup Service:** 
-    - Runs in a background thread to prevent blocking main event loop.
-    - Copies `users/` to `backups/users/[number]_[timestamp]/`.
-    - Persists schedule state in `backup_state.json`.
-    - Sends notifications to Discord.
+    - Runs in a background thread every 6 hours.
+    - **Optimization:** Calculates an MD5 hash of the `users/` directory (filenames, sizes, mtimes). **Skips backup generation** if no changes are detected.
+    - Persists hash state in `backup_state.json`.
+    - Logs skips and completions to Discord.
   - **Discord Bot:**
     - `!backup [true/false]`: Manually trigger backup (optional timer reset).
     - `!stats [username]`: View rich statistics embed for a user.
-    - `!ping`, `!status`.
 
 ## 📂 Project Structure
 ### Frontend (`lib/`)
 - `models/`: Data structures (`song.dart`, `playlist.dart`, `queue_item.dart`, `shuffle_config.dart`).
 - `data/repositories/`: Data access abstraction.
-- `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`).
+- `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`, `providers.dart`).
 - `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `cache_service.dart`, `storage_service.dart`, `stats_service.dart`).
 - `presentation/`:
-  - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`.
+  - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`, `CacheManagementScreen`.
   - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`, `GruImage`, `NextUpSheet`.
-- `main.dart`: Entry point.
 
 ### Backend (`server/`)
-- `main.py`: Routes, background tasks, and bot process management.
-- `user_service.py`: Core logic for auth, stats (buffer), and user data.
-- `backup_service.py`: Automated backup scheduler and execution logic.
-- `discord_bot.py`: Discord bot implementation with command queue support.
-- `models.py`: Pydantic models.
-- `services.py`: Music metadata extraction.
-- `settings.py`: Configuration (including `BACKUPS_DIR`).
-- `users/`: JSON/SQLite storage for user data.
-- `backups/`: Backup storage directory.
+- `main.py`: Routes and bot management.
+- `user_service.py`: Core logic for auth, stats, and bidirectional sync.
+- `backup_service.py`: Optimized scheduler with change-detection hashing.
+- `queue_service.py`: Server-side shuffle and queue generation.
 
 ## 📦 Build Commands
 
 ### Android
 ```bash
-# Debug (installs on emulator)
-flutter build apk --debug
-
-# Release (Standard APK)
 flutter build apk --release
-
-# Release (App Bundle for Play Store)
-flutter build appbundle
 ```
 
 ### iOS (Xcode)
 ```bash
-# 1. Build the iOS project (prepares files for Xcode)
 flutter build ios --release
-
-# 2. Open the project in Xcode to manage signing and deployment
 open ios/Runner.xcworkspace
-
-# 3. Build a distribution package (IPA)
-flutter build ipa --release
 ```
