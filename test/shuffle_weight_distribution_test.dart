@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gru_songs/models/song.dart';
 import 'package:gru_songs/models/queue_item.dart';
@@ -48,14 +49,14 @@ List<QueueItem> weightedShuffle(List<QueueItem> items, ShuffleState state, List<
     final totalWeight = weights.fold(0.0, (a, b) => a + b);
     
     if (debug && iteration == 0) {
-      print('Items: ${remaining.map((e) => e.song.filename).toList()}');
-      print('Weights: $weights');
-      print('Total Weight: $totalWeight');
+      debugPrint('Items: ${remaining.map((e) => e.song.filename).toList()}');
+      debugPrint('Weights: $weights');
+      debugPrint('Total Weight: $totalWeight');
     }
     
     double randomValue = random.nextDouble() * totalWeight;
     if (debug && iteration == 0) {
-      print('Random Value: $randomValue');
+      debugPrint('Random Value: $randomValue');
     }
     int selectedIdx = -1;
     double cumulativeWeight = 0.0;
@@ -68,7 +69,7 @@ List<QueueItem> weightedShuffle(List<QueueItem> items, ShuffleState state, List<
     }
     if (selectedIdx == -1) selectedIdx = remaining.length - 1;
     if (debug && iteration == 0) {
-      print('Selected Index: $selectedIdx (${remaining[selectedIdx].song.filename})');
+      debugPrint('Selected Index: $selectedIdx (${remaining[selectedIdx].song.filename})');
     }
     final selected = remaining.removeAt(selectedIdx);
     result.add(selected);
@@ -99,7 +100,7 @@ void main() {
     }
 
     // With 20 songs, uniform chance is 5%. With 2x weight, it should be ~2 / (2 + 19) = 2/21 ~= 9.5%
-    print('s0 (favorite) appeared first $s0FirstCount times out of $iterations');
+    debugPrint('s0 (favorite) appeared first $s0FirstCount times out of $iterations');
     expect(s0FirstCount, greaterThan(120)); 
     expect(s0FirstCount, lessThan(300));
   });
@@ -124,7 +125,7 @@ void main() {
     }
 
     // Expected probability ~ 0.2 / (0.2 + 9) = 0.2/9.2 ~= 2%
-    print('s0 (suggest-less) appeared first $s0FirstCount times out of $iterations');
+    debugPrint('s0 (suggest-less) appeared first $s0FirstCount times out of $iterations');
     expect(s0FirstCount, lessThan(50));
   });
 }

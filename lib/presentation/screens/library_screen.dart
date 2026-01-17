@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/gru_image.dart';
-import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import '../../models/song.dart';
 import 'playlist_detail_screen.dart';
@@ -113,7 +112,7 @@ class LibraryScreen extends ConsumerWidget {
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Icon(Icons.favorite, color: Colors.red, size: 30),

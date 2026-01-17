@@ -2,7 +2,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/gru_image.dart';
-import '../../services/cache_service.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/song_options_menu.dart';
@@ -153,7 +152,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               children: [
                                 Card(
                                   elevation: 4,
-                                  shadowColor: Colors.red.withOpacity(0.4),
+                                  shadowColor: Colors.red.withValues(alpha: 0.4),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                   child: Container(
                                     width: 100,
@@ -274,7 +273,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       height: 150,
                                       fit: BoxFit.cover,
                                       errorWidget: Container(
-                                        color: Theme.of(context).colorScheme.surfaceVariant,
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                         child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
                                       ),
                                     ),

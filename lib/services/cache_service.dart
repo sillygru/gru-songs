@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -229,7 +228,9 @@ class CacheService {
 
     if (category == null) {
       if (await _baseDir.exists()) await _baseDir.delete(recursive: true);
-      _metadata.values.forEach((cat) => cat.clear());
+      for (var cat in _metadata.values) {
+        cat.clear();
+      }
       _initialized = false;
       await init();
     } else {

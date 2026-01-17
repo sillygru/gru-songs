@@ -5,7 +5,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'gru_image.dart';
-import '../../services/cache_service.dart';
 import '../../providers/providers.dart';
 import '../screens/player_screen.dart';
 import 'song_options_menu.dart';
@@ -43,7 +42,7 @@ class NowPlayingBar extends ConsumerWidget {
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   blurRadius: 8,
                   offset: const Offset(0, -2),
                 ),

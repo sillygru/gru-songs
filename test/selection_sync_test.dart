@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gru_songs/models/song.dart';
 import 'package:gru_songs/models/queue_item.dart';
-import 'package:gru_songs/models/shuffle_config.dart';
 
 void main() {
   group('Selection Sync Edge Cases', () {
@@ -10,7 +9,6 @@ void main() {
     ));
 
     test('Selecting a song when shuffle is ON moves it to front', () {
-      final config = const ShuffleConfig(enabled: true);
       final selectedSong = songs[3]; // s3.mp3
       
       // Simulation of playSong logic

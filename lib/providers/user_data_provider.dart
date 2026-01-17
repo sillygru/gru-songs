@@ -72,6 +72,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
               .toList() ?? [],
           isLoading: false,
         );
+        _updateManager();
         // If we have cache, we are in usingCache status initially
         Future.microtask(() => ref.read(syncProvider.notifier).updateTask('userData', SyncStatus.usingCache));
       }
@@ -81,6 +82,13 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     // 2. Fetch from Network (background sync)
     await _backgroundSync();
+  }
+
+  void _updateManager() {
+    ref.read(audioPlayerManagerProvider).setUserData(
+      favorites: state.favorites,
+      suggestLess: state.suggestLess,
+    );
   }
 
   Future<void> _backgroundSync() async {
@@ -99,22 +107,33 @@ class UserDataNotifier extends Notifier<UserDataState> {
       bool needsFavs = remoteHashes['favorites'] != localHashes['favorites'];
       bool needsPlaylists = remoteHashes['playlists'] != localHashes['playlists'];
       bool needsSuggestLess = remoteHashes['suggest_less'] != localHashes['suggest_less'];
+      bool needsShuffle = remoteHashes['shuffle'] != localHashes['shuffle'];
       
-      if (!needsFavs && !needsPlaylists && !needsSuggestLess && !state.isLoading) {
+      if (!needsFavs && !needsPlaylists && !needsSuggestLess && !needsShuffle && !state.isLoading) {
         syncNotifier.updateTask('userData', SyncStatus.upToDate);
+        _updateManager(); // Still push to ensure manager is ready if it was just initialized
         return;
       }
       
       // Fetch only what's needed or just refresh everything for simplicity
-      // For now, refresh all to ensure consistency
-      await refresh();
+      if (needsFavs || needsPlaylists || needsSuggestLess) {
+        await refresh();
+      }
+
+      if (needsShuffle) {
+        final manager = ref.read(audioPlayerManagerProvider);
+        await manager.syncShuffleState();
+      }
       
+      _updateManager();
+
       // Update saved hashes
       final newLocalHashes = {
         ...localHashes,
         if (remoteHashes.containsKey('favorites')) 'favorites': remoteHashes['favorites']!,
         if (remoteHashes.containsKey('playlists')) 'playlists': remoteHashes['playlists']!,
         if (remoteHashes.containsKey('suggest_less')) 'suggest_less': remoteHashes['suggest_less']!,
+        if (remoteHashes.containsKey('shuffle')) 'shuffle': remoteHashes['shuffle']!,
       };
       await storage.saveSyncHashes(newLocalHashes);
       
@@ -134,6 +153,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
       'playlists': state.playlists.map((p) => p.toJson()).toList(),
     };
     await storage.saveUserData(_username!, data);
+    _updateManager();
   }
 
   Future<void> refresh() async {
@@ -147,8 +167,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final favs = await service.getFavorites(_username!);
       final sl = await service.getSuggestLess(_username!);
       final playlists = await service.getPlaylists(_username!);
+      
       state = state.copyWith(favorites: favs, suggestLess: sl, playlists: playlists, isLoading: false);
+      
+      // Also sync shuffle personality/history on manual refresh
+      await ref.read(audioPlayerManagerProvider).syncShuffleState();
+      
       _saveCache();
+      _updateManager();
     } catch (e) {
       // Only set loading to false if we were loading
       state = state.copyWith(isLoading: false);

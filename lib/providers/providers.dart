@@ -101,14 +101,6 @@ final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
       authState.username,
   );
 
-  // Listen for user data changes and update manager
-  ref.listen(userDataProvider, (previous, next) {
-    manager.setUserData(
-      favorites: next.favorites,
-      suggestLess: next.suggestLess,
-    );
-  }, fireImmediately: true);
-
   ref.onDispose(() => manager.dispose());
   return manager;
 });

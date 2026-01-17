@@ -87,12 +87,16 @@ class _GruImageState extends State<GruImage> {
   Widget build(BuildContext context) {
     Widget content;
 
-    if (_imageFile == null) {
+    if (_imageFile == null || _isLoading) {
       content = widget.placeholder ?? Container(
         width: widget.width,
         height: widget.height,
         color: const Color(0xFF1E1E1E),
-        child: const Center(child: Icon(Icons.music_note, color: Colors.grey)),
+        child: Center(
+          child: _isLoading 
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.music_note, color: Colors.grey),
+        ),
       );
     } else {
       // Calculate cache sizes if not provided

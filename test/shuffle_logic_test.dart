@@ -50,14 +50,10 @@ void main() {
   group('Shuffle Logic Tests', () {
     final song1 = Song(title: 'Song 1', artist: 'Artist A', album: 'Album X', filename: 's1.mp3', url: '');
     final song2 = Song(title: 'Song 2', artist: 'Artist A', album: 'Album X', filename: 's2.mp3', url: '');
-    final song3 = Song(title: 'Song 3', artist: 'Artist B', album: 'Album Y', filename: 's3.mp3', url: '');
-    final song4 = Song(title: 'Song 4', artist: 'Artist C', album: 'Album Z', filename: 's4.mp3', url: '');
     final songNull = Song(title: 'Unknown', artist: 'Unknown Artist', album: 'Unknown Album', filename: 'null.mp3', url: '');
 
     final item1 = QueueItem(song: song1);
     final item2 = QueueItem(song: song2);
-    final item3 = QueueItem(song: song3);
-    final item4 = QueueItem(song: song4);
     final itemNull = QueueItem(song: songNull);
 
     test('Anti-repeat reduces weight significantly for recent songs', () {

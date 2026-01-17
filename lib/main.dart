@@ -47,10 +47,9 @@ class GruSongsApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
+          seedColor: Colors.red,
           brightness: Brightness.dark,
-          background: const Color(0xFF121212), // True dark mode background
-          surface: const Color(0xFF1E1E1E),
+          surface: Colors.black,
         ),
         scaffoldBackgroundColor: const Color(0xFF121212),
         appBarTheme: const AppBarTheme(

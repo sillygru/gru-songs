@@ -4,6 +4,7 @@ import asyncio
 import datetime
 import time
 import json
+import hashlib
 from settings import settings
 from multiprocessing import Queue
 
@@ -13,8 +14,10 @@ class BackupService:
         self._is_backing_up = False
         self.state_file = os.path.join(os.path.dirname(__file__), "backup_state.json")
         self.history_file = os.path.join(os.path.dirname(__file__), "server_history.log")
-        self.last_run_timestamp = self._load_state()
-        # Next run is 6 hours after the last successful backup
+        state_data = self._load_state()
+        self.last_run_timestamp = state_data.get("last_run_timestamp", time.time())
+        self.last_backup_hash = state_data.get("last_backup_hash", "")
+        # Next run is 6 hours after the last successful check (even if skipped)
         self.next_run_timestamp = self.last_run_timestamp + (6 * 60 * 60)
 
     def set_discord_queue(self, queue: Queue):
@@ -37,28 +40,64 @@ class BackupService:
         except Exception as e:
             print(f"Failed to log event: {e}")
 
-    def _load_state(self) -> float:
+    def _load_state(self) -> dict:
         try:
             if os.path.exists(self.state_file):
                 with open(self.state_file, 'r') as f:
-                    data = json.load(f)
-                    # Support legacy "next_run_timestamp" if it exists, but prefer "last_run_timestamp"
-                    if "last_run_timestamp" in data:
-                        return data["last_run_timestamp"]
-                    elif "next_run_timestamp" in data:
-                        # If we only have next_run, assume it was scheduled 6h after the last one
-                        return data["next_run_timestamp"] - (6 * 60 * 60)
+                    return json.load(f)
         except Exception:
             pass
-        # Default to now if no state (next backup will be in 6 hours)
-        return time.time()
+        return {}
 
     def _save_state(self):
         try:
             with open(self.state_file, 'w') as f:
-                json.dump({"last_run_timestamp": self.last_run_timestamp}, f)
+                json.dump({
+                    "last_run_timestamp": self.last_run_timestamp,
+                    "last_backup_hash": self.last_backup_hash
+                }, f, indent=4)
         except Exception as e:
             print(f"Failed to save backup state: {e}")
+
+    def _get_users_dir_hash(self):
+        """Calculates a deterministic hash of the users directory based on filenames, sizes, and mtimes."""
+        hasher = hashlib.md5()
+        
+        # Sort files to ensure deterministic order
+        try:
+            files = []
+            for root, dirs, filenames in os.walk(settings.USERS_DIR):
+                for filename in filenames:
+                    if filename.startswith('.'): continue
+                    full_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(full_path, settings.USERS_DIR)
+                    files.append(rel_path)
+            
+            files.sort()
+            
+            for rel_path in files:
+                full_path = os.path.join(settings.USERS_DIR, rel_path)
+                stat = os.stat(full_path)
+                # Include path, size and mtime in the hash. 
+                # This is faster than reading all file contents and usually sufficient.
+                # If we want to be 100% sure for SQLite, we could read the first few KB or whole file.
+                # Given the 6h interval, reading contents of a few MBs of DBs is also fine.
+                hasher.update(rel_path.encode())
+                hasher.update(str(stat.st_size).encode())
+                hasher.update(str(stat.st_mtime).encode())
+                
+                # For small JSON files, let's include content hash for extra safety
+                if rel_path.endswith('.json'):
+                    try:
+                        with open(full_path, 'rb') as f:
+                            hasher.update(f.read())
+                    except: pass
+                    
+        except Exception as e:
+            print(f"Hash calculation error: {e}")
+            return str(time.time()) # Force backup on error
+            
+        return hasher.hexdigest()
 
     async def trigger_backup(self, reset_timer: bool = False):
         if self._is_backing_up:
@@ -80,17 +119,24 @@ class BackupService:
             
         self._is_backing_up = True
         try:
-            success = await asyncio.to_thread(self._perform_backup_sync)
-            if success:
+            result = await asyncio.to_thread(self._perform_backup_sync)
+            if result != "failed":
                 self.last_run_timestamp = time.time()
                 self._save_state()
-            return success
+                return True
+            return False
         finally:
             self._is_backing_up = False
 
     def _perform_backup_sync(self):
         start_time = time.time()
         
+        current_hash = self._get_users_dir_hash()
+        if current_hash == self.last_backup_hash:
+            self._log("⏭️ Backup skipped: No changes detected in user data.")
+            self.log_event("BACKUP_SKIPPED", "No changes")
+            return "skipped"
+
         try:
             # Calculate name
             now = datetime.datetime.now()
@@ -126,14 +172,15 @@ class BackupService:
             shutil.copytree(settings.USERS_DIR, dest_path)
             
             elapsed = time.time() - start_time
+            self.last_backup_hash = current_hash
             msg = f"✅ Backup {next_num} completed in {elapsed:.2f}s: {folder_name}"
             self._log(msg)
             self.log_event("BACKUP", folder_name)
-            return True
+            return "success"
             
         except Exception as e:
             self._log(f"❌ Backup failed: {str(e)}")
-            return False
+            return "failed"
 
     async def start_scheduler(self):
         self._log(f"⏳ Backup scheduler started. Next run: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")

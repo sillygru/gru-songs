@@ -5,7 +5,6 @@ import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../widgets/gru_image.dart';
-import '../../services/cache_service.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -238,7 +237,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             blurRadius: 20,
             spreadRadius: 5,
           ),
@@ -289,7 +288,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                         borderRadius: BorderRadius.circular(16),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(0.4),
+                                            color: Colors.black.withValues(alpha: 0.4),
                                             blurRadius: 16,
                                             offset: const Offset(0, 8),
                                           ),
@@ -314,7 +313,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             : Container(
                                 key: _lyricsContainerKey,
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.7),
+                                  color: Colors.black.withValues(alpha: 0.7),
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 padding: const EdgeInsets.symmetric(vertical: 16),

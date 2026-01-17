@@ -1,5 +1,4 @@
 import 'package:flutter/widgets.dart'; // For AppLifecycleListener
-import 'package:flutter/painting.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -349,26 +348,30 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       shuffleNotifier.value = _shuffleState.config.enabled;
       shuffleStateNotifier.value = _shuffleState;
     }
-    _syncShuffleState();
+    syncShuffleState();
   }
 
-  Future<void> _syncShuffleState() async {
-    if (_username == null) return;
+  Future<ShuffleState?> syncShuffleState() async {
+    if (_username == null) return null;
     try {
         final summary = await _statsService.getStatsSummary(_username!);
         if (summary != null && summary['shuffle_state'] != null) {
           final remoteState = ShuffleState.fromJson(summary['shuffle_state']);
-          // Merge logic (omitted for brevity, same as before)
-           _shuffleState = _shuffleState.copyWith(
+          
+          // Merge logic: Personality and History come from server.
+          _shuffleState = _shuffleState.copyWith(
             config: remoteState.config.copyWith(enabled: _shuffleState.config.enabled),
-            history: remoteState.history, // Trust server history
+            history: remoteState.history,
           );
+          
           shuffleStateNotifier.value = _shuffleState;
           await _storageService.saveShuffleState(_username!, _shuffleState.toJson());
+          return _shuffleState;
         }
     } catch (e) {
-        // Offline
+        debugPrint("Shuffle Sync Failed: $e");
     }
+    return null;
   }
 
   Future<void> _saveShuffleState() async {
@@ -494,18 +497,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 _originalQueue = origJson.map((j) => QueueItem.fromJson(j)).toList();
                 
                 int initialIndex = 0;
+                Duration? resumePosition;
+                
                 if (lastSongFilename != null) {
                     initialIndex = _effectiveQueue.indexWhere((item) => item.song.filename == lastSongFilename);
-                    if (initialIndex == -1) initialIndex = 0;
+                    if (initialIndex != -1) {
+                        resumePosition = Duration(milliseconds: savedPositionMs);
+                    } else {
+                        initialIndex = 0;
+                    }
                 }
 
                 await _rebuildPlaylist(
                     initialIndex: initialIndex, 
                     startPlaying: false, 
-                    initialPosition: Duration(milliseconds: savedPositionMs)
+                    initialPosition: resumePosition
                 );
                 return;
-            } catch (e) { }
+            } catch (e) { 
+                // Ignore malformed persistence state, fallback to default
+            }
         }
 
         // 3. Fallback to default list
@@ -716,11 +727,35 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<void> _rebuildPlaylist({int? initialIndex, bool startPlaying = true, Duration? initialPosition}) async {
     if (_effectiveQueue.isEmpty) return;
-    final position = initialPosition ?? _player.position;
+    
     final targetIndex = initialIndex ?? _player.currentIndex ?? 0;
+    final currentItem = (targetIndex < _effectiveQueue.length) ? _effectiveQueue[targetIndex] : null;
+    
+    // Capture current player state reliably before rebuilding
+    final sequenceState = _player.sequenceState;
+    final currentMediaItem = sequenceState.currentSource?.tag as MediaItem?;
+    final currentPosition = _player.position;
+
+    Duration position = Duration.zero;
+    if (initialPosition != null) {
+      position = initialPosition;
+    } else if (currentMediaItem != null && currentItem != null) {
+      // If the song currently in the player is the same as the one we are pointing to in the new queue,
+      // maintain the position.
+      if (currentMediaItem.id == currentItem.song.filename) {
+        position = currentPosition;
+      }
+    }
+
     final sources = await Future.wait(_effectiveQueue.map((item) => _createAudioSource(item)));
     _playlist = ConcatenatingAudioSource(children: sources, useLazyPreparation: true);
-    await _player.setAudioSource(_playlist, initialIndex: targetIndex, initialPosition: (targetIndex == (_player.currentIndex ?? -1) || initialPosition != null) ? position : Duration.zero);
+    
+    await _player.setAudioSource(
+      _playlist, 
+      initialIndex: targetIndex, 
+      initialPosition: position
+    );
+    
     if (startPlaying) await _player.play();
     _updateQueueNotifier();
   }
