@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -64,7 +65,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
 
     player.positionStream.listen((position) {
-      if (_lyrics != null && _showLyrics && _lyrics!.any((l) => l.time != Duration.zero)) {
+      if (_lyrics != null && _lyrics!.any((l) => l.time != Duration.zero)) {
         int newIndex = -1;
         for (int i = 0; i < _lyrics!.length; i++) {
           if (_lyrics![i].time <= position && _lyrics![i].time != Duration.zero) {
@@ -79,13 +80,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             setState(() {
               _currentLyricIndex = newIndex;
             });
-            if (_autoScrollEnabled) {
+            if (_showLyrics && _autoScrollEnabled) {
               _scrollToCurrentLyric();
             }
           }
         }
       }
     });
+  }
+
+  void _updateCurrentLyricIndex(Duration position) {
+    if (_lyrics == null || _lyrics!.isEmpty) return;
+    
+    int newIndex = -1;
+    for (int i = 0; i < _lyrics!.length; i++) {
+      if (_lyrics![i].time <= position && _lyrics![i].time != Duration.zero) {
+        newIndex = i;
+      } else if (_lyrics![i].time > position) {
+        break;
+      }
+    }
+    
+    if (newIndex != -1 && newIndex != _currentLyricIndex) {
+      setState(() => _currentLyricIndex = newIndex);
+    }
   }
 
   void _checkAndReenableAutoScroll() {
@@ -158,7 +176,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           _lyricKeys = List.generate(parsedLyrics.length, (index) => GlobalKey());
           _loadingLyrics = false;
         });
+        
+        // Find current position and scroll after first build
+        _updateCurrentLyricIndex(player.position);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _showLyrics) _scrollToCurrentLyric();
+        });
       }
+    } else {
+      // Already loaded, just scroll to current
+      _updateCurrentLyricIndex(player.position);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _showLyrics) _scrollToCurrentLyric();
+      });
     }
   }
 
@@ -310,61 +340,132 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                   ),
                                 ),
                               )
-                            : Container(
-                                key: _lyricsContainerKey,
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.7),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                child: _loadingLyrics
-                                    ? const Center(child: CircularProgressIndicator())
-                                    : (_lyrics == null || _lyrics!.isEmpty)
-                                        ? const Center(child: Text('No lyrics available'))
-                                        : NotificationListener<ScrollNotification>(
-                                            onNotification: (notification) {
-                                              if (notification is UserScrollNotification) {
-                                                if (notification.direction != ScrollDirection.idle) {
-                                                  if (_autoScrollEnabled) {
-                                                    setState(() => _autoScrollEnabled = false);
-                                                  }
-                                                }
-                                              } else if (notification is ScrollEndNotification) {
-                                                _checkAndReenableAutoScroll();
-                                              }
-                                              return false;
-                                            },
-                                            child: SingleChildScrollView(
-                                              controller: _lyricsScrollController,
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: List.generate(_lyrics!.length, (index) {
-                                                  final isCurrent = index == _currentLyricIndex;
-                                                  final hasTime = _lyrics![index].time != Duration.zero;
-                                                  return InkWell(
-                                                    key: _lyricKeys?[index],
-                                                    onTap: hasTime ? () {
-                                                      player.seek(_lyrics![index].time);
-                                                      setState(() => _autoScrollEnabled = true);
-                                                    } : null,
-                                                    child: Container(
-                                                      width: double.infinity,
-                                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                                      child: Text(
-                                                        _lyrics![index].text,
-                                                        style: TextStyle(
-                                                          fontSize: isCurrent ? 22 : 18,
-                                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                                          color: isCurrent ? Colors.white : Colors.white54,
-                                                        ),
-                                                        textAlign: TextAlign.left,
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(24),
+                                child: Stack(
+                                  children: [
+                                    // Immersive Blurred Background
+                                    Positioned.fill(
+                                      child: Hero(
+                                        tag: 'lyrics_bg_${metadata.id}',
+                                        child: GruImage(
+                                          url: metadata.artUri.toString(),
+                                          fit: BoxFit.cover,
+                                          cacheWidth: 600,
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned.fill(
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                                        child: Container(
+                                          color: Colors.black.withValues(alpha: 0.45),
+                                        ),
+                                      ),
+                                    ),
+                                    // Gradient overlay for better readability and fade effects
+                                    Positioned.fill(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                            colors: [
+                                              Colors.black.withValues(alpha: 0.3),
+                                              Colors.transparent,
+                                              Colors.transparent,
+                                              Colors.black.withValues(alpha: 0.3),
+                                            ],
+                                            stops: const [0.0, 0.2, 0.8, 1.0],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      key: _lyricsContainerKey,
+                                      child: _loadingLyrics
+                                          ? const Center(child: CircularProgressIndicator())
+                                          : (_lyrics == null || _lyrics!.isEmpty)
+                                              ? const Center(
+                                                  child: Text(
+                                                    'No lyrics available',
+                                                    style: TextStyle(color: Colors.white70, fontSize: 18),
+                                                  ),
+                                                )
+                                              : ShaderMask(
+                                                  shaderCallback: (rect) {
+                                                    return const LinearGradient(
+                                                      begin: Alignment.topCenter,
+                                                      end: Alignment.bottomCenter,
+                                                      colors: [Colors.black, Colors.transparent, Colors.transparent, Colors.black],
+                                                      stops: [0.0, 0.05, 0.95, 1.0],
+                                                    ).createShader(rect);
+                                                  },
+                                                  blendMode: BlendMode.dstOut,
+                                                  child: NotificationListener<ScrollNotification>(
+                                                    onNotification: (notification) {
+                                                      if (notification is UserScrollNotification) {
+                                                        if (notification.direction != ScrollDirection.idle) {
+                                                          if (_autoScrollEnabled) {
+                                                            setState(() => _autoScrollEnabled = false);
+                                                          }
+                                                        }
+                                                      } else if (notification is ScrollEndNotification) {
+                                                        _checkAndReenableAutoScroll();
+                                                      }
+                                                      return false;
+                                                    },
+                                                    child: SingleChildScrollView(
+                                                      controller: _lyricsScrollController,
+                                                      padding: const EdgeInsets.symmetric(vertical: 80),
+                                                      child: Column(
+                                                        children: List.generate(_lyrics!.length, (index) {
+                                                          final isCurrent = index == _currentLyricIndex;
+                                                          final hasTime = _lyrics![index].time != Duration.zero;
+                                                          return InkWell(
+                                                            key: _lyricKeys?[index],
+                                                            onTap: hasTime ? () {
+                                                              player.seek(_lyrics![index].time);
+                                                              setState(() => _autoScrollEnabled = true);
+                                                            } : null,
+                                                            child: AnimatedContainer(
+                                                              duration: const Duration(milliseconds: 500),
+                                                              curve: Curves.easeOutQuart,
+                                                              width: double.infinity,
+                                                              padding: EdgeInsets.symmetric(
+                                                                horizontal: 24, 
+                                                                vertical: isCurrent ? 28 : 16
+                                                              ),
+                                                              child: AnimatedDefaultTextStyle(
+                                                                duration: const Duration(milliseconds: 500),
+                                                                curve: Curves.easeOutQuart,
+                                                                textAlign: TextAlign.center,
+                                                                style: TextStyle(
+                                                                  fontSize: isCurrent ? 32 : 24,
+                                                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                                                  color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.35),
+                                                                  height: 1.3,
+                                                                  letterSpacing: isCurrent ? -0.8 : -0.2,
+                                                                  shadows: isCurrent ? [
+                                                                    Shadow(
+                                                                      color: Colors.black.withValues(alpha: 0.3),
+                                                                      offset: const Offset(0, 4),
+                                                                      blurRadius: 12,
+                                                                    )
+                                                                  ] : [],
+                                                                ),
+                                                                child: Text(_lyrics![index].text),
+                                                              ),
+                                                            ),
+                                                          );
+                                                        }),
                                                       ),
                                                     ),
-                                                  );
-                                                }),
-                                              ),
-                                            ),
-                                          ),
+                                                  ),
+                                                ),
+                                    ),
+                                  ],
+                                ),
                               ),
                         ),
                       );
