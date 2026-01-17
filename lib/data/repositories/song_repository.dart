@@ -13,6 +13,7 @@ class SongRepository {
 
   Future<String?> getLyrics(String url) async {
     final filename = url.split('/').last;
-    return CacheService.instance.readString('lyrics', filename, _apiService.getFullUrl(url));
+    return CacheService.instance
+        .readString('lyrics', filename, _apiService.getFullUrl(url));
   }
 }

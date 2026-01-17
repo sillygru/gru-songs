@@ -26,8 +26,12 @@ class SyncState {
 
   SyncStatus get status {
     if (hasError) return SyncStatus.offline;
-    if (tasks.values.any((s) => s == SyncStatus.syncing)) return SyncStatus.syncing;
-    if (tasks.values.any((s) => s == SyncStatus.usingCache)) return SyncStatus.usingCache;
+    if (tasks.values.any((s) => s == SyncStatus.syncing)) {
+      return SyncStatus.syncing;
+    }
+    if (tasks.values.any((s) => s == SyncStatus.usingCache)) {
+      return SyncStatus.usingCache;
+    }
     return SyncStatus.upToDate;
   }
 
@@ -55,15 +59,17 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 
   void setError() => state = state.copyWith(hasError: true);
-  
+
   void setUpToDate() {
     final newTasks = Map<String, SyncStatus>.from(state.tasks);
     newTasks.forEach((key, value) => newTasks[key] = SyncStatus.upToDate);
-    state = state.copyWith(tasks: newTasks, lastSync: DateTime.now(), hasError: false);
+    state = state.copyWith(
+        tasks: newTasks, lastSync: DateTime.now(), hasError: false);
   }
 }
 
-final syncProvider = NotifierProvider<SyncNotifier, SyncState>(SyncNotifier.new);
+final syncProvider =
+    NotifierProvider<SyncNotifier, SyncState>(SyncNotifier.new);
 
 // Services & Repositories
 final apiServiceProvider = Provider<ApiService>((ref) {
@@ -71,7 +77,7 @@ final apiServiceProvider = Provider<ApiService>((ref) {
   // Update apiService username when auth state changes
   final authState = ref.watch(authProvider);
   apiService.setUsername(authState.username);
-  
+
   ref.onDispose(() => apiService.dispose());
   return apiService;
 });
@@ -95,10 +101,10 @@ final songRepositoryProvider = Provider<SongRepository>((ref) {
 final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
   final authState = ref.watch(authProvider);
   final manager = AudioPlayerManager(
-      ref.watch(apiServiceProvider),
-      ref.watch(statsServiceProvider),
-      ref.watch(storageServiceProvider),
-      authState.username,
+    ref.watch(apiServiceProvider),
+    ref.watch(statsServiceProvider),
+    ref.watch(storageServiceProvider),
+    authState.username,
   );
 
   ref.onDispose(() => manager.dispose());
@@ -110,17 +116,19 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   @override
   Future<List<Song>> build() async {
     final storage = ref.watch(storageServiceProvider);
-    
+
     // Load cache
     final cached = await storage.loadSongs();
-    
+
     if (cached.isNotEmpty) {
       // Set initial status to usingCache if we have cached data
-      Future.microtask(() => ref.read(syncProvider.notifier).updateTask('songs', SyncStatus.usingCache));
+      Future.microtask(() => ref
+          .read(syncProvider.notifier)
+          .updateTask('songs', SyncStatus.usingCache));
       _backgroundSync(); // Start background sync
       return cached;
     }
-    
+
     // No cache, must fetch
     return _fetchAndCache();
   }
@@ -132,23 +140,23 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     try {
       syncNotifier.updateTask('songs', SyncStatus.syncing);
-      
+
       final remoteHashes = await api.fetchSyncHashes();
       final localHashes = await storage.loadSyncHashes();
-      
+
       if (remoteHashes['songs'] == localHashes['songs'] && state.hasValue) {
         // Hashes match, we are up to date!
         syncNotifier.updateTask('songs', SyncStatus.upToDate);
         return;
       }
-      
+
       // Mismatch or no data, fetch fresh
       await _fetchAndCache();
-      
+
       // Update saved hashes
       final newLocalHashes = {...localHashes, 'songs': remoteHashes['songs']!};
       await storage.saveSyncHashes(newLocalHashes);
-      
+
       syncNotifier.updateTask('songs', SyncStatus.upToDate);
     } catch (e) {
       debugPrint('Background sync failed: $e');
@@ -163,12 +171,12 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     try {
       if (!state.hasValue || state.isLoading) {
-         syncNotifier.updateTask('songs', SyncStatus.syncing);
+        syncNotifier.updateTask('songs', SyncStatus.syncing);
       }
-      
+
       final songs = await repository.getSongs();
       await storage.saveSongs(songs);
-      
+
       state = AsyncValue.data(songs);
       syncNotifier.updateTask('songs', SyncStatus.upToDate);
       return songs;
@@ -187,7 +195,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   }
 }
 
-final songsProvider = AsyncNotifierProvider<SongsNotifier, List<Song>>(SongsNotifier.new);
+final songsProvider =
+    AsyncNotifierProvider<SongsNotifier, List<Song>>(SongsNotifier.new);
 
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(() {
   return UserDataNotifier();

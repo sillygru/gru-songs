@@ -85,15 +85,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             child: songsAsync.when(
               data: (songs) {
                 var filteredSongs = songs.where((song) {
-                  final matchesQuery = song.title.toLowerCase().contains(_query) ||
-                      song.artist.toLowerCase().contains(_query) ||
-                      song.album.toLowerCase().contains(_query);
-                  
+                  final matchesQuery =
+                      song.title.toLowerCase().contains(_query) ||
+                          song.artist.toLowerCase().contains(_query) ||
+                          song.album.toLowerCase().contains(_query);
+
                   if (!matchesQuery) return false;
 
                   if (_searchLibrary) {
-                    final isFavorite = userData.favorites.contains(song.filename);
-                    final isInPlaylist = userData.playlists.any((p) => p.songs.any((s) => s.filename == song.filename));
+                    final isFavorite =
+                        userData.favorites.contains(song.filename);
+                    final isInPlaylist = userData.playlists.any(
+                        (p) => p.songs.any((s) => s.filename == song.filename));
                     return isFavorite || isInPlaylist;
                   }
 
@@ -101,7 +104,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 }).toList();
 
                 if (_query.isEmpty && !_searchLibrary) {
-                   return const Center(child: Text('Search for your favorite music'));
+                  return const Center(
+                      child: Text('Search for your favorite music'));
                 }
 
                 if (filteredSongs.isEmpty) {
@@ -128,10 +132,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       title: Text(song.title),
                       subtitle: Text(song.artist),
                       onTap: () {
-                        audioManager.playSong(song, contextQueue: filteredSongs);
+                        audioManager.playSong(song,
+                            contextQueue: filteredSongs);
                       },
                       onLongPress: () {
-                        showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
+                        showSongOptionsMenu(
+                            context, ref, song.filename, song.title,
+                            song: song);
                       },
                     );
                   },

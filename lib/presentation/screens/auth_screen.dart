@@ -69,7 +69,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     if (_isLogin) {
                       ref.read(authProvider.notifier).login(username, password);
                     } else {
-                      ref.read(authProvider.notifier).signup(username, password);
+                      ref
+                          .read(authProvider.notifier)
+                          .signup(username, password);
                     }
                   },
                   child: Text(_isLogin ? 'Login' : 'Sign Up'),

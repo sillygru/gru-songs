@@ -39,7 +39,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
   UserDataState build() {
     final authState = ref.watch(authProvider);
     final newUsername = authState.username;
-    
+
     // If username changed and is now logged in, trigger refresh (with cache)
     if (newUsername != null && newUsername != _username) {
       _username = newUsername;
@@ -48,9 +48,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
       _username = null;
       return UserDataState();
     }
-    
+
     _username = newUsername;
-    // Initial state is loading if we are just starting, 
+    // Initial state is loading if we are just starting,
     // but if we have previous state (from param change) we might want to keep it?
     // For now, default to loading until cache hits.
     return UserDataState(isLoading: true);
@@ -58,7 +58,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> _loadCacheAndRefresh() async {
     if (_username == null) return;
-    
+
     // 1. Load Cache
     final storage = ref.read(storageServiceProvider);
     try {
@@ -68,13 +68,16 @@ class UserDataNotifier extends Notifier<UserDataState> {
           favorites: List<String>.from(cached['favorites'] ?? []),
           suggestLess: List<String>.from(cached['suggest_less'] ?? []),
           playlists: (cached['playlists'] as List?)
-              ?.map((p) => Playlist.fromJson(p))
-              .toList() ?? [],
+                  ?.map((p) => Playlist.fromJson(p))
+                  .toList() ??
+              [],
           isLoading: false,
         );
         _updateManager();
         // If we have cache, we are in usingCache status initially
-        Future.microtask(() => ref.read(syncProvider.notifier).updateTask('userData', SyncStatus.usingCache));
+        Future.microtask(() => ref
+            .read(syncProvider.notifier)
+            .updateTask('userData', SyncStatus.usingCache));
       }
     } catch (e) {
       debugPrint('Error loading user cache: $e');
@@ -86,35 +89,41 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   void _updateManager() {
     ref.read(audioPlayerManagerProvider).setUserData(
-      favorites: state.favorites,
-      suggestLess: state.suggestLess,
-    );
+          favorites: state.favorites,
+          suggestLess: state.suggestLess,
+        );
   }
 
   Future<void> _backgroundSync() async {
     if (_username == null) return;
-    
+
     final api = ref.read(apiServiceProvider);
     final storage = ref.read(storageServiceProvider);
     final syncNotifier = ref.read(syncProvider.notifier);
 
     try {
       syncNotifier.updateTask('userData', SyncStatus.syncing);
-      
+
       final remoteHashes = await api.fetchSyncHashes();
       final localHashes = await storage.loadSyncHashes();
-      
+
       bool needsFavs = remoteHashes['favorites'] != localHashes['favorites'];
-      bool needsPlaylists = remoteHashes['playlists'] != localHashes['playlists'];
-      bool needsSuggestLess = remoteHashes['suggest_less'] != localHashes['suggest_less'];
+      bool needsPlaylists =
+          remoteHashes['playlists'] != localHashes['playlists'];
+      bool needsSuggestLess =
+          remoteHashes['suggest_less'] != localHashes['suggest_less'];
       bool needsShuffle = remoteHashes['shuffle'] != localHashes['shuffle'];
-      
-      if (!needsFavs && !needsPlaylists && !needsSuggestLess && !needsShuffle && !state.isLoading) {
+
+      if (!needsFavs &&
+          !needsPlaylists &&
+          !needsSuggestLess &&
+          !needsShuffle &&
+          !state.isLoading) {
         syncNotifier.updateTask('userData', SyncStatus.upToDate);
         _updateManager(); // Still push to ensure manager is ready if it was just initialized
         return;
       }
-      
+
       // Fetch only what's needed or just refresh everything for simplicity
       if (needsFavs || needsPlaylists || needsSuggestLess) {
         await refresh();
@@ -124,19 +133,23 @@ class UserDataNotifier extends Notifier<UserDataState> {
         final manager = ref.read(audioPlayerManagerProvider);
         await manager.syncShuffleState();
       }
-      
+
       _updateManager();
 
       // Update saved hashes
       final newLocalHashes = {
         ...localHashes,
-        if (remoteHashes.containsKey('favorites')) 'favorites': remoteHashes['favorites']!,
-        if (remoteHashes.containsKey('playlists')) 'playlists': remoteHashes['playlists']!,
-        if (remoteHashes.containsKey('suggest_less')) 'suggest_less': remoteHashes['suggest_less']!,
-        if (remoteHashes.containsKey('shuffle')) 'shuffle': remoteHashes['shuffle']!,
+        if (remoteHashes.containsKey('favorites'))
+          'favorites': remoteHashes['favorites']!,
+        if (remoteHashes.containsKey('playlists'))
+          'playlists': remoteHashes['playlists']!,
+        if (remoteHashes.containsKey('suggest_less'))
+          'suggest_less': remoteHashes['suggest_less']!,
+        if (remoteHashes.containsKey('shuffle'))
+          'shuffle': remoteHashes['shuffle']!,
       };
       await storage.saveSyncHashes(newLocalHashes);
-      
+
       syncNotifier.updateTask('userData', SyncStatus.upToDate);
     } catch (e) {
       debugPrint('User data background sync failed: $e');
@@ -158,21 +171,25 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> refresh() async {
     if (_username == null) return;
-    
+
     final service = ref.read(userDataServiceProvider);
     // Don't set isLoading to true if we already have data (from cache)
-    // state = state.copyWith(isLoading: true); 
-    
+    // state = state.copyWith(isLoading: true);
+
     try {
       final favs = await service.getFavorites(_username!);
       final sl = await service.getSuggestLess(_username!);
       final playlists = await service.getPlaylists(_username!);
-      
-      state = state.copyWith(favorites: favs, suggestLess: sl, playlists: playlists, isLoading: false);
-      
+
+      state = state.copyWith(
+          favorites: favs,
+          suggestLess: sl,
+          playlists: playlists,
+          isLoading: false);
+
       // Also sync shuffle personality/history on manual refresh
       await ref.read(audioPlayerManagerProvider).syncShuffleState();
-      
+
       _saveCache();
       _updateManager();
     } catch (e) {
@@ -211,13 +228,13 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> toggleFavorite(String songFilename) async {
     if (_username == null) return;
     final service = ref.read(userDataServiceProvider);
-    
+
     final isFav = state.favorites.contains(songFilename);
     final isSL = state.suggestLess.contains(songFilename);
-    
+
     final newFavs = List<String>.from(state.favorites);
     final newSL = List<String>.from(state.suggestLess);
-    
+
     if (isFav) {
       newFavs.remove(songFilename);
     } else {
@@ -226,16 +243,17 @@ class UserDataNotifier extends Notifier<UserDataState> {
         newSL.remove(songFilename);
       }
     }
-    
+
     state = state.copyWith(favorites: newFavs, suggestLess: newSL);
     _saveCache();
-    
+
     try {
       if (isFav) {
         await service.removeFavorite(_username!, songFilename);
       } else {
         final statsService = ref.read(statsServiceProvider);
-        await service.addFavorite(_username!, songFilename, statsService.sessionId);
+        await service.addFavorite(
+            _username!, songFilename, statsService.sessionId);
         if (isSL) {
           await service.removeSuggestLess(_username!, songFilename);
         }
@@ -261,11 +279,12 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> deletePlaylist(String id) async {
     if (_username == null) return;
     final service = ref.read(userDataServiceProvider);
-    
+
     final oldPlaylists = state.playlists;
-    state = state.copyWith(playlists: state.playlists.where((p) => p.id != id).toList());
+    state = state.copyWith(
+        playlists: state.playlists.where((p) => p.id != id).toList());
     _saveCache();
-    
+
     try {
       await service.deletePlaylist(_username!, id);
     } catch (e) {
@@ -280,8 +299,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
     await service.addSongToPlaylist(_username!, playlistId, songFilename);
     await refresh();
   }
-  
-  Future<void> removeSongFromPlaylist(String playlistId, String songFilename) async {
+
+  Future<void> removeSongFromPlaylist(
+      String playlistId, String songFilename) async {
     if (_username == null) return;
     final service = ref.read(userDataServiceProvider);
     await service.removeSongFromPlaylist(_username!, playlistId, songFilename);

@@ -11,12 +11,13 @@ class AddSongsScreen extends ConsumerStatefulWidget {
   ConsumerState<AddSongsScreen> createState() => _AddSongsScreenState();
 }
 
-class _AddSongsScreenState extends ConsumerState<AddSongsScreen> with SingleTickerProviderStateMixin {
+class _AddSongsScreenState extends ConsumerState<AddSongsScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _youtubeUrlController = TextEditingController();
   final _youtubeFilenameController = TextEditingController();
   final _uploadFilenameController = TextEditingController();
-  
+
   File? _selectedFile;
   bool _isLoading = false;
 
@@ -57,9 +58,11 @@ class _AddSongsScreenState extends ConsumerState<AddSongsScreen> with SingleTick
     setState(() => _isLoading = true);
     try {
       final apiService = ref.read(apiServiceProvider);
-      await apiService.uploadSong(_selectedFile!, _uploadFilenameController.text);
+      await apiService.uploadSong(
+          _selectedFile!, _uploadFilenameController.text);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload successful')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Upload successful')));
         setState(() {
           _selectedFile = null;
           _uploadFilenameController.clear();
@@ -69,7 +72,8 @@ class _AddSongsScreenState extends ConsumerState<AddSongsScreen> with SingleTick
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Upload failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -83,9 +87,11 @@ class _AddSongsScreenState extends ConsumerState<AddSongsScreen> with SingleTick
     setState(() => _isLoading = true);
     try {
       final apiService = ref.read(apiServiceProvider);
-      await apiService.downloadYoutube(url, _youtubeFilenameController.text.trim());
+      await apiService.downloadYoutube(
+          url, _youtubeFilenameController.text.trim());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Download started on server')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Download started on server')));
         _youtubeUrlController.clear();
         _youtubeFilenameController.clear();
         // Refresh song list (might take a bit, so maybe wait or just invalidate)
@@ -93,7 +99,8 @@ class _AddSongsScreenState extends ConsumerState<AddSongsScreen> with SingleTick
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Download failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

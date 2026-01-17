@@ -29,14 +29,13 @@ class UserDataService {
     return [];
   }
 
-  Future<void> addFavorite(String username, String songFilename, String sessionId) async {
+  Future<void> addFavorite(
+      String username, String songFilename, String sessionId) async {
     await _client.post(
       Uri.parse('${ApiService.baseUrl}/user/favorites'),
       headers: _getHeaders(username),
-      body: jsonEncode({
-          'song_filename': songFilename,
-          'session_id': sessionId
-      }),
+      body:
+          jsonEncode({'song_filename': songFilename, 'session_id': sessionId}),
     );
   }
 
@@ -112,7 +111,8 @@ class UserDataService {
     );
   }
 
-  Future<void> addSongToPlaylist(String username, String playlistId, String songFilename) async {
+  Future<void> addSongToPlaylist(
+      String username, String playlistId, String songFilename) async {
     await _client.post(
       Uri.parse('${ApiService.baseUrl}/user/playlists/$playlistId/songs'),
       headers: _getHeaders(username),
@@ -120,9 +120,11 @@ class UserDataService {
     );
   }
 
-  Future<void> removeSongFromPlaylist(String username, String playlistId, String songFilename) async {
+  Future<void> removeSongFromPlaylist(
+      String username, String playlistId, String songFilename) async {
     await _client.delete(
-      Uri.parse('${ApiService.baseUrl}/user/playlists/$playlistId/songs/$songFilename'),
+      Uri.parse(
+          '${ApiService.baseUrl}/user/playlists/$playlistId/songs/$songFilename'),
       headers: _getHeaders(username),
     );
   }

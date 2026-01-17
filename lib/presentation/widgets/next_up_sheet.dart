@@ -16,7 +16,7 @@ class NextUpSheet extends ConsumerWidget {
       valueListenable: audioManager.queueNotifier,
       builder: (context, queue, child) {
         final currentIndex = audioManager.player.currentIndex ?? -1;
-        
+
         // Show up to 20 upcoming songs after current
         final upcomingQueue = queue.skip(currentIndex + 1).take(20).toList();
 
@@ -37,17 +37,24 @@ class NextUpSheet extends ConsumerWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       'Next Up',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     Text(
                       '${upcomingQueue.length} songs',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Colors.grey),
                     ),
                   ],
                 ),
@@ -76,7 +83,8 @@ class NextUpSheet extends ConsumerWidget {
                               child: GruImage(
                                 url: song.coverUrl != null
                                     ? apiService.getFullUrl(song.coverUrl!)
-                                    : apiService.getFullUrl('/stream/cover.jpg'),
+                                    : apiService
+                                        .getFullUrl('/stream/cover.jpg'),
                                 width: 44,
                                 height: 44,
                                 fit: BoxFit.cover,
@@ -87,8 +95,12 @@ class NextUpSheet extends ConsumerWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontWeight: item.isPriority ? FontWeight.bold : FontWeight.normal,
-                                color: item.isPriority ? Colors.deepPurple[200] : null,
+                                fontWeight: item.isPriority
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: item.isPriority
+                                    ? Colors.deepPurple[200]
+                                    : null,
                               ),
                             ),
                             subtitle: Text(
@@ -100,11 +112,13 @@ class NextUpSheet extends ConsumerWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (item.isPriority)
-                                  const Icon(Icons.push_pin, size: 16, color: Colors.deepPurple),
+                                  const Icon(Icons.push_pin,
+                                      size: 16, color: Colors.deepPurple),
                                 IconButton(
                                   icon: const Icon(Icons.remove_circle_outline),
                                   onPressed: () {
-                                    audioManager.removeFromQueue(currentIndex + 1 + index);
+                                    audioManager.removeFromQueue(
+                                        currentIndex + 1 + index);
                                   },
                                 ),
                                 const Icon(Icons.drag_handle),

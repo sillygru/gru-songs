@@ -45,7 +45,7 @@ class StorageService {
     try {
       final file = await _songsFile;
       if (!await file.exists()) return [];
-      
+
       final content = await file.readAsString();
       final List<dynamic> jsonList = jsonDecode(content);
       return jsonList.map((json) => Song.fromJson(json)).toList();
@@ -68,7 +68,7 @@ class StorageService {
     try {
       final file = await _getUserDataFile(username);
       if (!await file.exists()) return null;
-      
+
       final content = await file.readAsString();
       return jsonDecode(content);
     } catch (e) {
@@ -90,7 +90,7 @@ class StorageService {
     try {
       final file = await _syncHashesFile;
       if (!await file.exists()) return {};
-      
+
       final content = await file.readAsString();
       return Map<String, String>.from(jsonDecode(content));
     } catch (e) {
@@ -99,7 +99,8 @@ class StorageService {
     }
   }
 
-  Future<void> saveShuffleState(String username, Map<String, dynamic> state) async {
+  Future<void> saveShuffleState(
+      String username, Map<String, dynamic> state) async {
     try {
       final file = await _getShuffleStateFile(username);
       await file.writeAsString(jsonEncode(state));
@@ -112,7 +113,7 @@ class StorageService {
     try {
       final file = await _getShuffleStateFile(username);
       if (!await file.exists()) return null;
-      
+
       final content = await file.readAsString();
       return jsonDecode(content);
     } catch (e) {

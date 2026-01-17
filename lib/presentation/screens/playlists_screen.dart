@@ -31,9 +31,11 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
           FilledButton(
             onPressed: () async {
               if (_controller.text.isNotEmpty) {
-                 await ref.read(userDataProvider.notifier).createPlaylist(_controller.text);
-                 _controller.clear();
-                 if (context.mounted) Navigator.pop(context);
+                await ref
+                    .read(userDataProvider.notifier)
+                    .createPlaylist(_controller.text);
+                _controller.clear();
+                if (context.mounted) Navigator.pop(context);
               }
             },
             child: const Text("Create"),
@@ -58,105 +60,115 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
         child: const Icon(Icons.add),
       ),
       body: ListView.builder(
-              itemCount: userData.playlists.length + 1,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return ListTile(
-                    leading: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(Icons.favorite, color: Colors.red, size: 30),
-                    ),
-                    title: const Text('Favorites'),
-                    subtitle: Text('${userData.favorites.length} songs'),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const PlaylistDetailScreen(playlistId: '__favorites__'),
-                        ),
-                      );
-                    },
-                  );
-                }
-
-                final playlist = userData.playlists[index - 1];
-                
-                Widget leading = const Icon(Icons.library_music, size: 40);
-                if (playlist.songs.isNotEmpty && songsAsync.hasValue) {
-                   final firstSongFilename = playlist.songs.first.filename;
-                   final song = songsAsync.value!.firstWhere((s) => s.filename == firstSongFilename, orElse: () => songsAsync.value!.first);
-                   if (song.coverUrl != null) {
-                      leading = ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: GruImage(
-                          url: apiService.getFullUrl(song.coverUrl!),
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          errorWidget: const Icon(Icons.music_note),
-                        ),
-                      );
-                   }
-                }
-
-                return ListTile(
-                  leading: leading,
-                  title: Text(playlist.name),
-                  subtitle: Text("${playlist.songs.length} songs"),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
-                      ),
-                    );
-                  },
-                  trailing: PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (value) async {
-                      if (value == 'delete') {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text("Delete Playlist"),
-                            content: Text("Are you sure you want to delete '${playlist.name}'?"),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true), 
-                                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                child: const Text("Delete"),
-                              ),
-                            ],
-                          ),
-                        );
-                        
-                        if (confirm == true) {
-                          ref.read(userDataProvider.notifier).deletePlaylist(playlist.id);
-                        }
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text("Delete Playlist", style: TextStyle(color: Colors.red)),
-                          ],
-                        ),
-                      ),
-                    ],
+        itemCount: userData.playlists.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return ListTile(
+              leading: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.favorite, color: Colors.red, size: 30),
+              ),
+              title: const Text('Favorites'),
+              subtitle: Text('${userData.favorites.length} songs'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const PlaylistDetailScreen(playlistId: '__favorites__'),
                   ),
                 );
               },
+            );
+          }
+
+          final playlist = userData.playlists[index - 1];
+
+          Widget leading = const Icon(Icons.library_music, size: 40);
+          if (playlist.songs.isNotEmpty && songsAsync.hasValue) {
+            final firstSongFilename = playlist.songs.first.filename;
+            final song = songsAsync.value!.firstWhere(
+                (s) => s.filename == firstSongFilename,
+                orElse: () => songsAsync.value!.first);
+            if (song.coverUrl != null) {
+              leading = ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: GruImage(
+                  url: apiService.getFullUrl(song.coverUrl!),
+                  width: 50,
+                  height: 50,
+                  fit: BoxFit.cover,
+                  errorWidget: const Icon(Icons.music_note),
+                ),
+              );
+            }
+          }
+
+          return ListTile(
+            leading: leading,
+            title: Text(playlist.name),
+            subtitle: Text("${playlist.songs.length} songs"),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
+                ),
+              );
+            },
+            trailing: PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) async {
+                if (value == 'delete') {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text("Delete Playlist"),
+                      content: Text(
+                          "Are you sure you want to delete '${playlist.name}'?"),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text("Cancel")),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style:
+                              TextButton.styleFrom(foregroundColor: Colors.red),
+                          child: const Text("Delete"),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirm == true) {
+                    ref
+                        .read(userDataProvider.notifier)
+                        .deletePlaylist(playlist.id);
+                  }
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text("Delete Playlist",
+                          style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
             ),
+          );
+        },
+      ),
     );
   }
 }

@@ -23,7 +23,8 @@ class CacheEntry {
       filename: json['filename'],
       url: json['url'],
       version: json['version']?.toString(),
-      lastValidated: DateTime.parse(json['lastValidated'] ?? DateTime.now().toIso8601String()),
+      lastValidated: DateTime.parse(
+          json['lastValidated'] ?? DateTime.now().toIso8601String()),
     );
   }
 
@@ -58,11 +59,11 @@ class CacheService {
     try {
       final docDir = await getApplicationSupportDirectory();
       _baseDir = Directory(p.join(docDir.path, 'gru_cache_v2'));
-      
+
       bool isFirstV2Run = !await _baseDir.exists();
       if (isFirstV2Run) {
         await _baseDir.create(recursive: true);
-        await _cleanupLegacyCache(); 
+        await _cleanupLegacyCache();
       }
 
       _metadataFile = File(p.join(_baseDir.path, 'metadata.json'));
@@ -95,12 +96,15 @@ class CacheService {
   void pauseOperations(Duration duration) {
     _pausedUntil = DateTime.now().add(duration);
     // Cancel any active downloads
-    _activeDownloads.clear(); 
+    _activeDownloads.clear();
   }
 
-  Future<File?> getFile(String category, String filename, String url, {String? version, bool blockOnMiss = true, bool triggerDownload = true}) async {
+  Future<File?> getFile(String category, String filename, String url,
+      {String? version,
+      bool blockOnMiss = true,
+      bool triggerDownload = true}) async {
     await init();
-    
+
     if (isPaused) {
       // If paused, only return from disk, never trigger download
       triggerDownload = false;
@@ -122,7 +126,9 @@ class CacheService {
           lastValidated: DateTime.now(),
         );
         _saveMetadata();
-      } else if (version != null && entry.version != version && triggerDownload) {
+      } else if (version != null &&
+          entry.version != version &&
+          triggerDownload) {
         _downloadFile(category, filename, url, version);
       }
       return file;
@@ -132,17 +138,20 @@ class CacheService {
 
     if (!blockOnMiss) {
       _downloadFile(category, filename, url, version);
-      return null; 
+      return null;
     }
-    
+
     return await _downloadFile(category, filename, url, version);
   }
 
-  Future<File?> _downloadFile(String category, String filename, String url, String? version) async {
+  Future<File?> _downloadFile(
+      String category, String filename, String url, String? version) async {
     if (isPaused) return null;
-    
+
     final downloadKey = '$category:$filename';
-    if (_activeDownloads.containsKey(downloadKey)) return _activeDownloads[downloadKey];
+    if (_activeDownloads.containsKey(downloadKey)) {
+      return _activeDownloads[downloadKey];
+    }
 
     final downloadFuture = _performDownload(category, filename, url, version);
     _activeDownloads[downloadKey] = downloadFuture;
@@ -154,26 +163,27 @@ class CacheService {
     }
   }
 
-  Future<File?> _performDownload(String category, String filename, String url, String? version) async {
+  Future<File?> _performDownload(
+      String category, String filename, String url, String? version) async {
     final client = http.Client();
     try {
       final request = http.Request('GET', Uri.parse(url));
       final response = await client.send(request);
-      
+
       if (response.statusCode == 200) {
         if (isPaused) return null;
 
         final categoryDir = Directory(p.join(_baseDir.path, category));
         final filePath = p.join(categoryDir.path, filename);
         final tempFile = File('$filePath.tmp');
-        
+
         final sink = tempFile.openWrite();
         await response.stream.pipe(sink);
         await sink.close();
-        
+
         final file = File(filePath);
         String finalFilename = filename;
-        
+
         try {
           if (await file.exists()) await file.delete();
           await tempFile.rename(filePath);
@@ -187,7 +197,8 @@ class CacheService {
         _metadata[category]![filename] = CacheEntry(
           filename: finalFilename,
           url: url,
-          version: version ?? 'remote_${DateTime.now().millisecondsSinceEpoch}', // Use timestamp if no version provided
+          version: version ??
+              'remote_${DateTime.now().millisecondsSinceEpoch}', // Use timestamp if no version provided
           lastValidated: DateTime.now(),
         );
         await _saveMetadata();
@@ -214,7 +225,12 @@ class CacheService {
   Future<void> _cleanupLegacyCache() async {
     try {
       final tempDir = await getTemporaryDirectory();
-      final dirs = ['audio_cache', 'image_cache', 'libCacheManager', 'libCachedImageData'];
+      final dirs = [
+        'audio_cache',
+        'image_cache',
+        'libCacheManager',
+        'libCachedImageData'
+      ];
       for (var d in dirs) {
         final dir = Directory(p.join(tempDir.path, d));
         if (await dir.exists()) await dir.delete(recursive: true);
@@ -252,17 +268,21 @@ class CacheService {
     }
   }
 
-  Future<Uri> getAudioUri(String filename, String url, {String? version, bool triggerDownload = true}) async {
-    final file = await getFile('songs', filename, url, version: version, blockOnMiss: false, triggerDownload: triggerDownload);
+  Future<Uri> getAudioUri(String filename, String url,
+      {String? version, bool triggerDownload = true}) async {
+    final file = await getFile('songs', filename, url,
+        version: version, blockOnMiss: false, triggerDownload: triggerDownload);
     if (file != null) return Uri.file(file.path);
     return Uri.parse(url);
   }
 
   Future<int> getCacheSize({String? category}) async {
     await init();
-    final targetDir = category == null ? _baseDir : Directory(p.join(_baseDir.path, category));
+    final targetDir = category == null
+        ? _baseDir
+        : Directory(p.join(_baseDir.path, category));
     if (!await targetDir.exists()) return 0;
-    
+
     int total = 0;
     try {
       await for (var file in targetDir.list(recursive: true)) {
@@ -276,7 +296,8 @@ class CacheService {
     return _metadata[category] ?? {};
   }
 
-  Future<String?> readString(String category, String filename, String url) async {
+  Future<String?> readString(
+      String category, String filename, String url) async {
     final file = await getFile(category, filename, url);
     return file != null ? await file.readAsString() : null;
   }

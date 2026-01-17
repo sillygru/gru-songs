@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gru_songs/main.dart';
 
 void main() {
-  testWidgets('App renders and shows AuthScreen by default', (WidgetTester tester) async {
+  testWidgets('App renders and shows AuthScreen by default',
+      (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(
       const ProviderScope(

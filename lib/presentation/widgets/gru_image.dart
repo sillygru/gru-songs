@@ -65,11 +65,13 @@ class _GruImageState extends State<GruImage> {
     if (!mounted) return;
     setState(() {
       _isLoading = true;
-      _imageFile = null; // Clear previous image to avoid mismatch during transition
+      _imageFile =
+          null; // Clear previous image to avoid mismatch during transition
     });
 
     try {
-      final file = await CacheService.instance.getFile('images', _getFilename(), widget.url);
+      final file = await CacheService.instance
+          .getFile('images', _getFilename(), widget.url);
       if (mounted) {
         setState(() {
           _imageFile = file;
@@ -88,22 +90,28 @@ class _GruImageState extends State<GruImage> {
     Widget content;
 
     if (_imageFile == null || _isLoading) {
-      content = widget.placeholder ?? Container(
-        width: widget.width,
-        height: widget.height,
-        color: const Color(0xFF1E1E1E),
-        child: Center(
-          child: _isLoading 
-            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.music_note, color: Colors.grey),
-        ),
-      );
+      content = widget.placeholder ??
+          Container(
+            width: widget.width,
+            height: widget.height,
+            color: const Color(0xFF1E1E1E),
+            child: Center(
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.music_note, color: Colors.grey),
+            ),
+          );
     } else {
       // Calculate cache sizes if not provided
       int? effectiveCacheWidth = widget.cacheWidth;
       int? effectiveCacheHeight = widget.cacheHeight;
-      
-      if (effectiveCacheWidth == null && effectiveCacheHeight == null && widget.width != null) {
+
+      if (effectiveCacheWidth == null &&
+          effectiveCacheHeight == null &&
+          widget.width != null) {
         // If width/height is provided but no cache dimensions, use width * devicePixelRatio as a hint
         final dpr = MediaQuery.of(context).devicePixelRatio;
         effectiveCacheWidth = (widget.width! * dpr).round();
@@ -120,12 +128,13 @@ class _GruImageState extends State<GruImage> {
         cacheWidth: effectiveCacheWidth,
         cacheHeight: effectiveCacheHeight,
         errorBuilder: (context, error, stackTrace) {
-          return widget.errorWidget ?? Container(
-            width: widget.width,
-            height: widget.height,
-            color: const Color(0xFF1E1E1E),
-            child: const Icon(Icons.broken_image, color: Colors.grey),
-          );
+          return widget.errorWidget ??
+              Container(
+                width: widget.width,
+                height: widget.height,
+                color: const Color(0xFF1E1E1E),
+                child: const Icon(Icons.broken_image, color: Colors.grey),
+              );
         },
       );
     }

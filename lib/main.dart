@@ -11,20 +11,23 @@ class MyHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
     return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
   }
 }
 
 Future<void> main() async {
   HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Limit image cache to save RAM
   PaintingBinding.instance.imageCache.maximumSize = 200; // images
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024; // 50MB
-  
-  await AudioSession.instance.then((session) => session.configure(const AudioSessionConfiguration.music()));
-  
+  PaintingBinding.instance.imageCache.maximumSizeBytes =
+      50 * 1024 * 1024; // 50MB
+
+  await AudioSession.instance.then(
+      (session) => session.configure(const AudioSessionConfiguration.music()));
+
   await JustAudioBackground.init(
     androidNotificationChannelId: 'com.sillygru.gru_songs.channel.audio',
     androidNotificationChannelName: 'Audio playback',
@@ -40,7 +43,7 @@ class GruSongsApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
-    
+
     return MaterialApp(
       title: 'Gru Songs',
       debugShowCheckedModeBanner: false,
@@ -59,7 +62,8 @@ class GruSongsApp extends ConsumerWidget {
         cardTheme: CardThemeData(
           color: const Color(0xFF1E1E1E),
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
       home: authState.isAuthenticated ? const MainScreen() : const AuthScreen(),

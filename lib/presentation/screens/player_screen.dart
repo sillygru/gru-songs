@@ -48,7 +48,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     player.sequenceStateStream.listen((state) {
       final tag = state.currentSource?.tag;
       final String? songId = tag is MediaItem ? tag.id : null;
-      
+
       if (songId != _lastSongId) {
         if (mounted) {
           setState(() {
@@ -68,7 +68,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       if (_lyrics != null && _lyrics!.any((l) => l.time != Duration.zero)) {
         int newIndex = -1;
         for (int i = 0; i < _lyrics!.length; i++) {
-          if (_lyrics![i].time <= position && _lyrics![i].time != Duration.zero) {
+          if (_lyrics![i].time <= position &&
+              _lyrics![i].time != Duration.zero) {
             newIndex = i;
           } else if (_lyrics![i].time > position) {
             break;
@@ -91,7 +92,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   void _updateCurrentLyricIndex(Duration position) {
     if (_lyrics == null || _lyrics!.isEmpty) return;
-    
+
     int newIndex = -1;
     for (int i = 0; i < _lyrics!.length; i++) {
       if (_lyrics![i].time <= position && _lyrics![i].time != Duration.zero) {
@@ -100,7 +101,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         break;
       }
     }
-    
+
     if (newIndex != -1 && newIndex != _currentLyricIndex) {
       setState(() => _currentLyricIndex = newIndex);
     }
@@ -108,20 +109,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   void _checkAndReenableAutoScroll() {
     if (_currentLyricIndex == -1 || _lyricKeys == null || !_showLyrics) return;
-    
+
     final key = _lyricKeys![_currentLyricIndex];
     final context = key.currentContext;
     final containerContext = _lyricsContainerKey.currentContext;
-    
+
     if (context != null && containerContext != null) {
       final RenderBox box = context.findRenderObject() as RenderBox;
-      final RenderBox containerBox = containerContext.findRenderObject() as RenderBox;
-      
-      final lyricOffset = box.localToGlobal(Offset.zero, ancestor: containerBox).dy;
+      final RenderBox containerBox =
+          containerContext.findRenderObject() as RenderBox;
+
+      final lyricOffset =
+          box.localToGlobal(Offset.zero, ancestor: containerBox).dy;
       final viewportHeight = containerBox.size.height;
       final lyricCenter = lyricOffset + box.size.height / 2;
       final viewportCenter = viewportHeight / 2;
-      
+
       // If current lyric center is within 150px of viewport center, re-enable sync
       if ((lyricCenter - viewportCenter).abs() < 150) {
         if (mounted && !_autoScrollEnabled) {
@@ -133,7 +136,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   void _scrollToCurrentLyric() {
-    if (_lyricKeys != null && _currentLyricIndex >= 0 && _currentLyricIndex < _lyricKeys!.length) {
+    if (_lyricKeys != null &&
+        _currentLyricIndex >= 0 &&
+        _currentLyricIndex < _lyricKeys!.length) {
       final key = _lyricKeys![_currentLyricIndex];
       if (key.currentContext != null) {
         Scrollable.ensureVisible(
@@ -170,13 +175,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       final repo = ref.read(songRepositoryProvider);
       final lyricsContent = await repo.getLyrics(lyricsUrl);
       if (mounted) {
-        final parsedLyrics = lyricsContent != null ? LyricLine.parse(lyricsContent) : <LyricLine>[];
+        final parsedLyrics = lyricsContent != null
+            ? LyricLine.parse(lyricsContent)
+            : <LyricLine>[];
         setState(() {
           _lyrics = parsedLyrics;
-          _lyricKeys = List.generate(parsedLyrics.length, (index) => GlobalKey());
+          _lyricKeys =
+              List.generate(parsedLyrics.length, (index) => GlobalKey());
           _loadingLyrics = false;
         });
-        
+
         // Find current position and scroll after first build
         _updateCurrentLyricIndex(player.position);
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -194,7 +202,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   void _showShuffleSettings(BuildContext context, WidgetRef ref) {
     final manager = ref.read(audioPlayerManagerProvider);
-    
+
     showDialog(
       context: context,
       builder: (context) {
@@ -209,10 +217,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 children: [
                   SwitchListTile(
                     title: const Text('Anti-repeat'),
-                    subtitle: const Text('Reduce probability for recently played'),
+                    subtitle:
+                        const Text('Reduce probability for recently played'),
                     value: config.antiRepeatEnabled,
                     onChanged: (val) {
-                      manager.updateShuffleConfig(config.copyWith(antiRepeatEnabled: val));
+                      manager.updateShuffleConfig(
+                          config.copyWith(antiRepeatEnabled: val));
                     },
                   ),
                   SwitchListTile(
@@ -220,17 +230,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     subtitle: const Text('Avoid same artist/album in a row'),
                     value: config.streakBreakerEnabled,
                     onChanged: (val) {
-                      manager.updateShuffleConfig(config.copyWith(streakBreakerEnabled: val));
+                      manager.updateShuffleConfig(
+                          config.copyWith(streakBreakerEnabled: val));
                     },
                   ),
                   const Divider(),
                   ListTile(
                     title: const Text('Favorite Boost'),
-                    subtitle: Text('${((config.favoriteMultiplier - 1) * 100).round()}% higher weight'),
+                    subtitle: Text(
+                        '${((config.favoriteMultiplier - 1) * 100).round()}% higher weight'),
                   ),
                   ListTile(
                     title: const Text('Suggest-Less Penalty'),
-                    subtitle: Text('${((1 - config.suggestLessMultiplier) * 100).round()}% lower weight'),
+                    subtitle: Text(
+                        '${((1 - config.suggestLessMultiplier) * 100).round()}% lower weight'),
                   ),
                 ],
               ),
@@ -258,8 +271,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final userData = ref.watch(userDataProvider);
-    final isDesktop = !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
-    final isIPad = !kIsWeb && Platform.isIOS && MediaQuery.of(context).size.shortestSide >= 600;
+    final isDesktop =
+        !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+    final isIPad = !kIsWeb &&
+        Platform.isIOS &&
+        MediaQuery.of(context).size.shortestSide >= 600;
 
     return Container(
       decoration: BoxDecoration(
@@ -287,27 +303,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 width: 40,
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 24),
-                decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                    color: Colors.grey[600],
+                    borderRadius: BorderRadius.circular(2)),
               ),
               if (metadata != null) ...[
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return GestureDetector(
-                        onVerticalDragUpdate: (details) {
-                          if (details.primaryDelta! < -5) {
-                            if (!_showLyrics && metadata.extras?['lyricsUrl'] != null) {
-                              _toggleLyrics(metadata.extras!['lyricsUrl'] as String);
-                            }
-                          } else if (details.primaryDelta! > 5) {
-                            if (_showLyrics) {
-                              setState(() => _showLyrics = false);
-                            }
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    return GestureDetector(
+                      onVerticalDragUpdate: (details) {
+                        if (details.primaryDelta! < -5) {
+                          if (!_showLyrics &&
+                              metadata.extras?['lyricsUrl'] != null) {
+                            _toggleLyrics(
+                                metadata.extras!['lyricsUrl'] as String);
                           }
-                        },
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: !_showLyrics
+                        } else if (details.primaryDelta! > 5) {
+                          if (_showLyrics) {
+                            setState(() => _showLyrics = false);
+                          }
+                        }
+                      },
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: !_showLyrics
                             ? Center(
                                 child: AspectRatio(
                                   aspectRatio: 1,
@@ -318,7 +337,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                         borderRadius: BorderRadius.circular(16),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.4),
+                                            color: Colors.black
+                                                .withValues(alpha: 0.4),
                                             blurRadius: 16,
                                             offset: const Offset(0, 8),
                                           ),
@@ -331,9 +351,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                           url: metadata.artUri.toString(),
                                           width: constraints.maxWidth,
                                           height: constraints.maxWidth,
-                                          cacheWidth: 600, // Reasonable cap for RAM
+                                          cacheWidth:
+                                              600, // Reasonable cap for RAM
                                           fit: BoxFit.cover,
-                                          errorWidget: const Icon(Icons.music_note, size: 100),
+                                          errorWidget: const Icon(
+                                              Icons.music_note,
+                                              size: 100),
                                         ),
                                       ),
                                     ),
@@ -357,9 +380,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                     ),
                                     Positioned.fill(
                                       child: BackdropFilter(
-                                        filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                                        filter: ImageFilter.blur(
+                                            sigmaX: 50, sigmaY: 50),
                                         child: Container(
-                                          color: Colors.black.withValues(alpha: 0.45),
+                                          color: Colors.black
+                                              .withValues(alpha: 0.45),
                                         ),
                                       ),
                                     ),
@@ -371,10 +396,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                             begin: Alignment.topCenter,
                                             end: Alignment.bottomCenter,
                                             colors: [
-                                              Colors.black.withValues(alpha: 0.3),
+                                              Colors.black
+                                                  .withValues(alpha: 0.3),
                                               Colors.transparent,
                                               Colors.transparent,
-                                              Colors.black.withValues(alpha: 0.3),
+                                              Colors.black
+                                                  .withValues(alpha: 0.3),
                                             ],
                                             stops: const [0.0, 0.2, 0.8, 1.0],
                                           ),
@@ -384,77 +411,159 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                     Container(
                                       key: _lyricsContainerKey,
                                       child: _loadingLyrics
-                                          ? const Center(child: CircularProgressIndicator())
-                                          : (_lyrics == null || _lyrics!.isEmpty)
+                                          ? const Center(
+                                              child:
+                                                  CircularProgressIndicator())
+                                          : (_lyrics == null ||
+                                                  _lyrics!.isEmpty)
                                               ? const Center(
                                                   child: Text(
                                                     'No lyrics available',
-                                                    style: TextStyle(color: Colors.white70, fontSize: 18),
+                                                    style: TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 18),
                                                   ),
                                                 )
                                               : ShaderMask(
                                                   shaderCallback: (rect) {
                                                     return const LinearGradient(
-                                                      begin: Alignment.topCenter,
-                                                      end: Alignment.bottomCenter,
-                                                      colors: [Colors.black, Colors.transparent, Colors.transparent, Colors.black],
-                                                      stops: [0.0, 0.05, 0.95, 1.0],
+                                                      begin:
+                                                          Alignment.topCenter,
+                                                      end: Alignment
+                                                          .bottomCenter,
+                                                      colors: [
+                                                        Colors.black,
+                                                        Colors.transparent,
+                                                        Colors.transparent,
+                                                        Colors.black
+                                                      ],
+                                                      stops: [
+                                                        0.0,
+                                                        0.05,
+                                                        0.95,
+                                                        1.0
+                                                      ],
                                                     ).createShader(rect);
                                                   },
                                                   blendMode: BlendMode.dstOut,
-                                                  child: NotificationListener<ScrollNotification>(
-                                                    onNotification: (notification) {
-                                                      if (notification is UserScrollNotification) {
-                                                        if (notification.direction != ScrollDirection.idle) {
+                                                  child: NotificationListener<
+                                                      ScrollNotification>(
+                                                    onNotification:
+                                                        (notification) {
+                                                      if (notification
+                                                          is UserScrollNotification) {
+                                                        if (notification
+                                                                .direction !=
+                                                            ScrollDirection
+                                                                .idle) {
                                                           if (_autoScrollEnabled) {
-                                                            setState(() => _autoScrollEnabled = false);
+                                                            setState(() =>
+                                                                _autoScrollEnabled =
+                                                                    false);
                                                           }
                                                         }
-                                                      } else if (notification is ScrollEndNotification) {
+                                                      } else if (notification
+                                                          is ScrollEndNotification) {
                                                         _checkAndReenableAutoScroll();
                                                       }
                                                       return false;
                                                     },
-                                                    child: SingleChildScrollView(
-                                                      controller: _lyricsScrollController,
-                                                      padding: const EdgeInsets.symmetric(vertical: 80),
+                                                    child:
+                                                        SingleChildScrollView(
+                                                      controller:
+                                                          _lyricsScrollController,
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          vertical: 80),
                                                       child: Column(
-                                                        children: List.generate(_lyrics!.length, (index) {
-                                                          final isCurrent = index == _currentLyricIndex;
-                                                          final hasTime = _lyrics![index].time != Duration.zero;
+                                                        children: List.generate(
+                                                            _lyrics!.length,
+                                                            (index) {
+                                                          final isCurrent = index ==
+                                                              _currentLyricIndex;
+                                                          final hasTime =
+                                                              _lyrics![index]
+                                                                      .time !=
+                                                                  Duration.zero;
                                                           return InkWell(
-                                                            key: _lyricKeys?[index],
-                                                            onTap: hasTime ? () {
-                                                              player.seek(_lyrics![index].time);
-                                                              setState(() => _autoScrollEnabled = true);
-                                                            } : null,
-                                                            child: AnimatedContainer(
-                                                              duration: const Duration(milliseconds: 500),
-                                                              curve: Curves.easeOutQuart,
-                                                              width: double.infinity,
-                                                              padding: EdgeInsets.symmetric(
-                                                                horizontal: 24, 
-                                                                vertical: isCurrent ? 28 : 16
-                                                              ),
-                                                              child: AnimatedDefaultTextStyle(
-                                                                duration: const Duration(milliseconds: 500),
-                                                                curve: Curves.easeOutQuart,
-                                                                textAlign: TextAlign.center,
-                                                                style: TextStyle(
-                                                                  fontSize: isCurrent ? 32 : 24,
-                                                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                                                                  color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.35),
+                                                            key: _lyricKeys?[
+                                                                index],
+                                                            onTap: hasTime
+                                                                ? () {
+                                                                    player.seek(
+                                                                        _lyrics![index]
+                                                                            .time);
+                                                                    setState(() =>
+                                                                        _autoScrollEnabled =
+                                                                            true);
+                                                                  }
+                                                                : null,
+                                                            child:
+                                                                AnimatedContainer(
+                                                              duration:
+                                                                  const Duration(
+                                                                      milliseconds:
+                                                                          500),
+                                                              curve: Curves
+                                                                  .easeOutQuart,
+                                                              width: double
+                                                                  .infinity,
+                                                              padding: EdgeInsets
+                                                                  .symmetric(
+                                                                      horizontal:
+                                                                          24,
+                                                                      vertical: isCurrent
+                                                                          ? 28
+                                                                          : 16),
+                                                              child:
+                                                                  AnimatedDefaultTextStyle(
+                                                                duration:
+                                                                    const Duration(
+                                                                        milliseconds:
+                                                                            500),
+                                                                curve: Curves
+                                                                    .easeOutQuart,
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .center,
+                                                                style:
+                                                                    TextStyle(
+                                                                  fontSize:
+                                                                      isCurrent
+                                                                          ? 32
+                                                                          : 24,
+                                                                  fontWeight: isCurrent
+                                                                      ? FontWeight
+                                                                          .bold
+                                                                      : FontWeight
+                                                                          .w600,
+                                                                  color: isCurrent
+                                                                      ? Colors
+                                                                          .white
+                                                                      : Colors
+                                                                          .white
+                                                                          .withValues(
+                                                                              alpha: 0.35),
                                                                   height: 1.3,
-                                                                  letterSpacing: isCurrent ? -0.8 : -0.2,
-                                                                  shadows: isCurrent ? [
-                                                                    Shadow(
-                                                                      color: Colors.black.withValues(alpha: 0.3),
-                                                                      offset: const Offset(0, 4),
-                                                                      blurRadius: 12,
-                                                                    )
-                                                                  ] : [],
+                                                                  letterSpacing:
+                                                                      isCurrent
+                                                                          ? -0.8
+                                                                          : -0.2,
+                                                                  shadows:
+                                                                      isCurrent
+                                                                          ? [
+                                                                              Shadow(
+                                                                                color: Colors.black.withValues(alpha: 0.3),
+                                                                                offset: const Offset(0, 4),
+                                                                                blurRadius: 12,
+                                                                              )
+                                                                            ]
+                                                                          : [],
                                                                 ),
-                                                                child: Text(_lyrics![index].text),
+                                                                child: Text(
+                                                                    _lyrics![
+                                                                            index]
+                                                                        .text),
                                                               ),
                                                             ),
                                                           );
@@ -467,15 +576,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                   ],
                                 ),
                               ),
-                        ),
-                      );
-                    }
-                  ),
+                      ),
+                    );
+                  }),
                 ),
                 const SizedBox(height: 24),
                 Text(
                   metadata.title,
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -549,13 +658,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   ),
                   // Shuffle
                   ValueListenableBuilder<bool>(
-                    valueListenable: ref.read(audioPlayerManagerProvider).shuffleNotifier,
+                    valueListenable:
+                        ref.read(audioPlayerManagerProvider).shuffleNotifier,
                     builder: (context, isShuffled, child) {
                       return IconButton(
-                        icon: Icon(Icons.shuffle, color: isShuffled ? Colors.deepPurple : Colors.white70),
+                        icon: Icon(Icons.shuffle,
+                            color: isShuffled
+                                ? Colors.deepPurple
+                                : Colors.white70),
                         onLongPress: () => _showShuffleSettings(context, ref),
                         onPressed: () async {
-                           await ref.read(audioPlayerManagerProvider).toggleShuffle();
+                          await ref
+                              .read(audioPlayerManagerProvider)
+                              .toggleShuffle();
                         },
                       );
                     },
@@ -577,7 +692,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       return IconButton(
                         icon: Icon(iconData, color: color),
                         onPressed: () {
-                          final nextMode = LoopMode.values[(loopMode.index + 1) % LoopMode.values.length];
+                          final nextMode = LoopMode.values[
+                              (loopMode.index + 1) % LoopMode.values.length];
                           player.setLoopMode(nextMode);
                         },
                       );
@@ -588,16 +704,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     onLongPress: () {
                       if (metadata != null) {
                         final songs = ref.read(songsProvider).value ?? [];
-                        final song = songs.where((s) => s.filename == metadata.id).firstOrNull;
-                        showSongOptionsMenu(context, ref, metadata.id, metadata.title, song: song);
+                        final song = songs
+                            .where((s) => s.filename == metadata.id)
+                            .firstOrNull;
+                        showSongOptionsMenu(
+                            context, ref, metadata.id, metadata.title,
+                            song: song);
                       }
                     },
                     child: IconButton(
-                      icon: Icon(userData.favorites.contains(metadata?.id) ? Icons.favorite : Icons.favorite_border),
-                      color: userData.favorites.contains(metadata?.id) ? Colors.red : Colors.white70,
+                      icon: Icon(userData.favorites.contains(metadata?.id)
+                          ? Icons.favorite
+                          : Icons.favorite_border),
+                      color: userData.favorites.contains(metadata?.id)
+                          ? Colors.red
+                          : Colors.white70,
                       onPressed: () {
                         if (metadata != null) {
-                          ref.read(userDataProvider.notifier).toggleFavorite(metadata.id);
+                          ref
+                              .read(userDataProvider.notifier)
+                              .toggleFavorite(metadata.id);
                         }
                       },
                     ),
@@ -627,7 +753,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       final playerState = snapshot.data;
                       final playing = playerState?.playing ?? false;
                       return IconButton(
-                        icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_filled, size: 84),
+                        icon: Icon(
+                            playing
+                                ? Icons.pause_circle_filled
+                                : Icons.play_circle_filled,
+                            size: 84),
                         onPressed: playing ? player.pause : player.play,
                       );
                     },
@@ -648,4 +778,3 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 }
-

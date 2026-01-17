@@ -58,7 +58,18 @@ class Song extends Equatable {
   }
 
   @override
-  List<Object?> get props => [title, artist, album, filename, url, lyricsUrl, coverUrl, playCount, duration, mtime];
+  List<Object?> get props => [
+        title,
+        artist,
+        album,
+        filename,
+        url,
+        lyricsUrl,
+        coverUrl,
+        playCount,
+        duration,
+        mtime
+      ];
 }
 
 class LyricLine extends Equatable {
@@ -70,11 +81,11 @@ class LyricLine extends Equatable {
   static List<LyricLine> parse(String content) {
     final List<LyricLine> lyrics = [];
     final RegExp timeExp = RegExp(r'\[(\d+):(\d+\.?\d*)\]');
-    
+
     for (var line in content.split('\n')) {
       line = line.trim();
       if (line.isEmpty) continue;
-      
+
       final List<RegExpMatch> matches = timeExp.allMatches(line).toList();
       if (matches.isEmpty) {
         final bool isMetadata = RegExp(r'^\[[a-z]+:.*\]$').hasMatch(line);
@@ -91,16 +102,18 @@ class LyricLine extends Equatable {
         final duration = Duration(
           milliseconds: (minutes * 60 * 1000 + seconds * 1000).toInt(),
         );
-        
+
         // Text for this timestamp is everything until the next timestamp
-        int nextStart = (i + 1 < matches.length) ? matches[i + 1].start : line.length;
+        int nextStart =
+            (i + 1 < matches.length) ? matches[i + 1].start : line.length;
         String text = line.substring(match.end, nextStart).trim();
-        
+
         // If text is empty, it might be multiple tags for the same text at the end
         if (text.isEmpty) {
           // Look forward for the first non-empty text in this line
           for (int j = i + 1; j < matches.length; j++) {
-            int jNextStart = (j + 1 < matches.length) ? matches[j + 1].start : line.length;
+            int jNextStart =
+                (j + 1 < matches.length) ? matches[j + 1].start : line.length;
             String jText = line.substring(matches[j].end, jNextStart).trim();
             if (jText.isNotEmpty) {
               text = jText;
@@ -112,13 +125,13 @@ class LyricLine extends Equatable {
             text = line.replaceAll(timeExp, '').trim();
           }
         }
-        
+
         if (text.isNotEmpty) {
           lyrics.add(LyricLine(time: duration, text: text));
         }
       }
     }
-    
+
     lyrics.sort((a, b) => a.time.compareTo(b.time));
     return lyrics;
   }

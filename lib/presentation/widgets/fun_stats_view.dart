@@ -17,7 +17,9 @@ class FunStatsView extends ConsumerWidget {
         }
 
         if (snapshot.hasError) {
-          return Center(child: Text("Couldn't load fun stats\n${snapshot.error}", textAlign: TextAlign.center));
+          return Center(
+              child: Text("Couldn't load fun stats\n${snapshot.error}",
+                  textAlign: TextAlign.center));
         }
 
         if (!snapshot.hasData || snapshot.data!['stats'] == null) {
@@ -27,7 +29,8 @@ class FunStatsView extends ConsumerWidget {
         final List<dynamic> stats = snapshot.data!['stats'];
 
         if (stats.isEmpty) {
-          return const Center(child: Text("Play some music to see stats here!"));
+          return const Center(
+              child: Text("Play some music to see stats here!"));
         }
 
         return ListView.builder(
@@ -39,8 +42,12 @@ class FunStatsView extends ConsumerWidget {
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               elevation: 0,
-              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              color: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withValues(alpha: 0.3),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(

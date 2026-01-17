@@ -28,7 +28,9 @@ class LibraryScreen extends ConsumerWidget {
           FilledButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
-                await ref.read(userDataProvider.notifier).createPlaylist(controller.text);
+                await ref
+                    .read(userDataProvider.notifier)
+                    .createPlaylist(controller.text);
                 if (context.mounted) Navigator.pop(context);
               }
             },
@@ -85,9 +87,9 @@ class LibraryScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
                   // Create new playlist is now the first item
                   if (index == 0) {
                     return ListTile(
@@ -98,7 +100,9 @@ class LibraryScreen extends ConsumerWidget {
                           color: Theme.of(context).colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Icon(Icons.add, color: Theme.of(context).colorScheme.primary, size: 30),
+                        child: Icon(Icons.add,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 30),
                       ),
                       title: const Text('Create New Playlist'),
                       onTap: () => _showCreatePlaylistDialog(context, ref),
@@ -115,7 +119,8 @@ class LibraryScreen extends ConsumerWidget {
                           color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Icon(Icons.favorite, color: Colors.red, size: 30),
+                        child: const Icon(Icons.favorite,
+                            color: Colors.red, size: 30),
                       ),
                       title: const Text('Favorites'),
                       subtitle: Text('${userData.favorites.length} songs'),
@@ -123,7 +128,8 @@ class LibraryScreen extends ConsumerWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const PlaylistDetailScreen(playlistId: '__favorites__'),
+                            builder: (_) => const PlaylistDetailScreen(
+                                playlistId: '__favorites__'),
                           ),
                         );
                       },
@@ -160,7 +166,8 @@ class LibraryScreen extends ConsumerWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => PlaylistDetailScreen(playlistId: playlist.id),
+                          builder: (_) =>
+                              PlaylistDetailScreen(playlistId: playlist.id),
                         ),
                       );
                     },
@@ -169,69 +176,71 @@ class LibraryScreen extends ConsumerWidget {
                 childCount: userData.playlists.length + 2,
               ),
             ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Most Played',
-                style: Theme.of(context).textTheme.titleLarge,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Most Played',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
             ),
-          ),
-          songsAsync.when(
-            data: (songs) {
-              final sortedSongs = List<Song>.from(songs)
-                ..sort((a, b) => b.playCount.compareTo(a.playCount));
-              // Filter out songs with 0 plays to be cleaner
-              final mostPlayed = sortedSongs.where((s) => s.playCount > 0).take(10).toList();
+            songsAsync.when(
+              data: (songs) {
+                final sortedSongs = List<Song>.from(songs)
+                  ..sort((a, b) => b.playCount.compareTo(a.playCount));
+                // Filter out songs with 0 plays to be cleaner
+                final mostPlayed =
+                    sortedSongs.where((s) => s.playCount > 0).take(10).toList();
 
-              if (mostPlayed.isEmpty) {
-                return const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text('Start listening to see your most played songs!'),
+                if (mostPlayed.isEmpty) {
+                  return const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                          'Start listening to see your most played songs!'),
+                    ),
+                  );
+                }
+
+                return SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final song = mostPlayed[index];
+                      return ListTile(
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: GruImage(
+                            url: song.coverUrl != null
+                                ? apiService.getFullUrl(song.coverUrl!)
+                                : apiService.getFullUrl('/stream/cover.jpg'),
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                            errorWidget: const Icon(Icons.music_note),
+                          ),
+                        ),
+                        title: Text(song.title),
+                        subtitle: Text(song.artist),
+                        trailing: Text('${song.playCount} plays'),
+                        onTap: () {
+                          audioManager.playSong(song, contextQueue: mostPlayed);
+                        },
+                      );
+                    },
+                    childCount: mostPlayed.length,
                   ),
                 );
-              }
-
-              return SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final song = mostPlayed[index];
-                    return ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: GruImage(
-                          url: song.coverUrl != null
-                              ? apiService.getFullUrl(song.coverUrl!)
-                              : apiService.getFullUrl('/stream/cover.jpg'),
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          errorWidget: const Icon(Icons.music_note),
-                        ),
-                      ),
-                      title: Text(song.title),
-                      subtitle: Text(song.artist),
-                      trailing: Text('${song.playCount} plays'),
-                      onTap: () {
-                        audioManager.playSong(song, contextQueue: mostPlayed);
-                      },
-                    );
-                  },
-                  childCount: mostPlayed.length,
-                ),
-              );
-            },
-            loading: () => const SliverToBoxAdapter(
-              child: Center(child: CircularProgressIndicator()),
+              },
+              loading: () => const SliverToBoxAdapter(
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (err, stack) => SliverToBoxAdapter(
+                child: Center(child: Text('Error: $err')),
+              ),
             ),
-            error: (err, stack) => SliverToBoxAdapter(
-              child: Center(child: Text('Error: $err')),
-            ),
-          ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-        ],
+            const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+          ],
         ),
       ),
     );

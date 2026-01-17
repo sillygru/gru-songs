@@ -14,7 +14,7 @@ class StatsService {
   bool _isSyncing = false;
   Timer? _syncTimer;
 
-  StatsService() 
+  StatsService()
       : _client = ApiService.createClient(),
         _sessionId = const Uuid().v4() {
     if (kIsWeb) {
@@ -34,14 +34,18 @@ class StatsService {
     } else {
       _platform = 'unknown';
     }
-    
+
     // Periodically try to sync offline stats
-    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) => _flushOfflineStats());
+    _syncTimer =
+        Timer.periodic(const Duration(minutes: 5), (_) => _flushOfflineStats());
   }
 
   String get sessionId => _sessionId;
 
-  Future<void> track(String username, String songFilename, double duration, String eventType, {double foregroundDuration = 0.0, double backgroundDuration = 0.0}) async {
+  Future<void> track(
+      String username, String songFilename, double duration, String eventType,
+      {double foregroundDuration = 0.0,
+      double backgroundDuration = 0.0}) async {
     final payload = {
       'session_id': _sessionId,
       'song_filename': songFilename,
@@ -54,29 +58,31 @@ class StatsService {
     };
 
     try {
-      final response = await _client.post(
-        Uri.parse('${ApiService.baseUrl}/stats/track'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-username': username,
-        },
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 5));
+      final response = await _client
+          .post(
+            Uri.parse('${ApiService.baseUrl}/stats/track'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-username': username,
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode != 200) {
         throw Exception('Server returned ${response.statusCode}');
       }
-      
+
       // If we succeed, also try to flush any previously cached stats
       _flushOfflineStats();
-      
     } catch (e) {
       debugPrint('Stats tracking failed, caching for later: $e');
       _cacheStatsOffline(username, payload);
     }
   }
 
-  Future<void> _cacheStatsOffline(String username, Map<String, dynamic> payload) async {
+  Future<void> _cacheStatsOffline(
+      String username, Map<String, dynamic> payload) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final key = 'offline_stats_$username';
@@ -95,8 +101,9 @@ class StatsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       // We need to know which users have offline stats. Since we usually only have one active user:
-      final keys = prefs.getKeys().where((k) => k.startsWith('offline_stats_')).toList();
-      
+      final keys =
+          prefs.getKeys().where((k) => k.startsWith('offline_stats_')).toList();
+
       for (final key in keys) {
         final username = key.replaceFirst('offline_stats_', '');
         List<String> cached = prefs.getStringList(key) ?? [];
@@ -113,14 +120,16 @@ class StatsService {
           }
 
           try {
-            final response = await _client.post(
-              Uri.parse('${ApiService.baseUrl}/stats/track'),
-              headers: {
-                'Content-Type': 'application/json',
-                'x-username': username,
-              },
-              body: itemJson,
-            ).timeout(const Duration(seconds: 10));
+            final response = await _client
+                .post(
+                  Uri.parse('${ApiService.baseUrl}/stats/track'),
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-username': username,
+                  },
+                  body: itemJson,
+                )
+                .timeout(const Duration(seconds: 10));
 
             if (response.statusCode != 200) {
               stopSync = true;
@@ -162,27 +171,30 @@ class StatsService {
     return null;
   }
 
-  Future<void> updateShuffleState(String username, Map<String, dynamic> state) async {
+  Future<void> updateShuffleState(
+      String username, Map<String, dynamic> state) async {
     try {
-      final response = await _client.post(
-        Uri.parse('${ApiService.baseUrl}/user/shuffle'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-username': username,
-        },
-        body: jsonEncode(state),
-      ).timeout(const Duration(seconds: 5));
-      
+      final response = await _client
+          .post(
+            Uri.parse('${ApiService.baseUrl}/user/shuffle'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-username': username,
+            },
+            body: jsonEncode(state),
+          )
+          .timeout(const Duration(seconds: 5));
+
       if (response.statusCode != 200) {
-         throw Exception('Server returned ${response.statusCode}');
+        throw Exception('Server returned ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('Shuffle state update error (offline?): $e');
-      // For shuffle state, we mostly rely on StorageService which already 
+      // For shuffle state, we mostly rely on StorageService which already
       // persists it locally. The sync happens in AudioPlayerManager.
     }
   }
-  
+
   void dispose() {
     _syncTimer?.cancel();
   }

@@ -1,10 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum ShufflePersonality {
-  defaultMode,
-  explorer,
-  consistent
-}
+enum ShufflePersonality { defaultMode, explorer, consistent }
 
 class ShuffleConfig extends Equatable {
   final bool enabled;
@@ -33,10 +29,14 @@ class ShuffleConfig extends Equatable {
       antiRepeatEnabled: json['anti_repeat_enabled'] ?? true,
       streakBreakerEnabled: json['streak_breaker_enabled'] ?? true,
       favoriteMultiplier: (json['favorite_multiplier'] ?? 1.15).toDouble(),
-      suggestLessMultiplier: (json['suggest_less_multiplier'] ?? 0.2).toDouble(),
+      suggestLessMultiplier:
+          (json['suggest_less_multiplier'] ?? 0.2).toDouble(),
       historyLimit: json['history_limit'] ?? 50,
       personality: _parsePersonality(json['personality']),
-      consistentPlaylists: (json['consistent_playlists'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      consistentPlaylists: (json['consistent_playlists'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
     );
   }
 
@@ -90,7 +90,8 @@ class ShuffleConfig extends Equatable {
       antiRepeatEnabled: antiRepeatEnabled ?? this.antiRepeatEnabled,
       streakBreakerEnabled: streakBreakerEnabled ?? this.streakBreakerEnabled,
       favoriteMultiplier: favoriteMultiplier ?? this.favoriteMultiplier,
-      suggestLessMultiplier: suggestLessMultiplier ?? this.suggestLessMultiplier,
+      suggestLessMultiplier:
+          suggestLessMultiplier ?? this.suggestLessMultiplier,
       historyLimit: historyLimit ?? this.historyLimit,
       personality: personality ?? this.personality,
       consistentPlaylists: consistentPlaylists ?? this.consistentPlaylists,
@@ -150,8 +151,8 @@ class ShuffleState extends Equatable {
   factory ShuffleState.fromJson(Map<String, dynamic> json) {
     final historyJson = json['history'] as List? ?? [];
     return ShuffleState(
-      config: json['config'] != null 
-          ? ShuffleConfig.fromJson(json['config']) 
+      config: json['config'] != null
+          ? ShuffleConfig.fromJson(json['config'])
           : const ShuffleConfig(),
       history: historyJson.map((e) => HistoryEntry.fromJson(e)).toList(),
     );

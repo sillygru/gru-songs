@@ -12,7 +12,7 @@ class SyncIndicator extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final syncState = ref.watch(syncProvider);
-    
+
     if (syncState.status == SyncStatus.upToDate && !syncState.hasError) {
       return const SizedBox.shrink();
     }
@@ -45,8 +45,8 @@ class SyncIndicator extends ConsumerWidget {
             Text(
               text,
               style: const TextStyle(
-                color: Colors.white, 
-                fontSize: 11, 
+                color: Colors.white,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.5,
               ),
@@ -77,7 +77,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
-    
+
     return Scaffold(
       body: Stack(
         children: [
