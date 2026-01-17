@@ -573,8 +573,8 @@ class UserService:
             if first_event is None or ev.timestamp < first_event[1]:
                 first_event = (ev.song_filename, ev.timestamp)
 
-            # Meaningful plays (ratio > 0.25)
-            if ev.play_ratio > 0.25:
+            # Meaningful plays (ratio > 0.15)
+            if ev.play_ratio > 0.15:
                 song_counts[ev.song_filename] += 1
                 unique_played_filenames.add(ev.song_filename)
                 total_meaningful_plays += 1
@@ -588,19 +588,16 @@ class UserService:
                     artist = meta.get("artist", "Unknown")
                     if artist != "Unknown":
                         artist_counts[artist] += 1
-                    
-                    # Genre (if we had it, currently list_songs doesn't explicitly return genre but prompt asks for it if avail)
-                    # We can try to get it if we update list_songs, but for now let's skip or try to parse
-                    # Assuming list_songs might be updated or we rely on what we have. 
-                    # The prompt says "If genre missing, gracefully skip". We don't have genre in list_songs output currently.
-                    pass
                 
                 if ev.song_filename in favorites:
                     favorites_play_count += 1
 
-            # Skipped
-            if ev.event_type == 'skip' or (ev.event_type != 'complete' and ev.play_ratio < 0.25):
-                skipped_count += 1
+            # Skipped logic:
+            # 1. Ratio must be <= 0.90 (If > 0.90, it's NEVER a skip for fun stats)
+            # 2. It was an explicit 'skip' event OR it was not 'complete' and ratio < 0.15
+            if ev.play_ratio <= 0.90:
+                if ev.event_type == 'skip' or (ev.event_type != 'complete' and ev.play_ratio < 0.15):
+                    skipped_count += 1
 
         # 3. Construct Stats Dictionary
 
