@@ -13,7 +13,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **State Management:** `flutter_riverpod` (Riverpod 3.x) - Decoupled MVVM architecture.
 - **Data Modeling:** `equatable`, `uuid`
 - **Audio Engine:** `just_audio`, `rxdart` (for stream combining)
-- **Caching & Offline:** Custom V2 `CacheService` (using `getApplicationSupportDirectory`), `crypto`, `path`
+- **Caching & Offline:** Custom V3 `CacheService` (using `getApplicationSupportDirectory`), `crypto`, `path`
 - **Background Playback:** `just_audio_background`
 - **Audio Session:** `audio_session` (configured for music)
 - **UI Components:** `audio_video_progress_bar`, `GruImage` (custom cache-first widget)
@@ -27,25 +27,27 @@ A high-performance music streaming app built with Flutter, connecting to a priva
   - **Music:**
     - `GET /list-songs` (includes `play_count` and `mtime` if available)
     - `GET /sync-check` (Returns MD5 hashes for songs, favorites, shuffle state, etc.)
-    - `GET /stream/{filename}`
     - `GET /cover/{filename}` (Cache-Control: 1 year)
     - `GET /lyrics/{filename}` (.lrc files)
     - `GET /lyrics-embedded/{filename}` (Cache-Control: 1 year)
-    - `POST /music/upload` (Upload local audio files)
-    - `POST /music/yt-dlp` (Download audio from YouTube)
   - **Auth:**
     - `POST /auth/signup`
     - `POST /auth/login`
     - `POST /auth/update-password`
     - `POST /auth/update-username`
-  - **User Data:**
+  - **User Data & Stats:**
     - `GET/POST /user/favorites`, `DELETE /user/favorites/{filename}`
     - `GET/POST /user/suggest-less`, `DELETE /user/suggest-less/{filename}`
-    - `GET/POST /user/shuffle` (Persistence for settings, history, and personality)
-    - `POST /stats/track`
+    - `GET /user/shuffle` (Gets persistent shuffle settings, history, and personality)
+    - `POST /user/shuffle` (Updates persistent shuffle settings, history, and personality)
+    - `GET /stats/summary` (Aggregated user statistics)
+    - `POST /stats/track` (Tracks individual play events)
+    - `GET /stats/fun` (Retrieves fun/interesting statistics)
+    - `GET /user/db/{db_type}` (Downloads user database files: `stats`, `data`, `final_stats`)
+    - `POST /user/db/{db_type}` (Uploads user database files: `stats`, `data`, `final_stats`)
 
 ### ⚠️ Critical Handshake Fix
-The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClient` in `api_service.dart`. **Do not remove these.** They are required to prevent `HandshakeException` when connecting to the Tailscale Funnel URL from mobile devices.
+The app employs a custom `HttpOverrides` class in `main.dart` and a custom `IOClient` (initialized with a `HttpClient` that accepts bad certificates) in `api_service.dart`. **These are crucial and must not be removed.** They are essential to prevent `HandshakeException` when establishing connections to the Tailscale Funnel URL from mobile devices, ensuring stable network communication.
 
 ## 📱 Platform Specifics
 
@@ -80,10 +82,10 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
       - **Streak Breaker:** Reduced probability for same artist/album streaks.
       - **Persistence:** Personality, configuration, and history are stored server-side and synchronized bidirectionally.
 - **Backend:** 
-  - **Persistence:** 
+  - **Persistence:**
     - `users/<username>_data.db`: Profile, favorites, and suggest-less.
     - `users/<username>_stats.db`: Session history and raw play events.
-    - `users/<username>_final_stats.json`: Aggregated summary and persistent shuffle state (including personality).
+    - `users/<username>_final_stats.json`: Aggregated summary and persistent shuffle state (including personality). These files are mirrored between the client and server.
   - **Backup Service:** 
     - Runs in a background thread every 6 hours.
     - **Optimization:** Calculates an MD5 hash of the `users/` directory (filenames, sizes, mtimes). **Skips backup generation** if no changes are detected.
