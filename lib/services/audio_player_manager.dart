@@ -20,8 +20,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final StorageService _storageService;
   final String? _username;
 
-  // ignore: deprecated_member_use
-  late ConcatenatingAudioSource _playlist;
   List<QueueItem> _originalQueue = [];
   List<QueueItem> _effectiveQueue = [];
   List<Song> _allSongs = [];
@@ -232,7 +230,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
           _effectiveQueue.add(item);
           final source = await _createAudioSource(item);
-          await _playlist.add(source);
+          await _player.addAudioSource(source);
 
           _updateQueueNotifier();
           _queueVersion = nextItem['version'] ??
@@ -338,7 +336,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       final nextItem = result.first;
       _effectiveQueue.add(nextItem);
       _createAudioSource(nextItem).then((source) {
-        _playlist.add(source);
+        _player.addAudioSource(source);
         _updateQueueNotifier();
       });
     }
@@ -805,11 +803,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final sources = await Future.wait(
         _effectiveQueue.map((item) => _createAudioSource(item)));
-    _playlist =
-        // ignore: deprecated_member_use
-        ConcatenatingAudioSource(children: sources, useLazyPreparation: true);
-
-    await _player.setAudioSource(_playlist,
+    await _player.setAudioSources(sources,
         initialIndex: targetIndex, initialPosition: position);
 
     if (startPlaying) await _player.play();
@@ -821,7 +815,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final item = QueueItem(song: song, isPriority: true);
     _effectiveQueue.insert(currentIndex + 1, item);
     final source = await _createAudioSource(item);
-    await _playlist.insert(currentIndex + 1, source);
+    await _player.insertAudioSource(currentIndex + 1, source);
     _updateQueueNotifier();
     _cacheSurroundingSongs(currentIndex, _effectiveQueue);
     _savePlaybackState();
@@ -832,7 +826,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (oldIndex < newIndex) newIndex -= 1;
     final item = _effectiveQueue.removeAt(oldIndex);
     _effectiveQueue.insert(newIndex, item);
-    await _playlist.move(oldIndex, newIndex);
+    await _player.moveAudioSource(oldIndex, newIndex);
     _updateQueueNotifier();
     _savePlaybackState();
     _syncQueueToServer();
@@ -840,7 +834,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<void> removeFromQueue(int index) async {
     _effectiveQueue.removeAt(index);
-    await _playlist.removeAt(index);
+    await _player.removeAudioSourceAt(index);
     _updateQueueNotifier();
     _savePlaybackState();
     _syncQueueToServer();

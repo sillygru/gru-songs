@@ -236,36 +236,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 .withValues(alpha: 0.3),
                             child: Padding(
                               padding: const EdgeInsets.all(8.0),
-                              child: Column(
-                                children: [
-                                  _buildRadioTile(
-                                    title: 'Default',
-                                    subtitle: 'Balanced mix with anti-repeat',
-                                    value: ShufflePersonality.defaultMode,
-                                    groupValue: current,
-                                    onChanged: (v) => audioManager
-                                        .updateShuffleConfig(shuffleState.config
-                                            .copyWith(personality: v)),
-                                  ),
-                                  _buildRadioTile(
-                                    title: 'Explorer',
-                                    subtitle: 'Prioritizes new & rare songs',
-                                    value: ShufflePersonality.explorer,
-                                    groupValue: current,
-                                    onChanged: (v) => audioManager
-                                        .updateShuffleConfig(shuffleState.config
-                                            .copyWith(personality: v)),
-                                  ),
-                                  _buildRadioTile(
-                                    title: 'Consistent',
-                                    subtitle: 'Favorites & playlists heavy',
-                                    value: ShufflePersonality.consistent,
-                                    groupValue: current,
-                                    onChanged: (v) => audioManager
-                                        .updateShuffleConfig(shuffleState.config
-                                            .copyWith(personality: v)),
-                                  ),
-                                ],
+                              child: RadioGroup<ShufflePersonality>(
+                                groupValue: current,
+                                onChanged: (v) => audioManager
+                                    .updateShuffleConfig(shuffleState.config
+                                        .copyWith(personality: v)),
+                                child: Column(
+                                  children: [
+                                    _buildRadioTile(
+                                      title: 'Default',
+                                      subtitle: 'Balanced mix with anti-repeat',
+                                      value: ShufflePersonality.defaultMode,
+                                    ),
+                                    _buildRadioTile(
+                                      title: 'Explorer',
+                                      subtitle: 'Prioritizes new & rare songs',
+                                      value: ShufflePersonality.explorer,
+                                    ),
+                                    _buildRadioTile(
+                                      title: 'Consistent',
+                                      subtitle: 'Favorites & playlists heavy',
+                                      value: ShufflePersonality.consistent,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           );
@@ -324,8 +318,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required String title,
     required String subtitle,
     required ShufflePersonality value,
-    required ShufflePersonality groupValue,
-    required ValueChanged<ShufflePersonality?> onChanged,
   }) {
     return RadioListTile<ShufflePersonality>(
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -334,11 +326,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               fontSize: 12,
               color: Theme.of(context).colorScheme.onSurfaceVariant)),
       value: value,
-      // ignore: deprecated_member_use
-      groupValue: groupValue,
-      // ignore: deprecated_member_use
-      onChanged: onChanged,
-      contentPadding: EdgeInsets.zero,
       dense: true,
       activeColor: Theme.of(context).colorScheme.primary,
     );
