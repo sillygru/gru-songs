@@ -129,6 +129,4 @@ open ios/Runner.xcworkspace
 
 - **Format:** `Major.Normal.Bugfix` (e.g., `5.1.3`).
 
-- **Update Rule:** Always update the version number in `pubspec.yaml`, `ProfileScreen`, and `server/settings.py` (or where defined) when making significant changes.
-
-- **Current Version:** `5.1.3`
+- **Automatic Update:** When the user requests to update the version, search (e.g., with `grep -r "Current Version"` excluding the `.git` directory) for all places in the codebase where `"Current Version"` appears. Update each instance to reflect the new version number. This ensures all references are synchronized automatically.
