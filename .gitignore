@@ -46,3 +46,4 @@ app.*.map.json
 server/.env
 GruSongs.ipa
 /server/users
+/server/backups
