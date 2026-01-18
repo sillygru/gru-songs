@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gru_songs/models/song.dart';
-import 'package:gru_songs/models/playlist.dart';
 import 'package:gru_songs/models/queue_item.dart';
 
 void main() {
@@ -44,29 +43,6 @@ void main() {
       expect(fromJson.song.filename, item.song.filename);
       expect(fromJson.queueId, item.queueId);
       expect(fromJson.isPriority, item.isPriority);
-    });
-
-    test('Playlist serialization round-trip', () {
-      final now = DateTime.now();
-      final song = PlaylistSong(filename: 'test.mp3', addedAt: now);
-      final playlist = Playlist(
-        id: '123',
-        name: 'My Playlist',
-        songs: [song],
-      );
-
-      final json = playlist.toJson();
-      final fromJson = Playlist.fromJson(json);
-
-      expect(fromJson.id, playlist.id);
-      expect(fromJson.name, playlist.name);
-      expect(fromJson.songs.length, 1);
-      expect(fromJson.songs.first.filename, 'test.mp3');
-      // Check timestamp with 1 second tolerance for precision loss
-      expect(
-        fromJson.songs.first.addedAt.difference(now).inSeconds.abs() <= 1,
-        true,
-      );
     });
   });
 }

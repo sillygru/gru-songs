@@ -348,7 +348,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                         borderRadius: BorderRadius.circular(16),
                                         child: GruImage(
                                           key: ValueKey('art_${metadata.id}'),
-                                          url: metadata.artUri.toString(),
+                                          url: metadata.artUri?.toString() ?? '',
                                           width: constraints.maxWidth,
                                           height: constraints.maxWidth,
                                           cacheWidth:
@@ -372,7 +372,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                       child: Hero(
                                         tag: 'lyrics_bg_${metadata.id}',
                                         child: GruImage(
-                                          url: metadata.artUri.toString(),
+                                          url: metadata.artUri?.toString() ?? '',
                                           fit: BoxFit.cover,
                                           cacheWidth: 600,
                                         ),

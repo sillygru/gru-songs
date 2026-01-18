@@ -35,20 +35,6 @@ class SuggestLess(SQLModel, table=True):
     filename: str = Field(primary_key=True)
     added_at: float = Field(default_factory=lambda: datetime.now().timestamp())
 
-# --- [username]_playlists.db ---
-class PlaylistSong(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    playlist_id: str = Field(foreign_key="playlist.id", index=True)
-    filename: str
-    added_at: float
-
-class Playlist(SQLModel, table=True):
-    id: str = Field(primary_key=True)
-    name: str
-    # SQLModel relationships work best within the same metadata/DB. 
-    # Since Playlist and PlaylistSong are in the same DB, this works.
-    songs: List["PlaylistSong"] = Relationship(back_populates=None, sa_relationship_kwargs={"cascade": "all, delete"})
-
 # --- [username]_stats.db ---
 class PlaySession(SQLModel, table=True):
     id: str = Field(primary_key=True)

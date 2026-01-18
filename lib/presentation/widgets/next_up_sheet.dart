@@ -10,7 +10,6 @@ class NextUpSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final audioManager = ref.watch(audioPlayerManagerProvider);
-    final apiService = ref.watch(apiServiceProvider);
 
     return ValueListenableBuilder<List<QueueItem>>(
       valueListenable: audioManager.queueNotifier,
@@ -81,10 +80,7 @@ class NextUpSheet extends ConsumerWidget {
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: GruImage(
-                                url: song.coverUrl != null
-                                    ? apiService.getFullUrl(song.coverUrl!)
-                                    : apiService
-                                        .getFullUrl('/stream/cover.jpg'),
+                                url: song.coverUrl ?? '',
                                 width: 44,
                                 height: 44,
                                 fit: BoxFit.cover,

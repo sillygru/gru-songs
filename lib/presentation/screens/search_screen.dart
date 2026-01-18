@@ -26,7 +26,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget build(BuildContext context) {
     final songsAsync = ref.watch(songsProvider);
     final userData = ref.watch(userDataProvider);
-    final apiService = ref.watch(apiServiceProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
 
     return Scaffold(
@@ -93,11 +92,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   if (!matchesQuery) return false;
 
                   if (_searchLibrary) {
-                    final isFavorite =
-                        userData.favorites.contains(song.filename);
-                    final isInPlaylist = userData.playlists.any(
-                        (p) => p.songs.any((s) => s.filename == song.filename));
-                    return isFavorite || isInPlaylist;
+                    return userData.favorites.contains(song.filename);
                   }
 
                   return true;
@@ -120,9 +115,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: GruImage(
-                          url: song.coverUrl != null
-                              ? apiService.getFullUrl(song.coverUrl!)
-                              : apiService.getFullUrl('/stream/cover.jpg'),
+                          url: song.coverUrl ?? '',
                           width: 50,
                           height: 50,
                           fit: BoxFit.cover,

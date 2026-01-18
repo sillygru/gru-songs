@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import 'api_service.dart';
+import 'database_service.dart';
 
 class StatsService {
   final http.Client _client;
@@ -35,9 +37,8 @@ class StatsService {
       _platform = 'unknown';
     }
 
-    // Periodically try to sync offline stats
-    _syncTimer =
-        Timer.periodic(const Duration(minutes: 5), (_) => _flushOfflineStats());
+    // Periodically sync DBs back to server
+    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) => _syncDbs());
   }
 
   String get sessionId => _sessionId;
@@ -45,7 +46,8 @@ class StatsService {
   Future<void> track(
       String username, String songFilename, double duration, String eventType,
       {double foregroundDuration = 0.0,
-      double backgroundDuration = 0.0}) async {
+      double backgroundDuration = 0.0,
+      required double totalLength}) async {
     final payload = {
       'session_id': _sessionId,
       'song_filename': songFilename,
@@ -55,8 +57,14 @@ class StatsService {
       'platform': _platform,
       'foreground_duration': foregroundDuration,
       'background_duration': backgroundDuration,
+      'total_length': totalLength,
+      'play_ratio': totalLength > 0 ? duration / totalLength : 0.0,
     };
 
+    // 1. Save locally to mirrored DB
+    await DatabaseService.instance.insertPlayEvent(payload);
+
+    // 2. Try to send to server (Legacy / Immediate)
     try {
       final response = await _client
           .post(
@@ -72,88 +80,41 @@ class StatsService {
       if (response.statusCode != 200) {
         throw Exception('Server returned ${response.statusCode}');
       }
-
-      // If we succeed, also try to flush any previously cached stats
-      _flushOfflineStats();
     } catch (e) {
-      debugPrint('Stats tracking failed, caching for later: $e');
-      _cacheStatsOffline(username, payload);
+      debugPrint('Legacy stats tracking failed (Normal for local-first): $e');
     }
   }
 
-  Future<void> _cacheStatsOffline(
-      String username, Map<String, dynamic> payload) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final key = 'offline_stats_$username';
-      List<String> cached = prefs.getStringList(key) ?? [];
-      cached.add(jsonEncode(payload));
-      await prefs.setStringList(key, cached);
-    } catch (e) {
-      debugPrint('Failed to cache stats offline: $e');
-    }
-  }
-
-  Future<void> _flushOfflineStats() async {
+  Future<void> _syncDbs() async {
     if (_isSyncing) return;
     _isSyncing = true;
-
     try {
       final prefs = await SharedPreferences.getInstance();
-      // We need to know which users have offline stats. Since we usually only have one active user:
-      final keys =
-          prefs.getKeys().where((k) => k.startsWith('offline_stats_')).toList();
-
-      for (final key in keys) {
-        final username = key.replaceFirst('offline_stats_', '');
-        List<String> cached = prefs.getStringList(key) ?? [];
-        if (cached.isEmpty) continue;
-
-        debugPrint('Syncing ${cached.length} offline stats for $username...');
-        List<String> remaining = [];
-        bool stopSync = false;
-
-        for (final itemJson in cached) {
-          if (stopSync) {
-            remaining.add(itemJson);
-            continue;
-          }
-
-          try {
-            final response = await _client
-                .post(
-                  Uri.parse('${ApiService.baseUrl}/stats/track'),
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'x-username': username,
-                  },
-                  body: itemJson,
-                )
-                .timeout(const Duration(seconds: 10));
-
-            if (response.statusCode != 200) {
-              stopSync = true;
-              remaining.add(itemJson);
-            }
-          } catch (e) {
-            stopSync = true;
-            remaining.add(itemJson);
-          }
-        }
-
-        await prefs.setStringList(key, remaining);
-        if (remaining.isEmpty) {
-          debugPrint('All offline stats synced for $username');
-        }
+      final username = prefs.getString('last_username');
+      if (username != null) {
+        await DatabaseService.instance.syncBack(username);
       }
     } catch (e) {
-      debugPrint('Error during offline stats flush: $e');
+      debugPrint('DB Sync error: $e');
     } finally {
       _isSyncing = false;
     }
   }
 
   Future<Map<String, dynamic>?> getStatsSummary(String username) async {
+    // Mirroring final_stats.json locally
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final file = File('${docDir.path}/${username}_final_stats.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        return jsonDecode(content);
+      }
+    } catch (e) {
+      debugPrint('Error reading local stats summary: $e');
+    }
+    
+    // Fallback to API if local fails
     try {
       final response = await _client.get(
         Uri.parse('${ApiService.baseUrl}/user/shuffle'),
@@ -166,7 +127,7 @@ class StatsService {
         return jsonDecode(response.body);
       }
     } catch (e) {
-      debugPrint('Stats summary error (offline?): $e');
+      debugPrint('Stats summary error: $e');
     }
     return null;
   }

@@ -30,6 +30,8 @@ class ApiService {
       };
 
   Future<List<Song>> fetchSongs() async {
+    // This is now legacy but keeping for reference if needed elsewhere
+    // In the new architecture, we scan locally.
     try {
       final response = await _client.get(
         Uri.parse('$baseUrl/list-songs'),
@@ -42,24 +44,6 @@ class ApiService {
       } else {
         throw Exception(
             'Failed to load songs (${response.statusCode}): ${response.body}');
-      }
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  Future<Map<String, String>> fetchSyncHashes() async {
-    try {
-      final response = await _client.get(
-        Uri.parse('$baseUrl/sync-check'),
-        headers: _headers,
-      );
-
-      if (response.statusCode == 200) {
-        return Map<String, String>.from(jsonDecode(response.body));
-      } else {
-        throw Exception(
-            'Failed to fetch sync hashes (${response.statusCode}): ${response.body}');
       }
     } catch (e) {
       rethrow;
@@ -117,76 +101,33 @@ class ApiService {
     }
   }
 
-  // Queue & Sync
-  Future<Map<String, dynamic>> fetchQueue() async {
+  Future<String?> fetchLyrics(String url) async {
     try {
-      final response =
-          await _client.get(Uri.parse('$baseUrl/queue'), headers: _headers);
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-      throw Exception('Failed to fetch queue: ${response.statusCode}');
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  Future<Map<String, dynamic>> syncQueue(
-      List<Map<String, dynamic>> queue, int currentIndex, int version) async {
-    try {
-      final response = await _client.post(
-        Uri.parse('$baseUrl/queue/sync'),
+      final response = await _client.get(
+        Uri.parse(getFullUrl(url)),
         headers: _headers,
-        body: jsonEncode({
-          'queue': queue,
-          'current_index': currentIndex,
-          'version': version,
-        }),
       );
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        return response.body;
       }
-      throw Exception('Failed to sync queue: ${response.statusCode}');
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  Future<Map<String, dynamic>?> fetchNextSong() async {
-    try {
-      final response = await _client.post(Uri.parse('$baseUrl/queue/next'),
-          headers: _headers);
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-      return null;
-    } catch (e) {
-      rethrow;
-    }
+    } catch (_) {}
+    return null;
   }
 
   Future<Map<String, dynamic>> getFunStats() async {
     try {
-      final response =
-          await _client.get(Uri.parse('$baseUrl/stats/fun'), headers: _headers);
+      final response = await _client.get(
+        Uri.parse('$baseUrl/stats/fun'),
+        headers: _headers,
+      );
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to load fun stats');
       }
-      throw Exception('Failed to fetch fun stats: ${response.statusCode}');
     } catch (e) {
       rethrow;
-    }
-  }
-
-  Future<String?> fetchLyrics(String url) async {
-    try {
-      final response = await _client.get(Uri.parse(getFullUrl(url)));
-      if (response.statusCode == 200) {
-        return response.body;
-      }
-      return null;
-    } catch (e) {
-      return null;
     }
   }
 

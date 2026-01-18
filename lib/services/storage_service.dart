@@ -2,9 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song.dart';
 
 class StorageService {
+  static const String _musicFolderKey = 'music_folder_path';
+  static const String _lyricsFolderKey = 'lyrics_folder_path';
+
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
     return directory.path;
@@ -20,14 +24,30 @@ class StorageService {
     return File('$path/user_data_$username.json');
   }
 
-  Future<File> get _syncHashesFile async {
-    final path = await _localPath;
-    return File('$path/sync_hashes.json');
-  }
-
   Future<File> _getShuffleStateFile(String username) async {
     final path = await _localPath;
     return File('$path/shuffle_state_$username.json');
+  }
+
+  // Folder Paths
+  Future<String?> getMusicFolderPath() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_musicFolderKey);
+  }
+
+  Future<void> setMusicFolderPath(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_musicFolderKey, path);
+  }
+
+  Future<String?> getLyricsFolderPath() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lyricsFolderKey);
+  }
+
+  Future<void> setLyricsFolderPath(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lyricsFolderKey, path);
   }
 
   Future<void> saveSongs(List<Song> songs) async {
@@ -74,28 +94,6 @@ class StorageService {
     } catch (e) {
       debugPrint('Error loading user data cache: $e');
       return null;
-    }
-  }
-
-  Future<void> saveSyncHashes(Map<String, String> hashes) async {
-    try {
-      final file = await _syncHashesFile;
-      await file.writeAsString(jsonEncode(hashes));
-    } catch (e) {
-      debugPrint('Error saving sync hashes: $e');
-    }
-  }
-
-  Future<Map<String, String>> loadSyncHashes() async {
-    try {
-      final file = await _syncHashesFile;
-      if (!await file.exists()) return {};
-
-      final content = await file.readAsString();
-      return Map<String, String>.from(jsonDecode(content));
-    } catch (e) {
-      debugPrint('Error loading sync hashes: $e');
-      return {};
     }
   }
 

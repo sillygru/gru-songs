@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'cache_management_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
@@ -17,6 +18,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _newUsernameController = TextEditingController();
+
+  Future<void> _selectMusicFolder() async {
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory != null) {
+      final storage = ref.read(storageServiceProvider);
+      await storage.setMusicFolderPath(selectedDirectory);
+      ref.invalidate(songsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Music folder updated")));
+      }
+    }
+  }
+
+  Future<void> _selectLyricsFolder() async {
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory != null) {
+      final storage = ref.read(storageServiceProvider);
+      await storage.setLyricsFolderPath(selectedDirectory);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Lyrics folder updated")));
+      }
+    }
+  }
 
   void _showChangeUsernameDialog() {
     showDialog(
@@ -192,8 +218,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       children: [
                         _buildStatColumn(
                             'Favorites', userData.favorites.length.toString()),
-                        _buildStatColumn(
-                            'Playlists', userData.playlists.length.toString()),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -255,7 +279,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                     ),
                                     _buildRadioTile(
                                       title: 'Consistent',
-                                      subtitle: 'Favorites & playlists heavy',
+                                      subtitle: 'Favorites heavy',
                                       value: ShufflePersonality.consistent,
                                     ),
                                   ],
@@ -279,11 +303,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       onTap: _showChangePasswordDialog,
                     ),
                     const SizedBox(height: 24),
-                    _buildSectionTitle('Storage & Cache'),
+                    _buildSectionTitle('Storage & Folders'),
+                    FutureBuilder<String?>(
+                      future: ref.read(storageServiceProvider).getMusicFolderPath(),
+                      builder: (context, snapshot) {
+                        return _buildListTile(
+                          icon: Icons.library_music_outlined,
+                          title: 'Music Folder',
+                          subtitle: snapshot.data ?? 'Not selected',
+                          onTap: _selectMusicFolder,
+                        );
+                      }
+                    ),
+                    FutureBuilder<String?>(
+                      future: ref.read(storageServiceProvider).getLyricsFolderPath(),
+                      builder: (context, snapshot) {
+                        return _buildListTile(
+                          icon: Icons.lyrics_outlined,
+                          title: 'Lyrics Folder',
+                          subtitle: snapshot.data ?? 'Not selected (Optional)',
+                          onTap: _selectLyricsFolder,
+                        );
+                      }
+                    ),
                     _buildListTile(
                       icon: Icons.storage_outlined,
-                      title: 'Manage Storage',
-                      subtitle: 'Clear cache and free up space',
+                      title: 'Manage Cache',
+                      subtitle: 'Internal app cache management',
                       onTap: () {
                         Navigator.push(
                           context,
@@ -305,7 +351,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v5.1.3",
+                      "Gru Songs v6.0.0",
                       style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     const SizedBox(height: 100),

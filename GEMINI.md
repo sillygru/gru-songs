@@ -5,7 +5,7 @@
 - **NON-SERVER ENVIRONMENT:** You are running in a CLI environment, not the production server. Avoid absolute paths (e.g., `/home/...`) and do not rely on `.env` values during testing. Use relative paths or mock settings to ensure portability. If the error is because of /home/sillygru its because its trying to use the server envinronment inside the .env
 
 ## 🚀 Overview
-A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, playlists with added-date tracking, favorites, and a "suggest less" recommendation filter.
+A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend hosted behind a Tailscale Funnel. Features user authentication, session-based statistics, favorites, and a "suggest less" recommendation filter.
 **Now features comprehensive offline capabilities** with "Stream & Cache" architecture.
 
 ## 🛠 Tech Stack
@@ -26,7 +26,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
   - **Endpoints:**
   - **Music:**
     - `GET /list-songs` (includes `play_count` and `mtime` if available)
-    - `GET /sync-check` (Returns MD5 hashes for songs, favorites, playlists, shuffle state, etc.)
+    - `GET /sync-check` (Returns MD5 hashes for songs, favorites, shuffle state, etc.)
     - `GET /stream/{filename}`
     - `GET /cover/{filename}` (Cache-Control: 1 year)
     - `GET /lyrics/{filename}` (.lrc files)
@@ -40,8 +40,6 @@ A high-performance music streaming app built with Flutter, connecting to a priva
     - `POST /auth/update-username`
   - **User Data:**
     - `GET/POST /user/favorites`, `DELETE /user/favorites/{filename}`
-    - `GET/POST /user/playlists`, `DELETE /user/playlists/{playlist_id}`
-    - `POST /user/playlists/{playlist_id}/songs`, `DELETE /user/playlists/{playlist_id}/songs/{filename}`
     - `GET/POST /user/suggest-less`, `DELETE /user/suggest-less/{filename}`
     - `GET/POST /user/shuffle` (Persistence for settings, history, and personality)
     - `POST /stats/track`
@@ -73,7 +71,7 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
     - **Lazy Pre-caching:** Only the current song and the next 2 songs in the queue are pre-cached.
   - **Images:** Handled by `GruImage` widget which uses the V2 `CacheService`. Features a built-in loading spinner and error handling.
   - **Sync Indicator:** Visual status bar at the top of the screen (Offline, Syncing, Using Cache).
-  - **Pull-to-Refresh:** Available on main data screens. Triggers background sync for songs, favorites, playlists, and **shuffle personality/history**.
+  - **Pull-to-Refresh:** Available on main data screens. Triggers background sync for songs, favorites, and **shuffle personality/history**.
   - **Playback Resume:** Position is only resumed for the specific song that was last playing when the app closed. New song selections always start at position 0.
   - **Queue Management:** 
     - **Shuffle Toggle:** Capture current player state to **preserve the position** of the currently playing song during re-shuffling.
@@ -84,7 +82,6 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 - **Backend:** 
   - **Persistence:** 
     - `users/<username>_data.db`: Profile, favorites, and suggest-less.
-    - `users/<username>_playlists.db`: Detailed playlist data with `added_at` timestamps.
     - `users/<username>_stats.db`: Session history and raw play events.
     - `users/<username>_final_stats.json`: Aggregated summary and persistent shuffle state (including personality).
   - **Backup Service:** 
@@ -98,12 +95,12 @@ The app uses a custom `HttpOverrides` class in `main.dart` and a custom `IOClien
 
 ## 📂 Project Structure
 ### Frontend (`lib/`)
-- `models/`: Data structures (`song.dart`, `playlist.dart`, `queue_item.dart`, `shuffle_config.dart`).
+- `models/`: Data structures (`song.dart`, `queue_item.dart`, `shuffle_config.dart`).
 - `data/repositories/`: Data access abstraction.
 - `providers/`: Riverpod providers (`auth_provider.dart`, `user_data_provider.dart`, `providers.dart`).
 - `services/`: Core logic (`api_service.dart`, `audio_player_manager.dart`, `cache_service.dart`, `storage_service.dart`, `stats_service.dart`).
 - `presentation/`:
-  - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `PlaylistsScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`, `CacheManagementScreen`.
+  - `screens/`: `AuthScreen`, `HomeScreen`, `MainScreen`, `PlayerScreen`, `SearchScreen`, `LibraryScreen`, `ProfileScreen`, `CacheManagementScreen`.
   - `widgets/`: `NowPlayingBar`, `SongOptionsMenu`, `GruImage`, `NextUpSheet`.
 
 ### Backend (`server/`)

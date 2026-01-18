@@ -28,9 +28,6 @@ class DatabaseManager:
     def get_user_data_engine(self, username: str):
         return self._get_engine(f"{username}_data.db")
 
-    def get_user_playlists_engine(self, username: str):
-        return self._get_engine(f"{username}_playlists.db")
-
     def get_user_stats_engine(self, username: str):
         return self._get_engine(f"{username}_stats.db")
 
@@ -42,7 +39,7 @@ class DatabaseManager:
 
     def init_user_dbs(self, username: str):
         # Create tables for specific user DBs
-        from db_models import UserData, Favorite, SuggestLess, Playlist, PlaylistSong, PlaySession, PlayEvent
+        from db_models import UserData, Favorite, SuggestLess, PlaySession, PlayEvent
         
         # We need to filter metadata to only create relevant tables for each DB
         # This is a bit tricky with SQLModel as metadata is shared by default.
@@ -58,11 +55,6 @@ class DatabaseManager:
         UserData.__table__.create(e_data, checkfirst=True)
         Favorite.__table__.create(e_data, checkfirst=True)
         SuggestLess.__table__.create(e_data, checkfirst=True)
-        
-        # 2. Playlists DB
-        e_pl = self.get_user_playlists_engine(username)
-        Playlist.__table__.create(e_pl, checkfirst=True)
-        PlaylistSong.__table__.create(e_pl, checkfirst=True)
         
         # 3. Stats DB
         e_stats = self.get_user_stats_engine(username)

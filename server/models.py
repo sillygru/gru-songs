@@ -23,6 +23,7 @@ class StatsEntry(BaseModel):
     session_id: str
     song_filename: str
     duration_played: float
+    total_length: float
     event_type: str # 'listen', 'skip', 'complete'
     timestamp: float
     platform: Optional[str] = "unknown"
@@ -42,7 +43,6 @@ class ShuffleConfig(BaseModel):
     suggest_less_multiplier: float = 0.2
     history_limit: int = 50
     personality: ShufflePersonality = ShufflePersonality.DEFAULT
-    consistent_playlists: List[str] = []
 
 class ShuffleState(BaseModel):
     config: ShuffleConfig = ShuffleConfig()
@@ -69,21 +69,6 @@ class StatsSummary(BaseModel):
     total_sessions: int = 0
     shuffle_state: ShuffleState = ShuffleState()
     queue_state: Optional[QueueState] = None
-
-class PlaylistSong(BaseModel):
-    filename: str
-    added_at: float
-
-class Playlist(BaseModel):
-    id: str
-    name: str
-    songs: List[PlaylistSong] = [] 
-
-class PlaylistCreate(BaseModel):
-    name: str
-
-class PlaylistAddSong(BaseModel):
-    song_filename: str
 
 class FavoriteRequest(BaseModel):
     song_filename: str

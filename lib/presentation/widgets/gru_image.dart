@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../services/cache_service.dart';
 
 class GruImage extends StatefulWidget {
   final String url;
@@ -11,6 +10,8 @@ class GruImage extends StatefulWidget {
   final double borderRadius;
   final Widget? placeholder;
   final Widget? errorWidget;
+  final int? cacheWidth;
+  final int? cacheHeight;
 
   const GruImage({
     super.key,
@@ -26,115 +27,77 @@ class GruImage extends StatefulWidget {
     this.cacheHeight,
   });
 
-  final int? cacheWidth;
-  final int? cacheHeight;
-
   @override
   State<GruImage> createState() => _GruImageState();
 }
 
 class _GruImageState extends State<GruImage> {
-  File? _imageFile;
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadImage();
   }
 
   @override
   void didUpdateWidget(GruImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
-      _loadImage();
-    }
-  }
-
-  String _getFilename() {
-    if (widget.filename != null) return widget.filename!;
-    try {
-      final uri = Uri.parse(widget.url);
-      return uri.pathSegments.last;
-    } catch (_) {
-      return 'image_${widget.url.hashCode}.jpg';
-    }
-  }
-
-  Future<void> _loadImage() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _imageFile =
-          null; // Clear previous image to avoid mismatch during transition
-    });
-
-    try {
-      final file = await CacheService.instance
-          .getFile('images', _getFilename(), widget.url);
-      if (mounted) {
-        setState(() {
-          _imageFile = file;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      setState(() {
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.url.isEmpty) {
+      return _buildError();
+    }
+
+    final bool isLocal = widget.url.startsWith('/') ||
+        widget.url.startsWith('C:\\') ||
+        widget.url.startsWith('file://') ||
+        widget.url.startsWith('content://');
+
     Widget content;
 
-    if (_imageFile == null || _isLoading) {
-      content = widget.placeholder ??
-          Container(
-            width: widget.width,
-            height: widget.height,
-            color: const Color(0xFF1E1E1E),
-            child: Center(
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.music_note, color: Colors.grey),
-            ),
-          );
-    } else {
-      // Calculate cache sizes if not provided
-      int? effectiveCacheWidth = widget.cacheWidth;
-      int? effectiveCacheHeight = widget.cacheHeight;
-
-      if (effectiveCacheWidth == null &&
-          effectiveCacheHeight == null &&
-          widget.width != null) {
-        // If width/height is provided but no cache dimensions, use width * devicePixelRatio as a hint
-        final dpr = MediaQuery.of(context).devicePixelRatio;
-        effectiveCacheWidth = (widget.width! * dpr).round();
-        if (widget.height != null) {
-          effectiveCacheHeight = (widget.height! * dpr).round();
+    if (isLocal) {
+      String path;
+      try {
+        final uri = Uri.parse(widget.url);
+        if (uri.isScheme('file')) {
+          path = uri.toFilePath();
+        } else {
+          path = widget.url;
         }
+      } catch (_) {
+        path = widget.url;
       }
-
+      
       content = Image.file(
-        _imageFile!,
+        File(path),
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: effectiveCacheWidth,
-        cacheHeight: effectiveCacheHeight,
+        cacheWidth: widget.cacheWidth,
+        cacheHeight: widget.cacheHeight,
         errorBuilder: (context, error, stackTrace) {
-          return widget.errorWidget ??
-              Container(
-                width: widget.width,
-                height: widget.height,
-                color: const Color(0xFF1E1E1E),
-                child: const Icon(Icons.broken_image, color: Colors.grey),
-              );
+          return widget.errorWidget ?? _buildError();
+        },
+      );
+    } else {
+      content = Image.network(
+        widget.url,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        cacheWidth: widget.cacheWidth,
+        cacheHeight: widget.cacheHeight,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return widget.placeholder ?? _buildPlaceholder();
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return widget.errorWidget ?? _buildError();
         },
       );
     }
@@ -147,5 +110,31 @@ class _GruImageState extends State<GruImage> {
     }
 
     return content;
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      width: widget.width,
+      height: widget.height,
+      color: const Color(0xFF1E1E1E),
+      child: const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Container(
+      width: widget.width,
+      height: widget.height,
+      color: const Color(0xFF1E1E1E),
+      child: const Center(
+        child: Icon(Icons.music_note, color: Colors.grey),
+      ),
+    );
   }
 }

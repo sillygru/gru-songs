@@ -5,9 +5,11 @@ import '../widgets/gru_image.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/song_options_menu.dart';
-import 'playlist_detail_screen.dart';
+import 'song_list_screen.dart';
 
 import 'search_screen.dart';
+
+import 'package:file_picker/file_picker.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -17,10 +19,19 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  Future<void> _selectMusicFolder() async {
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+
+    if (selectedDirectory != null) {
+      final storage = ref.read(storageServiceProvider);
+      await storage.setMusicFolderPath(selectedDirectory);
+      ref.invalidate(songsProvider);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final songsAsyncValue = ref.watch(songsProvider);
-    final apiService = ref.watch(apiServiceProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
     final userData = ref.watch(userDataProvider);
 
@@ -38,18 +49,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         data: (songs) {
           if (songs.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.music_off_outlined,
-                      size: 80, color: Theme.of(context).colorScheme.secondary),
-                  const SizedBox(height: 16),
-                  Text('No songs found',
-                      style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 8),
-                  Text('Upload some music or try refreshing',
-                      style: Theme.of(context).textTheme.bodyMedium),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.music_off_outlined,
+                        size: 80,
+                        color: Theme.of(context).colorScheme.secondary),
+                    const SizedBox(height: 16),
+                    Text('No songs found',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineSmall),
+                    const SizedBox(height: 8),
+                    Text(
+                        'Select your music folder to start listening offline.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: _selectMusicFolder,
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('Select Music Folder'),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -128,7 +152,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     child: Text(
-                      'Your Playlists',
+                      'Library Quick Links',
                       style: Theme.of(context)
                           .textTheme
                           .titleLarge
@@ -139,74 +163,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 SliverToBoxAdapter(
                   child: SizedBox(
                     height: 140,
-                    child: ListView.builder(
+                    child: ListView(
                       scrollDirection: Axis.horizontal,
-                      itemCount: userData.playlists.length + 1,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemBuilder: (context, index) {
-                        if (index == 0) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const PlaylistDetailScreen(
-                                        playlistId: '__favorites__'),
-                                  ),
-                                );
-                              },
-                              child: Column(
-                                children: [
-                                  Card(
-                                    elevation: 4,
-                                    shadowColor:
-                                        Colors.red.withValues(alpha: 0.4),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(16)),
-                                    child: Container(
-                                      width: 100,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            Colors.red.shade800,
-                                            Colors.red.shade900
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: const Icon(Icons.favorite,
-                                          size: 48, color: Colors.white),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const Text(
-                                    'Favorites',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                        final playlist = userData.playlists[index - 1];
-                        return Padding(
+                      children: [
+                        Padding(
                           padding: const EdgeInsets.only(right: 12),
                           child: GestureDetector(
                             onTap: () {
+                              final favSongs = songs
+                                  .where((s) =>
+                                      userData.favorites.contains(s.filename))
+                                  .toList();
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => PlaylistDetailScreen(
-                                      playlistId: playlist.id),
+                                  builder: (_) => SongListScreen(
+                                    title: 'Favorites',
+                                    songs: favSongs,
+                                  ),
                                 ),
                               );
                             },
@@ -214,8 +189,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               children: [
                                 Card(
                                   elevation: 4,
+                                  shadowColor:
+                                      Colors.red.withValues(alpha: 0.4),
                                   shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16)),
+                                      borderRadius:
+                                          BorderRadius.circular(16)),
                                   child: Container(
                                     width: 100,
                                     height: 100,
@@ -224,33 +202,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          Colors.deepPurple.shade700,
-                                          Colors.deepPurple.shade900
+                                          Colors.red.shade800,
+                                          Colors.red.shade900
                                         ],
                                       ),
                                       borderRadius: BorderRadius.circular(16),
                                     ),
-                                    child: const Icon(Icons.playlist_play,
+                                    child: const Icon(Icons.favorite,
                                         size: 48, color: Colors.white),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                SizedBox(
-                                  width: 100,
-                                  child: Text(
-                                    playlist.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w500),
-                                  ),
+                                const Text(
+                                  'Favorites',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w500),
                                 ),
                               ],
                             ),
                           ),
-                        );
-                      },
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -296,11 +270,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                               BorderRadius.circular(12)),
                                       clipBehavior: Clip.antiAlias,
                                       child: GruImage(
-                                        url: song.coverUrl != null
-                                            ? apiService
-                                                .getFullUrl(song.coverUrl!)
-                                            : apiService.getFullUrl(
-                                                '/stream/cover.jpg'),
+                                        url: song.coverUrl ?? '',
                                         width: 150,
                                         height: 150,
                                         fit: BoxFit.cover,
@@ -369,9 +339,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: GruImage(
-                              url: song.coverUrl != null
-                                  ? apiService.getFullUrl(song.coverUrl!)
-                                  : apiService.getFullUrl('/stream/cover.jpg'),
+                              url: song.coverUrl ?? '',
                               width: 56,
                               height: 56,
                               fit: BoxFit.cover,

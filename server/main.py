@@ -1,12 +1,9 @@
-from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
-from fastapi.responses import Response, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, List, Optional
 import os
-import subprocess
 import shutil
-import tempfile
 import asyncio
 from contextlib import asynccontextmanager
 from multiprocessing import Process, Queue
@@ -14,10 +11,9 @@ from multiprocessing import Process, Queue
 from settings import settings
 from services import music_service
 from user_service import user_service
-from queue_service import queue_service
 from backup_service import backup_service
 from discord_bot import run_bot
-from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, PlaylistCreate, PlaylistAddSong, FavoriteRequest, QueueState, QueueSyncRequest, QueueItem
+from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, FavoriteRequest
 
 # Global queue and process for discord bot
 discord_queue = Queue()
@@ -96,21 +92,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Custom stream route to handle multiple directories
-@app.get("/stream/{filename}")
-async def stream_song(filename: str):
-    path = os.path.join(settings.MUSIC_DIR, filename)
-    if not os.path.exists(path):
-        path = os.path.join(settings.DOWNLOADED_DIR, filename)
-    
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Song not found")
-    
-    return FileResponse(path)
-
-if not os.path.exists(settings.LYRICS_DIR):
-    os.makedirs(settings.LYRICS_DIR, exist_ok=True)
-app.mount("/lyrics", StaticFiles(directory=settings.LYRICS_DIR), name="lyrics")
+# Custom stream route removed as server is now offline-first for media
 
 # --- Background Task for Stats Flushing ---
 
@@ -189,7 +171,7 @@ def get_fun_stats(x_username: str = Header(None)):
     return user_service.get_fun_stats(x_username)
 
 
-# --- User Data Routes (Favorites & Playlists) ---
+# --- User Data Routes (Favorites) ---
 
 @app.get("/user/favorites")
 def get_favorites(x_username: str = Header(None)):
@@ -220,7 +202,7 @@ def get_suggest_less(x_username: str = Header(None)):
     return user_service.get_suggest_less(x_username)
 
 @app.post("/user/suggest-less")
-def add_suggest_less(req: PlaylistAddSong, x_username: str = Header(None)):
+def add_suggest_less(req: FavoriteRequest, x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
     user_service.add_suggest_less(x_username, req.song_filename)
@@ -233,232 +215,55 @@ def remove_suggest_less(filename: str, x_username: str = Header(None)):
     user_service.remove_suggest_less(x_username, filename)
     return {"status": "removed"}
 
-# --- Playlist Routes ---
 
-@app.get("/user/playlists")
-def get_playlists(x_username: str = Header(None)):
+# --- User DB & Stats Mirroring Routes ---
+
+@app.get("/user/db/{db_type}")
+async def download_user_db(db_type: str, x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    return user_service.get_playlists(x_username)
-
-@app.post("/user/playlists")
-def create_playlist(req: PlaylistCreate, x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    playlist = user_service.create_playlist(x_username, req.name)
-    if not playlist:
-         raise HTTPException(status_code=400, detail="Could not create playlist")
-    return playlist
-
-@app.delete("/user/playlists/{playlist_id}")
-def delete_playlist(playlist_id: str, x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    user_service.delete_playlist(x_username, playlist_id)
-    return {"status": "deleted"}
-
-@app.post("/user/playlists/{playlist_id}/songs")
-def add_song_to_playlist(playlist_id: str, req: PlaylistAddSong, x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    user_service.add_song_to_playlist(x_username, playlist_id, req.song_filename)
-    return {"status": "added"}
-
-@app.delete("/user/playlists/{playlist_id}/songs/{filename}")
-def remove_song_from_playlist(playlist_id: str, filename: str, x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    user_service.remove_song_from_playlist(x_username, playlist_id, filename)
-    return {"status": "removed"}
-
-
-# --- Music Routes ---
-
-@app.get("/list-songs")
-def list_songs(x_username: str = Header(None)):
-    result = music_service.list_songs()
-    if isinstance(result, dict) and "error" in result:
-        return result
     
-    if x_username:
-        counts = user_service.get_play_counts(x_username)
-        for song in result:
-            song["play_count"] = counts.get(song["filename"], 0)
-            
-    return result
-
-@app.get("/sync-check")
-def sync_check(x_username: str = Header(None)):
-    return user_service.get_sync_hashes(x_username)
-
-@app.get("/lyrics-embedded/{filename}")
-def get_embedded_lyrics(filename: str):
-    lyrics = music_service.get_embedded_lyrics(filename)
-    if not lyrics:
-        raise HTTPException(status_code=404, detail="No embedded lyrics found")
+    # Force flush to ensure DB is up to date before download
+    user_service.flush_stats()
     
-    return Response(
-        content=str(lyrics), 
-        media_type="text/plain",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"}
-    )
-
-@app.get("/cover/{filename}")
-def get_cover(filename: str):
-    data, mime = music_service.get_cover_data(filename)
-    if not data:
-        raise HTTPException(status_code=404, detail="No cover found in metadata")
-    
-    return Response(
-        content=data, 
-        media_type=mime,
-        headers={"Cache-Control": "public, max-age=31536000, immutable"}
-    )
-
-@app.post("/music/upload")
-async def upload_song(
-    file: UploadFile = File(...), 
-    filename: str = Form(None),
-    x_username: str = Header(None)
-):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-
-    # Use provided filename or original filename
-    final_filename = filename if filename else file.filename
-    # Ensure it has a valid extension if not provided
-    if not any(final_filename.lower().endswith(ext) for ext in [".mp3", ".m4a", ".flac", ".wav", ".alac"]):
-        ext = os.path.splitext(file.filename)[1]
-        if not ext:
-            ext = ".mp3" # Fallback
-        final_filename += ext
-
-    # Save to RAM (initially)
-    content = await file.read()
-
-    # Create a temp file for verification (Mutagen often needs a path)
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        # Verify
-        if not music_service.verify_song(tmp_path):
-            os.remove(tmp_path)
-            raise HTTPException(status_code=400, detail="Invalid audio file")
-
-        # Save to downloaded dir
-        dest_path = os.path.join(settings.DOWNLOADED_DIR, final_filename)
-        # Move the temp file to destination
-        shutil.move(tmp_path, dest_path)
+    filename = ""
+    if db_type == "stats":
+        filename = f"{x_username}_stats.db"
+    elif db_type == "data":
+        filename = f"{x_username}_data.db"
+    elif db_type == "final_stats":
+        filename = f"{x_username}_final_stats.json"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid DB type")
         
-        # Record uploader with title
-        display_title = final_filename.rsplit('.', 1)[0]
-        user_service.record_upload(
-            x_username, 
-            final_filename, 
-            display_title, 
-            source="file", 
-            original_filename=file.filename
-        )
+    path = os.path.join(settings.USERS_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="DB file not found")
         
-        return {"message": "Upload successful", "filename": final_filename}
-    except Exception as e:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise HTTPException(status_code=500, detail=str(e))
+    return FileResponse(path)
 
-@app.post("/music/yt-dlp")
-async def ytdlp_download(
-    url: str = Form(...),
-    filename: str = Form(None),
-    x_username: str = Header(None)
-):
+@app.post("/user/db/{db_type}")
+async def upload_user_db(db_type: str, file: UploadFile = File(...), x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
 
-    # yt-dlp --no-js-runtimes --js-runtimes node --remote-components ejs:github -f "ba[ext=m4a]/ba" -x --audio-format m4a --embed-thumbnail --embed-metadata --convert-thumbnails jpg --cookies-from-browser firefox "URL"
+    filename = ""
+    if db_type == "stats":
+        filename = f"{x_username}_stats.db"
+    elif db_type == "data":
+        filename = f"{x_username}_data.db"
+    elif db_type == "final_stats":
+        filename = f"{x_username}_final_stats.json"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid DB type")
+
+    path = os.path.join(settings.USERS_DIR, filename)
     
-    # We'll use a temp directory to catch the output file
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # yt-dlp command
-        cmd = [
-            "yt-dlp",
-            "--no-js-runtimes",
-            "--js-runtimes", "node",
-            "--remote-components", "ejs:github",
-            "-f", "ba[ext=m4a]/ba",
-            "-x",
-            "--audio-format", "m4a",
-            "--embed-thumbnail",
-            "--embed-metadata",
-            "--convert-thumbnails", "jpg",
-            "--cookies-from-browser", "firefox",
-            "--paths", tmpdir,
-            url
-        ]
+    # Save uploaded file
+    with open(path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
         
-        try:
-            process = subprocess.run(cmd, capture_output=True, text=True)
-            if process.returncode != 0:
-                raise HTTPException(status_code=500, detail=f"yt-dlp failed: {process.stderr}")
-            
-            # Find the downloaded file in tmpdir
-            downloaded_files = os.listdir(tmpdir)
-            if not downloaded_files:
-                raise HTTPException(status_code=500, detail="No file downloaded by yt-dlp")
-            
-            # Get the first m4a or mp3 etc file
-            audio_files = [f for f in downloaded_files if any(f.lower().endswith(ext) for ext in [".m4a", ".mp3", ".flac", ".wav"])]
-            if not audio_files:
-                 raise HTTPException(status_code=500, detail="No audio file found after yt-dlp download")
-            
-            orig_filename = audio_files[0]
-            final_filename = filename if filename else orig_filename
-            if not any(final_filename.lower().endswith(ext) for ext in [".m4a", ".mp3", ".flac", ".wav"]):
-                final_filename += ".m4a"
-
-            dest_path = os.path.join(settings.DOWNLOADED_DIR, final_filename)
-            shutil.move(os.path.join(tmpdir, orig_filename), dest_path)
-            
-            # Record uploader with title
-            display_title = final_filename.rsplit('.', 1)[0]
-            user_service.record_upload(
-                x_username, 
-                final_filename, 
-                display_title, 
-                source="youtube", 
-                original_filename=orig_filename, 
-                youtube_url=url
-            )
-            
-            return {"message": "Download successful", "filename": final_filename}
-            
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-# --- Queue Routes ---
-
-@app.get("/queue")
-def get_queue(x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    return queue_service.get_queue(x_username)
-
-@app.post("/queue/sync")
-def sync_queue(req: QueueSyncRequest, x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    return queue_service.sync_queue(x_username, req.queue, req.current_index, req.version)
-
-@app.post("/queue/next")
-def get_next_song(x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    item = queue_service.get_next_song(x_username)
-    if not item:
-        raise HTTPException(status_code=404, detail="No songs available")
-    return item
+    return {"message": f"{db_type} updated"}
 
 if __name__ == "__main__":
     import uvicorn

@@ -8,10 +8,10 @@ import 'dart:async'; // For Timer
 import '../models/song.dart';
 import '../models/queue_item.dart';
 import '../models/shuffle_config.dart';
-import 'cache_service.dart';
 import 'api_service.dart';
 import 'stats_service.dart';
 import 'storage_service.dart';
+import 'database_service.dart';
 
 class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
@@ -26,8 +26,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Map<String, Song> _songMap = {};
 
   // Server Sync State
-  int _queueVersion = 0;
-  bool _isOffline = false;
   Timer? _syncTimer;
 
   // User data for weighting (Fallback / Offline)
@@ -55,6 +53,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   AudioPlayerManager(this._apiService, this._statsService, this._storageService,
       this._username) {
     WidgetsBinding.instance.addObserver(this);
+    if (_username != null) {
+      DatabaseService.instance.initForUser(_username!);
+    }
     _initStatsListeners();
     _initPersistence();
   }
@@ -66,21 +67,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (suggestLess != null) _suggestLess = suggestLess;
   }
 
-  void updateShuffleConfig(ShuffleConfig config) {
+  Future<void> updateShuffleConfig(ShuffleConfig config) async {
     _shuffleState = _shuffleState.copyWith(config: config);
     shuffleStateNotifier.value = _shuffleState;
     shuffleNotifier.value = config.enabled;
     _saveShuffleState();
 
-    // Server Authoritative: Toggle means re-sync
     if (_effectiveQueue.isNotEmpty) {
       if (config.enabled) {
-        // Optimistic Shuffle
-        _applyShuffle(_player.currentIndex ?? 0);
+        await _applyShuffle(_player.currentIndex ?? 0);
       } else {
         _applyLinear(_player.currentIndex ?? 0);
       }
-      _syncQueueToServer();
     }
   }
 
@@ -105,143 +103,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final selectedItem = _originalQueue[originalIdx];
 
     if (_shuffleState.config.enabled) {
-      // Offline / Optimistic Shuffle Logic
       final otherItems = List<QueueItem>.from(_originalQueue)
         ..removeAt(originalIdx);
       final shuffledOthers =
-          _weightedShuffle(otherItems, lastItem: selectedItem);
+          await _weightedShuffle(otherItems, lastItem: selectedItem);
       _effectiveQueue = [selectedItem, ...shuffledOthers];
-      await _rebuildPlaylist(initialIndex: 0, startPlaying: startPlaying);
+      await _rebuildQueue(initialIndex: 0, startPlaying: startPlaying);
     } else {
       _effectiveQueue = List.from(_originalQueue);
-      await _rebuildPlaylist(
+      await _rebuildQueue(
           initialIndex: originalIdx, startPlaying: startPlaying);
     }
 
     _savePlaybackState();
-
-    // 2. Sync to Server
-    _syncQueueToServer();
-  }
-
-  Future<void> _syncQueueToServer() async {
-    if (_username == null || _isOffline) return;
-
-    try {
-      final currentIndex = _player.currentIndex ?? 0;
-      final simplifiedQueue = _effectiveQueue
-          .map((item) => {
-                'queue_id': item.queueId,
-                'song_filename': item.song.filename,
-                'is_priority': item.isPriority,
-                'added_at': DateTime.now().millisecondsSinceEpoch /
-                    1000.0, // Should be preserved?
-              })
-          .toList();
-
-      final result = await _apiService.syncQueue(
-          simplifiedQueue, currentIndex, _queueVersion);
-
-      if (result['version'] > _queueVersion) {
-        await _processServerQueue(result);
-      }
-
-      _isOffline = false;
-    } catch (e) {
-      debugPrint("Queue Sync Failed (Switching to Offline Mode): $e");
-      _isOffline = true;
-    }
-  }
-
-  Future<void> _processServerQueue(Map<String, dynamic> data) async {
-    final int version = data['version'];
-    final int serverIndex = data['current_index'];
-    final List<dynamic> items = data['items'];
-
-    if (version <= _queueVersion) return; // Ignore stale
-
-    final newQueue = <QueueItem>[];
-    for (var item in items) {
-      final filename = item['song_filename'];
-      final song = _songMap[filename];
-      if (song != null) {
-        newQueue.add(QueueItem(
-            song: song,
-            queueId: item['queue_id'],
-            isPriority: item['is_priority'] ?? false));
-      }
-    }
-
-    if (newQueue.isEmpty) return;
-
-    // Determine if we need to hard replace or soft update
-    // Hard replace if completely different.
-    // For now, let's just replace _effectiveQueue and update playlist if needed.
-
-    _effectiveQueue = newQueue;
-    _queueVersion = version;
-    _updateQueueNotifier();
-    _savePlaybackState();
-
-    // If the currently playing song is the same at the same index, we might not need to reload audio
-    // But if order changed, just_audio might need help.
-    // Rebuild playlist carefully.
-
-    // If currently playing, try not to interrupt.
-    // Note: _rebuildPlaylist will interrupt playback if source changes.
-    // If we are playing, and the new queue has the same song at same index,
-    // AND subsequent songs are same, we are good.
-    // But usually Sync happens after a mutation.
-
-    // Basic approach: Only rebuild if significantly different?
-    // Or just rebuild. Rebuild interrupts.
-    // We only want to rebuild if WE didn't initiate the change (incoming sync).
-    // But `_syncQueueToServer` is called after WE change something.
-    // If server returns EXACTLY what we sent, we are good.
-
-    // Check if `newQueue` == `_effectiveQueue` (which we just set).
-    // If we are calling this from `_syncQueueToServer`, we might have just set `_effectiveQueue` locally.
-    // If server returns something different (e.g. it re-shuffled), we should update.
-
-    // Ideally, we compare queue IDs.
-    // For now, just rebuild if not playing or if explicit mutation.
-    // Just rebuild. It might skip a beat, but consistency is key.
-    if (_player.playing) {
-      // Try to maintain position
-      await _rebuildPlaylist(initialIndex: serverIndex, startPlaying: true);
-    } else {
-      await _rebuildPlaylist(initialIndex: serverIndex, startPlaying: false);
-    }
-  }
-
-  Future<void> _fetchNextFromServer() async {
-    if (_isOffline) return;
-
-    try {
-      final nextItem = await _apiService.fetchNextSong();
-      if (nextItem != null) {
-        final filename = nextItem['song_filename'];
-        final song = _songMap[filename];
-        if (song != null) {
-          final item = QueueItem(
-              song: song,
-              queueId: nextItem['queue_id'],
-              isPriority: nextItem['is_priority'] ?? false);
-
-          _effectiveQueue.add(item);
-          final source = await _createAudioSource(item);
-          await _player.addAudioSource(source);
-
-          _updateQueueNotifier();
-          _queueVersion = nextItem['version'] ??
-              (_queueVersion + 1); // Increment version implicitly?
-          _savePlaybackState();
-        }
-      }
-    } catch (e) {
-      debugPrint("Fetch Next Failed: $e");
-      // Fallback handled in listener (if queue end reached)
-    }
   }
 
   void _initStatsListeners() {
@@ -265,14 +139,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       // Pre-fetch logic
       final currentIndex = state.currentIndex;
       if (currentIndex != null && _effectiveQueue.isNotEmpty) {
-        // If we are within 2 songs of the end, fetch more
         if (currentIndex >= _effectiveQueue.length - 2) {
-          // If Shuffle is ON, ask server for more.
-          // If Shuffle OFF, usually we have full list, but if we are consuming a queue...
-          if (_shuffleState.config.enabled && !_isOffline) {
-            _fetchNextFromServer();
-          } else if (_shuffleState.config.enabled && _isOffline) {
-            // Offline fallback generation
+          if (_shuffleState.config.enabled) {
             _generateOfflineNext();
           }
         }
@@ -291,28 +159,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _backgroundDuration = 0.0;
           _playStartTime = _player.playing ? DateTime.now() : null;
           _savePlaybackState();
-          _verifyCurrentSongCache(currentItem);
-
-          // Sync current index to server
-          // We don't need to send full queue, just index update?
-          // The sync endpoint takes full queue + index.
-          // Maybe overly chatty?
-          // We can just fire and forget.
-          if (!_isOffline) _syncQueueToServer();
         }
       }
     });
   }
 
-  void _generateOfflineNext() {
+  void _generateOfflineNext() async {
     // Pick a random song from _allSongs using local weights
     if (_allSongs.isEmpty) return;
 
-    // Simple wrapper around _weightedShuffle logic for a single item
-    // We don't have a "next" pool, so we pick from ALL songs.
-    // This is basically "Endless Mode".
-
-    // Filter out recent history locally
     var candidates = _allSongs
         .where((s) => !_effectiveQueue.reversed
             .take(10)
@@ -321,16 +176,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     if (candidates.isEmpty) candidates = List.from(_allSongs);
 
-    // Just pick random for simplicity in fallback, or use weights
-    // Using _weightedShuffle logic requires a list of items.
     final queueItems = candidates.map((s) => QueueItem(song: s)).toList();
     final lastItem = _effectiveQueue.isNotEmpty ? _effectiveQueue.last : null;
 
-    // Calculate weights for a sample
-    // For performance, just sample 50 randoms and pick best
     queueItems.shuffle();
     final sample = queueItems.take(50).toList();
-    final result = _weightedShuffle(sample, lastItem: lastItem);
+    final result = await _weightedShuffle(sample, lastItem: lastItem);
 
     if (result.isNotEmpty) {
       final nextItem = result.first;
@@ -339,16 +190,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _player.addAudioSource(source);
         _updateQueueNotifier();
       });
-    }
-  }
-
-  Future<void> _verifyCurrentSongCache(MediaItem item) async {
-    final url = item.extras?['remoteUrl'] as String?;
-    if (url == null) return;
-    try {
-      await CacheService.instance.getFile('songs', item.id, url);
-    } catch (e) {
-      debugPrint("Cache check failed: $e");
     }
   }
 
@@ -366,11 +207,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<ShuffleState?> syncShuffleState() async {
     if (_username == null) return null;
     try {
+      // Prioritize local final_stats.json which is synced/mirrored by DatabaseService
       final summary = await _statsService.getStatsSummary(_username!);
       if (summary != null && summary['shuffle_state'] != null) {
         final remoteState = ShuffleState.fromJson(summary['shuffle_state']);
 
-        // Merge logic: Personality and History come from server.
+        // Merge logic: Personality and History come from synced summary.
         _shuffleState = _shuffleState.copyWith(
           config: remoteState.config
               .copyWith(enabled: _shuffleState.config.enabled),
@@ -427,12 +269,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _flushStats({required String eventType}) {
     if (_username == null || _currentSongFilename == null) return;
     if (_playStartTime != null) _updateDurations();
+    
+    final song = _songMap[_currentSongFilename!];
+    final totalLength = (song?.duration?.inMilliseconds.toDouble() ?? 0.0) / 1000.0;
+    
     double finalDuration = _foregroundDuration + _backgroundDuration;
     if (finalDuration > 0.5) {
       _statsService.track(
           _username!, _currentSongFilename!, finalDuration, eventType,
           foregroundDuration: _foregroundDuration,
-          backgroundDuration: _backgroundDuration);
+          backgroundDuration: _backgroundDuration,
+          totalLength: totalLength);
 
       // Add to local history if completed OR played for at least 5 seconds (to treat as a "seen" song for anti-repeat)
       if (eventType == 'complete' || finalDuration > 5.0) {
@@ -487,91 +334,81 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _songMap = {for (var s in songs) s.filename: s};
     await _player.setShuffleModeEnabled(false);
 
-    // 1. Try Server Init
-    bool loadedFromServer = false;
-    try {
-      final queueData = await _apiService.fetchQueue();
-      if (queueData['items'] != null &&
-          (queueData['items'] as List).isNotEmpty) {
-        await _processServerQueue(queueData);
-        loadedFromServer = true;
-      }
-    } catch (e) {
-      debugPrint("Server Queue Init Failed: $e");
-      _isOffline = true;
+    if (_username != null) {
+      await DatabaseService.instance.initForUser(_username!);
     }
 
-    if (!loadedFromServer) {
-      // 2. Fallback to Local Storage
-      final prefs = await SharedPreferences.getInstance();
-      final savedEffectiveQueueJson = prefs.getString('last_effective_queue');
-      final savedOriginalQueueJson = prefs.getString('last_original_queue');
-      final savedPositionMs = prefs.getInt('last_position_ms') ?? 0;
-      final lastSongFilename = prefs.getString('last_song_filename');
+    // 1. Fallback to Local Storage (Always local-first now)
+    final prefs = await SharedPreferences.getInstance();
+    final savedEffectiveQueueJson = prefs.getString('last_effective_queue');
+    final savedOriginalQueueJson = prefs.getString('last_original_queue');
+    final savedPositionMs = prefs.getInt('last_position_ms') ?? 0;
+    final lastSongFilename = prefs.getString('last_song_filename');
 
-      if (savedEffectiveQueueJson != null && savedOriginalQueueJson != null) {
-        try {
-          final List<dynamic> effJson = jsonDecode(savedEffectiveQueueJson);
-          final List<dynamic> origJson = jsonDecode(savedOriginalQueueJson);
-          _effectiveQueue = effJson.map((j) => QueueItem.fromJson(j)).toList();
-          _originalQueue = origJson.map((j) => QueueItem.fromJson(j)).toList();
+    if (savedEffectiveQueueJson != null && savedOriginalQueueJson != null) {
+      try {
+        final List<dynamic> effJson = jsonDecode(savedEffectiveQueueJson);
+        final List<dynamic> origJson = jsonDecode(savedOriginalQueueJson);
+        _effectiveQueue = effJson.map((j) => QueueItem.fromJson(j)).toList();
+        _originalQueue = origJson.map((j) => QueueItem.fromJson(j)).toList();
 
-          int initialIndex = 0;
-          Duration? resumePosition;
+        int initialIndex = 0;
+        Duration? resumePosition;
 
-          if (lastSongFilename != null) {
-            initialIndex = _effectiveQueue
-                .indexWhere((item) => item.song.filename == lastSongFilename);
-            if (initialIndex != -1) {
-              resumePosition = Duration(milliseconds: savedPositionMs);
-            } else {
-              initialIndex = 0;
-            }
+        if (lastSongFilename != null) {
+          initialIndex = _effectiveQueue
+              .indexWhere((item) => item.song.filename == lastSongFilename);
+          if (initialIndex != -1) {
+            resumePosition = Duration(milliseconds: savedPositionMs);
+          } else {
+            initialIndex = 0;
           }
-
-          await _rebuildPlaylist(
-              initialIndex: initialIndex,
-              startPlaying: false,
-              initialPosition: resumePosition);
-          return;
-        } catch (e) {
-          // Ignore malformed persistence state, fallback to default
         }
-      }
 
-      // 3. Fallback to default list
-      _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
-      _effectiveQueue = List.from(_originalQueue);
-
-      // Auto-select logic...
-      int initialIndex = 0;
-      if (autoSelect && songs.isNotEmpty) {
-        initialIndex = Random().nextInt(songs.length);
+        await _rebuildQueue(
+            initialIndex: initialIndex,
+            startPlaying: false,
+            initialPosition: resumePosition);
+        return;
+      } catch (e) {
+        // Ignore malformed persistence state, fallback to default
       }
-      await _rebuildPlaylist(initialIndex: initialIndex, startPlaying: false);
     }
-  }
 
+    // 2. Fallback to default list
+    _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
+    _effectiveQueue = List.from(_originalQueue);
+
+    // Auto-select logic...
+    int initialIndex = 0;
+    if (autoSelect && songs.isNotEmpty) {
+      initialIndex = Random().nextInt(songs.length);
+    }
+    await _rebuildQueue(initialIndex: initialIndex, startPlaying: false);
+  }
   Future<AudioSource> _createAudioSource(QueueItem item) async {
     final song = item.song;
-    final url = _apiService.getFullUrl(song.url);
-    final uri = await CacheService.instance.getAudioUri(song.filename, url,
-        version: song.mtime?.toString(), triggerDownload: false);
+    final bool isLocal = song.url.startsWith('/') || song.url.startsWith('C:\\');
+    
+    final Uri audioUri = isLocal ? Uri.file(song.url) : Uri.parse(_apiService.getFullUrl(song.url));
+    
+    Uri? artUri;
+    if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
+      artUri = Uri.file(song.coverUrl!);
+    }
 
     return AudioSource.uri(
-      uri,
+      audioUri,
       tag: MediaItem(
         id: song.filename,
         album: song.album,
         title: song.title,
         artist: song.artist,
         duration: song.duration,
-        artUri: song.coverUrl != null
-            ? Uri.parse(_apiService.getFullUrl(song.coverUrl!))
-            : null,
+        artUri: artUri,
         extras: {
           'lyricsUrl': song.lyricsUrl,
-          'remoteUrl': url,
+          'remoteUrl': song.url,
           'queueId': item.queueId,
           'isPriority': item.isPriority,
           'androidStopForegroundOnPause': true,
@@ -582,17 +419,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   void _updateQueueNotifier() {
     queueNotifier.value = List.from(_effectiveQueue);
-  }
-
-  void _cacheSurroundingSongs(int currentIndex, List<QueueItem> queue) {
-    for (int i = currentIndex; i < min(currentIndex + 3, queue.length); i++) {
-      final song = queue[i].song;
-      final url = _apiService.getFullUrl(song.url);
-      CacheService.instance
-          .getFile('songs', song.filename, url,
-              version: song.mtime?.toString(), triggerDownload: true)
-          .catchError((e) => null);
-    }
   }
 
   Future<void> shuffleAndPlay(List<Song> songs) async {
@@ -620,7 +446,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     updateShuffleConfig(_shuffleState.config); // Re-uses logic
   }
 
-  void _applyShuffle(int currentIndex) {
+  Future<void> _applyShuffle(int currentIndex) async {
     if (_effectiveQueue.isEmpty) return;
     if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) {
       currentIndex = 0;
@@ -635,30 +461,34 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final priorityItems = otherItems.where((item) => item.isPriority).toList();
     final normalItems = otherItems.where((item) => !item.isPriority).toList();
-    final shuffledNormal = _weightedShuffle(normalItems, lastItem: currentItem);
+    final shuffledNormal = await _weightedShuffle(normalItems, lastItem: currentItem);
 
     _effectiveQueue = [currentItem, ...priorityItems, ...shuffledNormal];
     // Don't rebuild here if called from updateShuffleConfig, let the caller handle or sync.
     // Actually updateShuffleConfig calls this.
     // We should probably just sync.
-    // But for UI responsiveness, we rebuild playlist locally.
+    // But for UI responsiveness, we rebuild queue locally.
 
     // Check if we are playing to determine if we interrupt
     // If playing, we only want to change the "Next" items.
     // ConcatenatingAudioSource allows modifying the list.
     // But simply recreating it is safer for "Total Shuffle".
-    _rebuildPlaylist(initialIndex: 0, startPlaying: _player.playing);
+    await _rebuildQueue(initialIndex: 0, startPlaying: _player.playing);
   }
 
-  List<QueueItem> _weightedShuffle(List<QueueItem> items,
-      {QueueItem? lastItem}) {
+  Future<List<QueueItem>> _weightedShuffle(List<QueueItem> items,
+      {QueueItem? lastItem}) async {
     if (items.isEmpty) return [];
+    
+    // Fetch local play counts for weighting
+    final playCounts = await DatabaseService.instance.getPlayCounts();
+    
     final result = <QueueItem>[];
     final remaining = List<QueueItem>.from(items);
     QueueItem? prev = lastItem;
     while (remaining.isNotEmpty) {
       final weights =
-          remaining.map((item) => _calculateWeight(item, prev)).toList();
+          remaining.map((item) => _calculateWeight(item, prev, playCounts)).toList();
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
       if (totalWeight <= 0) {
         remaining.shuffle();
@@ -683,14 +513,50 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return result;
   }
 
-  double _calculateWeight(QueueItem item, QueueItem? prev) {
+  double _calculateWeight(QueueItem item, QueueItem? prev, Map<String, int> playCounts) {
     double weight = 1.0;
     final song = item.song;
     final config = _shuffleState.config;
+    final count = playCounts[song.filename] ?? 0;
 
+    // --- Personality: DEFAULT ---
+    if (config.personality == ShufflePersonality.defaultMode) {
+      // 1. Favorites & Suggest Less
+      if (_favorites.contains(song.filename)) {
+        weight *= config.favoriteMultiplier;
+      }
+      if (_suggestLess.contains(song.filename)) {
+        weight *= config.suggestLessMultiplier;
+      }
+
+      // 2. Anti-repeat (History)
+      if (config.antiRepeatEnabled && _shuffleState.history.isNotEmpty) {
+        int historyIndex = _shuffleState.history
+            .indexWhere((e) => e.filename == song.filename);
+        if (historyIndex != -1) {
+          double reduction =
+              0.95 * (1.0 - (historyIndex / config.historyLimit));
+          weight *= (1.0 - max(0.0, reduction));
+        }
+      }
+
+      // 3. Streak Breaker
+      if (config.streakBreakerEnabled && prev != null) {
+        final prevSong = prev.song;
+        if (song.artist != 'Unknown Artist' &&
+            prevSong.artist != 'Unknown Artist' &&
+            song.artist == prevSong.artist) {
+          weight *= 0.5;
+        }
+        if (song.album != 'Unknown Album' &&
+            prevSong.album != 'Unknown Album' &&
+            song.album == prevSong.album) {
+          weight *= 0.7;
+        }
+      }
+    }
     // --- Personality: EXPLORER ---
-    if (config.personality == ShufflePersonality.explorer) {
-      final count = song.playCount;
+    else if (config.personality == ShufflePersonality.explorer) {
       if (count == 0) {
         weight *= 50.0;
       } else if (count < 5) {
@@ -714,35 +580,29 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           weight *= (1.0 - max(0.0, reduction));
         }
       }
-      return max(0.0001, weight);
+    }
+    // --- Personality: CONSISTENT ---
+    else if (config.personality == ShufflePersonality.consistent) {
+      // 1. Favorites: Strong boost
+      if (_favorites.contains(song.filename)) weight *= 3.0;
+
+      // 2. Most played boost
+      if (count > 10) weight *= 1.5;
+      if (count > 50) weight *= 2.0;
+
+      // 3. Anti-repeat: Relaxed
+      if (_shuffleState.history.isNotEmpty) {
+        int historyIndex = _shuffleState.history
+            .indexWhere((e) => e.filename == song.filename);
+        if (historyIndex != -1) {
+          if (historyIndex < 10) {
+            weight *= 0.05; // Don't play immediate repeats
+          }
+        }
+      }
     }
 
-    if (config.antiRepeatEnabled && _shuffleState.history.isNotEmpty) {
-      int historyIndex =
-          _shuffleState.history.indexWhere((e) => e.filename == song.filename);
-      if (historyIndex != -1) {
-        double reduction = 0.95 * (1.0 - (historyIndex / config.historyLimit));
-        weight *= (1.0 - max(0.0, reduction));
-      }
-    }
-    if (config.streakBreakerEnabled && prev != null) {
-      final prevSong = prev.song;
-      if (song.artist != 'Unknown Artist' &&
-          prevSong.artist != 'Unknown Artist' &&
-          song.artist == prevSong.artist) {
-        weight *= 0.5;
-      }
-      if (song.album != 'Unknown Album' &&
-          prevSong.album != 'Unknown Album' &&
-          song.album == prevSong.album) {
-        weight *= 0.7;
-      }
-    }
-    if (_favorites.contains(song.filename)) weight *= config.favoriteMultiplier;
-    if (_suggestLess.contains(song.filename)) {
-      weight *= config.suggestLessMultiplier;
-    }
-    return max(0.001, weight);
+    return max(0.0001, weight);
   }
 
   void _applyLinear(int currentIndex) {
@@ -771,10 +631,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _effectiveQueue = [currentItem, ...priorityItems, ...originalItems];
     }
     int newIndex = _effectiveQueue.indexOf(currentItem);
-    _rebuildPlaylist(initialIndex: newIndex, startPlaying: _player.playing);
+    _rebuildQueue(initialIndex: newIndex, startPlaying: _player.playing);
   }
 
-  Future<void> _rebuildPlaylist(
+  Future<void> _rebuildQueue(
       {int? initialIndex,
       bool startPlaying = true,
       Duration? initialPosition}) async {
@@ -817,9 +677,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final source = await _createAudioSource(item);
     await _player.insertAudioSource(currentIndex + 1, source);
     _updateQueueNotifier();
-    _cacheSurroundingSongs(currentIndex, _effectiveQueue);
     _savePlaybackState();
-    _syncQueueToServer();
   }
 
   Future<void> reorderQueue(int oldIndex, int newIndex) async {
@@ -829,7 +687,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _player.moveAudioSource(oldIndex, newIndex);
     _updateQueueNotifier();
     _savePlaybackState();
-    _syncQueueToServer();
   }
 
   Future<void> removeFromQueue(int index) async {
@@ -837,7 +694,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _player.removeAudioSourceAt(index);
     _updateQueueNotifier();
     _savePlaybackState();
-    _syncQueueToServer();
   }
 
   void dispose() {

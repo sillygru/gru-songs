@@ -1,6 +1,5 @@
 import os
 import time
-import uuid
 import json
 import hashlib
 import bcrypt
@@ -12,7 +11,7 @@ from sqlmodel import Session, select, func, delete, or_
 from settings import settings
 from services import music_service
 from database_manager import db_manager
-from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, Playlist, PlaylistSong, PlaySession, PlayEvent
+from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, PlaySession, PlayEvent
 from models import StatsEntry
 
 logger = logging.getLogger("uvicorn.error")
@@ -165,7 +164,6 @@ class UserService:
         # 2. Rename Files
         files_to_rename = [
             (f"{current_username}_data.db", f"{new_username}_data.db"),
-            (f"{current_username}_playlists.db", f"{new_username}_playlists.db"),
             (f"{current_username}_stats.db", f"{new_username}_stats.db"),
             (f"{current_username}_final_stats.json", f"{new_username}_final_stats.json")
         ]
@@ -197,7 +195,7 @@ class UserService:
         self._stats_buffer[username].append(stats)
             
         # Log to discord for visibility (Immediate feedback)
-        total_length = music_service.get_song_duration(stats.song_filename)
+        total_length = stats.total_length
         ratio = 0.0
         if total_length > 0:
             ratio = stats.duration_played / total_length
@@ -363,7 +361,7 @@ class UserService:
                             session.commit() # Ensure session ID is valid
 
                             # Event Logic
-                            total_length = music_service.get_song_duration(stats.song_filename)
+                            total_length = stats.total_length
 
                             # Retroactively fix "skips" that are actually full plays (within 10s of end)
                             if total_length > 0 and (total_length - stats.duration_played) <= 10.0:
@@ -416,7 +414,7 @@ class UserService:
                         summary_data["total_foreground_playtime"] = round(summary_data["total_foreground_playtime"] + fg, 2)
                         summary_data["total_background_playtime"] = round(summary_data["total_background_playtime"] + bg, 2)
 
-                        total_length = music_service.get_song_duration(stats.song_filename)
+                        total_length = stats.total_length
                         ratio = (stats.duration_played / total_length) if total_length > 0 else 0.0
 
                         # A song is considered "played" if ratio > 0.25
@@ -533,10 +531,17 @@ class UserService:
         if not events:
             return {"empty": True}
 
-        # Fetch metadata map
-        all_songs = music_service.list_songs()
-        metadata_map = {s["filename"]: s for s in all_songs}
-        total_library_songs = len(all_songs)
+        # Fetch metadata from uploads DB as library is now empty on server
+        metadata_map = {}
+        with Session(db_manager.get_uploads_engine()) as session:
+            uploads = session.exec(select(Upload)).all()
+            for u in uploads:
+                metadata_map[u.filename] = {"title": u.title, "artist": "Unknown"}
+        
+        # Total library songs is hard to know without the actual files, 
+        # but we can use unique filenames ever seen in stats as a proxy
+        unique_filenames_in_history = set(ev.song_filename for ev in events)
+        total_library_songs = len(unique_filenames_in_history)
 
         # 2. Process Data
         from collections import Counter
@@ -842,62 +847,6 @@ class UserService:
                 session.delete(sl)
                 session.commit()
         return True
-        
-    # --- Playlists ---
-    
-    def get_playlists(self, username: str):
-        path = os.path.join(settings.USERS_DIR, f"{username}_playlists.db")
-        if not os.path.exists(path): return []
-        
-        with Session(db_manager.get_user_playlists_engine(username)) as session:
-            playlists = session.exec(select(Playlist)).all()
-            result = []
-            for p in playlists:
-                # Need to fetch songs explicitly or join
-                # Since we are in the same DB, we can do a secondary query
-                songs = session.exec(select(PlaylistSong).where(PlaylistSong.playlist_id == p.id)).all()
-                result.append({
-                    "id": p.id,
-                    "name": p.name,
-                    "songs": [{"filename": s.filename, "added_at": s.added_at} for s in songs]
-                })
-            return result
-
-    def create_playlist(self, username: str, name: str):
-        new_id = str(uuid.uuid4())
-        with Session(db_manager.get_user_playlists_engine(username)) as session:
-            pl = Playlist(id=new_id, name=name)
-            session.add(pl)
-            session.commit()
-            return {"id": new_id, "name": name, "songs": []}
-        
-    def delete_playlist(self, username: str, playlist_id: str):
-        with Session(db_manager.get_user_playlists_engine(username)) as session:
-            pl = session.exec(select(Playlist).where(Playlist.id == playlist_id)).first()
-            if pl:
-                session.delete(pl)
-                session.commit()
-                return True
-        return False
-        
-    def add_song_to_playlist(self, username: str, playlist_id: str, song_filename: str):
-        with Session(db_manager.get_user_playlists_engine(username)) as session:
-            # Check duplicates
-            exists = session.exec(select(PlaylistSong).where(PlaylistSong.playlist_id == playlist_id, PlaylistSong.filename == song_filename)).first()
-            if not exists:
-                session.add(PlaylistSong(playlist_id=playlist_id, filename=song_filename, added_at=time.time()))
-                session.commit()
-                return True
-        return False
-        
-    def remove_song_from_playlist(self, username: str, playlist_id: str, song_filename: str):
-        with Session(db_manager.get_user_playlists_engine(username)) as session:
-            song = session.exec(select(PlaylistSong).where(PlaylistSong.playlist_id == playlist_id, PlaylistSong.filename == song_filename)).first()
-            if song:
-                session.delete(song)
-                session.commit()
-                return True
-        return False
 
     # --- Uploads (Global) ---
 
@@ -960,10 +909,6 @@ class UserService:
             # Favorites hash
             favs = self.get_favorites(username)
             hashes["favorites"] = hashlib.md5(json.dumps(favs, sort_keys=True).encode()).hexdigest()
-            
-            # Playlists hash
-            playlists = self.get_playlists(username)
-            hashes["playlists"] = hashlib.md5(json.dumps(playlists, sort_keys=True).encode()).hexdigest()
             
             # Suggest less hash
             sl = self.get_suggest_less(username)

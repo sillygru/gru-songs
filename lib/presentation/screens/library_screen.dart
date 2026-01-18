@@ -1,247 +1,170 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../widgets/gru_image.dart';
-import '../../providers/providers.dart';
+import 'package:path/path.dart' as p;
 import '../../models/song.dart';
-import 'playlist_detail_screen.dart';
-import 'add_songs_screen.dart';
+import '../../providers/providers.dart';
+import '../../services/library_logic.dart';
+import '../widgets/gru_image.dart';
+import '../widgets/song_options_menu.dart';
+import 'song_list_screen.dart';
 
-class LibraryScreen extends ConsumerWidget {
-  const LibraryScreen({super.key});
+class LibraryScreen extends ConsumerStatefulWidget {
+  final String? relativePath;
 
-  void _showCreatePlaylistDialog(BuildContext context, WidgetRef ref) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("New Playlist"),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: "Playlist Name"),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (controller.text.isNotEmpty) {
-                await ref
-                    .read(userDataProvider.notifier)
-                    .createPlaylist(controller.text);
-                if (context.mounted) Navigator.pop(context);
-              }
-            },
-            child: const Text("Create"),
-          ),
-        ],
-      ),
-    );
-  }
+  const LibraryScreen({super.key, this.relativePath});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final songsAsyncValue = ref.watch(songsProvider);
     final userData = ref.watch(userDataProvider);
-    final songsAsync = ref.watch(songsProvider);
-    final apiService = ref.watch(apiServiceProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Library'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.playlist_add),
-            onPressed: () => _showCreatePlaylistDialog(context, ref),
-            tooltip: 'New Playlist',
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_to_photos_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AddSongsScreen()),
-              );
-            },
-            tooltip: 'Add Songs',
-          ),
-        ],
+        title: Text(widget.relativePath ?? 'Library'),
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await Future.wait([
-            ref.read(songsProvider.notifier).refresh(),
-            ref.read(userDataProvider.notifier).refresh(),
-          ]);
-        },
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'Your Playlists',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-            ),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  // Create new playlist is now the first item
-                  if (index == 0) {
-                    return ListTile(
-                      leading: Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(4),
+      body: songsAsyncValue.when(
+        data: (allSongs) {
+          return FutureBuilder<String?>(
+            future: ref.read(storageServiceProvider).getMusicFolderPath(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData || snapshot.data == null) {
+                return const Center(child: Text('Please select a music folder in Home first.'));
+              }
+
+              final musicRoot = snapshot.data!;
+              final currentFullPath = widget.relativePath == null 
+                  ? musicRoot 
+                  : p.join(musicRoot, widget.relativePath);
+
+              // Favorites is only shown at the root
+              final isRoot = widget.relativePath == null;
+
+              final content = LibraryLogic.getFolderContent(
+                allSongs: allSongs,
+                currentFullPath: currentFullPath,
+              );
+
+              final sortedSubFolders = content.subFolders;
+              final immediateSongs = content.immediateSongs;
+
+              return ListView.builder(
+                itemCount: (isRoot ? 1 : 0) + sortedSubFolders.length + immediateSongs.length,
+                padding: const EdgeInsets.only(bottom: 100),
+                itemBuilder: (context, index) {
+                  int offset = 0;
+
+                  // 1. Favorites Folder (at root only)
+                  if (isRoot) {
+                    if (index == 0) {
+                      return ListTile(
+                        leading: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.favorite, color: Colors.red),
                         ),
-                        child: Icon(Icons.add,
-                            color: Theme.of(context).colorScheme.primary,
-                            size: 30),
-                      ),
-                      title: const Text('Create New Playlist'),
-                      onTap: () => _showCreatePlaylistDialog(context, ref),
-                    );
+                        title: const Text('Favorites', style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('${userData.favorites.length} songs'),
+                        onTap: () {
+                          final favSongs = allSongs
+                              .where((s) => userData.favorites.contains(s.filename))
+                              .toList();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SongListScreen(
+                                title: 'Favorites',
+                                songs: favSongs,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }
+                    offset = 1;
                   }
 
-                  // Favorites is the second item
-                  if (index == 1) {
+                  final folderIndex = index - offset;
+                  if (folderIndex < sortedSubFolders.length) {
+                    final folderName = sortedSubFolders[folderIndex];
+                    final folderRelativePath = widget.relativePath == null 
+                        ? folderName 
+                        : p.join(widget.relativePath!, folderName);
+                    
                     return ListTile(
-                      leading: Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Icon(Icons.favorite,
-                            color: Colors.red, size: 30),
-                      ),
-                      title: const Text('Favorites'),
-                      subtitle: Text('${userData.favorites.length} songs'),
+                      leading: const Icon(Icons.folder, size: 40, color: Colors.amber),
+                      title: Text(folderName),
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const PlaylistDetailScreen(
-                                playlistId: '__favorites__'),
+                            builder: (_) => LibraryScreen(relativePath: folderRelativePath),
                           ),
                         );
                       },
                     );
                   }
 
-                  final playlist = userData.playlists[index - 2];
-                  Widget leading = const Icon(Icons.library_music, size: 40);
-                  if (playlist.songs.isNotEmpty && songsAsync.hasValue) {
-                    final firstSongFilename = playlist.songs.first.filename;
-                    final song = songsAsync.value!.firstWhere(
-                      (s) => s.filename == firstSongFilename,
-                      orElse: () => songsAsync.value!.first,
-                    );
-                    if (song.coverUrl != null) {
-                      leading = ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
+                  final songIndex = folderIndex - sortedSubFolders.length;
+                  final song = immediateSongs[songIndex];
+                  final isSuggestLess = userData.suggestLess.contains(song.filename);
+
+                  return ListTile(
+                    leading: Hero(
+                      tag: 'lib_art_${song.url}_${widget.relativePath}', 
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
                         child: GruImage(
-                          url: apiService.getFullUrl(song.coverUrl!),
-                          width: 50,
-                          height: 50,
+                          url: song.coverUrl ?? '',
+                          width: 48,
+                          height: 48,
                           fit: BoxFit.cover,
                           errorWidget: const Icon(Icons.music_note),
                         ),
-                      );
-                    }
-                  }
-
-                  return ListTile(
-                    leading: leading,
-                    title: Text(playlist.name),
-                    subtitle: Text('${playlist.songs.length} songs'),
+                      ),
+                    ),
+                    title: Text(
+                      song.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isSuggestLess ? Colors.grey : null,
+                        decoration: isSuggestLess ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    subtitle: Text(
+                      song.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: isSuggestLess ? Colors.grey : null),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.more_vert),
+                      onPressed: () {
+                        showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
+                      },
+                    ),
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              PlaylistDetailScreen(playlistId: playlist.id),
-                        ),
-                      );
+                      audioManager.playSong(song, contextQueue: immediateSongs);
                     },
                   );
                 },
-                childCount: userData.playlists.length + 2,
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'Most Played',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-            ),
-            songsAsync.when(
-              data: (songs) {
-                final sortedSongs = List<Song>.from(songs)
-                  ..sort((a, b) => b.playCount.compareTo(a.playCount));
-                // Filter out songs with 0 plays to be cleaner
-                final mostPlayed =
-                    sortedSongs.where((s) => s.playCount > 0).take(10).toList();
-
-                if (mostPlayed.isEmpty) {
-                  return const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text(
-                          'Start listening to see your most played songs!'),
-                    ),
-                  );
-                }
-
-                return SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final song = mostPlayed[index];
-                      return ListTile(
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: GruImage(
-                            url: song.coverUrl != null
-                                ? apiService.getFullUrl(song.coverUrl!)
-                                : apiService.getFullUrl('/stream/cover.jpg'),
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                            errorWidget: const Icon(Icons.music_note),
-                          ),
-                        ),
-                        title: Text(song.title),
-                        subtitle: Text(song.artist),
-                        trailing: Text('${song.playCount} plays'),
-                        onTap: () {
-                          audioManager.playSong(song, contextQueue: mostPlayed);
-                        },
-                      );
-                    },
-                    childCount: mostPlayed.length,
-                  ),
-                );
-              },
-              loading: () => const SliverToBoxAdapter(
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (err, stack) => SliverToBoxAdapter(
-                child: Center(child: Text('Error: $err')),
-              ),
-            ),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-          ],
-        ),
+              );
+            },
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, s) => Center(child: Text('Error: $e')),
       ),
     );
   }

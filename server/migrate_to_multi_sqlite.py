@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from settings import settings
 from database_manager import db_manager
-from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, Playlist, PlaylistSong, PlaySession, PlayEvent
+from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, PlaySession, PlayEvent
 
 def safe_float(val):
     if val == "unknown" or val is None: return None
@@ -108,36 +108,6 @@ def run_migration():
                 for sl in user_data.get("suggest_less", []):
                     session.add(SuggestLess(filename=sl))
                 session.commit()
-                
-            # C. [username]_playlists.db
-            pl_path = os.path.join(users_old_dir, f"{username}_playlists.json")
-            if os.path.exists(pl_path):
-                with open(pl_path, "r") as f:
-                    pl_data_list = json.load(f)
-                
-                with Session(db_manager.get_user_playlists_engine(username)) as session:
-                    for p_data in pl_data_list:
-                        pl = Playlist(
-                            id=p_data["id"],
-                            name=p_data["name"]
-                        )
-                        session.add(pl)
-                        session.commit() # Commit to get ID if needed, though uuid is str
-                        
-                        for s_data in p_data.get("songs", []):
-                            if isinstance(s_data, str):
-                                fname = s_data
-                                added = 0.0
-                            else:
-                                fname = s_data["filename"]
-                                added = float(s_data["added_at"])
-                            
-                            session.add(PlaylistSong(
-                                playlist_id=pl.id,
-                                filename=fname,
-                                added_at=added
-                            ))
-                    session.commit()
 
             # D. [username]_stats.db AND [username]_final_stats.json
             stats_path = os.path.join(users_old_dir, f"{username}_stats.json")

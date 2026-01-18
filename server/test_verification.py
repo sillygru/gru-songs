@@ -58,7 +58,6 @@ def test_everything():
                 "global_users.db",
                 "uploads.db",
                 f"{username}_data.db",
-                f"{username}_playlists.db",
                 f"{username}_stats.db",
                 f"{username}_final_stats.json"
             ]
@@ -119,28 +118,7 @@ def test_everything():
                      raise Exception(f"Expected total_play_time 190.0, got {summary['total_play_time']}")
             print("✅ Final stats JSON updated.")
 
-            print("\n--- 3. Testing Playlists ---")
-            pl = user_service.create_playlist(username, "My Jam")
-            if not pl: raise Exception("Failed to create playlist")
-            print(f"✅ Playlist created: {pl['id']}")
-
-            if not user_service.add_song_to_playlist(username, pl['id'], "song1.mp3"):
-                raise Exception("Failed to add song")
-            
-            playlists = user_service.get_playlists(username)
-            if len(playlists) != 1 or len(playlists[0]["songs"]) != 1:
-                raise Exception("Playlist state incorrect")
-            print("✅ Song added to playlist.")
-
-            if not user_service.remove_song_from_playlist(username, pl['id'], "song1.mp3"):
-                raise Exception("Failed to remove song")
-            
-            playlists = user_service.get_playlists(username)
-            if len(playlists[0]["songs"]) != 0:
-                 raise Exception("Song not removed")
-            print("✅ Song removed from playlist.")
-
-            print("\n--- 4. Testing Username Update (Renaming) ---")
+            print("\n--- 3. Testing Username Update (Renaming) ---")
             new_username = "cooluser"
             success, msg = user_service.update_username(username, new_username)
             if not success:
@@ -157,7 +135,7 @@ def test_everything():
                 raise Exception("Auth with new username failed")
             print("✅ Username updated and files renamed successfully.")
 
-            print("\n--- 5. Testing Global Uploads ---")
+            print("\n--- 4. Testing Global Uploads ---")
             user_service.record_upload(new_username, "upload1.mp3", title="My Upload")
             uploader = user_service.get_uploader("upload1.mp3")
             if uploader != new_username:
