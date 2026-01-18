@@ -35,7 +35,7 @@ class GruDiscordBot(commands.Bot):
             return
 
         print(f"Bot connected and listening to channel: {channel.name}")
-        await channel.send("🚀 Gru Songs Backend Logger started!")
+        await channel.send(f"🚀 Gru Songs Backend Logger started! (v{settings.VERSION})")
 
         while True:
             try:
@@ -77,7 +77,7 @@ def run_bot(queue, command_queue):
 
     @bot.command(name="status")
     async def status(ctx):
-        await ctx.send("✅ Backend is online and recording stats.")
+        await ctx.send(f"✅ Backend is online and recording stats. (v{settings.VERSION})")
 
     @bot.command(name="backup")
     async def backup(ctx, reset: str = "false"):

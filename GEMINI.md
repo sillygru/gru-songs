@@ -1,7 +1,7 @@
 # Project Instructions: Gru Songs (Flutter)
 
 ## ⛔️ Constraints
-- **NO GIT COMMANDS:** Do not ever run git commands (git add, commit, push, etc.) unless explicitly authorized for a specific task.
+- **NEVER COMMIT OR PUSH WITHOUT PERMISSION:** Never commit or push any code (git commit, git push, etc.) unless you have explicit permission for the specific task.
 - **NON-SERVER ENVIRONMENT:** You are running in a CLI environment, not the production server. Avoid absolute paths (e.g., `/home/...`) and do not rely on `.env` values during testing. Use relative paths or mock settings to ensure portability. If the error is because of /home/sillygru its because its trying to use the server envinronment inside the .env
 
 ## 🚀 Overview
@@ -124,3 +124,11 @@ flutter build apk --release
 flutter build ios --release
 open ios/Runner.xcworkspace
 ```
+
+## 🏷️ Versioning
+
+- **Format:** `Major.Normal.Bugfix` (e.g., `5.1.3`).
+
+- **Update Rule:** Always update the version number in `pubspec.yaml`, `ProfileScreen`, and `server/settings.py` (or where defined) when making significant changes.
+
+- **Current Version:** `5.1.3`

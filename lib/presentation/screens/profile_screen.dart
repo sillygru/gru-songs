@@ -303,6 +303,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ref.read(authProvider.notifier).logout();
                       },
                     ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      "Gru Songs v5.1.3",
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
                     const SizedBox(height: 100),
                   ],
                 ),

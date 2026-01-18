@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
     bot_process = Process(target=run_bot, args=(discord_queue, command_queue), daemon=True)
     bot_process.start()
     
-    discord_queue.put("🖥️ Server starting up...")
+    discord_queue.put(f"🖥️ Server starting up... (v{settings.VERSION})")
     
     asyncio.create_task(periodic_flush())
     asyncio.create_task(backup_service.start_scheduler())
