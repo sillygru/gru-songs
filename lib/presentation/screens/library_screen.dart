@@ -72,11 +72,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           child: const Icon(Icons.favorite, color: Colors.red),
                         ),
                         title: const Text('Favorites', style: TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('${userData.favorites.length} songs'),
+                        subtitle: Text('${userData.favorites.length} songs (found in library: ${allSongs.where((s) => userData.isFavorite(s.filename)).length})'),
                         onTap: () {
                           final favSongs = allSongs
-                              .where((s) => userData.favorites.contains(s.filename))
+                              .where((s) => userData.isFavorite(s.filename))
                               .toList();
+                          debugPrint('Library: userData.favorites count: ${userData.favorites.length}');
+                          if (userData.favorites.isNotEmpty) {
+                            debugPrint('Library: userData.favorites first 3: ${userData.favorites.take(3).toList()}');
+                          }
+                          if (allSongs.isNotEmpty) {
+                            debugPrint('Library: first song filename: ${allSongs.first.filename}');
+                          }
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -115,7 +122,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
                   final songIndex = folderIndex - sortedSubFolders.length;
                   final song = immediateSongs[songIndex];
-                  final isSuggestLess = userData.suggestLess.contains(song.filename);
+                  final isSuggestLess = userData.isSuggestLess(song.filename);
 
                   return ListTile(
                     leading: Hero(

@@ -54,7 +54,7 @@ class SongListScreen extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final song = songs[index];
                 final isSuggestLess =
-                    userData.suggestLess.contains(song.filename);
+                    userData.isSuggestLess(song.filename);
 
                 return ListTile(
                   leading: ClipRRect(

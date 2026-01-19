@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart'; // For AppLifecycleListener
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path/path.dart' as p;
 import 'dart:math';
 import 'dart:convert';
 import 'dart:async'; // For Timer
@@ -61,6 +62,24 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   AudioPlayer get player => _player;
+
+  bool _isFavorite(String filename) {
+    if (_favorites.contains(filename)) return true;
+    final searchBasename = p.basename(filename);
+    for (final fav in _favorites) {
+      if (p.basename(fav) == searchBasename) return true;
+    }
+    return false;
+  }
+
+  bool _isSuggestLess(String filename) {
+    if (_suggestLess.contains(filename)) return true;
+    final searchBasename = p.basename(filename);
+    for (final sl in _suggestLess) {
+      if (p.basename(sl) == searchBasename) return true;
+    }
+    return false;
+  }
 
   void setUserData({List<String>? favorites, List<String>? suggestLess}) {
     if (favorites != null) _favorites = favorites;
@@ -251,28 +270,36 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final currentFavs = await DatabaseService.instance.getFavorites();
     final currentSuggestLess = await DatabaseService.instance.getSuggestLess();
 
+    // Helper for robust check
+    bool existsRobust(List<String> list, String filename) {
+      final lowerFile = filename.toLowerCase();
+      if (list.any((item) => item.toLowerCase() == lowerFile)) return true;
+      final base = p.basename(filename).toLowerCase();
+      return list.any((item) => p.basename(item).toLowerCase() == base);
+    }
+
     // Remove items that are no longer in the lists
     for (final filename in currentFavs) {
-      if (!favorites.contains(filename)) {
+      if (!existsRobust(favorites, filename)) {
         await DatabaseService.instance.removeFavorite(filename);
       }
     }
 
     for (final filename in currentSuggestLess) {
-      if (!suggestLess.contains(filename)) {
+      if (!existsRobust(suggestLess, filename)) {
         await DatabaseService.instance.removeSuggestLess(filename);
       }
     }
 
     // Add new items
     for (final filename in favorites) {
-      if (!currentFavs.contains(filename)) {
+      if (!existsRobust(currentFavs, filename)) {
         await DatabaseService.instance.addFavorite(filename);
       }
     }
 
     for (final filename in suggestLess) {
-      if (!currentSuggestLess.contains(filename)) {
+      if (!existsRobust(currentSuggestLess, filename)) {
         await DatabaseService.instance.addSuggestLess(filename);
       }
     }
@@ -596,10 +623,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // --- Personality: DEFAULT ---
     if (config.personality == ShufflePersonality.defaultMode) {
       // 1. Favorites & Suggest Less
-      if (_favorites.contains(song.filename)) {
+      if (_isFavorite(song.filename)) {
         weight *= config.favoriteMultiplier;
       }
-      if (_suggestLess.contains(song.filename)) {
+      if (_isSuggestLess(song.filename)) {
         weight *= config.suggestLessMultiplier;
       }
 
@@ -641,8 +668,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         weight *= 0.1;
       }
 
-      if (_favorites.contains(song.filename)) weight *= 1.1;
-      if (_suggestLess.contains(song.filename)) weight *= 0.001;
+      if (_isFavorite(song.filename)) weight *= 1.1;
+      if (_isSuggestLess(song.filename)) weight *= 0.001;
 
       // Anti-repeat (Strong)
       if (_shuffleState.history.isNotEmpty) {
@@ -658,7 +685,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // --- Personality: CONSISTENT ---
     else if (config.personality == ShufflePersonality.consistent) {
       // 1. Favorites: Strong boost
-      if (_favorites.contains(song.filename)) weight *= 3.0;
+      if (_isFavorite(song.filename)) weight *= 3.0;
 
       // 2. Most played boost
       if (count > 10) weight *= 1.5;

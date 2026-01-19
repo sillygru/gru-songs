@@ -199,28 +199,17 @@ def update_user_data(data: Dict[str, Any], x_username: str = Header(None)):
     suggest_less = data.get("suggestLess", [])
     shuffle_state = data.get("shuffleState", {})
 
-    # Update favorites - replace the entire list
+    # MERGE favorites - only ADD new ones
     current_favorites = set(user_service.get_favorites(x_username))
     new_favorites = set(favorites)
 
-    # Remove items that are no longer favorites
-    for filename in current_favorites - new_favorites:
-        user_service.remove_favorite(x_username, filename)
-
-    # Add new favorites
     for filename in new_favorites - current_favorites:
-        # Since we don't have session_id here, we'll add without triggering stats
         user_service.add_favorite_without_stats(x_username, filename)
 
-    # Update suggest less - replace the entire list
+    # MERGE suggest less
     current_suggest_less = set(user_service.get_suggest_less(x_username))
     new_suggest_less = set(suggest_less)
 
-    # Remove items that are no longer suggest less
-    for filename in current_suggest_less - new_suggest_less:
-        user_service.remove_suggest_less(x_username, filename)
-
-    # Add new suggest less
     for filename in new_suggest_less - current_suggest_less:
         user_service.add_suggest_less(x_username, filename)
 

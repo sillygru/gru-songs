@@ -140,9 +140,9 @@ class NowPlayingBar extends ConsumerWidget {
                               builder: (context, ref, child) {
                                 final userData = ref.watch(userDataProvider);
                                 final isFavorite =
-                                    userData.favorites.contains(metadata.id);
+                                    userData.isFavorite(metadata.id);
                                 final isSuggestLess =
-                                    userData.suggestLess.contains(metadata.id);
+                                    userData.isSuggestLess(metadata.id);
 
                                 return GestureDetector(
                                   onLongPress: () {

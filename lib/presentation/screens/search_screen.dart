@@ -92,7 +92,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   if (!matchesQuery) return false;
 
                   if (_searchLibrary) {
-                    return userData.favorites.contains(song.filename);
+                    return userData.isFavorite(song.filename);
                   }
 
                   return true;

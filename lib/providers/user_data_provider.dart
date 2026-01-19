@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'auth_provider.dart';
 import 'providers.dart';
 import '../services/database_service.dart';
@@ -16,6 +17,24 @@ class UserDataState {
     this.isLoading = false,
   });
 
+  bool isFavorite(String filename) {
+    final searchBasename = p.basename(filename).toLowerCase();
+    for (final fav in favorites) {
+      if (fav.toLowerCase() == filename.toLowerCase()) return true;
+      if (p.basename(fav).toLowerCase() == searchBasename) return true;
+    }
+    return false;
+  }
+
+  bool isSuggestLess(String filename) {
+    final searchBasename = p.basename(filename).toLowerCase();
+    for (final sl in suggestLess) {
+      if (sl.toLowerCase() == filename.toLowerCase()) return true;
+      if (p.basename(sl).toLowerCase() == searchBasename) return true;
+    }
+    return false;
+  }
+
   UserDataState copyWith({
     List<String>? favorites,
     List<String>? suggestLess,
@@ -31,22 +50,30 @@ class UserDataState {
 
 class UserDataNotifier extends Notifier<UserDataState> {
   String? _username;
+  bool _initialized = false;
 
   @override
   UserDataState build() {
     final authState = ref.watch(authProvider);
     final newUsername = authState.username;
 
-    if (newUsername != null && newUsername != _username) {
-      _username = newUsername;
-      Future.microtask(() => _initAndRefresh());
-    } else if (newUsername == null) {
+    if (newUsername != null) {
+      if (!_initialized || newUsername != _username) {
+        _username = newUsername;
+        _initialized = true;
+        // Load initial data from DB and trigger background sync
+        Future.microtask(() => _initAndRefresh());
+        return UserDataState(isLoading: true);
+      }
+      // If same user, Riverpod preserves the state automatically 
+      // when build() returns the same object or if we manage it.
+      // But in build() we MUST return the state.
+      return state; 
+    } else {
       _username = null;
+      _initialized = false;
       return UserDataState();
     }
-
-    _username = newUsername;
-    return UserDataState(isLoading: true);
   }
 
   Future<void> _initAndRefresh() async {
@@ -133,41 +160,40 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     try {
       final service = ref.read(userDataServiceProvider);
-
-      // Get current local data
-      final localFavs = await DatabaseService.instance.getFavorites();
-      final localSuggestLess = await DatabaseService.instance.getSuggestLess();
-
-      // Get current shuffle state
       final audioManager = ref.read(audioPlayerManagerProvider);
-      final currentShuffleState = audioManager.shuffleStateNotifier.value;
 
-      // Send local data to server
-      await service.updateUserData(_username!, {
-        'favorites': localFavs,
-        'suggestLess': localSuggestLess,
-        'shuffleState': currentShuffleState.toJson(),
-      });
-
-      // Get updated data from server
+      // 1. Get updated data from server FIRST
       final serverData = await service.getUserData(_username!);
       final serverFavs = List<String>.from(serverData['favorites'] ?? []);
       final serverSuggestLess = List<String>.from(serverData['suggestLess'] ?? []);
       final serverShuffleState = serverData['shuffleState'];
 
-      // Update local database with server data
+      debugPrint('Sync: Received ${serverFavs.length} favorites from server: $serverFavs');
+
+      // 2. Update local database with server data
       await _updateLocalData(serverFavs, serverSuggestLess);
 
-      // Update shuffle state from server if available
+      // 4. Update shuffle state from server if available
       if (serverShuffleState != null) {
         final updatedShuffleState = ShuffleState.fromJson(serverShuffleState);
         await audioManager.updateShuffleState(updatedShuffleState);
       }
 
-      // Update state
+      // 5. Push local data (which now includes server data) back to server to be safe
+      // This ensures any local additions that weren't on server are now there.
+      final mergedFavs = await DatabaseService.instance.getFavorites();
+      final mergedSL = await DatabaseService.instance.getSuggestLess();
+      
+      await service.updateUserData(_username!, {
+        'favorites': mergedFavs,
+        'suggestLess': mergedSL,
+        'shuffleState': audioManager.shuffleStateNotifier.value.toJson(),
+      });
+
+      // 6. Update state
       state = state.copyWith(
-        favorites: serverFavs,
-        suggestLess: serverSuggestLess,
+        favorites: mergedFavs,
+        suggestLess: mergedSL,
         isLoading: false,
       );
 
@@ -182,28 +208,36 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final currentFavs = await DatabaseService.instance.getFavorites();
     final currentSuggestLess = await DatabaseService.instance.getSuggestLess();
 
+    // Helper for robust check
+    bool existsRobust(List<String> list, String filename) {
+      final lowerFile = filename.toLowerCase();
+      if (list.any((item) => item.toLowerCase() == lowerFile)) return true;
+      final base = p.basename(filename).toLowerCase();
+      return list.any((item) => p.basename(item).toLowerCase() == base);
+    }
+
     // Remove items that are no longer in the lists
     for (final filename in currentFavs) {
-      if (!favorites.contains(filename)) {
+      if (!existsRobust(favorites, filename)) {
         await DatabaseService.instance.removeFavorite(filename);
       }
     }
 
     for (final filename in currentSuggestLess) {
-      if (!suggestLess.contains(filename)) {
+      if (!existsRobust(suggestLess, filename)) {
         await DatabaseService.instance.removeSuggestLess(filename);
       }
     }
 
     // Add new items
     for (final filename in favorites) {
-      if (!currentFavs.contains(filename)) {
+      if (!existsRobust(currentFavs, filename)) {
         await DatabaseService.instance.addFavorite(filename);
       }
     }
 
     for (final filename in suggestLess) {
-      if (!currentSuggestLess.contains(filename)) {
+      if (!existsRobust(currentSuggestLess, filename)) {
         await DatabaseService.instance.addSuggestLess(filename);
       }
     }
@@ -212,12 +246,18 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> toggleSuggestLess(String songFilename) async {
     if (_username == null) return;
 
-    final isSL = state.suggestLess.contains(songFilename);
+    final isSL = state.isSuggestLess(songFilename);
     final newSL = List<String>.from(state.suggestLess);
 
     if (isSL) {
-      newSL.remove(songFilename);
-      await DatabaseService.instance.removeSuggestLess(songFilename);
+      // Find the actual string that matched (could be different path or case)
+      final actualMatch = state.suggestLess.firstWhere(
+        (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
+                p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
+        orElse: () => songFilename,
+      );
+      newSL.remove(actualMatch);
+      await DatabaseService.instance.removeSuggestLess(actualMatch);
     } else {
       newSL.add(songFilename);
       await DatabaseService.instance.addSuggestLess(songFilename);
@@ -236,21 +276,32 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> toggleFavorite(String songFilename) async {
     if (_username == null) return;
 
-    final isFav = state.favorites.contains(songFilename);
-    final isSL = state.suggestLess.contains(songFilename);
+    final isFav = state.isFavorite(songFilename);
+    final isSL = state.isSuggestLess(songFilename);
 
     final newFavs = List<String>.from(state.favorites);
     final newSL = List<String>.from(state.suggestLess);
 
     if (isFav) {
-      newFavs.remove(songFilename);
-      await DatabaseService.instance.removeFavorite(songFilename);
+      // Find the actual string that matched (could be different path or case)
+      final actualMatch = state.favorites.firstWhere(
+        (f) => f.toLowerCase() == songFilename.toLowerCase() || 
+               p.basename(f).toLowerCase() == p.basename(songFilename).toLowerCase(),
+        orElse: () => songFilename,
+      );
+      newFavs.remove(actualMatch);
+      await DatabaseService.instance.removeFavorite(actualMatch);
     } else {
       newFavs.add(songFilename);
       await DatabaseService.instance.addFavorite(songFilename);
       if (isSL) {
-        newSL.remove(songFilename);
-        await DatabaseService.instance.removeSuggestLess(songFilename);
+        final actualSLMatch = state.suggestLess.firstWhere(
+          (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
+                  p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
+          orElse: () => songFilename,
+        );
+        newSL.remove(actualSLMatch);
+        await DatabaseService.instance.removeSuggestLess(actualSLMatch);
       }
     }
 

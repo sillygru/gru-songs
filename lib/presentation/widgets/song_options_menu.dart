@@ -13,8 +13,8 @@ void showSongOptionsMenu(
       return Consumer(
         builder: (context, ref, child) {
           final userData = ref.watch(userDataProvider);
-          final isFavorite = userData.favorites.contains(songFilename);
-          final isSuggestLess = userData.suggestLess.contains(songFilename);
+          final isFavorite = userData.isFavorite(songFilename);
+          final isSuggestLess = userData.isSuggestLess(songFilename);
 
           return SafeArea(
             child: Column(

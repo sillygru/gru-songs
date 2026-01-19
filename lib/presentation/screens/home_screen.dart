@@ -89,12 +89,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               double val = log(s.playCount + 1.5) * 2.0;
 
               // Boost for favorites
-              if (userData.favorites.contains(s.filename)) {
+              if (userData.isFavorite(s.filename)) {
                 val += 5.0;
               }
 
               // Heavy penalty for suggest-less (but not absolute block)
-              if (userData.suggestLess.contains(s.filename)) {
+              if (userData.isSuggestLess(s.filename)) {
                 val -= 10.0;
               }
 
@@ -173,7 +173,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             onTap: () {
                               final favSongs = songs
                                   .where((s) =>
-                                      userData.favorites.contains(s.filename))
+                                      userData.isFavorite(s.filename))
                                   .toList();
                               Navigator.push(
                                 context,
@@ -329,7 +329,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     (context, index) {
                       final song = songs[index];
                       final isSuggestLess =
-                          userData.suggestLess.contains(song.filename);
+                          userData.isSuggestLess(song.filename);
 
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(

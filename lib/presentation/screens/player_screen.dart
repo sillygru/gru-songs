@@ -713,10 +713,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       }
                     },
                     child: IconButton(
-                      icon: Icon(userData.favorites.contains(metadata?.id)
+                      icon: Icon(userData.isFavorite(metadata?.id ?? '')
                           ? Icons.favorite
                           : Icons.favorite_border),
-                      color: userData.favorites.contains(metadata?.id)
+                      color: userData.isFavorite(metadata?.id ?? '')
                           ? Colors.red
                           : Colors.white70,
                       onPressed: () {
