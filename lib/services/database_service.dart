@@ -7,6 +7,14 @@ import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'package:http/http.dart' as http;
 
+/// DatabaseService handles local SQLite storage for offline access.
+/// 
+/// SYNC PHILOSOPHY:
+/// - Server is the SOURCE OF TRUTH
+/// - Client stores local cache for offline access
+/// - Favorites/SuggestLess changes use explicit API calls (add/remove)
+/// - Stats are additive-only (never delete from server)
+/// - DB file uploads are ONLY for stats (which are additive)
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
   Database? _statsDatabase;
@@ -27,11 +35,7 @@ class DatabaseService {
     _currentUsername = username;
     
     try {
-      // 1. If local files don't exist, try to download them immediately
-      // This ensures a new device gets the user's history right away.
-      await _mirrorDbsIfMissing(username);
-      
-      // 2. Open (and create schema if still missing after download attempt)
+      // Open local databases (create schema if needed)
       _statsDatabase = await _openDatabase('${username}_stats.db', _statsSchema);
       _userDataDatabase = await _openDatabase('${username}_data.db', _userDataSchema);
       
@@ -57,7 +61,6 @@ class DatabaseService {
       path,
       version: 1,
       onCreate: (db, version) async {
-        // Execute multi-statement schema
         for (final statement in schema.split(';')) {
           if (statement.trim().isNotEmpty) {
             await db.execute(statement);
@@ -67,76 +70,55 @@ class DatabaseService {
     );
   }
 
-  Future<void> _mirrorDbsIfMissing(String username) async {
-    final docDir = await getApplicationDocumentsDirectory();
-    final statsFile = File(join(docDir.path, '${username}_stats.db'));
-    
-    // Only download on first init if local files are missing
-    // or if we want to force a sync (can be expanded later)
-    if (!await statsFile.exists()) {
-      await _downloadDb(username, 'stats');
-      await _downloadDb(username, 'data');
-      await _downloadDb(username, 'final_stats');
-    }
+  // ==========================================================================
+  // SYNC METHODS - Proper bidirectional sync with server as source of truth
+  // ==========================================================================
+
+  /// Full bidirectional sync (Download latest from server)
+  Future<void> sync(String username) async {
+    await downloadStatsFromServer(username);
+    await downloadFinalStatsFromServer(username);
   }
 
-  Future<void> _downloadDb(String username, String type) async {
+  /// Upload local changes to server (Additive merge)
+  Future<void> syncBack(String username) async {
+    await uploadStatsToServer(username);
+  }
+
+  /// Downloads stats DB from server (for offline viewing of play history)
+  /// This is a read-only sync - we don't overwrite server stats
+  Future<void> downloadStatsFromServer(String username) async {
     final docDir = await getApplicationDocumentsDirectory();
-    final ext = type == 'final_stats' ? 'json' : 'db';
-    final filename = '${username}_$type.$ext';
-    final path = join(docDir.path, filename);
+    final path = join(docDir.path, '${username}_stats.db');
 
     try {
       final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/user/db/$type'),
+        Uri.parse('${ApiService.baseUrl}/user/db/stats'),
         headers: {'x-username': username},
       ).timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        // Close database before overwriting
+        await _statsDatabase?.close();
+        _statsDatabase = null;
+        
         final file = File(path);
         await file.writeAsBytes(response.bodyBytes);
+        
+        // Reopen
+        _statsDatabase = await _openDatabase('${username}_stats.db', _statsSchema);
+        debugPrint('Downloaded stats DB from server');
       }
     } catch (e) {
-      debugPrint('Initial download of $type DB failed (Offline?): $e');
+      debugPrint('Download stats DB failed (Offline?): $e');
     }
   }
 
-  Future<void> sync(String username) async {
-    await _ensureInitialized();
-
-    // 1. Upload local data to server for merging
-    await _uploadDb(username, 'stats');
-    await _uploadDb(username, 'data');
-    await _uploadDb(username, 'final_stats');
-
-    // 2. Close current connections to allow file replacement
-    await _statsDatabase?.close();
-    await _userDataDatabase?.close();
-    _statsDatabase = null;
-    _userDataDatabase = null;
-
-    // 3. Download the merged versions from the server
-    await _downloadDb(username, 'stats');
-    await _downloadDb(username, 'data');
-    await _downloadDb(username, 'final_stats');
-
-    // 4. Re-open databases
-    _statsDatabase = await _openDatabase('${username}_stats.db', _statsSchema);
-    _userDataDatabase = await _openDatabase('${username}_data.db', _userDataSchema);
-  }
-
-  Future<void> syncBack(String username) async {
-    // Push local mirrored files to server (background periodic sync)
-    await _uploadDb(username, 'stats');
-    await _uploadDb(username, 'data');
-    await _uploadDb(username, 'final_stats');
-  }
-
-  Future<void> _uploadDb(String username, String type) async {
+  /// Uploads local stats to server (additive merge on server side)
+  /// Server should only ADD new events, never delete existing ones
+  Future<void> uploadStatsToServer(String username) async {
     final docDir = await getApplicationDocumentsDirectory();
-    final ext = type == 'final_stats' ? 'json' : 'db';
-    final filename = '${username}_$type.$ext';
-    final path = join(docDir.path, filename);
+    final path = join(docDir.path, '${username}_stats.db');
     final file = File(path);
 
     if (!await file.exists()) return;
@@ -144,27 +126,55 @@ class DatabaseService {
     try {
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('${ApiService.baseUrl}/user/db/$type'),
+        Uri.parse('${ApiService.baseUrl}/user/db/stats'),
       );
       request.headers['x-username'] = username;
       request.files.add(await http.MultipartFile.fromPath('file', path));
 
       final response = await request.send().timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
-        debugPrint('Synced $type DB to server');
+        debugPrint('Uploaded stats DB to server');
       }
     } catch (e) {
-      debugPrint('Sync failed for $type DB: $e');
+      debugPrint('Upload stats DB failed: $e');
     }
   }
 
-  // --- User Data Queries ---
+  /// Downloads final_stats.json from server (contains shuffle state, etc.)
+  Future<void> downloadFinalStatsFromServer(String username) async {
+    final docDir = await getApplicationDocumentsDirectory();
+    final path = join(docDir.path, '${username}_final_stats.json');
+
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/user/db/final_stats'),
+        headers: {'x-username': username},
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final file = File(path);
+        await file.writeAsBytes(response.bodyBytes);
+        debugPrint('Downloaded final_stats from server');
+      }
+    } catch (e) {
+      debugPrint('Download final_stats failed (Offline?): $e');
+    }
+  }
+
+  // ==========================================================================
+  // USER DATA QUERIES (Local cache - synced via API calls, not DB uploads)
+  // ==========================================================================
 
   Future<List<String>> getFavorites() async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return [];
-    final results = await _userDataDatabase!.query('favorite');
-    return results.map((r) => r['filename'] as String).toList();
+    try {
+      final results = await _userDataDatabase!.query('favorite');
+      return results.map((r) => r['filename'] as String).toList();
+    } catch (e) {
+      debugPrint('Error getting favorites: $e');
+      return [];
+    }
   }
 
   Future<void> addFavorite(String filename) async {
@@ -183,11 +193,32 @@ class DatabaseService {
     await _userDataDatabase!.delete('favorite', where: 'filename = ?', whereArgs: [filename]);
   }
 
+  /// Replaces all local favorites with the given list (used when syncing FROM server)
+  Future<void> setFavorites(List<String> favorites) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('favorite');
+      for (final filename in favorites) {
+        await txn.insert('favorite', {
+          'filename': filename,
+          'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
   Future<List<String>> getSuggestLess() async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return [];
-    final results = await _userDataDatabase!.query('suggestless');
-    return results.map((r) => r['filename'] as String).toList();
+    try {
+      final results = await _userDataDatabase!.query('suggestless');
+      return results.map((r) => r['filename'] as String).toList();
+    } catch (e) {
+      debugPrint('Error getting suggestless: $e');
+      return [];
+    }
   }
 
   Future<void> addSuggestLess(String filename) async {
@@ -206,7 +237,25 @@ class DatabaseService {
     await _userDataDatabase!.delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
   }
 
-  // --- Playback Queries ---
+  /// Replaces all local suggestless with the given list (used when syncing FROM server)
+  Future<void> setSuggestLess(List<String> suggestLess) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('suggestless');
+      for (final filename in suggestLess) {
+        await txn.insert('suggestless', {
+          'filename': filename,
+          'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  // ==========================================================================
+  // PLAYBACK QUERIES
+  // ==========================================================================
 
   Future<Map<String, int>> getPlayCounts() async {
     await _ensureInitialized();
@@ -255,7 +304,9 @@ class DatabaseService {
     });
   }
 
-  // --- Schema Definitions ---
+  // ==========================================================================
+  // SCHEMA DEFINITIONS
+  // ==========================================================================
 
   static const String _statsSchema = '''
     CREATE TABLE IF NOT EXISTS playsession (

@@ -124,6 +124,11 @@ flutter build ios --release
 open ios/Runner.xcworkspace
 ```
 
+### macOS
+```bash
+flutter build macos --release
+```
+
 ## 🏷️ Versioning
 
 - **Format:** `Major.Normal.Bugfix` (e.g., `5.1.3`).

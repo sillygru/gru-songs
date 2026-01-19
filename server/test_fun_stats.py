@@ -43,6 +43,7 @@ def test_fun_stats_logic():
                 session_id="sess1",
                 song_filename="song1.mp3",
                 duration_played=100.0,
+                total_length=100.0,
                 event_type="complete",
                 timestamp=time.time() - (i * 86400) # One per day for streak
             ))
@@ -52,6 +53,7 @@ def test_fun_stats_logic():
             session_id="sess1",
             song_filename="song2.mp3",
             duration_played=200.0,
+            total_length=200.0,
             event_type="complete",
             timestamp=time.time()
         ))

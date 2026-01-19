@@ -166,6 +166,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       final auth = ref.read(authProvider);
       if (auth.username != null) {
         await DatabaseService.instance.sync(auth.username!);
+        await ref.read(userDataProvider.notifier).refresh();
       }
       return await _performFullScan();
     });

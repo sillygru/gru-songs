@@ -813,6 +813,7 @@ class UserService:
                     session_id=session_id,
                     song_filename=song_filename,
                     duration_played=0,
+                    total_length=0,
                     event_type='favorite',
                     timestamp=time.time()
                 ))

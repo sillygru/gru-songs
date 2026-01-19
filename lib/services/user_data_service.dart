@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
@@ -25,7 +26,7 @@ class UserDataService {
 
     if (response.statusCode == 200) {
       final body = response.body;
-      print('UserDataService: GET /user/data for $username -> $body');
+      debugPrint('UserDataService: GET /user/data for $username -> $body');
       return jsonDecode(body);
     }
     return {
@@ -37,7 +38,7 @@ class UserDataService {
 
   Future<void> updateUserData(String username, Map<String, dynamic> userData) async {
     final body = jsonEncode(userData);
-    print('UserDataService: POST /user/data for $username -> $body');
+    debugPrint('UserDataService: POST /user/data for $username -> $body');
     await _client.post(
       Uri.parse('${ApiService.baseUrl}/user/data'),
       headers: _getHeaders(username),

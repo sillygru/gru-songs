@@ -58,6 +58,7 @@ def test_shuffle_persistence():
             session_id="session1",
             song_filename="song3.mp3",
             duration_played=120.0,
+            total_length=200.0,
             event_type="complete",
             timestamp=time.time()
         )
@@ -74,6 +75,7 @@ def test_shuffle_persistence():
             session_id="session1",
             song_filename="song4.mp3",
             duration_played=120.0,
+            total_length=200.0,
             event_type="complete",
             timestamp=time.time()
         )

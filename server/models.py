@@ -23,7 +23,7 @@ class StatsEntry(BaseModel):
     session_id: str
     song_filename: str
     duration_played: float
-    total_length: float
+    total_length: float = 0.0
     event_type: str # 'listen', 'skip', 'complete'
     timestamp: float
     platform: Optional[str] = "unknown"
@@ -72,4 +72,4 @@ class StatsSummary(BaseModel):
 
 class FavoriteRequest(BaseModel):
     song_filename: str
-    session_id: str
+    session_id: str = "unknown"

@@ -61,6 +61,7 @@ def test_stats_buffering_and_flushing():
                 session_id="sess_abc",
                 song_filename="track1.mp3",
                 duration_played=120.0,
+                total_length=200.0,
                 event_type="complete",
                 timestamp=time.time()
             )
@@ -114,6 +115,7 @@ def test_stats_buffering_and_flushing():
                 session_id="sess_abc",
                 song_filename="track2.mp3",
                 duration_played=50.0,
+                total_length=200.0,
                 event_type="complete",
                 timestamp=time.time()
             )

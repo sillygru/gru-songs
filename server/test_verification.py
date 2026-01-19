@@ -79,6 +79,7 @@ def test_everything():
                 session_id=session_id,
                 song_filename=song,
                 duration_played=180.0,
+                total_length=180.0,
                 event_type="complete",
                 timestamp=time.time(),
                 platform="ios",
@@ -99,6 +100,7 @@ def test_everything():
                 session_id=session_id,
                 song_filename="song2.mp3",
                 duration_played=10.0,
+                total_length=180.0,
                 event_type="skip",
                 timestamp=time.time(),
                 platform="ios"

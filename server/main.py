@@ -295,23 +295,145 @@ async def upload_user_db(db_type: str, file: UploadFile = File(...), x_username:
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
 
-    filename = ""
+    # SECURITY: Reject data DB uploads - use explicit API calls for favorites/suggestless
+    if db_type == "data":
+        raise HTTPException(
+            status_code=400, 
+            detail="Direct data DB uploads are disabled. Use /user/favorites and /user/suggest-less API endpoints for changes."
+        )
+    
     if db_type == "stats":
-        filename = f"{x_username}_stats.db"
-    elif db_type == "data":
-        filename = f"{x_username}_data.db"
+        # MERGE stats: Only add new play events, never delete existing
+        import tempfile
+        import sqlite3
+        
+        # Save uploaded file to temp location
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+        
+        try:
+            server_path = os.path.join(settings.USERS_DIR, f"{x_username}_stats.db")
+            
+            # If server DB doesn't exist, just use the uploaded one
+            if not os.path.exists(server_path):
+                shutil.move(tmp_path, server_path)
+                return {"message": "stats created"}
+            
+            # Connect to both databases
+            uploaded_conn = sqlite3.connect(tmp_path)
+            server_conn = sqlite3.connect(server_path)
+            
+            try:
+                # Merge play sessions (by ID, only add new)
+                uploaded_sessions = uploaded_conn.execute("SELECT id, start_time, end_time, platform FROM playsession").fetchall()
+                for sess in uploaded_sessions:
+                    existing = server_conn.execute("SELECT id FROM playsession WHERE id = ?", (sess[0],)).fetchone()
+                    if not existing:
+                        server_conn.execute(
+                            "INSERT INTO playsession (id, start_time, end_time, platform) VALUES (?, ?, ?, ?)",
+                            sess
+                        )
+                
+                # Merge play events (check by timestamp+song to avoid duplicates)
+                uploaded_events = uploaded_conn.execute(
+                    "SELECT session_id, song_filename, event_type, timestamp, duration_played, total_length, play_ratio, foreground_duration, background_duration FROM playevent"
+                ).fetchall()
+                
+                for event in uploaded_events:
+                    # Check if this exact event exists (by timestamp and filename)
+                    existing = server_conn.execute(
+                        "SELECT id FROM playevent WHERE timestamp = ? AND song_filename = ?",
+                        (event[3], event[1])
+                    ).fetchone()
+                    if not existing:
+                        server_conn.execute(
+                            "INSERT INTO playevent (session_id, song_filename, event_type, timestamp, duration_played, total_length, play_ratio, foreground_duration, background_duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            event
+                        )
+                
+                server_conn.commit()
+            finally:
+                uploaded_conn.close()
+                server_conn.close()
+                os.unlink(tmp_path)
+            
+            return {"message": "stats merged"}
+            
+        except Exception as e:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise HTTPException(status_code=500, detail=f"Stats merge failed: {str(e)}")
+    
     elif db_type == "final_stats":
-        filename = f"{x_username}_final_stats.json"
+        # MERGE final_stats: Careful merge of shuffle state
+        import json
+        
+        try:
+            uploaded_data = json.loads(await file.read())
+        except:
+            raise HTTPException(status_code=400, detail="Invalid JSON")
+        
+        server_path = os.path.join(settings.USERS_DIR, f"{x_username}_final_stats.json")
+        
+        if os.path.exists(server_path):
+            with open(server_path, "r") as f:
+                try:
+                    server_data = json.load(f)
+                except:
+                    server_data = {}
+        else:
+            server_data = {}
+        
+        # Merge uploaded shuffle state with server state
+        if "shuffle_state" in uploaded_data:
+            server_shuffle = server_data.get("shuffle_state", {"config": {}, "history": []})
+            uploaded_shuffle = uploaded_data["shuffle_state"]
+            
+            # Merge config (uploaded overwrites)
+            if "config" in uploaded_shuffle:
+                if "config" not in server_shuffle:
+                    server_shuffle["config"] = {}
+                server_shuffle["config"].update(uploaded_shuffle["config"])
+            
+            # Merge history: Keep server history, only add truly new entries from uploaded
+            if "history" in uploaded_shuffle:
+                server_history = server_shuffle.get("history", [])
+                uploaded_history = uploaded_shuffle.get("history", [])
+                
+                # Create set of existing filenames for quick lookup
+                existing_filenames = set()
+                for h in server_history:
+                    if isinstance(h, dict):
+                        existing_filenames.add(h.get("filename", ""))
+                    elif isinstance(h, str):
+                        existing_filenames.add(h)
+                
+                # Only add entries that don't exist in server history
+                for h in uploaded_history:
+                    filename = h.get("filename", "") if isinstance(h, dict) else h
+                    if filename and filename not in existing_filenames:
+                        server_history.append(h)
+                        existing_filenames.add(filename)
+                
+                # Sort by timestamp (newest first) and limit
+                server_history = [h for h in server_history if isinstance(h, dict)]
+                server_history.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+                history_limit = server_shuffle.get("config", {}).get("history_limit", 50)
+                server_shuffle["history"] = server_history[:history_limit]
+            
+            server_data["shuffle_state"] = server_shuffle
+        
+        # Don't allow overwriting aggregate stats from client
+        # (total_play_time, total_sessions, etc. should only be updated by server)
+        
+        with open(server_path, "w") as f:
+            json.dump(server_data, f, indent=4)
+        
+        return {"message": "final_stats merged"}
+    
     else:
         raise HTTPException(status_code=400, detail="Invalid DB type")
-
-    path = os.path.join(settings.USERS_DIR, filename)
-    
-    # Save uploaded file
-    with open(path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    return {"message": f"{db_type} updated"}
 
 if __name__ == "__main__":
     import uvicorn

@@ -48,6 +48,13 @@ class UserDataState {
   }
 }
 
+/// UserDataNotifier implements proper bidirectional sync:
+/// 
+/// SYNC PHILOSOPHY:
+/// 1. Server is SOURCE OF TRUTH for favorites/suggestLess
+/// 2. On startup: Fetch server data -> Merge with local -> Update server with any local additions
+/// 3. On add/remove: Update local immediately -> Call server API -> Refresh from server
+/// 4. Never blindly overwrite server data
 class UserDataNotifier extends Notifier<UserDataState> {
   String? _username;
   bool _initialized = false;
@@ -61,14 +68,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
       if (!_initialized || newUsername != _username) {
         _username = newUsername;
         _initialized = true;
-        // Load initial data from DB and trigger background sync
-        Future.microtask(() => _initAndRefresh());
+        Future.microtask(() => _initAndSync());
         return UserDataState(isLoading: true);
       }
-      // If same user, Riverpod preserves the state automatically 
-      // when build() returns the same object or if we manage it.
-      // But in build() we MUST return the state.
-      return state; 
+      return state;
     } else {
       _username = null;
       _initialized = false;
@@ -76,224 +79,171 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
   }
 
-  Future<void> _initAndRefresh() async {
+  Future<void> _initAndSync() async {
     if (_username == null) return;
 
-    // 1. Ensure DB is initialized for user (this mirrors from server if missing)
+    // 1. Initialize local database
     await DatabaseService.instance.initForUser(_username!);
 
-    // 2. Load initial data from mirrored DB
+    // 2. Load from local cache first (instant UI)
     try {
-      final favs = await DatabaseService.instance.getFavorites();
-      final sl = await DatabaseService.instance.getSuggestLess();
+      final localFavs = await DatabaseService.instance.getFavorites();
+      final localSL = await DatabaseService.instance.getSuggestLess();
       
       state = state.copyWith(
-        favorites: favs,
-        suggestLess: sl,
+        favorites: localFavs,
+        suggestLess: localSL,
         isLoading: false,
       );
       _updateManager();
       
       ref.read(syncProvider.notifier).updateTask('userData', SyncStatus.usingCache);
     } catch (e) {
-      debugPrint('Error loading initial user data from DB: $e');
+      debugPrint('Error loading local user data: $e');
     }
 
-    // 3. Perform background sync (Upload local -> Merge -> Download)
-    await _backgroundSync();
+    // 3. Perform proper sync with server
+    await _syncWithServer();
   }
 
   void _updateManager() {
     ref.read(audioPlayerManagerProvider).setUserData(
-          favorites: state.favorites,
-          suggestLess: state.suggestLess,
-        );
+      favorites: state.favorites,
+      suggestLess: state.suggestLess,
+    );
   }
 
-  Future<void> _backgroundSync() async {
+  /// Proper bidirectional sync:
+  /// 1. Fetch server state (source of truth)
+  /// 2. Find local-only additions
+  /// 3. Push local additions to server via API calls
+  /// 4. Update local cache with server state
+  Future<void> _syncWithServer() async {
     if (_username == null) return;
 
     final syncNotifier = ref.read(syncProvider.notifier);
+    final service = ref.read(userDataServiceProvider);
 
     try {
       syncNotifier.updateTask('userData', SyncStatus.syncing);
 
-      // Perform comprehensive bidirectional sync of all user data
-      await syncAllUserData();
+      // 1. Get current local state BEFORE fetching server
+      final localFavs = Set<String>.from(await DatabaseService.instance.getFavorites());
+      final localSL = Set<String>.from(await DatabaseService.instance.getSuggestLess());
 
-      syncNotifier.updateTask('userData', SyncStatus.upToDate);
-    } catch (e) {
-      debugPrint('User data background sync failed: $e');
-      syncNotifier.setError();
-    }
-  }
-
-  Future<void> refresh() async {
-    if (_username == null) return;
-
-    try {
-      // 1. Perform full bidirectional DB sync
-      await DatabaseService.instance.sync(_username!);
-
-      // 2. Reload favorites and suggest-less from the newly synced local DB
-      final favs = await DatabaseService.instance.getFavorites();
-      final sl = await DatabaseService.instance.getSuggestLess();
-
-      state = state.copyWith(
-          favorites: favs,
-          suggestLess: sl,
-          isLoading: false);
-
-      // 3. Sync shuffle personality/history from the updated local final_stats
-      await ref.read(audioPlayerManagerProvider).syncShuffleState();
-
-      _updateManager();
-    } catch (e) {
-      debugPrint('Refresh failed: $e');
-      state = state.copyWith(isLoading: false);
-    }
-  }
-
-  // Comprehensive sync of all user data
-  Future<void> syncAllUserData() async {
-    if (_username == null) return;
-
-    try {
-      final service = ref.read(userDataServiceProvider);
-      final audioManager = ref.read(audioPlayerManagerProvider);
-
-      // 1. Get updated data from server FIRST
+      // 2. Fetch server state (source of truth)
       final serverData = await service.getUserData(_username!);
-      final serverFavs = List<String>.from(serverData['favorites'] ?? []);
-      final serverSuggestLess = List<String>.from(serverData['suggestLess'] ?? []);
+      final serverFavs = Set<String>.from(serverData['favorites'] ?? []);
+      final serverSL = Set<String>.from(serverData['suggestLess'] ?? []);
       final serverShuffleState = serverData['shuffleState'];
 
-      debugPrint('Sync: Received ${serverFavs.length} favorites from server: $serverFavs');
+      debugPrint('Sync: Server has ${serverFavs.length} favorites, local has ${localFavs.length}');
+      debugPrint('Sync: Server has ${serverSL.length} suggestLess, local has ${localSL.length}');
 
-      // 2. Update local database with server data
-      await _updateLocalData(serverFavs, serverSuggestLess);
+      // 3. Find local-only additions (items in local but not in server)
+      //    These need to be pushed TO the server
+      final localOnlyFavs = localFavs.difference(serverFavs);
+      final localOnlySL = localSL.difference(serverSL);
 
-      // 4. Update shuffle state from server if available
-      if (serverShuffleState != null) {
-        final updatedShuffleState = ShuffleState.fromJson(serverShuffleState);
-        await audioManager.updateShuffleState(updatedShuffleState);
+      // 4. Push local additions to server via individual API calls
+      for (final filename in localOnlyFavs) {
+        try {
+          await service.addFavorite(_username!, filename, 'sync');
+          debugPrint('Sync: Pushed local favorite to server: $filename');
+        } catch (e) {
+          debugPrint('Sync: Failed to push favorite $filename: $e');
+        }
       }
 
-      // 5. Push local data (which now includes server data) back to server to be safe
-      // This ensures any local additions that weren't on server are now there.
-      final mergedFavs = await DatabaseService.instance.getFavorites();
-      final mergedSL = await DatabaseService.instance.getSuggestLess();
-      
-      await service.updateUserData(_username!, {
-        'favorites': mergedFavs,
-        'suggestLess': mergedSL,
-        'shuffleState': audioManager.shuffleStateNotifier.value.toJson(),
-      });
+      for (final filename in localOnlySL) {
+        try {
+          await service.addSuggestLess(_username!, filename);
+          debugPrint('Sync: Pushed local suggestLess to server: $filename');
+        } catch (e) {
+          debugPrint('Sync: Failed to push suggestLess $filename: $e');
+        }
+      }
 
-      // 6. Update state
+      // 5. Merge: Final state = Server state + Local additions
+      final mergedFavs = serverFavs.union(localOnlyFavs).toList();
+      final mergedSL = serverSL.union(localOnlySL).toList();
+
+      // 6. Update local cache with merged state
+      await DatabaseService.instance.setFavorites(mergedFavs);
+      await DatabaseService.instance.setSuggestLess(mergedSL);
+
+      // 7. Update shuffle state from server
+      if (serverShuffleState != null && serverShuffleState is Map) {
+        try {
+          final audioManager = ref.read(audioPlayerManagerProvider);
+          final updatedShuffleState = ShuffleState.fromJson(Map<String, dynamic>.from(serverShuffleState));
+          await audioManager.updateShuffleState(updatedShuffleState);
+        } catch (e) {
+          debugPrint('Failed to update shuffle state: $e');
+        }
+      }
+
+      // 8. Download stats DB for local viewing (read-only sync)
+      await DatabaseService.instance.downloadStatsFromServer(_username!);
+      await DatabaseService.instance.downloadFinalStatsFromServer(_username!);
+
+      // 9. Update UI state
       state = state.copyWith(
         favorites: mergedFavs,
         suggestLess: mergedSL,
         isLoading: false,
       );
-
       _updateManager();
+
+      syncNotifier.updateTask('userData', SyncStatus.upToDate);
+      debugPrint('Sync complete: ${mergedFavs.length} favorites, ${mergedSL.length} suggestLess');
+
     } catch (e) {
-      debugPrint('Comprehensive user data sync failed: $e');
+      debugPrint('Sync with server failed: $e');
+      syncNotifier.setError();
     }
   }
 
-  Future<void> _updateLocalData(List<String> favorites, List<String> suggestLess) async {
-    // Clear current local data
-    final currentFavs = await DatabaseService.instance.getFavorites();
-    final currentSuggestLess = await DatabaseService.instance.getSuggestLess();
-
-    // Helper for robust check
-    bool existsRobust(List<String> list, String filename) {
-      final lowerFile = filename.toLowerCase();
-      if (list.any((item) => item.toLowerCase() == lowerFile)) return true;
-      final base = p.basename(filename).toLowerCase();
-      return list.any((item) => p.basename(item).toLowerCase() == base);
-    }
-
-    // Remove items that are no longer in the lists
-    for (final filename in currentFavs) {
-      if (!existsRobust(favorites, filename)) {
-        await DatabaseService.instance.removeFavorite(filename);
-      }
-    }
-
-    for (final filename in currentSuggestLess) {
-      if (!existsRobust(suggestLess, filename)) {
-        await DatabaseService.instance.removeSuggestLess(filename);
-      }
-    }
-
-    // Add new items
-    for (final filename in favorites) {
-      if (!existsRobust(currentFavs, filename)) {
-        await DatabaseService.instance.addFavorite(filename);
-      }
-    }
-
-    for (final filename in suggestLess) {
-      if (!existsRobust(currentSuggestLess, filename)) {
-        await DatabaseService.instance.addSuggestLess(filename);
-      }
-    }
-  }
-
-  Future<void> toggleSuggestLess(String songFilename) async {
+  /// Manual refresh triggered by pull-to-refresh
+  Future<void> refresh() async {
     if (_username == null) return;
-
-    final isSL = state.isSuggestLess(songFilename);
-    final newSL = List<String>.from(state.suggestLess);
-
-    if (isSL) {
-      // Find the actual string that matched (could be different path or case)
-      final actualMatch = state.suggestLess.firstWhere(
-        (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
-                p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
-        orElse: () => songFilename,
-      );
-      newSL.remove(actualMatch);
-      await DatabaseService.instance.removeSuggestLess(actualMatch);
-    } else {
-      newSL.add(songFilename);
-      await DatabaseService.instance.addSuggestLess(songFilename);
-    }
-    state = state.copyWith(suggestLess: newSL);
-    _updateManager();
-
-    try {
-      // Trigger comprehensive sync to ensure all data is consistent
-      await syncAllUserData();
-    } catch (e) {
-      debugPrint('Sync suggest-less toggle failed (offline?): $e');
-    }
+    state = state.copyWith(isLoading: true);
+    await _syncWithServer();
   }
 
+  /// Toggle favorite with proper sync:
+  /// 1. Update local immediately (optimistic)
+  /// 2. Call server API
+  /// 3. On failure, rollback local change
   Future<void> toggleFavorite(String songFilename) async {
     if (_username == null) return;
 
+    final service = ref.read(userDataServiceProvider);
     final isFav = state.isFavorite(songFilename);
     final isSL = state.isSuggestLess(songFilename);
 
-    final newFavs = List<String>.from(state.favorites);
-    final newSL = List<String>.from(state.suggestLess);
-
+    // Find actual match in list (for case-insensitive scenarios)
+    String actualFilename = songFilename;
     if (isFav) {
-      // Find the actual string that matched (could be different path or case)
-      final actualMatch = state.favorites.firstWhere(
+      actualFilename = state.favorites.firstWhere(
         (f) => f.toLowerCase() == songFilename.toLowerCase() || 
                p.basename(f).toLowerCase() == p.basename(songFilename).toLowerCase(),
         orElse: () => songFilename,
       );
-      newFavs.remove(actualMatch);
-      await DatabaseService.instance.removeFavorite(actualMatch);
+    }
+
+    // 1. Optimistic local update
+    final newFavs = List<String>.from(state.favorites);
+    final newSL = List<String>.from(state.suggestLess);
+
+    if (isFav) {
+      newFavs.remove(actualFilename);
+      await DatabaseService.instance.removeFavorite(actualFilename);
     } else {
       newFavs.add(songFilename);
       await DatabaseService.instance.addFavorite(songFilename);
+      
+      // Remove from suggestLess if present
       if (isSL) {
         final actualSLMatch = state.suggestLess.firstWhere(
           (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
@@ -308,11 +258,72 @@ class UserDataNotifier extends Notifier<UserDataState> {
     state = state.copyWith(favorites: newFavs, suggestLess: newSL);
     _updateManager();
 
+    // 2. Call server API
     try {
-      // Trigger comprehensive sync to ensure all data is consistent
-      await syncAllUserData();
+      if (isFav) {
+        await service.removeFavorite(_username!, actualFilename);
+        debugPrint('Removed favorite from server: $actualFilename');
+      } else {
+        await service.addFavorite(_username!, songFilename, 'user_action');
+        debugPrint('Added favorite to server: $songFilename');
+        
+        if (isSL) {
+          final actualSLMatch = state.suggestLess.firstWhere(
+            (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
+                    p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
+            orElse: () => songFilename,
+          );
+          await service.removeSuggestLess(_username!, actualSLMatch);
+        }
+      }
     } catch (e) {
-      debugPrint('Sync favorite toggle failed (offline?): $e');
+      debugPrint('Server API call failed (offline?): $e');
+      // Local change is kept - will sync on next startup
+    }
+  }
+
+  /// Toggle suggestLess with proper sync
+  Future<void> toggleSuggestLess(String songFilename) async {
+    if (_username == null) return;
+
+    final service = ref.read(userDataServiceProvider);
+    final isSL = state.isSuggestLess(songFilename);
+
+    // Find actual match
+    String actualFilename = songFilename;
+    if (isSL) {
+      actualFilename = state.suggestLess.firstWhere(
+        (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
+                p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
+        orElse: () => songFilename,
+      );
+    }
+
+    // 1. Optimistic local update
+    final newSL = List<String>.from(state.suggestLess);
+
+    if (isSL) {
+      newSL.remove(actualFilename);
+      await DatabaseService.instance.removeSuggestLess(actualFilename);
+    } else {
+      newSL.add(songFilename);
+      await DatabaseService.instance.addSuggestLess(songFilename);
+    }
+
+    state = state.copyWith(suggestLess: newSL);
+    _updateManager();
+
+    // 2. Call server API
+    try {
+      if (isSL) {
+        await service.removeSuggestLess(_username!, actualFilename);
+        debugPrint('Removed suggestLess from server: $actualFilename');
+      } else {
+        await service.addSuggestLess(_username!, songFilename);
+        debugPrint('Added suggestLess to server: $songFilename');
+      }
+    } catch (e) {
+      debugPrint('Server API call failed (offline?): $e');
     }
   }
 }
