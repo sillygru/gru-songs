@@ -79,7 +79,7 @@ class ScannerService {
   ) async {
     final filename = p.basename(file.path);
     final parentPath = file.parent.path;
-    final ext = p.extension(file.path).toLowerCase();
+    p.extension(file.path).toLowerCase();
     
     String title = p.basenameWithoutExtension(file.path);
     String artist = 'Unknown Artist';
@@ -112,17 +112,10 @@ class ScannerService {
     }
 
     // Manual Fallback for covers
-    if (coverUrl == null) {
-      coverUrl = await _tryManualCoverExtraction(file, coversDir);
-    }
+    coverUrl ??= await _tryManualCoverExtraction(file, coversDir);
 
     // Folder-sidecar fallback
-    if (coverUrl == null) {
-      if (!folderCoverCache.containsKey(parentPath)) {
-        folderCoverCache[parentPath] = _findCoverInFolder(parentPath);
-      }
-      coverUrl = folderCoverCache[parentPath];
-    }
+    coverUrl ??= folderCoverCache.putIfAbsent(parentPath, () => _findCoverInFolder(parentPath));
 
     String? lyricsUrl;
     if (lyricsPath != null) {
@@ -212,8 +205,8 @@ class ScannerService {
               final imgData = await raf.read(imageSize);
               
               String type = 'jpg';
-              if (bytes[j + 11] == 14) type = 'png';
-              else if (bytes[j + 11] == 27) type = 'bmp';
+              if (bytes[j + 11] == 14) { type = 'png'; }
+              else if (bytes[j + 11] == 27) { type = 'bmp'; }
 
               final coverFile = File(p.join(coversDir.path, '$hash.$type'));
               await coverFile.writeAsBytes(imgData);

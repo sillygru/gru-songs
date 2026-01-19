@@ -61,7 +61,7 @@ void showSongOptionsMenu(
                             await ref.read(songsProvider.notifier).moveSong(song, targetPath);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Moved ${song.title} to ${targetPath}")),
+                                SnackBar(content: Text("Moved ${song.title} to $targetPath")),
                               );
                             }
                           } catch (e) {

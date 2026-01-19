@@ -99,7 +99,9 @@ void main() {
       
       try {
         await notifier.moveSong(song, targetDir.path);
-      } catch (e) {}
+      } catch (e) {
+        // Intentionally left empty for this test
+      }
 
       final newSongPath = p.join(targetDir.path, 'test_song.mp3');
       final newLyricsPath = p.join(targetDir.path, 'test_song.lrc');
@@ -129,7 +131,9 @@ void main() {
       
       try {
         await notifier.moveSong(song, nestedTargetDir);
-      } catch (e) {}
+      } catch (e) {
+        // Intentionally left empty for this test
+      }
 
       expect(Directory(nestedTargetDir).existsSync(), true, reason: 'Target directory should be created');
       expect(File(p.join(nestedTargetDir, 'test_song.mp3')).existsSync(), true);
