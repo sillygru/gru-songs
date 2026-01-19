@@ -5,6 +5,7 @@ import 'package:audio_metadata_reader/audio_metadata_reader.dart' as amr;
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:permission_handler/permission_handler.dart'; // Import permission_handler
 import '../models/song.dart';
 import 'database_service.dart';
 
@@ -18,6 +19,19 @@ class ScannerService {
   ];
 
   Future<List<Song>> scanDirectory(String path, {String? lyricsPath, Map<String, int>? playCounts}) async {
+    // Request permissions before accessing storage
+    if (Platform.isAndroid) {
+      // Request all relevant storage permissions
+      var statusStorage = await Permission.storage.request();
+      var statusMediaLibrary = await Permission.mediaLibrary.request();
+      var statusManageExternalStorage = await Permission.manageExternalStorage.request();
+
+      if (!statusStorage.isGranted && !statusMediaLibrary.isGranted && !statusManageExternalStorage.isGranted) {
+        debugPrint('Storage permissions not granted. Cannot scan directory.');
+        return []; // Return empty if permissions are not granted
+      }
+    }
+
     final dir = Directory(path);
     if (!await dir.exists()) return [];
 
