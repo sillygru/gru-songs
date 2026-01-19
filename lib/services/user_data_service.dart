@@ -14,7 +14,33 @@ class UserDataService {
     };
   }
 
-  // --- Favorites ---
+  // --- Comprehensive User Data Sync ---
+
+  Future<Map<String, dynamic>> getUserData(String username) async {
+    final response = await _client.get(
+      Uri.parse('${ApiService.baseUrl}/user/data'),
+      headers: _getHeaders(username),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {
+      'favorites': [],
+      'suggestLess': [],
+      'shuffleState': {},
+    };
+  }
+
+  Future<void> updateUserData(String username, Map<String, dynamic> userData) async {
+    await _client.post(
+      Uri.parse('${ApiService.baseUrl}/user/data'),
+      headers: _getHeaders(username),
+      body: jsonEncode(userData),
+    );
+  }
+
+  // --- Legacy Individual Methods (for backward compatibility) ---
 
   Future<List<String>> getFavorites(String username) async {
     final response = await _client.get(

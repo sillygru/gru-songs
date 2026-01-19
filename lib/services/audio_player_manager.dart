@@ -82,6 +82,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
+  Future<void> updateShuffleState(ShuffleState newState) async {
+    _shuffleState = newState;
+    shuffleStateNotifier.value = _shuffleState;
+    shuffleNotifier.value = newState.config.enabled;
+    _saveShuffleState();
+  }
+
   Future<void> playSong(Song song,
       {List<Song>? contextQueue, bool startPlaying = true}) async {
     await _player.setShuffleModeEnabled(false);
@@ -202,6 +209,73 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       shuffleStateNotifier.value = _shuffleState;
     }
     syncShuffleState();
+
+    // Start periodic sync of all user data every 5 minutes
+    _syncTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      _syncAllUserDataPeriodically();
+    });
+  }
+
+  Future<void> _syncAllUserDataPeriodically() async {
+    if (_username == null) return;
+    try {
+      // Trigger comprehensive sync through the provider
+      // We'll make an API call to sync all user data
+      final response = await _apiService.client.get(
+        Uri.parse('${ApiService.baseUrl}/user/data'),
+        headers: {'x-username': _username!},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final serverFavs = List<String>.from(data['favorites'] ?? []);
+        final serverSuggestLess = List<String>.from(data['suggestLess'] ?? []);
+        final serverShuffleState = data['shuffleState'];
+
+        // Update local database
+        await _updateLocalUserData(serverFavs, serverSuggestLess);
+
+        // Update shuffle state from server if available
+        if (serverShuffleState != null) {
+          final updatedShuffleState = ShuffleState.fromJson(serverShuffleState);
+          await updateShuffleState(updatedShuffleState);
+        }
+      }
+    } catch (e) {
+      debugPrint('Periodic user data sync failed: $e');
+    }
+  }
+
+  Future<void> _updateLocalUserData(List<String> favorites, List<String> suggestLess) async {
+    // Update local database with server data
+    final currentFavs = await DatabaseService.instance.getFavorites();
+    final currentSuggestLess = await DatabaseService.instance.getSuggestLess();
+
+    // Remove items that are no longer in the lists
+    for (final filename in currentFavs) {
+      if (!favorites.contains(filename)) {
+        await DatabaseService.instance.removeFavorite(filename);
+      }
+    }
+
+    for (final filename in currentSuggestLess) {
+      if (!suggestLess.contains(filename)) {
+        await DatabaseService.instance.removeSuggestLess(filename);
+      }
+    }
+
+    // Add new items
+    for (final filename in favorites) {
+      if (!currentFavs.contains(filename)) {
+        await DatabaseService.instance.addFavorite(filename);
+      }
+    }
+
+    for (final filename in suggestLess) {
+      if (!currentSuggestLess.contains(filename)) {
+        await DatabaseService.instance.addSuggestLess(filename);
+      }
+    }
   }
 
   Future<ShuffleState?> syncShuffleState() async {

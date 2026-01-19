@@ -171,7 +171,66 @@ def get_fun_stats(x_username: str = Header(None)):
     return user_service.get_fun_stats(x_username)
 
 
-# --- User Data Routes (Favorites) ---
+# --- User Data Routes (Comprehensive Sync) ---
+
+@app.get("/user/data")
+def get_user_data(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    # Get all user data in one call
+    favorites = user_service.get_favorites(x_username)
+    suggest_less = user_service.get_suggest_less(x_username)
+    shuffle_state = user_service.get_stats_summary(x_username).get("shuffle_state", {})
+
+    return {
+        "favorites": favorites,
+        "suggestLess": suggest_less,
+        "shuffleState": shuffle_state
+    }
+
+@app.post("/user/data")
+def update_user_data(data: Dict[str, Any], x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    # Update all user data in one call
+    favorites = data.get("favorites", [])
+    suggest_less = data.get("suggestLess", [])
+    shuffle_state = data.get("shuffleState", {})
+
+    # Update favorites - replace the entire list
+    current_favorites = set(user_service.get_favorites(x_username))
+    new_favorites = set(favorites)
+
+    # Remove items that are no longer favorites
+    for filename in current_favorites - new_favorites:
+        user_service.remove_favorite(x_username, filename)
+
+    # Add new favorites
+    for filename in new_favorites - current_favorites:
+        # Since we don't have session_id here, we'll add without triggering stats
+        user_service.add_favorite_without_stats(x_username, filename)
+
+    # Update suggest less - replace the entire list
+    current_suggest_less = set(user_service.get_suggest_less(x_username))
+    new_suggest_less = set(suggest_less)
+
+    # Remove items that are no longer suggest less
+    for filename in current_suggest_less - new_suggest_less:
+        user_service.remove_suggest_less(x_username, filename)
+
+    # Add new suggest less
+    for filename in new_suggest_less - current_suggest_less:
+        user_service.add_suggest_less(x_username, filename)
+
+    # Update shuffle state
+    if shuffle_state:
+        user_service.update_shuffle_state(x_username, shuffle_state)
+
+    return {"status": "updated"}
+
+# --- Legacy Favorites Routes (for backward compatibility) ---
 
 @app.get("/user/favorites")
 def get_favorites(x_username: str = Header(None)):

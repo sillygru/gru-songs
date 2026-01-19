@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth_provider.dart';
 import 'providers.dart';
 import '../services/database_service.dart';
+import '../models/shuffle_config.dart';
 
 class UserDataState {
   final List<String> favorites;
@@ -90,9 +91,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
     try {
       syncNotifier.updateTask('userData', SyncStatus.syncing);
 
-      // Perform full bidirectional sync
-      await refresh();
-      
+      // Perform comprehensive bidirectional sync of all user data
+      await syncAllUserData();
+
       syncNotifier.updateTask('userData', SyncStatus.upToDate);
     } catch (e) {
       debugPrint('User data background sync failed: $e');
@@ -126,9 +127,90 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
   }
 
+  // Comprehensive sync of all user data
+  Future<void> syncAllUserData() async {
+    if (_username == null) return;
+
+    try {
+      final service = ref.read(userDataServiceProvider);
+
+      // Get current local data
+      final localFavs = await DatabaseService.instance.getFavorites();
+      final localSuggestLess = await DatabaseService.instance.getSuggestLess();
+
+      // Get current shuffle state
+      final audioManager = ref.read(audioPlayerManagerProvider);
+      final currentShuffleState = audioManager.shuffleStateNotifier.value;
+
+      // Send local data to server
+      await service.updateUserData(_username!, {
+        'favorites': localFavs,
+        'suggestLess': localSuggestLess,
+        'shuffleState': currentShuffleState.toJson(),
+      });
+
+      // Get updated data from server
+      final serverData = await service.getUserData(_username!);
+      final serverFavs = List<String>.from(serverData['favorites'] ?? []);
+      final serverSuggestLess = List<String>.from(serverData['suggestLess'] ?? []);
+      final serverShuffleState = serverData['shuffleState'];
+
+      // Update local database with server data
+      await _updateLocalData(serverFavs, serverSuggestLess);
+
+      // Update shuffle state from server if available
+      if (serverShuffleState != null) {
+        final updatedShuffleState = ShuffleState.fromJson(serverShuffleState);
+        await audioManager.updateShuffleState(updatedShuffleState);
+      }
+
+      // Update state
+      state = state.copyWith(
+        favorites: serverFavs,
+        suggestLess: serverSuggestLess,
+        isLoading: false,
+      );
+
+      _updateManager();
+    } catch (e) {
+      debugPrint('Comprehensive user data sync failed: $e');
+    }
+  }
+
+  Future<void> _updateLocalData(List<String> favorites, List<String> suggestLess) async {
+    // Clear current local data
+    final currentFavs = await DatabaseService.instance.getFavorites();
+    final currentSuggestLess = await DatabaseService.instance.getSuggestLess();
+
+    // Remove items that are no longer in the lists
+    for (final filename in currentFavs) {
+      if (!favorites.contains(filename)) {
+        await DatabaseService.instance.removeFavorite(filename);
+      }
+    }
+
+    for (final filename in currentSuggestLess) {
+      if (!suggestLess.contains(filename)) {
+        await DatabaseService.instance.removeSuggestLess(filename);
+      }
+    }
+
+    // Add new items
+    for (final filename in favorites) {
+      if (!currentFavs.contains(filename)) {
+        await DatabaseService.instance.addFavorite(filename);
+      }
+    }
+
+    for (final filename in suggestLess) {
+      if (!currentSuggestLess.contains(filename)) {
+        await DatabaseService.instance.addSuggestLess(filename);
+      }
+    }
+  }
+
   Future<void> toggleSuggestLess(String songFilename) async {
     if (_username == null) return;
-    final service = ref.read(userDataServiceProvider);
 
     final isSL = state.suggestLess.contains(songFilename);
     final newSL = List<String>.from(state.suggestLess);
@@ -144,11 +226,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
 
     try {
-      if (isSL) {
-        await service.removeSuggestLess(_username!, songFilename);
-      } else {
-        await service.addSuggestLess(_username!, songFilename);
-      }
+      // Trigger comprehensive sync to ensure all data is consistent
+      await syncAllUserData();
     } catch (e) {
       debugPrint('Sync suggest-less toggle failed (offline?): $e');
     }
@@ -156,7 +235,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> toggleFavorite(String songFilename) async {
     if (_username == null) return;
-    final service = ref.read(userDataServiceProvider);
 
     final isFav = state.favorites.contains(songFilename);
     final isSL = state.suggestLess.contains(songFilename);
@@ -180,16 +258,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
 
     try {
-      if (isFav) {
-        await service.removeFavorite(_username!, songFilename);
-      } else {
-        final statsService = ref.read(statsServiceProvider);
-        await service.addFavorite(
-            _username!, songFilename, statsService.sessionId);
-        if (isSL) {
-          await service.removeSuggestLess(_username!, songFilename);
-        }
-      }
+      // Trigger comprehensive sync to ensure all data is consistent
+      await syncAllUserData();
     } catch (e) {
       debugPrint('Sync favorite toggle failed (offline?): $e');
     }

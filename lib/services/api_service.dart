@@ -10,6 +10,8 @@ class ApiService {
 
   ApiService({http.Client? client}) : _client = client ?? createClient();
 
+  http.Client get client => _client;
+
   static http.Client createClient() {
     final HttpClient ioc = HttpClient();
     ioc.badCertificateCallback =

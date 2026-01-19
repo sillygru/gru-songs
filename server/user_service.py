@@ -807,7 +807,7 @@ class UserService:
             if not session.exec(select(Favorite).where(Favorite.filename == song_filename)).first():
                 session.add(Favorite(filename=song_filename))
                 session.commit()
-                
+
                 # Log stats (immediate add to buffer)
                 self.append_stats(username, StatsEntry(
                     session_id=session_id,
@@ -816,6 +816,13 @@ class UserService:
                     event_type='favorite',
                     timestamp=time.time()
                 ))
+        return True
+
+    def add_favorite_without_stats(self, username: str, song_filename: str):
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            if not session.exec(select(Favorite).where(Favorite.filename == song_filename)).first():
+                session.add(Favorite(filename=song_filename))
+                session.commit()
         return True
 
     def remove_favorite(self, username: str, song_filename: str):

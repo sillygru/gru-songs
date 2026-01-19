@@ -103,7 +103,7 @@ class DatabaseService {
 
   Future<void> sync(String username) async {
     await _ensureInitialized();
-    
+
     // 1. Upload local data to server for merging
     await _uploadDb(username, 'stats');
     await _uploadDb(username, 'data');
