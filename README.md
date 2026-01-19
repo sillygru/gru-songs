@@ -1,4 +1,4 @@
-# Gru Songs (v6.1.0)
+# Gru Songs (v6.2.0)
 
 A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend.
 

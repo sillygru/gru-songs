@@ -76,8 +76,8 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> downloadYoutube(
-      String url, String? filename) async {
+  Future<http.Response> downloadYoutube(
+      String url, String title) async {
     try {
       // Send as form data because FastAPI uses Form(...)
       final response = await _client.post(
@@ -88,16 +88,11 @@ class ApiService {
         },
         body: {
           'url': url,
-          if (filename != null && filename.isNotEmpty) 'filename': filename,
+          'title': title,
         },
       );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-            'YouTube download failed (${response.statusCode}): ${response.body}');
-      }
+      return response;
     } catch (e) {
       rethrow;
     }

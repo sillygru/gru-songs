@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'cache_management_screen.dart';
+import 'downloader_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
 import '../../models/shuffle_config.dart';
@@ -262,9 +263,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               padding: const EdgeInsets.all(8.0),
                               child: RadioGroup<ShufflePersonality>(
                                 groupValue: current,
-                                onChanged: (v) => audioManager
-                                    .updateShuffleConfig(shuffleState.config
-                                        .copyWith(personality: v)),
+                                onChanged: (v) {
+                                  if (v != null) {
+                                    audioManager.updateShuffleConfig(
+                                        shuffleState.config
+                                            .copyWith(personality: v));
+                                  }
+                                },
                                 child: Column(
                                   children: [
                                     _buildRadioTile(
@@ -338,6 +343,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         );
                       },
                     ),
+                    if (authState.username == 'gru') ...[
+                      const SizedBox(height: 24),
+                      _buildSectionTitle('Admin'),
+                      _buildListTile(
+                        icon: Icons.download_outlined,
+                        title: 'Server Downloader',
+                        subtitle: 'Download songs from YouTube via server',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const DownloaderScreen()),
+                          );
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     _buildSectionTitle('Actions'),
                     _buildListTile(
@@ -350,10 +371,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       },
                     ),
                     const SizedBox(height: 24),
-                    const Text(
-                      "Gru Songs v6.1.0",
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                  const Text(
+                    "Gru Songs v6.2.0",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
                     ),
+                  ),
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -415,29 +439,66 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildListTile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-    Color? textColor,
-    Color? iconColor,
-  }) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest
-          .withValues(alpha: 0.3),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: Icon(icon, color: iconColor),
-        title: Text(title,
-            style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
-        subtitle: subtitle != null ? Text(subtitle) : null,
-        trailing: const Icon(Icons.chevron_right, size: 20),
-        onTap: onTap,
-      ),
-    );
-  }
-}
+    Widget _buildListTile({
+
+      required IconData icon,
+
+      required String title,
+
+      String? subtitle,
+
+      required VoidCallback onTap,
+
+      Color? textColor,
+
+      Color? iconColor,
+
+    }) {
+
+      return Card(
+
+        elevation: 0,
+
+        color: Theme.of(context)
+
+            .colorScheme
+
+            .surfaceContainerHighest
+
+            .withValues(alpha: 0.3),
+
+        margin: const EdgeInsets.symmetric(vertical: 4),
+
+        child: ListTile(
+
+          leading: Icon(icon, color: iconColor),
+
+          title: Text(title,
+
+              style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+
+          subtitle: subtitle != null ? Text(subtitle) : null,
+
+          trailing: const Icon(Icons.chevron_right, size: 20),
+
+          onTap: onTap,
+
+        ),
+
+                  );
+
+                }
+
+              }
+
+              
+
+          
+
+      
+
+  
+
+  
+
+  

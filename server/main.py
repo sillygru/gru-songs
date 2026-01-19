@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException, Header, UploadFile, File
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, List, Optional
 import os
 import shutil
 import asyncio
+import tempfile
 from contextlib import asynccontextmanager
 from multiprocessing import Process, Queue
 
@@ -434,6 +435,90 @@ async def upload_user_db(db_type: str, file: UploadFile = File(...), x_username:
     
     else:
         raise HTTPException(status_code=400, detail="Invalid DB type")
+
+# --- Downloader Route ---
+
+def cleanup_file(path: str):
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except:
+            pass
+    
+    # Try to remove the temp directory if it's empty
+    temp_dir = os.path.dirname(path)
+    if os.path.basename(temp_dir).startswith("gru_dl_"):
+        try:
+            shutil.rmtree(temp_dir)
+        except:
+            pass
+
+@app.post("/music/yt-dlp")
+async def download_yt(
+    background_tasks: BackgroundTasks,
+    url: str = Form(...), 
+    title: str = Form(...), 
+    x_username: str = Header(None)
+):
+    if x_username != "gru":
+        raise HTTPException(status_code=403, detail="Only gru can use the downloader")
+    
+    # Ensure title has .m4a extension
+    filename = title if title.lower().endswith(".m4a") else f"{title}.m4a"
+
+    # Use a unique temp directory
+    temp_dir = tempfile.mkdtemp(prefix="gru_dl_")
+    output_path = os.path.join(temp_dir, filename)
+    
+    cmd = [
+        "yt-dlp",
+        "--no-js-runtimes",
+        "--js-runtimes", "node",
+        "--remote-components", "ejs:github",
+        "-f", "ba[ext=m4a]/ba",
+        "-x",
+        "--audio-format", "m4a",
+        "--embed-thumbnail",
+        "--embed-metadata",
+        "--convert-thumbnails", "jpg",
+        "--cookies-from-browser", "firefox",
+        "-o", output_path,
+        url
+    ]
+    
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            error_msg = stderr.decode()
+            cleanup_file(output_path)
+            raise HTTPException(status_code=500, detail=f"yt-dlp failed: {error_msg}")
+        
+        # Verify file exists
+        if not os.path.exists(output_path):
+            # Check if it was saved with a different name
+            files = os.listdir(temp_dir)
+            if files:
+                output_path = os.path.join(temp_dir, files[0])
+            else:
+                cleanup_file(output_path)
+                raise HTTPException(status_code=500, detail="Downloaded file not found")
+
+        background_tasks.add_task(cleanup_file, output_path)
+        return FileResponse(
+            output_path, 
+            filename=filename,
+            media_type="audio/mp4"
+        )
+        
+    except Exception as e:
+        cleanup_file(output_path)
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
