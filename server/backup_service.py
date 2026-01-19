@@ -171,6 +171,22 @@ class BackupService:
 
             shutil.copytree(settings.USERS_DIR, dest_path)
             
+            # Zip and send to discord
+            try:
+                zip_base_name = os.path.join(settings.BACKUPS_DIR, folder_name)
+                # This creates {zip_base_name}.zip
+                zip_path = shutil.make_archive(zip_base_name, 'zip', settings.USERS_DIR)
+                
+                if self.discord_queue:
+                    self.discord_queue.put({
+                        "type": "file",
+                        "path": zip_path,
+                        "filename": f"{folder_name}.zip",
+                        "content": f"📦 **Backup {next_num}** ({folder_name})"
+                    })
+            except Exception as e:
+                self._log(f"⚠️ Failed to create/send zip backup: {e}")
+
             elapsed = time.time() - start_time
             self.last_backup_hash = current_hash
             msg = f"✅ Backup {next_num} completed in {elapsed:.2f}s: {folder_name}"

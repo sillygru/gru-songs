@@ -51,6 +51,18 @@ class GruDiscordBot(commands.Bot):
                             embed_data = message.get("data")
                             if embed_data:
                                 await channel.send(embed=discord.Embed.from_dict(embed_data))
+                        elif isinstance(message, dict) and message.get("type") == "file":
+                            # Handle File
+                            file_path = message.get("path")
+                            filename = message.get("filename")
+                            content = message.get("content", "")
+                            if file_path and os.path.exists(file_path):
+                                try:
+                                    await channel.send(content=content, file=discord.File(file_path, filename=filename))
+                                    # Delete temporary zip as requested
+                                    os.remove(file_path)
+                                except Exception as e:
+                                    print(f"Failed to send file to discord: {e}")
                         elif message:
                             await channel.send(str(message))
                     except:
