@@ -1,14 +1,16 @@
 # Gru Songs (v6.2.0)
 
-A high-performance music streaming app built with Flutter, connecting to a private FastAPI backend.
+## ⚠️ This is a vibe coded mess of a project !! ⚠️
+Meaning, don't expect everything to work perfectly, half broken features should be expected.
+
+A local music player app built with Flutter, connecting to a private FastAPI backend.
 
 ## Features
 
-- **Streaming:** High-quality audio streaming from a private server.
+- **Folder Based Organization:** Organize your music with intuitive folder structure support.
 - **Metadata:** Automatic extraction of album art, titles, and artist info.
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
 - **Background Play:** Full integration with system media controls and background playback.
-- **Modern UI:** Material 3 design with a clean, modular architecture.
 
 ## Tech Stack
 
@@ -25,11 +27,19 @@ The project follows clean coding practices for long-term maintainability:
 
 ## Getting Started
 
+Simply install the app from the releases page, by default it will use my private server for stat syncing.
+
+### Good to know
+
+User data is purely based off filenames, so if you rename a file, data associated to it will be reset. (Stats, wether or not it was favorited/suggested less, will affect shuffle personality)
+
+## For developers / if you want to run your own private server
 1. **Backend:**
+   - Clone the repo
    - Navigate to `server/`.
-   - Install dependencies: `/opt/homebrew/bin/pip3.14 install -r requirements.txt`.
-   - Configure `.env` with your music directories.
-   - Run: `/opt/homebrew/bin/python3 main.py`.
+   - Install dependencies: `pip install -r requirements.txt`.
+   - Configure `.env` if you  want to use the discord bot for logging. (check .env.example)
+   - Run: `python main.py`.
 
 2. **Frontend:**
    - Install Flutter dependencies: `flutter pub get`.
