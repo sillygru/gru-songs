@@ -1,6 +1,8 @@
 import os
-from sqlmodel import SQLModel, create_engine, Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
 from settings import settings
+from db_models import Base
 
 class DatabaseManager:
     def __init__(self):
@@ -19,6 +21,10 @@ class DatabaseManager:
         url = f"sqlite:///{path}"
         return create_engine(url, connect_args={"check_same_thread": False})
 
+    def get_session(self, engine):
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        return SessionLocal()
+
     def get_global_users_engine(self):
         return self._get_engine("global_users.db")
 
@@ -34,31 +40,18 @@ class DatabaseManager:
     def init_global_dbs(self):
         # Create tables for global DBs
         from db_models import GlobalUser, Upload
-        SQLModel.metadata.create_all(self.get_global_users_engine())
-        SQLModel.metadata.create_all(self.get_uploads_engine())
+        Base.metadata.create_all(self.get_global_users_engine(), tables=[GlobalUser.__table__, Upload.__table__])
 
     def init_user_dbs(self, username: str):
         # Create tables for specific user DBs
         from db_models import UserData, Favorite, SuggestLess, PlaySession, PlayEvent
         
-        # We need to filter metadata to only create relevant tables for each DB
-        # This is a bit tricky with SQLModel as metadata is shared by default.
-        # Strategy: Use explicit bind or target specific tables if possible, 
-        # or just rely on the fact that creating extra empty tables in SQLite is cheap/harmless,
-        # BUT strictly speaking we should separate them. 
-        #
-        # Better approach: 
-        # Since SQLModel inherits from SQLAlchemy, we can create tables individually.
-        
         # 1. User Data DB
         e_data = self.get_user_data_engine(username)
-        UserData.__table__.create(e_data, checkfirst=True)
-        Favorite.__table__.create(e_data, checkfirst=True)
-        SuggestLess.__table__.create(e_data, checkfirst=True)
+        Base.metadata.create_all(e_data, tables=[UserData.__table__, Favorite.__table__, SuggestLess.__table__])
         
-        # 3. Stats DB
+        # 2. Stats DB
         e_stats = self.get_user_stats_engine(username)
-        PlaySession.__table__.create(e_stats, checkfirst=True)
-        PlayEvent.__table__.create(e_stats, checkfirst=True)
+        Base.metadata.create_all(e_stats, tables=[PlaySession.__table__, PlayEvent.__table__])
 
 db_manager = DatabaseManager()

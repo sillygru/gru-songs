@@ -1,6 +1,7 @@
 import os
 import json
-from sqlmodel import Session, select, func
+from sqlalchemy.orm import Session
+from sqlalchemy import select, func
 from database_manager import db_manager
 from db_models import PlaySession, PlayEvent
 from settings import settings
@@ -27,7 +28,7 @@ def migrate_user_stats(username: str):
     # Recalculate everything from SQL
     with Session(db_manager.get_user_stats_engine(username)) as session:
         # 1. Sessions and Platforms
-        sessions = session.exec(select(PlaySession)).all()
+        sessions = session.execute(select(PlaySession)).scalars().all()
         total_sessions = len(sessions)
         platform_usage = {}
         for s in sessions:
@@ -35,13 +36,13 @@ def migrate_user_stats(username: str):
             platform_usage[p] = platform_usage.get(p, 0) + 1
         
         # 2. Events breakdown
-        total_play_time = session.exec(select(func.sum(PlayEvent.duration_played))).one() or 0.0
-        total_fg_time = session.exec(select(func.sum(PlayEvent.foreground_duration))).one() or 0.0
-        total_bg_time = session.exec(select(func.sum(PlayEvent.background_duration))).one() or 0.0
+        total_play_time = session.execute(select(func.sum(PlayEvent.duration_played))).scalar() or 0.0
+        total_fg_time = session.execute(select(func.sum(PlayEvent.foreground_duration))).scalar() or 0.0
+        total_bg_time = session.execute(select(func.sum(PlayEvent.background_duration))).scalar() or 0.0
         
         # Redefined Logic for Migration
         # Played: Not favorite AND (Ratio > 0.8 OR Type in listen/complete OR (Not favorite AND ratio > 0.2))
-        total_songs_played = session.exec(
+        total_songs_played = session.execute(
             select(func.count(PlayEvent.id))
             .where(PlayEvent.event_type != "favorite")
             .where(
@@ -49,20 +50,20 @@ def migrate_user_stats(username: str):
                 (PlayEvent.event_type.in_(["listen", "complete"])) |
                 (PlayEvent.play_ratio > 0.2)
             )
-        ).one() or 0
+        ).scalar() or 0
         
-        total_songs_played_ratio_over_025 = session.exec(
+        total_songs_played_ratio_over_025 = session.execute(
             select(func.count(PlayEvent.id))
             .where(PlayEvent.event_type != "favorite")
             .where(PlayEvent.play_ratio > 0.25)
-        ).one() or 0
+        ).scalar() or 0
         
         # Skipped: Type == skip AND Ratio < 0.2
-        total_skipped = session.exec(
+        total_skipped = session.execute(
             select(func.count(PlayEvent.id))
             .where(PlayEvent.event_type == "skip")
             .where(PlayEvent.play_ratio < 0.2)
-        ).one() or 0
+        ).scalar() or 0
 
     # Prepare new clean structure
     new_stats = {

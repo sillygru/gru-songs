@@ -1,5 +1,6 @@
 import os
-from sqlmodel import Session, select, delete
+from sqlalchemy.orm import Session
+from sqlalchemy import select, delete
 from database_manager import db_manager
 from db_models import PlayEvent
 from settings import settings
@@ -16,7 +17,7 @@ def coalesce_user_events(username: str):
     with Session(db_manager.get_user_stats_engine(username)) as session:
         # 2. Fetch all events sorted by timestamp
         # We also sort by session_id to group them, but timestamp is the main driver for "consecutive"
-        raw_events = session.exec(select(PlayEvent).order_by(PlayEvent.timestamp)).all()
+        raw_events = session.execute(select(PlayEvent).order_by(PlayEvent.timestamp)).scalars().all()
         
         if not raw_events:
             print("No events found.")
@@ -82,7 +83,7 @@ def coalesce_user_events(username: str):
 
         # 4. Replace in DB
         # Delete all existing
-        session.exec(delete(PlayEvent))
+        session.execute(delete(PlayEvent))
         session.commit()
         
         # Add new

@@ -6,7 +6,8 @@ import bcrypt
 import logging
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
-from sqlmodel import Session, select, func, delete, or_
+from sqlalchemy.orm import Session
+from sqlalchemy import select, func, delete, or_
 
 from settings import settings
 from services import music_service
@@ -69,11 +70,11 @@ class UserService:
 
         try:
             with Session(db_manager.get_user_data_engine(username)) as session:
-                user = session.exec(select(UserData).where(UserData.username == username)).first()
+                user = session.execute(select(UserData).where(UserData.username == username)).scalar_one_or_none()
                 if not user: return None
                 
-                favorites = session.exec(select(Favorite)).all()
-                suggest_less = session.exec(select(SuggestLess)).all()
+                favorites = session.execute(select(Favorite)).scalars().all()
+                suggest_less = session.execute(select(SuggestLess)).scalars().all()
                 
                 return {
                     "username": user.username,
@@ -87,7 +88,7 @@ class UserService:
             
     def create_user(self, username: str, password: str):
         with Session(db_manager.get_global_users_engine()) as session:
-            existing = session.exec(select(GlobalUser).where(GlobalUser.username == username)).first()
+            existing = session.execute(select(GlobalUser).where(GlobalUser.username == username)).scalar_one_or_none()
             if existing:
                 return False, "User already exists"
             
@@ -134,7 +135,7 @@ class UserService:
             return False, "Invalid old password"
         
         with Session(db_manager.get_user_data_engine(username)) as session:
-            db_user = session.exec(select(UserData).where(UserData.username == username)).first()
+            db_user = session.execute(select(UserData).where(UserData.username == username)).scalar_one_or_none()
             if db_user:
                 db_user.password_hash = self._hash_password(new_password)
                 session.add(db_user)
@@ -148,11 +149,11 @@ class UserService:
 
         # 1. Check Global DB
         with Session(db_manager.get_global_users_engine()) as session:
-            if session.exec(select(GlobalUser).where(GlobalUser.username == new_username)).first():
+            if session.execute(select(GlobalUser).where(GlobalUser.username == new_username)).scalar_one_or_none():
                 return False, "Username already taken"
             
             # Get old global record
-            old_global = session.exec(select(GlobalUser).where(GlobalUser.username == current_username)).first()
+            old_global = session.execute(select(GlobalUser).where(GlobalUser.username == current_username)).scalar_one_or_none()
             if not old_global:
                 return False, "User not found"
                 
@@ -176,10 +177,14 @@ class UserService:
 
         # 3. Update internal username field in [new_user]_data.db
         with Session(db_manager.get_user_data_engine(new_username)) as session:
-            u_data = session.exec(select(UserData)).first() # Should be only one
+            u_data = session.execute(select(UserData)).scalars().first() # Should be only one
             if u_data:
-                u_data.username = new_username
-                session.add(u_data)
+                # SQLAlchemy doesn't allow changing PK. If username is PK, we might need a workaround.
+                # In db_models.py, UserData.username is primary_key=True.
+                # Since we renamed the whole DB file and it's a new session, it might be fine or we might need to recreate.
+                # Actually, in SQLite it's better to just delete and re-insert if PK changes, but let's see.
+                session.delete(u_data)
+                session.add(UserData(username=new_username, password_hash=u_data.password_hash, created_at=u_data.created_at))
                 session.commit()
 
         self.log_to_discord(f"🆔 **{current_username}** changed username to **{new_username}**")
@@ -342,7 +347,7 @@ class UserService:
                     with Session(db_manager.get_user_stats_engine(username)) as session:
                         for stats in events:
                             # Session logic
-                            db_session = session.exec(select(PlaySession).where(PlaySession.id == stats.session_id)).first()
+                            db_session = session.execute(select(PlaySession).where(PlaySession.id == stats.session_id)).scalar_one_or_none()
                             if not db_session:
                                 db_session = PlaySession(
                                     id=stats.session_id,
@@ -459,7 +464,7 @@ class UserService:
                             # We only want to increment total_sessions if it's actually a NEW session
                             # Check if session already exists in SQL
                             with Session(db_manager.get_user_stats_engine(username)) as session:
-                                existing_sess = session.exec(select(PlaySession).where(PlaySession.id == stats.session_id)).first()
+                                existing_sess = session.execute(select(PlaySession).where(PlaySession.id == stats.session_id)).scalar_one_or_none()
                                 if not existing_sess:
                                     summary_data["total_sessions"] += 1
                                     p = stats.platform or "unknown"
@@ -495,7 +500,7 @@ class UserService:
         with Session(db_manager.get_user_stats_engine(username)) as session:
             # FAST: Filter in SQL now that we have numeric columns
             # A play is counted if play_ratio > 0.25. Nothing else.
-            results = session.exec(
+            results = session.execute(
                 select(PlayEvent.song_filename, func.count(PlayEvent.id))
                 .where(PlayEvent.play_ratio > 0.25)
                 .group_by(PlayEvent.song_filename)
@@ -518,7 +523,7 @@ class UserService:
         with Session(db_manager.get_user_stats_engine(username)) as session:
             # Fetch all events for granular analysis
             # We fetch strictly needed fields to be faster
-            events = session.exec(
+            events = session.execute(
                 select(
                     PlayEvent.song_filename, 
                     PlayEvent.duration_played, 
@@ -534,13 +539,13 @@ class UserService:
         # Fetch metadata from uploads DB as library is now empty on server
         metadata_map = {}
         with Session(db_manager.get_uploads_engine()) as session:
-            uploads = session.exec(select(Upload)).all()
+            uploads = session.execute(select(Upload)).scalars().all()
             for u in uploads:
                 metadata_map[u.filename] = {"title": u.title, "artist": "Unknown"}
         
         # Total library songs is hard to know without the actual files, 
         # but we can use unique filenames ever seen in stats as a proxy
-        unique_filenames_in_history = set(ev.song_filename for ev in events)
+        unique_filenames_in_history = set(ev[0] for ev in events) # ev[0] is song_filename
         total_library_songs = len(unique_filenames_in_history)
 
         # 2. Process Data
@@ -563,45 +568,48 @@ class UserService:
         favorites_play_count = 0
         total_meaningful_plays = 0
 
-        for ev in events:
+        for ev_row in events:
+            # SQLAlchemy result row: (song_filename, duration_played, timestamp, play_ratio, event_type)
+            song_filename, duration_played, timestamp, play_ratio, event_type = ev_row
+            
             # Total Time
-            total_time_seconds += ev.duration_played
+            total_time_seconds += duration_played
             
             # Timestamp derived stats
-            dt = datetime.fromtimestamp(ev.timestamp)
+            dt = datetime.fromtimestamp(timestamp)
             date_str = dt.strftime("%Y-%m-%d")
             play_dates.add(date_str)
             hour_counts[dt.hour] += 1
             day_counts[dt.strftime("%A")] += 1
 
             # First event
-            if first_event is None or ev.timestamp < first_event[1]:
-                first_event = (ev.song_filename, ev.timestamp)
+            if first_event is None or timestamp < first_event[1]:
+                first_event = (song_filename, timestamp)
 
             # Meaningful plays (ratio > 0.15)
-            if ev.play_ratio > 0.15:
-                song_counts[ev.song_filename] += 1
-                unique_played_filenames.add(ev.song_filename)
+            if play_ratio > 0.15:
+                song_counts[song_filename] += 1
+                unique_played_filenames.add(song_filename)
                 total_meaningful_plays += 1
                 
                 # Replays logic
-                replays_by_day[date_str][ev.song_filename] += 1
+                replays_by_day[date_str][song_filename] += 1
 
                 # Metadata dependent stats
-                meta = metadata_map.get(ev.song_filename)
+                meta = metadata_map.get(song_filename)
                 if meta:
                     artist = meta.get("artist", "Unknown")
                     if artist != "Unknown":
                         artist_counts[artist] += 1
                 
-                if ev.song_filename in favorites:
+                if song_filename in favorites:
                     favorites_play_count += 1
 
             # Skipped logic:
             # 1. Ratio must be <= 0.90 (If > 0.90, it's NEVER a skip for fun stats)
             # 2. It was an explicit 'skip' event OR it was not 'complete' and ratio < 0.15
-            if ev.play_ratio <= 0.90:
-                if ev.event_type == 'skip' or (ev.event_type != 'complete' and ev.play_ratio < 0.15):
+            if play_ratio <= 0.90:
+                if event_type == 'skip' or (event_type != 'complete' and play_ratio < 0.15):
                     skipped_count += 1
 
         # 3. Construct Stats Dictionary
@@ -652,7 +660,7 @@ class UserService:
                 "id": "top_5_artists",
                 "label": "Top Artists",
                 "value": ", ".join(top_5[:3]), # Show top 3 in value
-                "subtitle": ", ".join(top_5[3:]) if len(top_5) > 3 else "Your favorites." # Rest in subtitle
+                "subtitle": ", ".join(top_5[3:]) if len(top_5) > 3 else "Your favorites."
             })
 
         # -- Listening Streak --
@@ -799,12 +807,12 @@ class UserService:
     
     def get_favorites(self, username: str):
         with Session(db_manager.get_user_data_engine(username)) as session:
-            favs = session.exec(select(Favorite)).all()
+            favs = session.execute(select(Favorite)).scalars().all()
             return [f.filename for f in favs]
         
     def add_favorite(self, username: str, song_filename: str, session_id: str):
         with Session(db_manager.get_user_data_engine(username)) as session:
-            if not session.exec(select(Favorite).where(Favorite.filename == song_filename)).first():
+            if not session.execute(select(Favorite).where(Favorite.filename == song_filename)).scalar_one_or_none():
                 session.add(Favorite(filename=song_filename))
                 session.commit()
 
@@ -821,14 +829,14 @@ class UserService:
 
     def add_favorite_without_stats(self, username: str, song_filename: str):
         with Session(db_manager.get_user_data_engine(username)) as session:
-            if not session.exec(select(Favorite).where(Favorite.filename == song_filename)).first():
+            if not session.execute(select(Favorite).where(Favorite.filename == song_filename)).scalar_one_or_none():
                 session.add(Favorite(filename=song_filename))
                 session.commit()
         return True
 
     def remove_favorite(self, username: str, song_filename: str):
         with Session(db_manager.get_user_data_engine(username)) as session:
-            fav = session.exec(select(Favorite).where(Favorite.filename == song_filename)).first()
+            fav = session.execute(select(Favorite).where(Favorite.filename == song_filename)).scalar_one_or_none()
             if fav:
                 session.delete(fav)
                 session.commit()
@@ -838,19 +846,19 @@ class UserService:
 
     def get_suggest_less(self, username: str):
         with Session(db_manager.get_user_data_engine(username)) as session:
-            sl = session.exec(select(SuggestLess)).all()
+            sl = session.execute(select(SuggestLess)).scalars().all()
             return [s.filename for s in sl]
 
     def add_suggest_less(self, username: str, song_filename: str):
         with Session(db_manager.get_user_data_engine(username)) as session:
-            if not session.exec(select(SuggestLess).where(SuggestLess.filename == song_filename)).first():
+            if not session.execute(select(SuggestLess).where(SuggestLess.filename == song_filename)).scalar_one_or_none():
                 session.add(SuggestLess(filename=song_filename))
                 session.commit()
         return True
 
     def remove_suggest_less(self, username: str, song_filename: str):
         with Session(db_manager.get_user_data_engine(username)) as session:
-            sl = session.exec(select(SuggestLess).where(SuggestLess.filename == song_filename)).first()
+            sl = session.execute(select(SuggestLess).where(SuggestLess.filename == song_filename)).scalar_one_or_none()
             if sl:
                 session.delete(sl)
                 session.commit()
@@ -863,7 +871,7 @@ class UserService:
             title = filename.rsplit('.', 1)[0]
             
         with Session(db_manager.get_uploads_engine()) as session:
-            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+            upload = session.execute(select(Upload).where(Upload.filename == filename)).scalar_one_or_none()
             if not upload:
                 upload = Upload(
                     filename=filename,
@@ -885,12 +893,12 @@ class UserService:
 
     def get_custom_title(self, filename: str) -> str:
         with Session(db_manager.get_uploads_engine()) as session:
-            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+            upload = session.execute(select(Upload).where(Upload.filename == filename)).scalar_one_or_none()
             return upload.title if upload else None
 
     def get_uploader(self, filename: str) -> str:
         with Session(db_manager.get_uploads_engine()) as session:
-            upload = session.exec(select(Upload).where(Upload.filename == filename)).first()
+            upload = session.execute(select(Upload).where(Upload.filename == filename)).scalar_one_or_none()
             return upload.uploader_username if upload else "Unknown"
 
     def get_sync_hashes(self, username: Optional[str]) -> Dict[str, str]:
@@ -930,5 +938,3 @@ class UserService:
         return hashes
 
 user_service = UserService()
-
-    

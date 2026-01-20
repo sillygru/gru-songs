@@ -1,62 +1,72 @@
 from typing import List, Optional
-from sqlmodel import Field, SQLModel, Relationship
+from sqlalchemy import Column, Integer, Float, String, ForeignKey, JSON
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from datetime import datetime
 
+class Base(DeclarativeBase):
+    pass
+
 # --- global_users.db ---
-class GlobalUser(SQLModel, table=True):
-    username: str = Field(primary_key=True, index=True)
-    created_at: float
-    # We can store a summary snapshot here if needed, but the prompt said 
-    # "lists all users AND has their global stats summary".
+class GlobalUser(Base):
+    __tablename__ = "globaluser"
+    username: Mapped[str] = mapped_column(String, primary_key=True, index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    # We store the summary snapshot here if needed.
     # We'll store the summary as a JSON string to be flexible/robust
-    stats_summary_json: str = Field(default="{}") 
+    stats_summary_json: Mapped[str] = mapped_column(String, default="{}") 
 
 # --- uploads.db ---
-class Upload(SQLModel, table=True):
-    filename: str = Field(primary_key=True)
-    uploader_username: str = Field(index=True)
-    title: str
-    source: str
-    original_filename: str
-    youtube_url: Optional[str] = None
-    timestamp: float
+class Upload(Base):
+    __tablename__ = "upload"
+    filename: Mapped[str] = mapped_column(String, primary_key=True)
+    uploader_username: Mapped[str] = mapped_column(String, index=True)
+    title: Mapped[str] = mapped_column(String)
+    source: Mapped[str] = mapped_column(String)
+    original_filename: Mapped[str] = mapped_column(String)
+    youtube_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    timestamp: Mapped[float] = mapped_column(Float)
 
 # --- [username]_data.db ---
-class UserData(SQLModel, table=True):
-    username: str = Field(primary_key=True)
-    password_hash: str
-    created_at: float
+class UserData(Base):
+    __tablename__ = "userdata"
+    username: Mapped[str] = mapped_column(String, primary_key=True)
+    password_hash: Mapped[str] = mapped_column(String)
+    created_at: Mapped[float] = mapped_column(Float)
 
-class Favorite(SQLModel, table=True):
-    filename: str = Field(primary_key=True)
-    added_at: float = Field(default_factory=lambda: datetime.now().timestamp())
+class Favorite(Base):
+    __tablename__ = "favorite"
+    filename: Mapped[str] = mapped_column(String, primary_key=True)
+    added_at: Mapped[float] = mapped_column(Float, default=lambda: datetime.now().timestamp())
 
-class SuggestLess(SQLModel, table=True):
-    filename: str = Field(primary_key=True)
-    added_at: float = Field(default_factory=lambda: datetime.now().timestamp())
+class SuggestLess(Base):
+    __tablename__ = "suggestless"
+    filename: Mapped[str] = mapped_column(String, primary_key=True)
+    added_at: Mapped[float] = mapped_column(Float, default=lambda: datetime.now().timestamp())
 
 # --- [username]_stats.db ---
-class PlaySession(SQLModel, table=True):
-    id: str = Field(primary_key=True)
-    start_time: float
-    end_time: float
-    platform: str = Field(default="unknown")
-    events: List["PlayEvent"] = Relationship(back_populates="session", sa_relationship_kwargs={"cascade": "all, delete"})
-
-class PlayEvent(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    session_id: str = Field(foreign_key="playsession.id")
-    song_filename: str
-    event_type: str
+class PlaySession(Base):
+    __tablename__ = "playsession"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    start_time: Mapped[float] = mapped_column(Float)
+    end_time: Mapped[float] = mapped_column(Float)
+    platform: Mapped[str] = mapped_column(String, default="unknown")
     
-    # Switched to NULL (Optional[float]) for performance as requested
-    timestamp: float
-    duration_played: float 
-    total_length: float
-    play_ratio: float
-    foreground_duration: Optional[float] = None
-    background_duration: Optional[float] = None
-    
-    session: Optional[PlaySession] = Relationship(back_populates="events")
+    events: Mapped[List["PlayEvent"]] = relationship(
+        "PlayEvent", back_populates="session", cascade="all, delete"
+    )
 
-# Note: [username]_final_stats.json is not a DB model, it's just a JSON file.
+class PlayEvent(Base):
+    __tablename__ = "playevent"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String, ForeignKey("playsession.id"))
+    song_filename: Mapped[str] = mapped_column(String)
+    event_type: Mapped[str] = mapped_column(String)
+    
+    timestamp: Mapped[float] = mapped_column(Float)
+    duration_played: Mapped[float] = mapped_column(Float)
+    total_length: Mapped[float] = mapped_column(Float)
+    play_ratio: Mapped[float] = mapped_column(Float)
+    foreground_duration: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    background_duration: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    session: Mapped[Optional["PlaySession"]] = relationship("PlaySession", back_populates="events")

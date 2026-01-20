@@ -12,7 +12,8 @@ import shutil
 import sys
 import unittest
 import json
-from sqlmodel import Session, select
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 # Ensure we can import from server directory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -83,7 +84,7 @@ class TestMigrationComprehensive(unittest.TestCase):
         
         # Verify SQL Data
         with Session(db_manager.get_user_stats_engine(username)) as session:
-            events = session.exec(select(PlayEvent).order_by(PlayEvent.timestamp)).all()
+            events = session.execute(select(PlayEvent).order_by(PlayEvent.timestamp)).scalars().all()
             
             print("\n--- Test Results ---")
             for i, event in enumerate(events):

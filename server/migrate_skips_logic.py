@@ -3,7 +3,8 @@ import json
 import logging
 import sys
 import shutil
-from sqlmodel import Session, select
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 from collections import defaultdict
 
 # Ensure we can import from server directory
@@ -24,7 +25,7 @@ def rebuild_user_stats(username):
     # 1. Update SQL Data
     changes_count = 0
     with Session(db_manager.get_user_stats_engine(username)) as session:
-        events = session.exec(select(PlayEvent)).all()
+        events = session.execute(select(PlayEvent)).scalars().all()
         for event in events:
             # Check 10s rule
             # Only affect 'skip' events. 'listen' or others are already fine.
@@ -54,7 +55,7 @@ def rebuild_user_stats(username):
 
     # Fetch all events sorted by timestamp
     with Session(db_manager.get_user_stats_engine(username)) as session:
-        events = session.exec(select(PlayEvent).order_by(PlayEvent.timestamp)).all()
+        events = session.execute(select(PlayEvent).order_by(PlayEvent.timestamp)).scalars().all()
         
         processed_sessions = set()
         
@@ -108,7 +109,7 @@ def rebuild_user_stats(username):
 
     # Re-calculate platform usage and total sessions from PlaySession table
     with Session(db_manager.get_user_stats_engine(username)) as session:
-        sessions = session.exec(select(PlaySession)).all()
+        sessions = session.execute(select(PlaySession)).scalars().all()
         summary_data["total_sessions"] = len(sessions)
         summary_data["platform_usage"] = {}
         for s in sessions:

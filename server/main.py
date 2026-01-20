@@ -306,7 +306,8 @@ async def upload_user_db(db_type: str, file: UploadFile = File(...), x_username:
     if db_type == "stats":
         # MERGE stats: Only add new play events, never delete existing
         import tempfile
-        import sqlite3
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.orm import Session as sqlalchemy_session
         
         # Save uploaded file to temp location
         with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as tmp:
@@ -321,44 +322,47 @@ async def upload_user_db(db_type: str, file: UploadFile = File(...), x_username:
                 shutil.move(tmp_path, server_path)
                 return {"message": "stats created"}
             
-            # Connect to both databases
-            uploaded_conn = sqlite3.connect(tmp_path)
-            server_conn = sqlite3.connect(server_path)
+            # Use SQLAlchemy engines for merging
+            uploaded_engine = create_engine(f"sqlite:///{tmp_path}")
+            server_engine = db_manager.get_user_stats_engine(x_username)
             
-            try:
+            with sqlalchemy_session(uploaded_engine) as uploaded_session, \
+                 sqlalchemy_session(server_engine) as server_session:
+                
                 # Merge play sessions (by ID, only add new)
-                uploaded_sessions = uploaded_conn.execute("SELECT id, start_time, end_time, platform FROM playsession").fetchall()
+                # Using text() for low-level merge to match the previous logic's efficiency
+                uploaded_sessions = uploaded_session.execute(text("SELECT id, start_time, end_time, platform FROM playsession")).fetchall()
                 for sess in uploaded_sessions:
-                    existing = server_conn.execute("SELECT id FROM playsession WHERE id = ?", (sess[0],)).fetchone()
+                    existing = server_session.execute(text("SELECT id FROM playsession WHERE id = :id"), {"id": sess[0]}).fetchone()
                     if not existing:
-                        server_conn.execute(
-                            "INSERT INTO playsession (id, start_time, end_time, platform) VALUES (?, ?, ?, ?)",
-                            sess
+                        server_session.execute(
+                            text("INSERT INTO playsession (id, start_time, end_time, platform) VALUES (:id, :start, :end, :plat)"),
+                            {"id": sess[0], "start": sess[1], "end": sess[2], "plat": sess[3]}
                         )
                 
                 # Merge play events (check by timestamp+song to avoid duplicates)
-                uploaded_events = uploaded_conn.execute(
-                    "SELECT session_id, song_filename, event_type, timestamp, duration_played, total_length, play_ratio, foreground_duration, background_duration FROM playevent"
+                uploaded_events = uploaded_session.execute(
+                    text("SELECT session_id, song_filename, event_type, timestamp, duration_played, total_length, play_ratio, foreground_duration, background_duration FROM playevent")
                 ).fetchall()
                 
                 for event in uploaded_events:
                     # Check if this exact event exists (by timestamp and filename)
-                    existing = server_conn.execute(
-                        "SELECT id FROM playevent WHERE timestamp = ? AND song_filename = ?",
-                        (event[3], event[1])
+                    existing = server_session.execute(
+                        text("SELECT id FROM playevent WHERE timestamp = :ts AND song_filename = :fn"),
+                        {"ts": event[3], "fn": event[1]}
                     ).fetchone()
                     if not existing:
-                        server_conn.execute(
-                            "INSERT INTO playevent (session_id, song_filename, event_type, timestamp, duration_played, total_length, play_ratio, foreground_duration, background_duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            event
+                        server_session.execute(
+                            text("INSERT INTO playevent (session_id, song_filename, event_type, timestamp, duration_played, total_length, play_ratio, foreground_duration, background_duration) VALUES (:sid, :fn, :et, :ts, :dp, :tl, :pr, :fd, :bd)"),
+                            {
+                                "sid": event[0], "fn": event[1], "et": event[2], "ts": event[3], 
+                                "dp": event[4], "tl": event[5], "pr": event[6], "fd": event[7], "bd": event[8]
+                            }
                         )
                 
-                server_conn.commit()
-            finally:
-                uploaded_conn.close()
-                server_conn.close()
-                os.unlink(tmp_path)
+                server_session.commit()
             
+            os.unlink(tmp_path)
             return {"message": "stats merged"}
             
         except Exception as e:
