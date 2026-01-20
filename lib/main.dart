@@ -7,6 +7,8 @@ import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/auth_screen.dart';
 import 'providers/auth_provider.dart';
 import 'services/cache_service.dart';
+import 'services/api_service.dart';
+import 'services/storage_service.dart';
 
 class MyHttpOverrides extends HttpOverrides {
   @override
@@ -20,6 +22,13 @@ class MyHttpOverrides extends HttpOverrides {
 Future<void> main() async {
   HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load saved server URL
+  final storage = StorageService();
+  final savedUrl = await storage.getServerUrl();
+  if (savedUrl != null) {
+    ApiService.setBaseUrl(savedUrl);
+  }
 
   // Initialize Cache V3 and cleanup legacy caches
   await CacheService.instance.init();

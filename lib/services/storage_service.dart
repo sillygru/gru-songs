@@ -8,6 +8,7 @@ import '../models/song.dart';
 class StorageService {
   static const String _musicFolderKey = 'music_folder_path';
   static const String _lyricsFolderKey = 'lyrics_folder_path';
+  static const String _serverUrlKey = 'server_base_url';
 
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -48,6 +49,16 @@ class StorageService {
   Future<void> setLyricsFolderPath(String path) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lyricsFolderKey, path);
+  }
+
+  Future<String?> getServerUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_serverUrlKey);
+  }
+
+  Future<void> setServerUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_serverUrlKey, url);
   }
 
   Future<void> saveSongs(List<Song> songs) async {

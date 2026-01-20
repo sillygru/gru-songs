@@ -5,7 +5,15 @@ import 'package:http/io_client.dart';
 import '../models/song.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://[REDACTED]/music';
+  static const String defaultBaseUrl = 'https://[REDACTED]/music';
+  static String _baseUrl = defaultBaseUrl;
+
+  static String get baseUrl => _baseUrl;
+
+  static void setBaseUrl(String url) {
+    _baseUrl = url;
+  }
+
   final http.Client _client;
 
   ApiService({http.Client? client}) : _client = client ?? createClient();

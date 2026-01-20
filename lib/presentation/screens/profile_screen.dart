@@ -5,6 +5,7 @@ import 'cache_management_screen.dart';
 import 'downloader_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
+import '../../services/api_service.dart';
 import '../../models/shuffle_config.dart';
 import '../widgets/fun_stats_view.dart';
 
@@ -43,6 +44,116 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const SnackBar(content: Text("Lyrics folder updated")));
       }
     }
+  }
+
+  void _showServerSettingsDialog() {
+    final controller = TextEditingController(text: ApiService.baseUrl);
+    bool isTesting = false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Server Connection'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(
+                      labelText: 'Server URL',
+                      hintText: 'http://[REDACTED]:9000',
+                      border: OutlineInputBorder(),
+                      helperText: 'Enter IP:Port (e.g. 10.0.0.5:9000) or full URL',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (isTesting)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    TextButton(
+                      onPressed: () {
+                        controller.text = ApiService.defaultBaseUrl;
+                      },
+                      child: const Text('Restore Default URL'),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isTesting
+                      ? null
+                      : () async {
+                          setDialogState(() => isTesting = true);
+                          String input = controller.text.trim();
+
+                          if (!input.startsWith('http')) {
+                            input = 'http://$input';
+                          }
+
+                          if (input.endsWith('/')) {
+                            input = input.substring(0, input.length - 1);
+                          }
+
+                          try {
+                            final client = ApiService.createClient();
+                            // Use /stats/fun as it's a valid endpoint
+                            final testUrl = '$input/stats/fun';
+                            final username = ref.read(authProvider).username;
+                            final headers = <String, String>{};
+                            if (username != null) {
+                              headers['x-username'] = username;
+                            }
+
+                            debugPrint("Testing connection to: $testUrl");
+
+                            final response = await client
+                                .get(Uri.parse(testUrl), headers: headers)
+                                .timeout(const Duration(seconds: 5));
+
+                            if (response.statusCode == 200 ||
+                                response.statusCode == 401) {
+                              ApiService.setBaseUrl(input);
+                              await ref
+                                  .read(storageServiceProvider)
+                                  .setServerUrl(input);
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                setState(() {});
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text("Connected! Refreshing...")));
+                                ref.invalidate(songsProvider);
+                                ref.invalidate(userDataProvider);
+                              }
+                            } else {
+                              throw Exception('Status ${response.statusCode}');
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text("Connection Failed: $e")));
+                              setDialogState(() => isTesting = false);
+                            }
+                          }
+                        },
+                  child: const Text('Test & Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showChangeUsernameDialog() {
@@ -330,6 +441,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           onTap: _selectLyricsFolder,
                         );
                       }
+                    ),
+                    _buildListTile(
+                      icon: Icons.dns,
+                      title: 'Server Settings',
+                      subtitle: ApiService.baseUrl,
+                      onTap: _showServerSettingsDialog,
                     ),
                     _buildListTile(
                       icon: Icons.storage_outlined,
