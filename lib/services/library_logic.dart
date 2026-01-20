@@ -5,11 +5,13 @@ class LibraryFolderContent {
   final List<String> subFolders;
   final List<Song> immediateSongs;
   final List<Song> allSongsInFolder;
+  final Map<String, List<Song>> subFolderSongs;
 
   LibraryFolderContent({
     required this.subFolders,
     required this.immediateSongs,
     required this.allSongsInFolder,
+    required this.subFolderSongs,
   });
 }
 
@@ -26,6 +28,7 @@ class LibraryLogic {
 
     final Set<String> subFolders = {};
     final List<Song> immediateSongs = [];
+    final Map<String, List<Song>> subFolderSongsMap = {};
 
     for (var song in allSongsInFolder) {
       final relativeToCurrent = p.relative(song.url, from: currentFullPath);
@@ -36,7 +39,9 @@ class LibraryLogic {
         immediateSongs.add(song);
       } else {
         // It's in a subfolder
-        subFolders.add(parts[0]);
+        final subFolderName = parts[0];
+        subFolders.add(subFolderName);
+        subFolderSongsMap.putIfAbsent(subFolderName, () => []).add(song);
       }
     }
 
@@ -48,6 +53,7 @@ class LibraryLogic {
       subFolders: sortedSubFolders,
       immediateSongs: immediateSongs,
       allSongsInFolder: allSongsInFolder,
+      subFolderSongs: subFolderSongsMap,
     );
   }
 }

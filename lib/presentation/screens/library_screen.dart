@@ -5,6 +5,7 @@ import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
 import '../widgets/gru_image.dart';
 import '../widgets/song_options_menu.dart';
+import '../widgets/folder_grid_image.dart';
 import 'song_list_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -76,6 +77,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   // 1. Favorites Folder (at root only)
                   if (isRoot) {
                     if (index == 0) {
+                      final favSongs = allSongs
+                          .where((s) => userData.isFavorite(s.filename))
+                          .toList();
+
                       return ListTile(
                         leading: Container(
                           width: 48,
@@ -89,11 +94,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         title: const Text('Favorites',
                             style: TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text(
-                            '${userData.favorites.length} songs (found in library: ${allSongs.where((s) => userData.isFavorite(s.filename)).length})'),
+                            '${userData.favorites.length} songs (found in library: ${favSongs.length})'),
                         onTap: () {
-                          final favSongs = allSongs
-                              .where((s) => userData.isFavorite(s.filename))
-                              .toList();
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -115,10 +117,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     final folderRelativePath = widget.relativePath == null
                         ? folderName
                         : p.join(widget.relativePath!, folderName);
+                    final folderSongs =
+                        content.subFolderSongs[folderName] ?? [];
 
                     return ListTile(
-                      leading: const Icon(Icons.folder,
-                          size: 40, color: Colors.amber),
+                      leading: FolderGridImage(songs: folderSongs),
                       title: Text(folderName),
                       onTap: () {
                         Navigator.push(

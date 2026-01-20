@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
+import 'folder_grid_image.dart';
 
 class FolderPicker extends ConsumerStatefulWidget {
   final String rootPath;
@@ -72,8 +73,10 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
                     itemCount: sortedSubFolders.length,
                     itemBuilder: (context, index) {
                       final folderName = sortedSubFolders[index];
+                      final folderSongs =
+                          content.subFolderSongs[folderName] ?? [];
                       return ListTile(
-                        leading: const Icon(Icons.folder, color: Colors.amber),
+                        leading: FolderGridImage(songs: folderSongs, size: 40),
                         title: Text(folderName),
                         onTap: () {
                           setState(() {

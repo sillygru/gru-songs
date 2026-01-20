@@ -1,4 +1,4 @@
-# Gru Songs (v6.3.0)
+# Gru Songs (v6.3.1)
 
 ## ⚠️ This is a vibe coded mess of a project !! ⚠️
 Meaning, don't expect everything to work perfectly, half broken features should be expected.

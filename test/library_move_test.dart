@@ -74,6 +74,9 @@ void main() {
       expect(rootContent.immediateSongs[0].filename, 'root.mp3');
       expect(rootContent.subFolders, containsAll(['Folder1', 'Folder2']));
       expect(rootContent.subFolders.length, 2);
+      expect(rootContent.subFolderSongs['Folder1']?.length,
+          3); // sub1, sub1_2, deep
+      expect(rootContent.subFolderSongs['Folder2']?.length, 1); // sub2
 
       // Test Folder1
       final folder1Path = p.join(musicRoot, 'Folder1');
@@ -86,6 +89,7 @@ void main() {
           folder1Content.immediateSongs.any((s) => s.filename == 'sub1_2.mp3'),
           true);
       expect(folder1Content.subFolders, ['Deep']);
+      expect(folder1Content.subFolderSongs['Deep']?.length, 1);
     });
   });
 
