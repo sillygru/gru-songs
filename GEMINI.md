@@ -22,7 +22,7 @@ A high-performance music streaming app built with Flutter, connecting to a priva
 - **Backup & Notifications:** Automated backups of user data with MD5-based change detection. Discord bot integration for logs and admin commands.
 
 ## 🌐 Networking & API
-- **Base URL:** `https://[REDACTED]/music`
+- **Base URL:** `http://[REDACTED]:9000`
   - **Endpoints:**
   - **Music:**
     - `GET /list-songs` (includes `play_count` and `mtime` if available)
