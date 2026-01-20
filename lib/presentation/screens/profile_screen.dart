@@ -6,7 +6,6 @@ import 'downloader_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/providers.dart';
-import '../../services/api_service.dart';
 import '../../models/shuffle_config.dart';
 import '../widgets/fun_stats_view.dart';
 
