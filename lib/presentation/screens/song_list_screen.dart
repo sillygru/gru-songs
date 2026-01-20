@@ -28,7 +28,7 @@ class SongListScreen extends ConsumerWidget {
             icon: const Icon(Icons.shuffle),
             onPressed: () {
               if (songs.isNotEmpty) {
-                audioManager.shuffleAndPlay(songs);
+                audioManager.shuffleAndPlay(songs, isRestricted: true);
               }
             },
             tooltip: 'Shuffle',

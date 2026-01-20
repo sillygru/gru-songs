@@ -23,37 +23,49 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.relativePath ?? 'Library'),
-      ),
-      body: songsAsyncValue.when(
-        data: (allSongs) {
-          return FutureBuilder<String?>(
-            future: ref.read(storageServiceProvider).getMusicFolderPath(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData || snapshot.data == null) {
-                return const Center(
-                    child: Text('Please select a music folder in Home first.'));
-              }
-
-              final musicRoot = snapshot.data!;
-              final currentFullPath = widget.relativePath == null
-                  ? musicRoot
-                  : p.join(musicRoot, widget.relativePath);
-
-              // Favorites is only shown at the root
-              final isRoot = widget.relativePath == null;
-
-              final content = LibraryLogic.getFolderContent(
-                allSongs: allSongs,
-                currentFullPath: currentFullPath,
+    return songsAsyncValue.when(
+      data: (allSongs) {
+        return FutureBuilder<String?>(
+          future: ref.read(storageServiceProvider).getMusicFolderPath(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData || snapshot.data == null) {
+              return Scaffold(
+                appBar: AppBar(title: Text(widget.relativePath ?? 'Library')),
+                body: const Center(
+                    child: Text('Please select a music folder in Home first.')),
               );
+            }
 
-              final sortedSubFolders = content.subFolders;
-              final immediateSongs = content.immediateSongs;
+            final musicRoot = snapshot.data!;
+            final currentFullPath = widget.relativePath == null
+                ? musicRoot
+                : p.join(musicRoot, widget.relativePath);
 
-              return ListView.builder(
+            final content = LibraryLogic.getFolderContent(
+              allSongs: allSongs,
+              currentFullPath: currentFullPath,
+            );
+
+            final sortedSubFolders = content.subFolders;
+            final immediateSongs = content.immediateSongs;
+            final isRoot = widget.relativePath == null;
+
+            return Scaffold(
+              appBar: AppBar(
+                title: Text(widget.relativePath ?? 'Library'),
+                actions: [
+                  if (content.allSongsInFolder.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.shuffle),
+                      onPressed: () {
+                        audioManager.shuffleAndPlay(content.allSongsInFolder,
+                            isRestricted: true);
+                      },
+                      tooltip: 'Shuffle Folder',
+                    ),
+                ],
+              ),
+              body: ListView.builder(
                 itemCount: (isRoot ? 1 : 0) +
                     sortedSubFolders.length +
                     immediateSongs.length,
@@ -82,16 +94,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           final favSongs = allSongs
                               .where((s) => userData.isFavorite(s.filename))
                               .toList();
-                          debugPrint(
-                              'Library: userData.favorites count: ${userData.favorites.length}');
-                          if (userData.favorites.isNotEmpty) {
-                            debugPrint(
-                                'Library: userData.favorites first 3: ${userData.favorites.take(3).toList()}');
-                          }
-                          if (allSongs.isNotEmpty) {
-                            debugPrint(
-                                'Library: first song filename: ${allSongs.first.filename}');
-                          }
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -178,12 +180,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     },
                   );
                 },
-              );
-            },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, s) => Center(child: Text('Error: $e')),
+              ),
+            );
+          },
+        );
+      },
+      loading: () => Scaffold(
+        appBar: AppBar(title: Text(widget.relativePath ?? 'Library')),
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, s) => Scaffold(
+        appBar: AppBar(title: Text(widget.relativePath ?? 'Library')),
+        body: Center(child: Text('Error: $e')),
       ),
     );
   }

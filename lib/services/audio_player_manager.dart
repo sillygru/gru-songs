@@ -26,6 +26,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   List<Song> _allSongs = [];
   Map<String, Song> _songMap = {};
 
+  // Flag to restrict auto-generation to original queue (e.g. for folder shuffle)
+  bool _isRestrictedToOriginal = false;
+
   // Server Sync State
   Timer? _syncTimer;
 
@@ -115,8 +118,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // 1. Setup Local Queue (Optimistic)
     if (contextQueue != null) {
       _originalQueue = contextQueue.map((s) => QueueItem(song: s)).toList();
-    } else if (_originalQueue.isEmpty) {
-      _originalQueue = [QueueItem(song: song)];
+      _isRestrictedToOriginal = true;
+    } else {
+      if (_originalQueue.isEmpty) {
+        _originalQueue = [QueueItem(song: song)];
+        _isRestrictedToOriginal = false;
+      }
     }
 
     int originalIdx = _originalQueue
@@ -194,13 +201,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // Pick a random song from _allSongs using local weights
     if (_allSongs.isEmpty) return;
 
-    var candidates = _allSongs
+    List<Song> sourcePool = _isRestrictedToOriginal
+        ? _originalQueue.map((q) => q.song).toList()
+        : _allSongs;
+
+    if (sourcePool.isEmpty) return;
+
+    var candidates = sourcePool
         .where((s) => !_effectiveQueue.reversed
             .take(10)
             .any((q) => q.song.filename == s.filename))
         .toList();
 
-    if (candidates.isEmpty) candidates = List.from(_allSongs);
+    if (candidates.isEmpty) candidates = List.from(sourcePool);
 
     final queueItems = candidates.map((s) => QueueItem(song: s)).toList();
     final lastItem = _effectiveQueue.isNotEmpty ? _effectiveQueue.last : null;
@@ -435,6 +448,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
     _allSongs = songs;
     _songMap = {for (var s in songs) s.filename: s};
+    _isRestrictedToOriginal = false;
     await _player.setShuffleModeEnabled(false);
 
     if (_username != null) {
@@ -528,7 +542,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     queueNotifier.value = List.from(_effectiveQueue);
   }
 
-  Future<void> shuffleAndPlay(List<Song> songs) async {
+  Future<void> shuffleAndPlay(List<Song> songs,
+      {bool isRestricted = false}) async {
     if (songs.isEmpty) return;
 
     _shuffleState = _shuffleState.copyWith(
@@ -541,7 +556,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // Pick random start
     final randomIdx = Random().nextInt(songs.length);
     // playSong will trigger shuffle + sync
-    await playSong(songs[randomIdx], contextQueue: songs, startPlaying: true);
+    // If isRestricted is true, we pass the songs as contextQueue to lock it
+    await playSong(songs[randomIdx],
+        contextQueue: isRestricted ? songs : null, startPlaying: true);
+
+    if (!isRestricted) {
+      // If NOT restricted, we might want to use the full library but start with this list shuffled
+      _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
+      _isRestrictedToOriginal = false;
+      // Re-apply shuffle to ensure it's balanced with full library awareness if needed,
+      // but shuffleAndPlay usually implies "shuffle THIS list and then continue with others"
+      // or "shuffle ALL".
+      // Given the user request, they want "Shuffle Folder" to stay in folder.
+    }
   }
 
   Future<void> toggleShuffle() async {

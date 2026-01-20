@@ -4,10 +4,12 @@ import '../models/song.dart';
 class LibraryFolderContent {
   final List<String> subFolders;
   final List<Song> immediateSongs;
+  final List<Song> allSongsInFolder;
 
   LibraryFolderContent({
     required this.subFolders,
     required this.immediateSongs,
+    required this.allSongsInFolder,
   });
 }
 
@@ -17,7 +19,7 @@ class LibraryLogic {
     required String currentFullPath,
   }) {
     // Filter songs in the current path (or subpaths)
-    final folderSongs = allSongs
+    final allSongsInFolder = allSongs
         .where((s) =>
             s.url == currentFullPath || p.isWithin(currentFullPath, s.url))
         .toList();
@@ -25,7 +27,7 @@ class LibraryLogic {
     final Set<String> subFolders = {};
     final List<Song> immediateSongs = [];
 
-    for (var song in folderSongs) {
+    for (var song in allSongsInFolder) {
       final relativeToCurrent = p.relative(song.url, from: currentFullPath);
       final parts = p.split(relativeToCurrent);
 
@@ -45,6 +47,7 @@ class LibraryLogic {
     return LibraryFolderContent(
       subFolders: sortedSubFolders,
       immediateSongs: immediateSongs,
+      allSongsInFolder: allSongsInFolder,
     );
   }
 }

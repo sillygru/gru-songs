@@ -124,7 +124,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       icon: const Icon(Icons.shuffle),
                       onPressed: () {
                         if (songs.isNotEmpty) {
-                          audioManager.shuffleAndPlay(songs);
+                          audioManager.shuffleAndPlay(songs,
+                              isRestricted: false);
                         }
                       },
                       tooltip: 'Shuffle All',
