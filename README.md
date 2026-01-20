@@ -1,9 +1,10 @@
-# Gru Songs (v6.3.1)
+# Gru Songs (v6.3.2)
 
 ## ⚠️ This is a vibe coded mess of a project !! ⚠️
 Meaning, don't expect everything to work perfectly, half broken features should be expected.
 
-A local music player app built with Flutter, connecting to a private FastAPI backend.
+## What is Gru Songs?
+Gru Songs is a simple local music player app built with Flutter, that can optionally connect to a server to sync stats.
 
 ## Features
 

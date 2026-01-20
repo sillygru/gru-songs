@@ -56,4 +56,36 @@ class LibraryLogic {
       subFolderSongs: subFolderSongsMap,
     );
   }
+
+  static Map<String, List<Song>> groupByArtist(List<Song> songs) {
+    final Map<String, List<Song>> artistMap = {};
+    for (var song in songs) {
+      final artist = song.artist.isEmpty ? 'Unknown Artist' : song.artist;
+      artistMap.putIfAbsent(artist, () => []).add(song);
+    }
+    // Sort songs within each artist by album then title
+    for (var artist in artistMap.keys) {
+      artistMap[artist]!.sort((a, b) {
+        int albumCompare =
+            a.album.toLowerCase().compareTo(b.album.toLowerCase());
+        if (albumCompare != 0) return albumCompare;
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      });
+    }
+    return artistMap;
+  }
+
+  static Map<String, List<Song>> groupByAlbum(List<Song> songs) {
+    final Map<String, List<Song>> albumMap = {};
+    for (var song in songs) {
+      final album = song.album.isEmpty ? 'Unknown Album' : song.album;
+      albumMap.putIfAbsent(album, () => []).add(song);
+    }
+    // Sort songs within each album by title (or track number if we had it)
+    for (var album in albumMap.keys) {
+      albumMap[album]!.sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    }
+    return albumMap;
+  }
 }
