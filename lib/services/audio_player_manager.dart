@@ -555,19 +555,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     // Pick random start
     final randomIdx = Random().nextInt(songs.length);
-    // playSong will trigger shuffle + sync
-    // If isRestricted is true, we pass the songs as contextQueue to lock it
-    await playSong(songs[randomIdx],
-        contextQueue: isRestricted ? songs : null, startPlaying: true);
 
-    if (!isRestricted) {
-      // If NOT restricted, we might want to use the full library but start with this list shuffled
+    if (isRestricted) {
+      await playSong(songs[randomIdx], contextQueue: songs, startPlaying: true);
+    } else {
+      // For non-restricted, we update the original queue but don't lock it
       _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
       _isRestrictedToOriginal = false;
-      // Re-apply shuffle to ensure it's balanced with full library awareness if needed,
-      // but shuffleAndPlay usually implies "shuffle THIS list and then continue with others"
-      // or "shuffle ALL".
-      // Given the user request, they want "Shuffle Folder" to stay in folder.
+      await playSong(songs[randomIdx], startPlaying: true);
     }
   }
 

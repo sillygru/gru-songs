@@ -48,6 +48,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Library'),
+          actions: [
+            songsAsyncValue.when(
+              data: (songs) => IconButton(
+                icon: const Icon(Icons.shuffle),
+                onPressed: () {
+                  if (songs.isNotEmpty) {
+                    audioManager.shuffleAndPlay(songs, isRestricted: false);
+                  }
+                },
+                tooltip: 'Shuffle All',
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Folders'),
