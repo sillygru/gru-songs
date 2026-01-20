@@ -42,9 +42,8 @@ PODS:
   - just_audio (0.0.1):
     - Flutter
     - FlutterMacOS
-  - path_provider_foundation (0.0.1):
+  - permission_handler_apple (9.3.0):
     - Flutter
-    - FlutterMacOS
   - SDWebImage (5.21.5):
     - SDWebImage/Core (= 5.21.5)
   - SDWebImage/Core (5.21.5)
@@ -62,7 +61,7 @@ DEPENDENCIES:
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - Flutter (from `Flutter`)
   - just_audio (from `.symlinks/plugins/just_audio/darwin`)
-  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
 
@@ -84,8 +83,8 @@ EXTERNAL SOURCES:
     :path: Flutter
   just_audio:
     :path: ".symlinks/plugins/just_audio/darwin"
-  path_provider_foundation:
-    :path: ".symlinks/plugins/path_provider_foundation/darwin"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
   shared_preferences_foundation:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   sqflite_darwin:
@@ -99,7 +98,7 @@ SPEC CHECKSUMS:
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
-  path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
+  permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   SDWebImage: e9c98383c7572d713c1a0d7dd2783b10599b9838
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0

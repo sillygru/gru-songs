@@ -47,7 +47,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-
   void _showChangeUsernameDialog() {
     showDialog(
       context: context,

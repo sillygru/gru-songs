@@ -59,30 +59,30 @@ Future<void> main() async {
   // Initialize API/State based on findings
   final prefs = await SharedPreferences.getInstance();
   final username = prefs.getString('username');
-  
+
   if (isSetupComplete && username == null) {
-     debugPrint("Setup complete but no user found. Resetting...");
-     isSetupComplete = false;
-     await storage.setSetupComplete(false);
+    debugPrint("Setup complete but no user found. Resetting...");
+    isSetupComplete = false;
+    await storage.setSetupComplete(false);
   }
 
   if (isSetupComplete) {
     final isLocal = await storage.getIsLocalMode();
     if (!isLocal) {
-       final savedUrl = await storage.getServerUrl();
-       if (savedUrl != null) ApiService.setBaseUrl(savedUrl);
+      final savedUrl = await storage.getServerUrl();
+      if (savedUrl != null) ApiService.setBaseUrl(savedUrl);
     }
   }
 
   runApp(ProviderScope(
     overrides: [
-      setupProvider.overrideWith(() => InitializedSetupNotifier(isSetupComplete)),
+      setupProvider
+          .overrideWith(() => InitializedSetupNotifier(isSetupComplete)),
       authProvider.overrideWith(() => PreloadedAuthNotifier(username)),
     ],
     child: const GruSongsApp(),
   ));
 }
-
 
 class InitializedSetupNotifier extends SetupNotifier {
   final bool initialValue;
@@ -121,8 +121,8 @@ class GruSongsApp extends ConsumerWidget {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
-      home: (!isSetupComplete || !authState.isAuthenticated) 
-          ? const SetupScreen() 
+      home: (!isSetupComplete || !authState.isAuthenticated)
+          ? const SetupScreen()
           : const MainScreen(),
     );
   }

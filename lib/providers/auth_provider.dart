@@ -116,9 +116,9 @@ final authProvider = NotifierProvider<AuthNotifier, AuthState>(() {
 
 class PreloadedAuthNotifier extends AuthNotifier {
   final String? initialUsername;
-  
+
   PreloadedAuthNotifier(this.initialUsername);
-  
+
   @override
   AuthState build() {
     _authService = ref.watch(authServiceProvider);

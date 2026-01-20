@@ -10,7 +10,7 @@ class SetupNotifier extends Notifier<bool> {
   void setComplete(bool value) {
     state = value;
   }
-  
+
   Future<void> checkStatus() async {
     final storage = StorageService();
     state = await storage.getIsSetupComplete();

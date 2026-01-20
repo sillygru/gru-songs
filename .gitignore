@@ -47,3 +47,17 @@ server/.env
 GruSongs.ipa
 /server/users
 /server/backups
+
+# Python
+.pytest_cache/
+**/__pycache__/
+
+# Local Music Data/Caches
+/gru_cache_v2/
+/songs/
+/server/songs/
+/server/backup_state.json
+
+# Android Caches
+.gradle/
+.kotlin/
