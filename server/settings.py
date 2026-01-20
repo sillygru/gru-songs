@@ -6,7 +6,7 @@ if os.getenv("GRUSONGS_TESTING") != "true":
     load_dotenv()
 
 class Settings:
-    VERSION: str = "6.2.0"
+    VERSION: str = "6.2.1"
 
     @property
     def MUSIC_DIR(self) -> str:
