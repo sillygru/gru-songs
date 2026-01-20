@@ -12,7 +12,7 @@ class CacheService {
 
   bool _initialized = false;
   late Directory _appSupportDir;
-  
+
   // V3 specific: we keep a directory for sync-related cache (e.g. temporary sync files)
   late Directory _v3Dir;
 
@@ -21,7 +21,7 @@ class CacheService {
     try {
       _appSupportDir = await getApplicationSupportDirectory();
       _v3Dir = Directory(p.join(_appSupportDir.path, 'gru_cache_v3'));
-      
+
       if (!await _v3Dir.exists()) {
         await _v3Dir.create(recursive: true);
       }
@@ -93,9 +93,9 @@ class CacheService {
           if (entity is File) {
             final name = p.basename(entity.path);
             // Count databases, stats, and cached sync metadata
-            if (name.endsWith('.db') || 
-                name.endsWith('.json') || 
-                name.contains('_stats') || 
+            if (name.endsWith('.db') ||
+                name.endsWith('.json') ||
+                name.contains('_stats') ||
                 name.contains('_data')) {
               total += await entity.length();
             }
@@ -106,7 +106,7 @@ class CacheService {
 
     return total;
   }
-  
+
   // Method to get a file in the V3 cache
   Future<File> getV3File(String filename) async {
     await init();

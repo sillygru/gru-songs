@@ -49,7 +49,7 @@ class UserDataState {
 }
 
 /// UserDataNotifier implements proper bidirectional sync:
-/// 
+///
 /// SYNC PHILOSOPHY:
 /// 1. Server is SOURCE OF TRUTH for favorites/suggestLess
 /// 2. On startup: Fetch server data -> Merge with local -> Update server with any local additions
@@ -89,15 +89,17 @@ class UserDataNotifier extends Notifier<UserDataState> {
     try {
       final localFavs = await DatabaseService.instance.getFavorites();
       final localSL = await DatabaseService.instance.getSuggestLess();
-      
+
       state = state.copyWith(
         favorites: localFavs,
         suggestLess: localSL,
         isLoading: false,
       );
       _updateManager();
-      
-      ref.read(syncProvider.notifier).updateTask('userData', SyncStatus.usingCache);
+
+      ref
+          .read(syncProvider.notifier)
+          .updateTask('userData', SyncStatus.usingCache);
     } catch (e) {
       debugPrint('Error loading local user data: $e');
     }
@@ -108,9 +110,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   void _updateManager() {
     ref.read(audioPlayerManagerProvider).setUserData(
-      favorites: state.favorites,
-      suggestLess: state.suggestLess,
-    );
+          favorites: state.favorites,
+          suggestLess: state.suggestLess,
+        );
   }
 
   /// Proper bidirectional sync:
@@ -128,8 +130,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
       syncNotifier.updateTask('userData', SyncStatus.syncing);
 
       // 1. Get current local state BEFORE fetching server
-      final localFavs = Set<String>.from(await DatabaseService.instance.getFavorites());
-      final localSL = Set<String>.from(await DatabaseService.instance.getSuggestLess());
+      final localFavs =
+          Set<String>.from(await DatabaseService.instance.getFavorites());
+      final localSL =
+          Set<String>.from(await DatabaseService.instance.getSuggestLess());
 
       // 2. Fetch server state (source of truth)
       final serverData = await service.getUserData(_username!);
@@ -137,8 +141,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final serverSL = Set<String>.from(serverData['suggestLess'] ?? []);
       final serverShuffleState = serverData['shuffleState'];
 
-      debugPrint('Sync: Server has ${serverFavs.length} favorites, local has ${localFavs.length}');
-      debugPrint('Sync: Server has ${serverSL.length} suggestLess, local has ${localSL.length}');
+      debugPrint(
+          'Sync: Server has ${serverFavs.length} favorites, local has ${localFavs.length}');
+      debugPrint(
+          'Sync: Server has ${serverSL.length} suggestLess, local has ${localSL.length}');
 
       // 3. Find local-only additions (items in local but not in server)
       //    These need to be pushed TO the server
@@ -176,7 +182,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
       if (serverShuffleState != null && serverShuffleState is Map) {
         try {
           final audioManager = ref.read(audioPlayerManagerProvider);
-          final updatedShuffleState = ShuffleState.fromJson(Map<String, dynamic>.from(serverShuffleState));
+          final updatedShuffleState = ShuffleState.fromJson(
+              Map<String, dynamic>.from(serverShuffleState));
           await audioManager.updateShuffleState(updatedShuffleState);
         } catch (e) {
           debugPrint('Failed to update shuffle state: $e');
@@ -196,8 +203,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
       _updateManager();
 
       syncNotifier.updateTask('userData', SyncStatus.upToDate);
-      debugPrint('Sync complete: ${mergedFavs.length} favorites, ${mergedSL.length} suggestLess');
-
+      debugPrint(
+          'Sync complete: ${mergedFavs.length} favorites, ${mergedSL.length} suggestLess');
     } catch (e) {
       debugPrint('Sync with server failed: $e');
       syncNotifier.setError();
@@ -226,8 +233,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
     String actualFilename = songFilename;
     if (isFav) {
       actualFilename = state.favorites.firstWhere(
-        (f) => f.toLowerCase() == songFilename.toLowerCase() || 
-               p.basename(f).toLowerCase() == p.basename(songFilename).toLowerCase(),
+        (f) =>
+            f.toLowerCase() == songFilename.toLowerCase() ||
+            p.basename(f).toLowerCase() ==
+                p.basename(songFilename).toLowerCase(),
         orElse: () => songFilename,
       );
     }
@@ -242,12 +251,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
     } else {
       newFavs.add(songFilename);
       await DatabaseService.instance.addFavorite(songFilename);
-      
+
       // Remove from suggestLess if present
       if (isSL) {
         final actualSLMatch = state.suggestLess.firstWhere(
-          (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
-                  p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
+          (sl) =>
+              sl.toLowerCase() == songFilename.toLowerCase() ||
+              p.basename(sl).toLowerCase() ==
+                  p.basename(songFilename).toLowerCase(),
           orElse: () => songFilename,
         );
         newSL.remove(actualSLMatch);
@@ -266,11 +277,13 @@ class UserDataNotifier extends Notifier<UserDataState> {
       } else {
         await service.addFavorite(_username!, songFilename, 'user_action');
         debugPrint('Added favorite to server: $songFilename');
-        
+
         if (isSL) {
           final actualSLMatch = state.suggestLess.firstWhere(
-            (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
-                    p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
+            (sl) =>
+                sl.toLowerCase() == songFilename.toLowerCase() ||
+                p.basename(sl).toLowerCase() ==
+                    p.basename(songFilename).toLowerCase(),
             orElse: () => songFilename,
           );
           await service.removeSuggestLess(_username!, actualSLMatch);
@@ -293,8 +306,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
     String actualFilename = songFilename;
     if (isSL) {
       actualFilename = state.suggestLess.firstWhere(
-        (sl) => sl.toLowerCase() == songFilename.toLowerCase() || 
-                p.basename(sl).toLowerCase() == p.basename(songFilename).toLowerCase(),
+        (sl) =>
+            sl.toLowerCase() == songFilename.toLowerCase() ||
+            p.basename(sl).toLowerCase() ==
+                p.basename(songFilename).toLowerCase(),
         orElse: () => songFilename,
       );
     }

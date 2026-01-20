@@ -113,7 +113,7 @@ class StatsService {
     } catch (e) {
       debugPrint('Error reading local stats summary: $e');
     }
-    
+
     // Fallback to API if local fails
     try {
       final response = await _client.get(

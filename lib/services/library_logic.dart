@@ -17,9 +17,10 @@ class LibraryLogic {
     required String currentFullPath,
   }) {
     // Filter songs in the current path (or subpaths)
-    final folderSongs = allSongs.where((s) => 
-      s.url == currentFullPath || p.isWithin(currentFullPath, s.url)
-    ).toList();
+    final folderSongs = allSongs
+        .where((s) =>
+            s.url == currentFullPath || p.isWithin(currentFullPath, s.url))
+        .toList();
 
     final Set<String> subFolders = {};
     final List<Song> immediateSongs = [];
@@ -27,7 +28,7 @@ class LibraryLogic {
     for (var song in folderSongs) {
       final relativeToCurrent = p.relative(song.url, from: currentFullPath);
       final parts = p.split(relativeToCurrent);
-      
+
       if (parts.length == 1) {
         // It's a song in the current folder
         immediateSongs.add(song);
@@ -38,7 +39,8 @@ class LibraryLogic {
     }
 
     final sortedSubFolders = subFolders.toList()..sort();
-    immediateSongs.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    immediateSongs
+        .sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 
     return LibraryFolderContent(
       subFolders: sortedSubFolders,

@@ -33,12 +33,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             future: ref.read(storageServiceProvider).getMusicFolderPath(),
             builder: (context, snapshot) {
               if (!snapshot.hasData || snapshot.data == null) {
-                return const Center(child: Text('Please select a music folder in Home first.'));
+                return const Center(
+                    child: Text('Please select a music folder in Home first.'));
               }
 
               final musicRoot = snapshot.data!;
-              final currentFullPath = widget.relativePath == null 
-                  ? musicRoot 
+              final currentFullPath = widget.relativePath == null
+                  ? musicRoot
                   : p.join(musicRoot, widget.relativePath);
 
               // Favorites is only shown at the root
@@ -53,7 +54,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               final immediateSongs = content.immediateSongs;
 
               return ListView.builder(
-                itemCount: (isRoot ? 1 : 0) + sortedSubFolders.length + immediateSongs.length,
+                itemCount: (isRoot ? 1 : 0) +
+                    sortedSubFolders.length +
+                    immediateSongs.length,
                 padding: const EdgeInsets.only(bottom: 100),
                 itemBuilder: (context, index) {
                   int offset = 0;
@@ -71,18 +74,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           ),
                           child: const Icon(Icons.favorite, color: Colors.red),
                         ),
-                        title: const Text('Favorites', style: TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('${userData.favorites.length} songs (found in library: ${allSongs.where((s) => userData.isFavorite(s.filename)).length})'),
+                        title: const Text('Favorites',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                            '${userData.favorites.length} songs (found in library: ${allSongs.where((s) => userData.isFavorite(s.filename)).length})'),
                         onTap: () {
                           final favSongs = allSongs
                               .where((s) => userData.isFavorite(s.filename))
                               .toList();
-                          debugPrint('Library: userData.favorites count: ${userData.favorites.length}');
+                          debugPrint(
+                              'Library: userData.favorites count: ${userData.favorites.length}');
                           if (userData.favorites.isNotEmpty) {
-                            debugPrint('Library: userData.favorites first 3: ${userData.favorites.take(3).toList()}');
+                            debugPrint(
+                                'Library: userData.favorites first 3: ${userData.favorites.take(3).toList()}');
                           }
                           if (allSongs.isNotEmpty) {
-                            debugPrint('Library: first song filename: ${allSongs.first.filename}');
+                            debugPrint(
+                                'Library: first song filename: ${allSongs.first.filename}');
                           }
                           Navigator.push(
                             context,
@@ -102,18 +110,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   final folderIndex = index - offset;
                   if (folderIndex < sortedSubFolders.length) {
                     final folderName = sortedSubFolders[folderIndex];
-                    final folderRelativePath = widget.relativePath == null 
-                        ? folderName 
+                    final folderRelativePath = widget.relativePath == null
+                        ? folderName
                         : p.join(widget.relativePath!, folderName);
-                    
+
                     return ListTile(
-                      leading: const Icon(Icons.folder, size: 40, color: Colors.amber),
+                      leading: const Icon(Icons.folder,
+                          size: 40, color: Colors.amber),
                       title: Text(folderName),
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => LibraryScreen(relativePath: folderRelativePath),
+                            builder: (_) =>
+                                LibraryScreen(relativePath: folderRelativePath),
                           ),
                         );
                       },
@@ -126,7 +136,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
                   return ListTile(
                     leading: Hero(
-                      tag: 'lib_art_${song.url}_${widget.relativePath}', 
+                      tag: 'lib_art_${song.url}_${widget.relativePath}',
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: GruImage(
@@ -144,19 +154,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: isSuggestLess ? Colors.grey : null,
-                        decoration: isSuggestLess ? TextDecoration.lineThrough : null,
+                        decoration:
+                            isSuggestLess ? TextDecoration.lineThrough : null,
                       ),
                     ),
                     subtitle: Text(
                       song.artist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: isSuggestLess ? Colors.grey : null),
+                      style:
+                          TextStyle(color: isSuggestLess ? Colors.grey : null),
                     ),
                     trailing: IconButton(
                       icon: const Icon(Icons.more_vert),
                       onPressed: () {
-                        showSongOptionsMenu(context, ref, song.filename, song.title, song: song);
+                        showSongOptionsMenu(
+                            context, ref, song.filename, song.title,
+                            song: song);
                       },
                     ),
                     onTap: () {

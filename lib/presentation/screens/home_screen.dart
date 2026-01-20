@@ -62,8 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 8),
-                    Text(
-                        'Select your music folder to start listening offline.',
+                    Text('Select your music folder to start listening offline.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium),
                     const SizedBox(height: 24),
@@ -172,8 +171,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           child: GestureDetector(
                             onTap: () {
                               final favSongs = songs
-                                  .where((s) =>
-                                      userData.isFavorite(s.filename))
+                                  .where((s) => userData.isFavorite(s.filename))
                                   .toList();
                               Navigator.push(
                                 context,
@@ -192,8 +190,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   shadowColor:
                                       Colors.red.withValues(alpha: 0.4),
                                   shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(16)),
+                                      borderRadius: BorderRadius.circular(16)),
                                   child: Container(
                                     width: 100,
                                     height: 100,
@@ -217,8 +214,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   'Favorites',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.w500),
+                                  style: TextStyle(fontWeight: FontWeight.w500),
                                 ),
                               ],
                             ),

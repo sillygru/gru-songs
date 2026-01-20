@@ -18,15 +18,19 @@ class ScannerService {
     '.ogg'
   ];
 
-  Future<List<Song>> scanDirectory(String path, {String? lyricsPath, Map<String, int>? playCounts}) async {
+  Future<List<Song>> scanDirectory(String path,
+      {String? lyricsPath, Map<String, int>? playCounts}) async {
     // Request permissions before accessing storage
     if (Platform.isAndroid) {
       // Request all relevant storage permissions
       var statusStorage = await Permission.storage.request();
       var statusMediaLibrary = await Permission.mediaLibrary.request();
-      var statusManageExternalStorage = await Permission.manageExternalStorage.request();
+      var statusManageExternalStorage =
+          await Permission.manageExternalStorage.request();
 
-      if (!statusStorage.isGranted && !statusMediaLibrary.isGranted && !statusManageExternalStorage.isGranted) {
+      if (!statusStorage.isGranted &&
+          !statusMediaLibrary.isGranted &&
+          !statusManageExternalStorage.isGranted) {
         debugPrint('Storage permissions not granted. Cannot scan directory.');
         return []; // Return empty if permissions are not granted
       }
@@ -35,8 +39,9 @@ class ScannerService {
     final dir = Directory(path);
     if (!await dir.exists()) return [];
 
-    final effectivePlayCounts = playCounts ?? await DatabaseService.instance.getPlayCounts();
-    
+    final effectivePlayCounts =
+        playCounts ?? await DatabaseService.instance.getPlayCounts();
+
     final supportDir = await getApplicationSupportDirectory();
     final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
     if (!await coversDir.exists()) {
@@ -45,23 +50,26 @@ class ScannerService {
 
     try {
       // 1. Get all entities first
-      final List<FileSystemEntity> entities = dir.listSync(recursive: true, followLinks: false);
+      final List<FileSystemEntity> entities =
+          dir.listSync(recursive: true, followLinks: false);
       final List<File> audioFiles = entities
           .whereType<File>()
-          .where((f) => _supportedExtensions.contains(p.extension(f.path).toLowerCase()))
+          .where((f) =>
+              _supportedExtensions.contains(p.extension(f.path).toLowerCase()))
           .toList();
 
       final Map<String, String?> folderCoverCache = {};
-      
+
       // 2. Process in chunks or parallel to speed up (using Future.wait for I/O bound parts)
       // But since metadata reading is CPU bound and sync, we process carefully
       final List<Song> songs = [];
-      
+
       for (var file in audioFiles) {
-        final song = await _processSingleFile(file, coversDir, folderCoverCache, lyricsPath, effectivePlayCounts);
+        final song = await _processSingleFile(
+            file, coversDir, folderCoverCache, lyricsPath, effectivePlayCounts);
         songs.add(song);
       }
-      
+
       return songs;
     } catch (e) {
       debugPrint('Error scanning directory: $e');
@@ -71,16 +79,15 @@ class ScannerService {
   }
 
   Future<Song> _processSingleFile(
-    File file, 
-    Directory coversDir, 
-    Map<String, String?> folderCoverCache, 
-    String? lyricsPath,
-    Map<String, int> playCounts
-  ) async {
+      File file,
+      Directory coversDir,
+      Map<String, String?> folderCoverCache,
+      String? lyricsPath,
+      Map<String, int> playCounts) async {
     final filename = p.basename(file.path);
     final parentPath = file.parent.path;
     p.extension(file.path).toLowerCase();
-    
+
     String title = p.basenameWithoutExtension(file.path);
     String artist = 'Unknown Artist';
     String album = 'Unknown Album';
@@ -100,7 +107,7 @@ class ScannerService {
         final hash = md5.convert(utf8.encode(file.path)).toString();
         final coverExt = _getExtFromMime(picture.mimetype);
         final coverFile = File(p.join(coversDir.path, '$hash$coverExt'));
-        
+
         // Only write if doesn't exist to save time
         if (!coverFile.existsSync()) {
           await coverFile.writeAsBytes(picture.bytes);
@@ -115,11 +122,13 @@ class ScannerService {
     coverUrl ??= await _tryManualCoverExtraction(file, coversDir);
 
     // Folder-sidecar fallback
-    coverUrl ??= folderCoverCache.putIfAbsent(parentPath, () => _findCoverInFolder(parentPath));
+    coverUrl ??= folderCoverCache.putIfAbsent(
+        parentPath, () => _findCoverInFolder(parentPath));
 
     String? lyricsUrl;
     if (lyricsPath != null) {
-      lyricsUrl = await _findLyricsForSong(p.basenameWithoutExtension(file.path), lyricsPath);
+      lyricsUrl = await _findLyricsForSong(
+          p.basenameWithoutExtension(file.path), lyricsPath);
     }
 
     return Song(
@@ -136,7 +145,8 @@ class ScannerService {
     );
   }
 
-  Future<String?> _tryManualCoverExtraction(File file, Directory coversDir) async {
+  Future<String?> _tryManualCoverExtraction(
+      File file, Directory coversDir) async {
     RandomAccessFile? raf;
     try {
       raf = await file.open();
@@ -146,30 +156,34 @@ class ScannerService {
 
       final bool scanEverything = length < 50 * 1024 * 1024;
       final firstScanSize = scanEverything ? length : 15 * 1024 * 1024;
-      
+
       await raf.setPosition(0);
       final headerChunk = await raf.read(firstScanSize);
-      
+
       if (ext == '.m4a') {
-        final covrResult = await _scanForCovrBox(headerChunk, raf, 0, coversDir, hash);
+        final covrResult =
+            await _scanForCovrBox(headerChunk, raf, 0, coversDir, hash);
         if (covrResult != null) return covrResult;
       }
 
-      final apicResult = await _scanForAPIC(headerChunk, raf, 0, coversDir, hash);
+      final apicResult =
+          await _scanForAPIC(headerChunk, raf, 0, coversDir, hash);
       if (apicResult != null) return apicResult;
-      
-      final sigResult = await _scanBufferForSignatures(headerChunk, raf, 0, coversDir, hash);
+
+      final sigResult =
+          await _scanBufferForSignatures(headerChunk, raf, 0, coversDir, hash);
       if (sigResult != null) return sigResult;
 
       if (!scanEverything && length > firstScanSize) {
         final footerSize = (10 * 1024 * 1024).clamp(0, length - firstScanSize);
         await raf.setPosition(length - footerSize);
         final footerChunk = await raf.read(footerSize);
-        
-        final sigFooterResult = await _scanBufferForSignatures(footerChunk, raf, length - footerSize, coversDir, hash);
+
+        final sigFooterResult = await _scanBufferForSignatures(
+            footerChunk, raf, length - footerSize, coversDir, hash);
         if (sigFooterResult != null) return sigFooterResult;
       }
-      
+
       return null;
     } catch (e) {
       return null;
@@ -178,35 +192,57 @@ class ScannerService {
     }
   }
 
-  Future<String?> _scanForAPIC(List<int> bytes, RandomAccessFile raf, int offset, Directory coversDir, String hash) async {
+  Future<String?> _scanForAPIC(List<int> bytes, RandomAccessFile raf,
+      int offset, Directory coversDir, String hash) async {
     for (int i = 0; i < bytes.length - 20; i++) {
-      if (bytes[i] == 0x41 && bytes[i+1] == 0x50 && bytes[i+2] == 0x49 && bytes[i+3] == 0x43) {
-        int tagSize = (bytes[i+4] << 21) | (bytes[i+5] << 14) | (bytes[i+6] << 7) | bytes[i+7];
+      if (bytes[i] == 0x41 &&
+          bytes[i + 1] == 0x50 &&
+          bytes[i + 2] == 0x49 &&
+          bytes[i + 3] == 0x43) {
+        int tagSize = (bytes[i + 4] << 21) |
+            (bytes[i + 5] << 14) |
+            (bytes[i + 6] << 7) |
+            bytes[i + 7];
         if (tagSize > 5000 && tagSize < 15 * 1024 * 1024) {
-          final subChunk = bytes.sublist(i, (i + tagSize + 20).clamp(0, bytes.length));
-          return await _scanBufferForSignatures(subChunk, raf, offset + i, coversDir, hash);
+          final subChunk =
+              bytes.sublist(i, (i + tagSize + 20).clamp(0, bytes.length));
+          return await _scanBufferForSignatures(
+              subChunk, raf, offset + i, coversDir, hash);
         }
       }
     }
     return null;
   }
 
-  Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf, int offset, Directory coversDir, String hash) async {
+  Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf,
+      int offset, Directory coversDir, String hash) async {
     for (int i = 0; i < bytes.length - 24; i++) {
-      if (bytes[i] == 0x63 && bytes[i + 1] == 0x6F && bytes[i + 2] == 0x76 && bytes[i + 3] == 0x72) {
+      if (bytes[i] == 0x63 &&
+          bytes[i + 1] == 0x6F &&
+          bytes[i + 2] == 0x76 &&
+          bytes[i + 3] == 0x72) {
         for (int j = i + 4; j < i + 128 && j < bytes.length - 16; j++) {
-          if (bytes[j] == 0x64 && bytes[j + 1] == 0x61 && bytes[j + 2] == 0x74 && bytes[j + 3] == 0x61) {
-            final dataSize = (bytes[j-4] << 24) | (bytes[j-3] << 16) | (bytes[j-2] << 8) | bytes[j-1];
+          if (bytes[j] == 0x64 &&
+              bytes[j + 1] == 0x61 &&
+              bytes[j + 2] == 0x74 &&
+              bytes[j + 3] == 0x61) {
+            final dataSize = (bytes[j - 4] << 24) |
+                (bytes[j - 3] << 16) |
+                (bytes[j - 2] << 8) |
+                bytes[j - 1];
             final imageSize = dataSize - 16;
-            
+
             if (imageSize > 1024 && imageSize < 15 * 1024 * 1024) {
               final startPos = offset + j + 12;
               await raf.setPosition(startPos);
               final imgData = await raf.read(imageSize);
-              
+
               String type = 'jpg';
-              if (bytes[j + 11] == 14) { type = 'png'; }
-              else if (bytes[j + 11] == 27) { type = 'bmp'; }
+              if (bytes[j + 11] == 14) {
+                type = 'png';
+              } else if (bytes[j + 11] == 27) {
+                type = 'bmp';
+              }
 
               final coverFile = File(p.join(coversDir.path, '$hash.$type'));
               await coverFile.writeAsBytes(imgData);
@@ -219,19 +255,37 @@ class ScannerService {
     return null;
   }
 
-  Future<String?> _scanBufferForSignatures(List<int> bytes, RandomAccessFile raf, int offset, Directory coversDir, String hash) async {
+  Future<String?> _scanBufferForSignatures(
+      List<int> bytes,
+      RandomAccessFile raf,
+      int offset,
+      Directory coversDir,
+      String hash) async {
     for (int i = 0; i < bytes.length - 8; i++) {
-      if (bytes[i] == 0xFF && bytes[i+1] == 0xD8 && bytes[i+2] == 0xFF) {
-        final res = await _extractImageAt(raf, offset + i, 'jpg', coversDir, hash);
+      if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF) {
+        final res =
+            await _extractImageAt(raf, offset + i, 'jpg', coversDir, hash);
         if (res != null) return res;
       }
-      if (bytes[i] == 0x89 && bytes[i+1] == 0x50 && bytes[i+2] == 0x4E && bytes[i+3] == 0x47) {
-        final res = await _extractImageAt(raf, offset + i, 'png', coversDir, hash);
+      if (bytes[i] == 0x89 &&
+          bytes[i + 1] == 0x50 &&
+          bytes[i + 2] == 0x4E &&
+          bytes[i + 3] == 0x47) {
+        final res =
+            await _extractImageAt(raf, offset + i, 'png', coversDir, hash);
         if (res != null) return res;
       }
-      if (bytes[i] == 0x52 && bytes[i+1] == 0x49 && bytes[i+2] == 0x46 && bytes[i+3] == 0x46) {
-        if (i + 12 <= bytes.length && bytes[i+8] == 0x57 && bytes[i+9] == 0x45 && bytes[i+10] == 0x42 && bytes[i+11] == 0x50) {
-          final res = await _extractImageAt(raf, offset + i, 'webp', coversDir, hash);
+      if (bytes[i] == 0x52 &&
+          bytes[i + 1] == 0x49 &&
+          bytes[i + 2] == 0x46 &&
+          bytes[i + 3] == 0x46) {
+        if (i + 12 <= bytes.length &&
+            bytes[i + 8] == 0x57 &&
+            bytes[i + 9] == 0x45 &&
+            bytes[i + 10] == 0x42 &&
+            bytes[i + 11] == 0x50) {
+          final res =
+              await _extractImageAt(raf, offset + i, 'webp', coversDir, hash);
           if (res != null) return res;
         }
       }
@@ -239,10 +293,11 @@ class ScannerService {
     return null;
   }
 
-  Future<String?> _extractImageAt(RandomAccessFile raf, int pos, String type, Directory coversDir, String hash) async {
+  Future<String?> _extractImageAt(RandomAccessFile raf, int pos, String type,
+      Directory coversDir, String hash) async {
     await raf.setPosition(pos);
     final data = await raf.read(15 * 1024 * 1024);
-    
+
     int actualEnd = data.length;
     if (type == 'jpg') {
       int lastFFD9 = -1;
@@ -250,10 +305,10 @@ class ScannerService {
         if (data[k] == 0xFF && data[k + 1] == 0xD9) {
           lastFFD9 = k + 2;
           if (k + 4 < data.length) {
-             if (data[k+2] != 0xFF || data[k+3] == 0x00) {
-               actualEnd = lastFFD9;
-               break;
-             }
+            if (data[k + 2] != 0xFF || data[k + 3] == 0x00) {
+              actualEnd = lastFFD9;
+              break;
+            }
           }
         }
       }
@@ -264,9 +319,15 @@ class ScannerService {
       for (int k = 0; k < data.length - pngEnd.length; k++) {
         bool match = true;
         for (int l = 0; l < pngEnd.length; l++) {
-          if (data[k + l] != pngEnd[l]) { match = false; break; }
+          if (data[k + l] != pngEnd[l]) {
+            match = false;
+            break;
+          }
         }
-        if (match) { actualEnd = k + pngEnd.length; break; }
+        if (match) {
+          actualEnd = k + pngEnd.length;
+          break;
+        }
       }
     }
 
@@ -288,7 +349,14 @@ class ScannerService {
   }
 
   String? _findCoverInFolder(String folderPath) {
-    final possibleNames = ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png', 'album.jpg', 'album.png'];
+    final possibleNames = [
+      'cover.jpg',
+      'cover.png',
+      'folder.jpg',
+      'folder.png',
+      'album.jpg',
+      'album.png'
+    ];
     for (final name in possibleNames) {
       final file = File(p.join(folderPath, name));
       if (file.existsSync()) return file.path;

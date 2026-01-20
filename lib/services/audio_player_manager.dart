@@ -265,7 +265,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
-  Future<void> _updateLocalUserData(List<String> favorites, List<String> suggestLess) async {
+  Future<void> _updateLocalUserData(
+      List<String> favorites, List<String> suggestLess) async {
     // Update local database with server data
     final currentFavs = await DatabaseService.instance.getFavorites();
     final currentSuggestLess = await DatabaseService.instance.getSuggestLess();
@@ -370,10 +371,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _flushStats({required String eventType}) {
     if (_username == null || _currentSongFilename == null) return;
     if (_playStartTime != null) _updateDurations();
-    
+
     final song = _songMap[_currentSongFilename!];
-    final totalLength = (song?.duration?.inMilliseconds.toDouble() ?? 0.0) / 1000.0;
-    
+    final totalLength =
+        (song?.duration?.inMilliseconds.toDouble() ?? 0.0) / 1000.0;
+
     double finalDuration = _foregroundDuration + _backgroundDuration;
     if (finalDuration > 0.5) {
       _statsService.track(
@@ -487,12 +489,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
     await _rebuildQueue(initialIndex: initialIndex, startPlaying: false);
   }
+
   Future<AudioSource> _createAudioSource(QueueItem item) async {
     final song = item.song;
-    final bool isLocal = song.url.startsWith('/') || song.url.startsWith('C:\\');
-    
-    final Uri audioUri = isLocal ? Uri.file(song.url) : Uri.parse(_apiService.getFullUrl(song.url));
-    
+    final bool isLocal =
+        song.url.startsWith('/') || song.url.startsWith('C:\\');
+
+    final Uri audioUri = isLocal
+        ? Uri.file(song.url)
+        : Uri.parse(_apiService.getFullUrl(song.url));
+
     Uri? artUri;
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       artUri = Uri.file(song.coverUrl!);
@@ -562,7 +568,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final priorityItems = otherItems.where((item) => item.isPriority).toList();
     final normalItems = otherItems.where((item) => !item.isPriority).toList();
-    final shuffledNormal = await _weightedShuffle(normalItems, lastItem: currentItem);
+    final shuffledNormal =
+        await _weightedShuffle(normalItems, lastItem: currentItem);
 
     _effectiveQueue = [currentItem, ...priorityItems, ...shuffledNormal];
     // Don't rebuild here if called from updateShuffleConfig, let the caller handle or sync.
@@ -580,16 +587,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<List<QueueItem>> _weightedShuffle(List<QueueItem> items,
       {QueueItem? lastItem}) async {
     if (items.isEmpty) return [];
-    
+
     // Fetch local play counts for weighting
     final playCounts = await DatabaseService.instance.getPlayCounts();
-    
+
     final result = <QueueItem>[];
     final remaining = List<QueueItem>.from(items);
     QueueItem? prev = lastItem;
     while (remaining.isNotEmpty) {
-      final weights =
-          remaining.map((item) => _calculateWeight(item, prev, playCounts)).toList();
+      final weights = remaining
+          .map((item) => _calculateWeight(item, prev, playCounts))
+          .toList();
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
       if (totalWeight <= 0) {
         remaining.shuffle();
@@ -614,7 +622,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return result;
   }
 
-  double _calculateWeight(QueueItem item, QueueItem? prev, Map<String, int> playCounts) {
+  double _calculateWeight(
+      QueueItem item, QueueItem? prev, Map<String, int> playCounts) {
     double weight = 1.0;
     final song = item.song;
     final config = _shuffleState.config;

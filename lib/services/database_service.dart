@@ -8,7 +8,7 @@ import 'api_service.dart';
 import 'package:http/http.dart' as http;
 
 /// DatabaseService handles local SQLite storage for offline access.
-/// 
+///
 /// SYNC PHILOSOPHY:
 /// - Server is the SOURCE OF TRUTH
 /// - Client stores local cache for offline access
@@ -26,19 +26,21 @@ class DatabaseService {
 
   Future<void> initForUser(String username) async {
     if (_currentUsername == username && _statsDatabase != null) return;
-    
+
     if (_initCompleter != null && !_initCompleter!.isCompleted) {
       return _initCompleter!.future;
     }
-    
+
     _initCompleter = Completer<void>();
     _currentUsername = username;
-    
+
     try {
       // Open local databases (create schema if needed)
-      _statsDatabase = await _openDatabase('${username}_stats.db', _statsSchema);
-      _userDataDatabase = await _openDatabase('${username}_data.db', _userDataSchema);
-      
+      _statsDatabase =
+          await _openDatabase('${username}_stats.db', _statsSchema);
+      _userDataDatabase =
+          await _openDatabase('${username}_data.db', _userDataSchema);
+
       _initCompleter!.complete();
     } catch (e) {
       debugPrint('Database initialization failed: $e');
@@ -49,7 +51,8 @@ class DatabaseService {
 
   Future<void> _ensureInitialized() async {
     if (_initCompleter == null) {
-      throw Exception('DatabaseService not initialized. Call initForUser first.');
+      throw Exception(
+          'DatabaseService not initialized. Call initForUser first.');
     }
     return _initCompleter!.future;
   }
@@ -101,12 +104,13 @@ class DatabaseService {
         // Close database before overwriting
         await _statsDatabase?.close();
         _statsDatabase = null;
-        
+
         final file = File(path);
         await file.writeAsBytes(response.bodyBytes);
-        
+
         // Reopen
-        _statsDatabase = await _openDatabase('${username}_stats.db', _statsSchema);
+        _statsDatabase =
+            await _openDatabase('${username}_stats.db', _statsSchema);
         debugPrint('Downloaded stats DB from server');
       }
     } catch (e) {
@@ -131,7 +135,8 @@ class DatabaseService {
       request.headers['x-username'] = username;
       request.files.add(await http.MultipartFile.fromPath('file', path));
 
-      final response = await request.send().timeout(const Duration(seconds: 30));
+      final response =
+          await request.send().timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         debugPrint('Uploaded stats DB to server');
       }
@@ -182,7 +187,10 @@ class DatabaseService {
     if (_userDataDatabase == null) return;
     await _userDataDatabase!.insert(
       'favorite',
-      {'filename': filename, 'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0},
+      {
+        'filename': filename,
+        'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -190,21 +198,25 @@ class DatabaseService {
   Future<void> removeFavorite(String filename) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
-    await _userDataDatabase!.delete('favorite', where: 'filename = ?', whereArgs: [filename]);
+    await _userDataDatabase!
+        .delete('favorite', where: 'filename = ?', whereArgs: [filename]);
   }
 
   /// Replaces all local favorites with the given list (used when syncing FROM server)
   Future<void> setFavorites(List<String> favorites) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
-    
+
     await _userDataDatabase!.transaction((txn) async {
       await txn.delete('favorite');
       for (final filename in favorites) {
-        await txn.insert('favorite', {
-          'filename': filename,
-          'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert(
+            'favorite',
+            {
+              'filename': filename,
+              'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
   }
@@ -226,7 +238,10 @@ class DatabaseService {
     if (_userDataDatabase == null) return;
     await _userDataDatabase!.insert(
       'suggestless',
-      {'filename': filename, 'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0},
+      {
+        'filename': filename,
+        'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -234,21 +249,25 @@ class DatabaseService {
   Future<void> removeSuggestLess(String filename) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
-    await _userDataDatabase!.delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
+    await _userDataDatabase!
+        .delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
   }
 
   /// Replaces all local suggestless with the given list (used when syncing FROM server)
   Future<void> setSuggestLess(List<String> suggestLess) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
-    
+
     await _userDataDatabase!.transaction((txn) async {
       await txn.delete('suggestless');
       for (final filename in suggestLess) {
-        await txn.insert('suggestless', {
-          'filename': filename,
-          'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert(
+            'suggestless',
+            {
+              'filename': filename,
+              'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
   }
@@ -262,8 +281,7 @@ class DatabaseService {
     if (_statsDatabase == null) return {};
     try {
       final results = await _statsDatabase!.rawQuery(
-        'SELECT song_filename, COUNT(*) as count FROM playevent WHERE play_ratio > 0.25 GROUP BY song_filename'
-      );
+          'SELECT song_filename, COUNT(*) as count FROM playevent WHERE play_ratio > 0.25 GROUP BY song_filename');
       return {
         for (var r in results) r['song_filename'] as String: r['count'] as int
       };
@@ -276,19 +294,21 @@ class DatabaseService {
   Future<void> insertPlayEvent(Map<String, dynamic> event) async {
     await _ensureInitialized();
     if (_statsDatabase == null) return;
-    
+
     await _statsDatabase!.transaction((txn) async {
-      await txn.insert('playsession', {
-        'id': event['session_id'],
-        'start_time': event['timestamp'],
-        'end_time': event['timestamp'],
-        'platform': event['platform'] ?? 'unknown',
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-      
+      await txn.insert(
+          'playsession',
+          {
+            'id': event['session_id'],
+            'start_time': event['timestamp'],
+            'end_time': event['timestamp'],
+            'platform': event['platform'] ?? 'unknown',
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+
       await txn.rawUpdate(
-        'UPDATE playsession SET end_time = ? WHERE id = ? AND end_time < ?',
-        [event['timestamp'], event['session_id'], event['timestamp']]
-      );
+          'UPDATE playsession SET end_time = ? WHERE id = ? AND end_time < ?',
+          [event['timestamp'], event['session_id'], event['timestamp']]);
 
       await txn.insert('playevent', {
         'session_id': event['session_id'],

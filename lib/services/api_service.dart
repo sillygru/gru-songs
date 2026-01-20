@@ -5,7 +5,8 @@ import 'package:http/io_client.dart';
 import '../models/song.dart';
 
 class ApiService {
-  static const String defaultBaseUrl = 'http://[REDACTED]:9000';
+  static const String defaultBaseUrl =
+      'http://[REDACTED]:9000';
   static String _baseUrl = defaultBaseUrl;
 
   static String get baseUrl => _baseUrl;
@@ -84,8 +85,7 @@ class ApiService {
     }
   }
 
-  Future<http.Response> downloadYoutube(
-      String url, String title) async {
+  Future<http.Response> downloadYoutube(String url, String title) async {
     try {
       // Send as form data because FastAPI uses Form(...)
       final response = await _client.post(

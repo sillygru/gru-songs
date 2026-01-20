@@ -53,8 +53,7 @@ class SongListScreen extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 100),
               itemBuilder: (context, index) {
                 final song = songs[index];
-                final isSuggestLess =
-                    userData.isSuggestLess(song.filename);
+                final isSuggestLess = userData.isSuggestLess(song.filename);
 
                 return ListTile(
                   leading: ClipRRect(

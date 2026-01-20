@@ -123,7 +123,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   @override
   Future<List<Song>> build() async {
     final storage = ref.watch(storageServiceProvider);
-    
+
     // 1. Load instantly from cache
     final cached = await storage.loadSongs();
     if (cached.isNotEmpty) {
@@ -142,10 +142,11 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     final musicPath = await storage.getMusicFolderPath();
     final lyricsPath = await storage.getLyricsFolderPath();
-    
+
     if (musicPath == null || musicPath.isEmpty) return [];
 
-    final songs = await scanner.scanDirectory(musicPath, lyricsPath: lyricsPath);
+    final songs =
+        await scanner.scanDirectory(musicPath, lyricsPath: lyricsPath);
     await storage.saveSongs(songs);
     return songs;
   }
@@ -187,7 +188,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       }
 
       await oldFile.rename(newPath);
-      
+
       // Also try to move lyrics if they exist
       if (song.lyricsUrl != null) {
         final oldLyricsFile = File(song.lyricsUrl!);

@@ -23,7 +23,9 @@ class MockPathProviderPlatform extends PathProviderPlatform
   @override
   Future<List<String>?> getExternalCachePaths() async => [tempPath];
   @override
-  Future<List<String>?> getExternalStoragePaths({StorageDirectory? type}) async => [tempPath];
+  Future<List<String>?> getExternalStoragePaths(
+          {StorageDirectory? type}) async =>
+      [tempPath];
   @override
   Future<String?> getDownloadsPath() async => tempPath;
 }
@@ -49,14 +51,15 @@ void main() {
       // Create some dummy files
       final mp3File = File(p.join(tempDir.path, 'song1.mp3'));
       await mp3File.writeAsString('dummy mp3');
-      
+
       final wavFile = File(p.join(tempDir.path, 'song2.wav'));
       await wavFile.writeAsString('dummy wav');
 
       final txtFile = File(p.join(tempDir.path, 'not_a_song.txt'));
       await txtFile.writeAsString('dummy text');
 
-      final songs = await scannerService.scanDirectory(tempDir.path, playCounts: {});
+      final songs =
+          await scannerService.scanDirectory(tempDir.path, playCounts: {});
 
       expect(songs.length, 2);
       expect(songs.any((s) => s.filename == 'song1.mp3'), true);
@@ -71,7 +74,8 @@ void main() {
       final coverFile = File(p.join(tempDir.path, 'cover.jpg'));
       await coverFile.writeAsString('dummy cover');
 
-      final songs = await scannerService.scanDirectory(tempDir.path, playCounts: {});
+      final songs =
+          await scannerService.scanDirectory(tempDir.path, playCounts: {});
 
       expect(songs.length, 1);
       expect(songs[0].coverUrl, coverFile.path);
@@ -81,11 +85,13 @@ void main() {
       final mp3File = File(p.join(tempDir.path, 'Happy.mp3'));
       await mp3File.writeAsString('dummy mp3');
 
-      final lyricsDir = await Directory(p.join(tempDir.path, 'lyrics')).create();
+      final lyricsDir =
+          await Directory(p.join(tempDir.path, 'lyrics')).create();
       final lrcFile = File(p.join(lyricsDir.path, 'Happy.lrc'));
       await lrcFile.writeAsString('[00:01.00]Be happy');
 
-      final songs = await scannerService.scanDirectory(tempDir.path, lyricsPath: lyricsDir.path, playCounts: {});
+      final songs = await scannerService.scanDirectory(tempDir.path,
+          lyricsPath: lyricsDir.path, playCounts: {});
 
       expect(songs.length, 1);
       expect(songs[0].lyricsUrl, lrcFile.path);
@@ -96,7 +102,8 @@ void main() {
       final mp3File = File(p.join(subDir.path, 'subsong.mp3'));
       await mp3File.writeAsString('dummy mp3');
 
-      final songs = await scannerService.scanDirectory(tempDir.path, playCounts: {});
+      final songs =
+          await scannerService.scanDirectory(tempDir.path, playCounts: {});
 
       expect(songs.length, 1);
       expect(songs[0].filename, 'subsong.mp3');
@@ -105,52 +112,54 @@ void main() {
 
     test('manual extraction finds large JPEG signature', () async {
       final mp3File = File(p.join(tempDir.path, 'large_cover.mp3'));
-      
+
       // Create a "file" with a JPEG signature at 300KB, ending at 800KB (500KB total)
       // This would have failed with the old 256KB limit
-      final List<int> data = List.filled(1024 * 1024, 0); 
+      final List<int> data = List.filled(1024 * 1024, 0);
       final sigPos = 300 * 1024;
       data[sigPos] = 0xFF;
       data[sigPos + 1] = 0xD8;
       data[sigPos + 2] = 0xFF;
-      
+
       final endPos = 800 * 1024;
       data[endPos] = 0xFF;
       data[endPos + 1] = 0xD9;
-      
+
       await mp3File.writeAsBytes(data);
-      
-      final songs = await scannerService.scanDirectory(tempDir.path, playCounts: {});
+
+      final songs =
+          await scannerService.scanDirectory(tempDir.path, playCounts: {});
       expect(songs.length, 1);
       expect(songs[0].coverUrl, isNotNull);
       expect(File(songs[0].coverUrl!).existsSync(), true);
-      
+
       final coverLength = await File(songs[0].coverUrl!).length();
       expect(coverLength, 500 * 1024 + 2);
     });
 
     test('manual extraction finds JPEG signature at the end', () async {
       final mp3File = File(p.join(tempDir.path, 'end_cover.mp3'));
-      
+
       final length = 2 * 1024 * 1024; // 2MB file
-      final List<int> data = List.filled(length, 0); 
-      
+      final List<int> data = List.filled(length, 0);
+
       // JPEG signature at length - 500KB
       final sigPos = length - 500 * 1024;
       data[sigPos] = 0xFF;
       data[sigPos + 1] = 0xD8;
       data[sigPos + 2] = 0xFF;
-      
+
       final endPos = length - 100 * 1024;
       data[endPos] = 0xFF;
       data[endPos + 1] = 0xD9;
-      
+
       await mp3File.writeAsBytes(data);
-      
-      final songs = await scannerService.scanDirectory(tempDir.path, playCounts: {});
+
+      final songs =
+          await scannerService.scanDirectory(tempDir.path, playCounts: {});
       expect(songs.length, 1);
       expect(songs[0].coverUrl, isNotNull);
-      
+
       final coverLength = await File(songs[0].coverUrl!).length();
       expect(coverLength, 400 * 1024 + 2);
     });

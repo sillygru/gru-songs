@@ -36,7 +36,8 @@ class UserDataService {
     };
   }
 
-  Future<void> updateUserData(String username, Map<String, dynamic> userData) async {
+  Future<void> updateUserData(
+      String username, Map<String, dynamic> userData) async {
     final body = jsonEncode(userData);
     debugPrint('UserDataService: POST /user/data for $username -> $body');
     await _client.post(

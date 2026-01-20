@@ -66,7 +66,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       labelText: 'Server URL',
                       hintText: 'http://[REDACTED]:9000',
                       border: OutlineInputBorder(),
-                      helperText: 'Enter IP:Port (e.g. 10.0.0.5:9000) or full URL',
+                      helperText:
+                          'Enter IP:Port (e.g. 10.0.0.5:9000) or full URL',
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -421,27 +422,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const SizedBox(height: 24),
                     _buildSectionTitle('Storage & Folders'),
                     FutureBuilder<String?>(
-                      future: ref.read(storageServiceProvider).getMusicFolderPath(),
-                      builder: (context, snapshot) {
-                        return _buildListTile(
-                          icon: Icons.library_music_outlined,
-                          title: 'Music Folder',
-                          subtitle: snapshot.data ?? 'Not selected',
-                          onTap: _selectMusicFolder,
-                        );
-                      }
-                    ),
+                        future: ref
+                            .read(storageServiceProvider)
+                            .getMusicFolderPath(),
+                        builder: (context, snapshot) {
+                          return _buildListTile(
+                            icon: Icons.library_music_outlined,
+                            title: 'Music Folder',
+                            subtitle: snapshot.data ?? 'Not selected',
+                            onTap: _selectMusicFolder,
+                          );
+                        }),
                     FutureBuilder<String?>(
-                      future: ref.read(storageServiceProvider).getLyricsFolderPath(),
-                      builder: (context, snapshot) {
-                        return _buildListTile(
-                          icon: Icons.lyrics_outlined,
-                          title: 'Lyrics Folder',
-                          subtitle: snapshot.data ?? 'Not selected (Optional)',
-                          onTap: _selectLyricsFolder,
-                        );
-                      }
-                    ),
+                        future: ref
+                            .read(storageServiceProvider)
+                            .getLyricsFolderPath(),
+                        builder: (context, snapshot) {
+                          return _buildListTile(
+                            icon: Icons.lyrics_outlined,
+                            title: 'Lyrics Folder',
+                            subtitle:
+                                snapshot.data ?? 'Not selected (Optional)',
+                            onTap: _selectLyricsFolder,
+                          );
+                        }),
                     _buildListTile(
                       icon: Icons.dns,
                       title: 'Server Settings',
@@ -488,13 +492,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       },
                     ),
                     const SizedBox(height: 24),
-                  const Text(
-                    "Gru Songs v6.2.0",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
+                    const Text(
+                      "Gru Songs v6.2.0",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
+                      ),
                     ),
-                  ),
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -556,66 +560,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-    Widget _buildListTile({
-
-      required IconData icon,
-
-      required String title,
-
-      String? subtitle,
-
-      required VoidCallback onTap,
-
-      Color? textColor,
-
-      Color? iconColor,
-
-    }) {
-
-      return Card(
-
-        elevation: 0,
-
-        color: Theme.of(context)
-
-            .colorScheme
-
-            .surfaceContainerHighest
-
-            .withValues(alpha: 0.3),
-
-        margin: const EdgeInsets.symmetric(vertical: 4),
-
-        child: ListTile(
-
-          leading: Icon(icon, color: iconColor),
-
-          title: Text(title,
-
-              style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
-
-          subtitle: subtitle != null ? Text(subtitle) : null,
-
-          trailing: const Icon(Icons.chevron_right, size: 20),
-
-          onTap: onTap,
-
-        ),
-
-                  );
-
-                }
-
-              }
-
-              
-
-          
-
-      
-
-  
-
-  
-
-  
+  Widget _buildListTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+    Color? textColor,
+    Color? iconColor,
+  }) {
+    return Card(
+      elevation: 0,
+      color: Theme.of(context)
+          .colorScheme
+          .surfaceContainerHighest
+          .withValues(alpha: 0.3),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        leading: Icon(icon, color: iconColor),
+        title: Text(title,
+            style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+        subtitle: subtitle != null ? Text(subtitle) : null,
+        trailing: const Icon(Icons.chevron_right, size: 20),
+        onTap: onTap,
+      ),
+    );
+  }
+}

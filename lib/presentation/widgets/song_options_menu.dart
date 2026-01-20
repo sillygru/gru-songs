@@ -49,25 +49,31 @@ void showSongOptionsMenu(
                     title: const Text("Move to Folder"),
                     onTap: () async {
                       Navigator.pop(context); // Close bottom sheet
-                      
+
                       final storage = ref.read(storageServiceProvider);
                       final rootPath = await storage.getMusicFolderPath();
                       if (rootPath == null) return;
 
                       if (context.mounted) {
-                        final targetPath = await showFolderPicker(context, rootPath);
+                        final targetPath =
+                            await showFolderPicker(context, rootPath);
                         if (targetPath != null) {
                           try {
-                            await ref.read(songsProvider.notifier).moveSong(song, targetPath);
+                            await ref
+                                .read(songsProvider.notifier)
+                                .moveSong(song, targetPath);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Moved ${song.title} to $targetPath")),
+                                SnackBar(
+                                    content: Text(
+                                        "Moved ${song.title} to $targetPath")),
                               );
                             }
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Error moving song: $e")),
+                                SnackBar(
+                                    content: Text("Error moving song: $e")),
                               );
                             }
                           }

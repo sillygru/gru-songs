@@ -32,7 +32,6 @@ class GruImage extends StatefulWidget {
 }
 
 class _GruImageState extends State<GruImage> {
-
   @override
   void initState() {
     super.initState();
@@ -42,8 +41,7 @@ class _GruImageState extends State<GruImage> {
   void didUpdateWidget(GruImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
-      setState(() {
-      });
+      setState(() {});
     }
   }
 
@@ -72,7 +70,7 @@ class _GruImageState extends State<GruImage> {
       } catch (_) {
         path = widget.url;
       }
-      
+
       content = Image.file(
         File(path),
         width: widget.width,

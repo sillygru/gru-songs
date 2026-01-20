@@ -38,8 +38,8 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
         height: 400,
         child: songsAsyncValue.when(
           data: (allSongs) {
-            final currentFullPath = _currentRelativePath.isEmpty 
-                ? widget.rootPath 
+            final currentFullPath = _currentRelativePath.isEmpty
+                ? widget.rootPath
                 : p.join(widget.rootPath, _currentRelativePath);
 
             final content = LibraryLogic.getFolderContent(
@@ -61,7 +61,8 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
                         if (parts.length <= 1) {
                           _currentRelativePath = '';
                         } else {
-                          _currentRelativePath = p.joinAll(parts.sublist(0, parts.length - 1));
+                          _currentRelativePath =
+                              p.joinAll(parts.sublist(0, parts.length - 1));
                         }
                       });
                     },
@@ -118,9 +119,11 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
   }
 }
 
-Future<String?> showFolderPicker(BuildContext context, String rootPath, {String? currentRelativePath}) {
+Future<String?> showFolderPicker(BuildContext context, String rootPath,
+    {String? currentRelativePath}) {
   return showDialog<String>(
     context: context,
-    builder: (context) => FolderPicker(rootPath: rootPath, currentRelativePath: currentRelativePath),
+    builder: (context) => FolderPicker(
+        rootPath: rootPath, currentRelativePath: currentRelativePath),
   );
 }

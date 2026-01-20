@@ -44,7 +44,7 @@ class _DownloaderScreenState extends ConsumerState<DownloaderScreen> {
     try {
       final apiService = ref.read(apiServiceProvider);
       final storageService = StorageService();
-      
+
       final musicPath = await storageService.getMusicFolderPath();
       if (musicPath == null) {
         throw Exception('Music library path not set');
@@ -57,16 +57,17 @@ class _DownloaderScreenState extends ConsumerState<DownloaderScreen> {
 
       // We'll update ApiService.downloadYoutube to return the response
       final response = await apiService.downloadYoutube(url, title);
-      
+
       if (response.statusCode == 200) {
         setState(() {
           _statusMessage = 'Saving file...';
         });
 
-        final filename = title.toLowerCase().endsWith('.m4a') ? title : '$title.m4a';
+        final filename =
+            title.toLowerCase().endsWith('.m4a') ? title : '$title.m4a';
         final filePath = p.join(downloadedDir.path, filename);
         final file = File(filePath);
-        
+
         await file.writeAsBytes(response.bodyBytes);
 
         setState(() {
@@ -84,7 +85,8 @@ class _DownloaderScreenState extends ConsumerState<DownloaderScreen> {
           ref.read(songsProvider.notifier).refresh();
         }
       } else {
-        throw Exception('Server error: ${response.statusCode} ${response.body}');
+        throw Exception(
+            'Server error: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
       setState(() {
