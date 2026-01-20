@@ -34,17 +34,17 @@ def test_fun_stats_thresholds():
     with patch("user_service.music_service.list_songs", return_value=mock_songs), \
          patch("user_service.music_service.get_song_duration", return_value=100.0):
         
-        # 1. Test "Actually Played" threshold (0.15)
-        # Play 10s of a 100s song (ratio 0.10) -> Should NOT count as played
+        # 1. Test "Actually Played" threshold (0.20)
+        # Play 15s of a 100s song (ratio 0.15) -> Should NOT count as played
         user_service.append_stats(username, StatsEntry(
-            session_id="s1", song_filename="song1.mp3", duration_played=10.0,
+            session_id="s1", song_filename="song1.mp3", duration_played=15.0,
             total_length=100.0,
             event_type="listen", timestamp=time.time()
         ))
         
-        # Play 20s of a 100s song (ratio 0.20) -> Should count as played
+        # Play 25s of a 100s song (ratio 0.25) -> Should count as played
         user_service.append_stats(username, StatsEntry(
-            session_id="s2", song_filename="song1.mp3", duration_played=20.0,
+            session_id="s2", song_filename="song1.mp3", duration_played=25.0,
             total_length=100.0,
             event_type="listen", timestamp=time.time() - 100
         ))
@@ -53,9 +53,11 @@ def test_fun_stats_thresholds():
         res = user_service.get_fun_stats(username)
         stats = {s["id"]: s for s in res["stats"]}
         
-        # unique_songs should be 1 (only the 20s play counted)
+        # unique_songs should be 1 (only the 25s play counted)
         assert stats["unique_songs"]["value"] == "1"
-        # total_time should be 30s
+        # total_songs_played should be 1
+        assert stats["total_songs_played"]["value"] == "1"
+        # total_time should be 40s
         assert stats["total_time"]["value"] == "0h 0m" 
         
         # 2. Test "Skip" threshold (0.90)
@@ -78,9 +80,9 @@ def test_fun_stats_thresholds():
             event_type="skip", timestamp=time.time() - 100
         ))
         
-        # Scenario C: Low ratio (0.10) -> SHOULD count as skip
+        # Scenario C: Low ratio (0.15) -> SHOULD count as skip
         user_service.append_stats(username2, StatsEntry(
-            session_id="s5", song_filename="song1.mp3", duration_played=10.0,
+            session_id="s5", song_filename="song1.mp3", duration_played=15.0,
             total_length=100.0,
             event_type="listen", timestamp=time.time() - 200
         ))
@@ -92,7 +94,7 @@ def test_fun_stats_thresholds():
         # total skips should be 2 (Scenario B and C)
         assert stats2["skips"]["value"] == "2"
         
-        print("✅ Fun Stats threshold logic (0.15 play / 0.90 skip) verified!")
+        print("✅ Fun Stats threshold logic (0.20 play / 0.90 skip) verified!")
 
 if __name__ == "__main__":
     try:

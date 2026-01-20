@@ -281,7 +281,7 @@ class DatabaseService {
     if (_statsDatabase == null) return {};
     try {
       final results = await _statsDatabase!.rawQuery(
-          'SELECT song_filename, COUNT(*) as count FROM playevent WHERE play_ratio > 0.25 GROUP BY song_filename');
+          'SELECT song_filename, COUNT(*) as count FROM playevent WHERE play_ratio > 0.20 GROUP BY song_filename');
       return {
         for (var r in results) r['song_filename'] as String: r['count'] as int
       };

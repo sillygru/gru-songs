@@ -401,9 +401,18 @@ class UserService:
                     # Ensure all keys exist
                     for key in ["total_play_time", "total_sessions", "total_background_playtime", 
                                "total_foreground_playtime", "total_songs_played", 
-                               "total_songs_played_ratio_over_025", "total_skipped"]:
+                               "total_songs_played_ratio_over_020", "total_skipped"]:
                         if key not in summary_data:
-                            summary_data[key] = 0
+                            # Migrate old keys if they exist
+                            if key == "total_songs_played_ratio_over_020":
+                                if "total_songs_played_ratio_over_015" in summary_data:
+                                    summary_data["total_songs_played_ratio_over_020"] = summary_data["total_songs_played_ratio_over_015"]
+                                elif "total_songs_played_ratio_over_025" in summary_data:
+                                    summary_data["total_songs_played_ratio_over_020"] = summary_data["total_songs_played_ratio_over_025"]
+                                else:
+                                    summary_data[key] = 0
+                            else:
+                                summary_data[key] = 0
 
                     if "platform_usage" not in summary_data:
                         summary_data["platform_usage"] = {}
@@ -422,14 +431,14 @@ class UserService:
                         total_length = stats.total_length
                         ratio = (stats.duration_played / total_length) if total_length > 0 else 0.0
 
-                        # A song is considered "played" if ratio > 0.25
-                        is_meaningful_play = ratio > 0.25
+                        # A song is considered "played" if ratio > 0.20
+                        is_meaningful_play = ratio > 0.20
 
                         if is_meaningful_play:
                             summary_data["total_songs_played"] += 1
                         
                         # A song is considered "skipped" ONLY if it's a skip event with low ratio
-                        if stats.event_type == 'skip' and ratio < 0.2:
+                        if stats.event_type == 'skip' and ratio < 0.20:
                             summary_data["total_skipped"] += 1
 
                         # Shuffle history update: Significant plays OR skips (to prevent immediate repeat)
@@ -456,8 +465,8 @@ class UserService:
                             shuffle_state["history"] = history
                             summary_data["shuffle_state"] = shuffle_state
 
-                        if stats.event_type != "favorite" and ratio > 0.25:
-                            summary_data["total_songs_played_ratio_over_025"] += 1
+                        if stats.event_type != "favorite" and ratio > 0.20:
+                            summary_data["total_songs_played_ratio_over_020"] += 1
 
                         # Session/Platform Logic
                         if stats.session_id not in processed_sessions:
@@ -499,10 +508,10 @@ class UserService:
 
         with Session(db_manager.get_user_stats_engine(username)) as session:
             # FAST: Filter in SQL now that we have numeric columns
-            # A play is counted if play_ratio > 0.25. Nothing else.
+            # A play is counted if play_ratio > 0.20. Nothing else.
             results = session.execute(
                 select(PlayEvent.song_filename, func.count(PlayEvent.id))
-                .where(PlayEvent.play_ratio > 0.25)
+                .where(PlayEvent.play_ratio > 0.20)
                 .group_by(PlayEvent.song_filename)
             ).all()
             
@@ -586,8 +595,8 @@ class UserService:
             if first_event is None or timestamp < first_event[1]:
                 first_event = (song_filename, timestamp)
 
-            # Meaningful plays (ratio > 0.15)
-            if play_ratio > 0.15:
+            # Meaningful plays (ratio > 0.20)
+            if play_ratio > 0.20:
                 song_counts[song_filename] += 1
                 unique_played_filenames.add(song_filename)
                 total_meaningful_plays += 1
@@ -607,9 +616,9 @@ class UserService:
 
             # Skipped logic:
             # 1. Ratio must be <= 0.90 (If > 0.90, it's NEVER a skip for fun stats)
-            # 2. It was an explicit 'skip' event OR it was not 'complete' and ratio < 0.15
+            # 2. It was an explicit 'skip' event OR it was not 'complete' and ratio < 0.20
             if play_ratio <= 0.90:
-                if event_type == 'skip' or (event_type != 'complete' and play_ratio < 0.15):
+                if event_type == 'skip' or (event_type != 'complete' and play_ratio < 0.20):
                     skipped_count += 1
 
         # 3. Construct Stats Dictionary
@@ -752,6 +761,14 @@ class UserService:
             "label": "Unique Songs Played",
             "value": str(len(unique_played_filenames)),
             "subtitle": "Distinct tracks you've heard."
+        })
+
+        # -- Total Songs Played --
+        stats.append({
+            "id": "total_songs_played",
+            "label": "Total Songs Played",
+            "value": str(total_meaningful_plays),
+            "subtitle": "Total times you've jammed out."
         })
 
         # -- Explorer Score --

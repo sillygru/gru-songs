@@ -40,7 +40,8 @@ class DatabaseManager:
     def init_global_dbs(self):
         # Create tables for global DBs
         from db_models import GlobalUser, Upload
-        Base.metadata.create_all(self.get_global_users_engine(), tables=[GlobalUser.__table__, Upload.__table__])
+        Base.metadata.create_all(self.get_global_users_engine(), tables=[GlobalUser.__table__])
+        Base.metadata.create_all(self.get_uploads_engine(), tables=[Upload.__table__])
 
     def init_user_dbs(self, username: str):
         # Create tables for specific user DBs
