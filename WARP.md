@@ -1,6 +1,6 @@
-# GEMINI.md
+# WARP.md
 
-This file provides guidance for Gemini when working with code in this repository.
+This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
 ## Essential Commands
 
