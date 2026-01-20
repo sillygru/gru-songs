@@ -9,6 +9,9 @@ import 'providers/auth_provider.dart';
 import 'services/cache_service.dart';
 import 'services/api_service.dart';
 import 'services/storage_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'presentation/screens/setup_screen.dart';
+import 'providers/setup_provider.dart';
 
 class MyHttpOverrides extends HttpOverrides {
   @override
@@ -22,13 +25,6 @@ class MyHttpOverrides extends HttpOverrides {
 Future<void> main() async {
   HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load saved server URL
-  final storage = StorageService();
-  final savedUrl = await storage.getServerUrl();
-  if (savedUrl != null) {
-    ApiService.setBaseUrl(savedUrl);
-  }
 
   // Initialize Cache V3 and cleanup legacy caches
   await CacheService.instance.init();
@@ -47,7 +43,52 @@ Future<void> main() async {
     androidNotificationOngoing: false,
   );
 
-  runApp(const ProviderScope(child: GruSongsApp()));
+  // Check setup status and migration
+  final storage = StorageService();
+  bool isSetupComplete = await storage.getIsSetupComplete();
+  final oldUrl = await storage.getServerUrl();
+
+  // Migration: If not setup V2 but has old URL, force logout
+  if (!isSetupComplete && oldUrl != null) {
+    debugPrint("Legacy user detected, forcing setup...");
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('username');
+    // We treat them as new user for the setup flow
+  }
+
+  // Initialize API/State based on findings
+  final prefs = await SharedPreferences.getInstance();
+  final username = prefs.getString('username');
+  
+  if (isSetupComplete && username == null) {
+     debugPrint("Setup complete but no user found. Resetting...");
+     isSetupComplete = false;
+     await storage.setSetupComplete(false);
+  }
+
+  if (isSetupComplete) {
+    final isLocal = await storage.getIsLocalMode();
+    if (!isLocal) {
+       final savedUrl = await storage.getServerUrl();
+       if (savedUrl != null) ApiService.setBaseUrl(savedUrl);
+    }
+  }
+
+  runApp(ProviderScope(
+    overrides: [
+      setupProvider.overrideWith(() => InitializedSetupNotifier(isSetupComplete)),
+      authProvider.overrideWith(() => PreloadedAuthNotifier(username)),
+    ],
+    child: const GruSongsApp(),
+  ));
+}
+
+
+class InitializedSetupNotifier extends SetupNotifier {
+  final bool initialValue;
+  InitializedSetupNotifier(this.initialValue);
+  @override
+  bool build() => initialValue;
 }
 
 class GruSongsApp extends ConsumerWidget {
@@ -56,6 +97,7 @@ class GruSongsApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
+    final isSetupComplete = ref.watch(setupProvider);
 
     return MaterialApp(
       title: 'Gru Songs',
@@ -79,7 +121,9 @@ class GruSongsApp extends ConsumerWidget {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
-      home: authState.isAuthenticated ? const MainScreen() : const AuthScreen(),
+      home: (!isSetupComplete || !authState.isAuthenticated) 
+          ? const SetupScreen() 
+          : const MainScreen(),
     );
   }
 }

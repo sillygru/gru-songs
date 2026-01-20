@@ -62,6 +62,17 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  Future<void> localLogin(String username) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('username', username);
+      state = state.copyWith(username: username, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('username');
@@ -102,3 +113,15 @@ final authServiceProvider = Provider((ref) => AuthService());
 final authProvider = NotifierProvider<AuthNotifier, AuthState>(() {
   return AuthNotifier();
 });
+
+class PreloadedAuthNotifier extends AuthNotifier {
+  final String? initialUsername;
+  
+  PreloadedAuthNotifier(this.initialUsername);
+  
+  @override
+  AuthState build() {
+    _authService = ref.watch(authServiceProvider);
+    return AuthState(username: initialUsername);
+  }
+}

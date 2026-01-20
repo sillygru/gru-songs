@@ -9,6 +9,9 @@ class StorageService {
   static const String _musicFolderKey = 'music_folder_path';
   static const String _lyricsFolderKey = 'lyrics_folder_path';
   static const String _serverUrlKey = 'server_base_url';
+  static const String _isSetupCompleteKey = 'is_setup_complete_v2';
+  static const String _isLocalModeKey = 'is_local_mode';
+  static const String _localUsernameKey = 'local_username';
 
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -59,6 +62,36 @@ class StorageService {
   Future<void> setServerUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_serverUrlKey, url);
+  }
+
+  Future<bool> getIsSetupComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_isSetupCompleteKey) ?? false;
+  }
+
+  Future<void> setSetupComplete(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_isSetupCompleteKey, value);
+  }
+
+  Future<bool> getIsLocalMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_isLocalModeKey) ?? false;
+  }
+
+  Future<void> setIsLocalMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_isLocalModeKey, value);
+  }
+
+  Future<String?> getLocalUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_localUsernameKey);
+  }
+
+  Future<void> setLocalUsername(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_localUsernameKey, username);
   }
 
   Future<void> saveSongs(List<Song> songs) async {

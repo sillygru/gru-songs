@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'auth_provider.dart';
 import 'providers.dart';
 import '../services/database_service.dart';
+import '../services/storage_service.dart';
 import '../models/shuffle_config.dart';
 
 class UserDataState {
@@ -122,6 +123,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
   /// 4. Update local cache with server state
   Future<void> _syncWithServer() async {
     if (_username == null) return;
+    if (await StorageService().getIsLocalMode()) return;
 
     final syncNotifier = ref.read(syncProvider.notifier);
     final service = ref.read(userDataServiceProvider);
@@ -270,6 +272,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
 
     // 2. Call server API
+    if (await StorageService().getIsLocalMode()) return;
     try {
       if (isFav) {
         await service.removeFavorite(_username!, actualFilename);
@@ -329,6 +332,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
 
     // 2. Call server API
+    if (await StorageService().getIsLocalMode()) return;
     try {
       if (isSL) {
         await service.removeSuggestLess(_username!, actualFilename);

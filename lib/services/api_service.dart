@@ -5,9 +5,7 @@ import 'package:http/io_client.dart';
 import '../models/song.dart';
 
 class ApiService {
-  static const String defaultBaseUrl =
-      'http://[REDACTED]:9000';
-  static String _baseUrl = defaultBaseUrl;
+  static String _baseUrl = "";
 
   static String get baseUrl => _baseUrl;
 

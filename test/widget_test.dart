@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gru_songs/main.dart';
 
 void main() {
-  testWidgets('App renders and shows AuthScreen by default',
+  testWidgets('App renders and shows SetupScreen by default',
       (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(
@@ -12,8 +12,8 @@ void main() {
       ),
     );
 
-    // Verify that we are on the AuthScreen by checking for the title
-    expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.text('Login'), findsOneWidget);
+    // Verify that we are on the SetupScreen
+    expect(find.text('Welcome to Gru Songs'), findsOneWidget);
+    expect(find.text('Local Only'), findsOneWidget);
   });
 }

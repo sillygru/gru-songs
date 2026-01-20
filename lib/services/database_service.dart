@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'package:http/http.dart' as http;
+import 'storage_service.dart';
 
 /// DatabaseService handles local SQLite storage for offline access.
 ///
@@ -79,18 +80,21 @@ class DatabaseService {
 
   /// Full bidirectional sync (Download latest from server)
   Future<void> sync(String username) async {
+    if (await StorageService().getIsLocalMode()) return;
     await downloadStatsFromServer(username);
     await downloadFinalStatsFromServer(username);
   }
 
   /// Upload local changes to server (Additive merge)
   Future<void> syncBack(String username) async {
+    if (await StorageService().getIsLocalMode()) return;
     await uploadStatsToServer(username);
   }
 
   /// Downloads stats DB from server (for offline viewing of play history)
   /// This is a read-only sync - we don't overwrite server stats
   Future<void> downloadStatsFromServer(String username) async {
+    if (await StorageService().getIsLocalMode()) return;
     final docDir = await getApplicationDocumentsDirectory();
     final path = join(docDir.path, '${username}_stats.db');
 
@@ -121,6 +125,7 @@ class DatabaseService {
   /// Uploads local stats to server (additive merge on server side)
   /// Server should only ADD new events, never delete existing ones
   Future<void> uploadStatsToServer(String username) async {
+    if (await StorageService().getIsLocalMode()) return;
     final docDir = await getApplicationDocumentsDirectory();
     final path = join(docDir.path, '${username}_stats.db');
     final file = File(path);
@@ -147,6 +152,7 @@ class DatabaseService {
 
   /// Downloads final_stats.json from server (contains shuffle state, etc.)
   Future<void> downloadFinalStatsFromServer(String username) async {
+    if (await StorageService().getIsLocalMode()) return;
     final docDir = await getApplicationDocumentsDirectory();
     final path = join(docDir.path, '${username}_final_stats.json');
 
