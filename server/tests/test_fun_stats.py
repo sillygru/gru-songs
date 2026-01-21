@@ -85,7 +85,7 @@ def test_fun_stats_logic():
         assert "explorer_score" in label_map
         assert label_map["explorer_score"]["value"] == "100%" # 2/2 songs played
         
-        print("✅ Fun Stats logic verified!")
+        print("Fun Stats logic verified!")
 
 if __name__ == "__main__":
     try:

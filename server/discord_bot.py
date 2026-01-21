@@ -35,7 +35,7 @@ class GruDiscordBot(commands.Bot):
             return
 
         print(f"Bot connected and listening to channel: {channel.name}")
-        await channel.send(f"🚀 Gru Songs Backend Logger started! (v{settings.VERSION})")
+        await channel.send(f"Gru Songs Backend Logger started! (v{settings.VERSION})")
 
         while True:
             try:
@@ -89,7 +89,7 @@ def run_bot(queue, command_queue):
 
     @bot.command(name="status")
     async def status(ctx):
-        await ctx.send(f"✅ Backend is online and recording stats. (v{settings.VERSION})")
+        await ctx.send(f"Backend is online and recording stats. (v{settings.VERSION})")
 
     @bot.command(name="backup")
     async def backup(ctx, reset: str = "false"):
@@ -107,12 +107,12 @@ def run_bot(queue, command_queue):
             else:
                 await ctx.send("⏳ Backup requested (Timer will NOT be reset).")
         else:
-            await ctx.send("❌ Internal Error: Command queue not available.")
+            await ctx.send("Internal Error: Command queue not available.")
 
     @bot.command(name="stats")
     async def stats(ctx, username: str = None):
         if not username:
-            await ctx.send("❌ Usage: !stats [username]")
+            await ctx.send("Usage: !stats [username]")
             return
 
         # Fetch stats directly (Read-Only access to files is safe)
@@ -124,11 +124,11 @@ def run_bot(queue, command_queue):
         # user_service.get_user returns None if no DB.
         user_info = user_service.get_user(username)
         if not user_info:
-            await ctx.send(f"❌ User '{username}' not found.")
+            await ctx.send(f"User '{username}' not found.")
             return
 
         # Build Embed
-        embed = discord.Embed(title=f"📊 Stats for {username}", color=0x1DB954)
+        embed = discord.Embed(title=f"Stats for {username}", color=0x1DB954)
         
         total_time_hrs = round(summary.get("total_play_time", 0) / 3600, 1)
         
@@ -148,7 +148,7 @@ def run_bot(queue, command_queue):
 
     @bot.command(name="ping")
     async def ping(ctx):
-        await ctx.send(f"🏓 Pong! Latency: {round(bot.latency * 1000)}ms")
+        await ctx.send(f"Pong! Latency: {round(bot.latency * 1000)}ms")
 
     try:
         bot.run(settings.DISCORD_TOKEN, log_handler=None)

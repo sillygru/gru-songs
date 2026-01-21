@@ -30,7 +30,7 @@ class UserService:
         self.discord_queue = queue
 
     def log_to_discord(self, message: str):
-        if self.discord_queue:
+        if self.discord_queue and settings.LOG_TO_DISCORD:
             self.discord_queue.put(message)
 
     def _get_final_stats_path(self, username: str):
@@ -114,7 +114,7 @@ class UserService:
                 "shuffle_state": {"config": {}, "history": []}
             }, f, indent=4)
             
-        self.log_to_discord(f"🆕 New user registered: **{username}**")
+        self.log_to_discord(f"New user registered: **{username}**")
         return True, "User created"
 
     def authenticate_user(self, username: str, password: str):
@@ -123,7 +123,7 @@ class UserService:
             return False
         is_valid = self._verify_password(password, user["password"])
         if is_valid:
-            self.log_to_discord(f"🔑 **{username}** logged in")
+            self.log_to_discord(f"**{username}** logged in")
         return is_valid
 
     def update_password(self, username: str, old_password: str, new_password: str):
@@ -187,7 +187,7 @@ class UserService:
                 session.add(UserData(username=new_username, password_hash=u_data.password_hash, created_at=u_data.created_at))
                 session.commit()
 
-        self.log_to_discord(f"🆔 **{current_username}** changed username to **{new_username}**")
+        self.log_to_discord(f"**{current_username}** changed username to **{new_username}**")
         return True, "Username updated"
 
     # --- Statistics ---
@@ -205,10 +205,10 @@ class UserService:
         if total_length > 0:
             ratio = stats.duration_played / total_length
 
-        emoji = "🎵"
-        if stats.event_type == 'favorite': emoji = "❤️"
-        elif stats.event_type == 'complete': emoji = "✅"
-        elif stats.event_type == 'listen': emoji = "🎧"
+        emoji = ""
+        if stats.event_type == 'favorite': emoji = "️"
+        elif stats.event_type == 'complete': emoji = ""
+        elif stats.event_type == 'listen': emoji = ""
 
         ratio_pct = round(ratio * 100)
         fg_val = stats.foreground_duration if isinstance(stats.foreground_duration, (int, float)) else 0
@@ -221,7 +221,7 @@ class UserService:
         )
         
         if fg_val > 0 or bg_val > 0:
-            log_msg += f"> **Activity:** 📱 FG: {round(fg_val, 1)}s | 🎧 BG: {round(bg_val, 1)}s\n"
+            log_msg += f"> **Activity:**  FG: {round(fg_val, 1)}s |  BG: {round(bg_val, 1)}s\n"
         
         log_msg += (
             f"> **Device:** `{stats.platform or 'unknown'}`\n"
@@ -338,7 +338,7 @@ class UserService:
                 # Unique-ish summary
                 song_summary = ", ".join(list(set(songs_flushed))[:10])
                 if len(set(songs_flushed)) > 10:
-                    song_summary += " ..."
+                    song_summary += "..."
                 
                 breakdown.append(f"**{username}**: {len(events)} events (was {len(raw_events)}) ({song_summary})")
                 
@@ -489,7 +489,7 @@ class UserService:
             self._last_flush = time.time()
             duration = round(time.time() - start_time, 3)
             
-            summary_msg = f"📊 **Stats Flush Complete** ({duration}s)\n"
+            summary_msg = f"**Stats Flush Complete** ({duration}s)\n"
             summary_msg += f"> **Total Events:** `{total_events}`\n"
             summary_msg += "\n".join([f"> {b}" for b in breakdown])
             
@@ -908,7 +908,7 @@ class UserService:
                 session.add(upload)
             session.commit()
             
-        self.log_to_discord(f"📥 **{username}** uploaded/added: `{filename}` (Source: {source})")
+        self.log_to_discord(f"**{username}** uploaded/added: `{filename}` (Source: {source})")
 
     def get_custom_title(self, filename: str) -> str:
         with Session(db_manager.get_uploads_engine()) as session:

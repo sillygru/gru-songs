@@ -9,6 +9,13 @@ import tempfile
 from contextlib import asynccontextmanager
 from multiprocessing import Process, Queue
 
+from config_manager import config_manager
+from setup_wizard import run_wizard
+
+# Run setup wizard if needed before anything else
+if not config_manager.is_setup_complete():
+    run_wizard()
+
 from settings import settings
 from database_manager import db_manager
 from services import music_service
@@ -34,7 +41,8 @@ async def listen_for_commands():
                 if cmd_type == "backup":
                     reset = cmd_data.get("reset", False)
                     requester = cmd_data.get("requester", "Unknown")
-                    discord_queue.put(f"🔄 Backup triggered by {requester} (Reset Timer: {reset})...")
+                    if settings.LOG_TO_DISCORD:
+                        discord_queue.put(f"Backup triggered by {requester} (Reset Timer: {reset})...")
                     
                     success, msg = await backup_service.trigger_backup(reset_timer=reset)
                     
@@ -53,24 +61,40 @@ async def lifespan(app: FastAPI):
     global bot_process
     # Startup logic
     backup_service.log_event("STARTUP")
-    user_service.set_discord_queue(discord_queue)
-    backup_service.set_discord_queue(discord_queue)
     
-    # Start Discord Bot in a separate process
-    bot_process = Process(target=run_bot, args=(discord_queue, command_queue), daemon=True)
-    bot_process.start()
+    # Check Discord validity
+    is_discord_valid, discord_msg = settings.validate_discord()
+    if not is_discord_valid:
+        print(f"️ Discord Integration Disabled: {discord_msg}")
     
-    discord_queue.put(f"🖥️ Server starting up... (v{settings.VERSION})")
+    if is_discord_valid:
+        user_service.set_discord_queue(discord_queue)
+        backup_service.set_discord_queue(discord_queue)
+        
+        # Start Discord Bot in a separate process
+        bot_process = Process(target=run_bot, args=(discord_queue, command_queue), daemon=True)
+        bot_process.start()
+        
+        if settings.LOG_TO_DISCORD:
+            discord_queue.put(f"️ Server starting up... (v{settings.VERSION})")
     
     asyncio.create_task(periodic_flush())
-    asyncio.create_task(backup_service.start_scheduler())
-    asyncio.create_task(listen_for_commands())
+    
+    if settings.BACKUP_ENABLED:
+        asyncio.create_task(backup_service.start_scheduler())
+    else:
+        print("Backup scheduler disabled in config.")
+        
+    if is_discord_valid:
+        asyncio.create_task(listen_for_commands())
+        
     yield
     # Shutdown logic
     backup_service.log_event("SHUTDOWN")
     if bot_process:
         try:
-            discord_queue.put("🛑 Server shutting down...")
+            if settings.LOG_TO_DISCORD:
+                discord_queue.put("Server shutting down...")
             discord_queue.put(None) # Sentinel for graceful exit
             # Give the bot a moment to process the message
             await asyncio.sleep(0.5)

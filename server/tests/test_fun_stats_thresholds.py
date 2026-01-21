@@ -94,7 +94,7 @@ def test_fun_stats_thresholds():
         # total skips should be 2 (Scenario B and C)
         assert stats2["skips"]["value"] == "2"
         
-        print("✅ Fun Stats threshold logic (0.20 play / 0.90 skip) verified!")
+        print("Fun Stats threshold logic (0.20 play / 0.90 skip) verified!")
 
 if __name__ == "__main__":
     try:

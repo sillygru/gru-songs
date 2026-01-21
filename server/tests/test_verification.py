@@ -51,7 +51,7 @@ def test_everything():
             success, msg = user_service.create_user(username, password)
             if not success:
                  raise Exception(f"Failed to create user: {msg}")
-            print(f"✅ User created: {msg}")
+            print(f"User created: {msg}")
 
             # Verify files exist
             expected_files = [
@@ -64,11 +64,11 @@ def test_everything():
             for f in expected_files:
                 if not os.path.exists(os.path.join(TEST_USERS_DIR, f)):
                     raise Exception(f"Missing expected file: {f}")
-            print("✅ All DB files created.")
+            print("All DB files created.")
 
             if not user_service.authenticate_user(username, password):
                  raise Exception("Authentication failed")
-            print("✅ Authentication successful.")
+            print("Authentication successful.")
 
             print("\n--- 2. Testing Stats & Speed ---")
             session_id = "sess_1"
@@ -87,13 +87,13 @@ def test_everything():
                 background_duration=80.0
             )
             user_service.append_stats(username, stats)
-            print("✅ Added stats entry (complete listen).")
+            print("Added stats entry (complete listen).")
 
             # Verify Play Counts (Should be 1, since 180/180 ratio = 1.0 > 0.25)
             counts = user_service.get_play_counts(username)
             if counts.get(song) != 1:
                 raise Exception(f"Expected play count 1, got {counts.get(song)}")
-            print("✅ Play count correct.")
+            print("Play count correct.")
 
             # Add partial listen (ratio < 0.25)
             stats_skip = StatsEntry(
@@ -110,7 +110,7 @@ def test_everything():
             counts = user_service.get_play_counts(username)
             if counts.get("song2.mp3", 0) != 0:
                  raise Exception("Partial listen should not count.")
-            print("✅ Partial listen correctly ignored in play counts.")
+            print("Partial listen correctly ignored in play counts.")
 
             # Verify Final Stats JSON updated
             import json
@@ -118,7 +118,7 @@ def test_everything():
                 summary = json.load(f)
                 if summary["total_play_time"] != 190.0:
                      raise Exception(f"Expected total_play_time 190.0, got {summary['total_play_time']}")
-            print("✅ Final stats JSON updated.")
+            print("Final stats JSON updated.")
 
             print("\n--- 3. Testing Username Update (Renaming) ---")
             new_username = "cooluser"
@@ -135,19 +135,19 @@ def test_everything():
             # Verify login with new username
             if not user_service.authenticate_user(new_username, password):
                 raise Exception("Auth with new username failed")
-            print("✅ Username updated and files renamed successfully.")
+            print("Username updated and files renamed successfully.")
 
             print("\n--- 4. Testing Global Uploads ---")
             user_service.record_upload(new_username, "upload1.mp3", title="My Upload")
             uploader = user_service.get_uploader("upload1.mp3")
             if uploader != new_username:
                 raise Exception(f"Expected uploader {new_username}, got {uploader}")
-            print("✅ Upload recorded globally.")
+            print("Upload recorded globally.")
 
-            print("\n✅ ALL TESTS PASSED")
+            print("\n ALL TESTS PASSED")
 
         except Exception as e:
-            print(f"\n❌ TEST FAILED: {e}")
+            print(f"\n TEST FAILED: {e}")
             import traceback
             traceback.print_exc()
             sys.exit(1)

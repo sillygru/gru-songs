@@ -20,7 +20,7 @@ from settings import settings
 
 def test_backup():
     async def run_test():
-        print("🚀 Starting Backup Test")
+        print("Starting Backup Test")
         
         # Mock queue
         mock_queue = Queue()
@@ -35,44 +35,44 @@ def test_backup():
             f.write("test content")
 
         # Perform backup
-        print("⏳ Running backup...")
+        print("Running backup...")
         success = await backup_service.perform_backup()
         
         if not success:
-            print("❌ Backup failed")
+            print("Backup failed")
             return False
 
         # Check queue for message
         try:
             msg = mock_queue.get_nowait()
-            print(f"📨 Discord Message received: {msg}")
+            print(f"Discord Message received: {msg}")
         except:
-            print("⚠️ No discord message received")
+            print("️No discord message received")
 
         # Verify directory structure
         backup_root = os.path.join(settings.BACKUPS_DIR, "users")
         if not os.path.exists(backup_root):
-            print("❌ Backup root directory not found")
+            print("Backup root directory not found")
             return False
 
         backups = sorted(os.listdir(backup_root))
         if not backups:
-            print("❌ No backup directory found")
+            print("No backup directory found")
             return False
             
         latest_backup = backups[-1]
-        print(f"✅ Found backup directory: {latest_backup}")
+        print(f"Found backup directory: {latest_backup}")
         
         # Verify content
         latest_path = os.path.join(backup_root, latest_backup)
         if os.path.exists(os.path.join(latest_path, "test_file.txt")) or \
            any(f.endswith(".db") for f in os.listdir(latest_path)):
-            print("✅ Content verified")
+            print("Content verified")
         else:
-            print("❌ Content verification failed (files missing)")
+            print("Content verification failed (files missing)")
             return False
 
-        print("✅ Test Passed")
+        print("Test Passed")
         return True
 
     assert asyncio.run(run_test())

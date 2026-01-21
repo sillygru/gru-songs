@@ -50,7 +50,7 @@ def test_stats_buffering_and_flushing():
             # Verify initial state
             summary = user_service.get_stats_summary(username)
             assert summary["total_play_time"] == 0
-            print("✅ User created with 0 stats.")
+            print("User created with 0 stats.")
 
             print("\n--- 2. Appending Stats (Buffering) ---")
             # Mock discord queue to capture logs
@@ -69,13 +69,13 @@ def test_stats_buffering_and_flushing():
             
             # Check buffer
             assert len(user_service._stats_buffer[username]) == 1
-            print("✅ Stat appended to buffer.")
+            print("Stat appended to buffer.")
 
             # Verify NOT yet in JSON (Check file directly to avoid auto-flush)
             with open(user_service._get_final_stats_path(username), "r") as f:
                 data = json.load(f)
                 assert data["total_play_time"] == 0
-            print("✅ Stat NOT yet in JSON (correctly buffered).")
+            print("Stat NOT yet in JSON (correctly buffered).")
 
             print("\n--- 3. Verification of Flush ---")
             user_service.flush_stats()
@@ -90,12 +90,12 @@ def test_stats_buffering_and_flushing():
                 history = data["shuffle_state"]["history"]
                 first_song = history[0]["filename"] if isinstance(history[0], dict) else history[0]
                 assert first_song == "track1.mp3"
-            print("✅ Data persisted to JSON after flush.")
+            print("Data persisted to JSON after flush.")
 
             # Check SQL
             counts = user_service.get_play_counts(username)
             assert counts.get("track1.mp3") == 1
-            print("✅ Data persisted to SQL after flush.")
+            print("Data persisted to SQL after flush.")
 
             # Check Discord Logs
             # 1 for append_stats, 1 for flush_stats summary
@@ -108,7 +108,7 @@ def test_stats_buffering_and_flushing():
             assert "1" in flush_msg
             assert "track1.mp3" in flush_msg
             assert "buffer_test_user" in flush_msg
-            print("✅ Discord logging verified (Exact data present).")
+            print("Discord logging verified (Exact data present).")
 
             print("\n--- 4. Testing Auto-Flush on Data Access ---")
             stat2 = StatsEntry(
@@ -126,12 +126,12 @@ def test_stats_buffering_and_flushing():
             current_summary = user_service.get_stats_summary(username)
             assert current_summary["total_play_time"] == 170.0
             assert len(user_service._stats_buffer[username]) == 0
-            print("✅ Auto-flush triggered by get_stats_summary.")
+            print("Auto-flush triggered by get_stats_summary.")
 
-            print("\n✅ BUFFERING TESTS PASSED")
+            print("\n BUFFERING TESTS PASSED")
 
         except Exception as e:
-            print(f"\n❌ TEST FAILED: {e}")
+            print(f"\n TEST FAILED: {e}")
             import traceback
             traceback.print_exc()
             sys.exit(1)

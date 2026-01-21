@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from config_manager import config_manager
 
 # Skip loading .env if we're in testing mode to avoid server-specific paths
 if os.getenv("GRUSONGS_TESTING") != "true":
@@ -36,6 +37,30 @@ class Settings:
     def DISCORD_CHANNEL_ID(self) -> str:
         return os.getenv("DISCORD_CHANNEL_ID")
 
+    @property
+    def USE_DISCORD_BOT(self) -> bool:
+        return config_manager.get("use_discord_bot", False)
+
+    @property
+    def LOG_TO_DISCORD(self) -> bool:
+        return config_manager.get("log_to_discord", False)
+
+    @property
+    def BACKUP_ENABLED(self) -> bool:
+        return config_manager.get("backup_enabled", False)
+
+    @property
+    def BACKUP_INTERVAL_HOURS(self) -> int:
+        return config_manager.get("backup_interval_hours", 6)
+
+    @property
+    def SEND_BACKUPS_TO_DISCORD(self) -> bool:
+        return config_manager.get("send_backups_to_discord", False)
+
+    @property
+    def SKIP_IDENTICAL_BACKUPS(self) -> bool:
+        return config_manager.get("skip_identical_backups", True)
+
     def __init__(self):
         # We'll create directories lazily or when specifically requested if needed,
         # but let's keep a method to ensure they exist.
@@ -49,6 +74,20 @@ class Settings:
             except Exception as e:
                 if os.getenv("GRUSONGS_TESTING") != "true":
                     print(f"Warning: Could not create directory {d}: {e}")
+
+    def validate_discord(self):
+        if not self.USE_DISCORD_BOT:
+            return False, "Discord bot disabled in config."
+        
+        token = self.DISCORD_TOKEN
+        channel_id = self.DISCORD_CHANNEL_ID
+        
+        if not token or token == "guess":
+            return False, "DISCORD_TOKEN is missing or invalid."
+        if not channel_id or channel_id == "guess":
+            return False, "DISCORD_CHANNEL_ID is missing or invalid."
+            
+        return True, "Discord settings valid."
 
 settings = Settings()
 # Initial ensure

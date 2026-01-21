@@ -17,15 +17,15 @@ class BackupService:
         state_data = self._load_state()
         self.last_run_timestamp = state_data.get("last_run_timestamp", time.time())
         self.last_backup_hash = state_data.get("last_backup_hash", "")
-        # Next run is 6 hours after the last successful check (even if skipped)
-        self.next_run_timestamp = self.last_run_timestamp + (6 * 60 * 60)
+        # Use interval from settings
+        self.next_run_timestamp = self.last_run_timestamp + (settings.BACKUP_INTERVAL_HOURS * 60 * 60)
 
     def set_discord_queue(self, queue: Queue):
         self.discord_queue = queue
 
     def _log(self, message: str):
         print(message)
-        if self.discord_queue:
+        if self.discord_queue and settings.LOG_TO_DISCORD:
             self.discord_queue.put(message)
 
     def log_event(self, event_type: str, details: str = ""):
@@ -107,7 +107,7 @@ class BackupService:
         
         if success and reset_timer:
             self.last_run_timestamp = time.time()
-            self.next_run_timestamp = self.last_run_timestamp + (6 * 60 * 60)
+            self.next_run_timestamp = self.last_run_timestamp + (settings.BACKUP_INTERVAL_HOURS * 60 * 60)
             self._save_state()
             self._log(f"⏰ Timer reset. Next backup at: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%H:%M')}")
             
@@ -132,7 +132,7 @@ class BackupService:
         start_time = time.time()
         
         current_hash = self._get_users_dir_hash()
-        if current_hash == self.last_backup_hash:
+        if settings.SKIP_IDENTICAL_BACKUPS and current_hash == self.last_backup_hash:
             self._log("⏭️ Backup skipped: No changes detected in user data.")
             self.log_event("BACKUP_SKIPPED", "No changes")
             return "skipped"
@@ -172,47 +172,48 @@ class BackupService:
             shutil.copytree(settings.USERS_DIR, dest_path)
             
             # Zip and send to discord
+            zip_path = None
             try:
-                zip_base_name = os.path.join(settings.BACKUPS_DIR, folder_name)
-                # This creates {zip_base_name}.zip
-                zip_path = shutil.make_archive(zip_base_name, 'zip', settings.USERS_DIR)
-                
-                if self.discord_queue:
-                    self.discord_queue.put({
-                        "type": "file",
-                        "path": zip_path,
-                        "filename": f"{folder_name}.zip",
-                        "content": f"📦 **Backup {next_num}** ({folder_name})"
-                    })
+                if settings.SEND_BACKUPS_TO_DISCORD:
+                    zip_base_name = os.path.join(settings.BACKUPS_DIR, folder_name)
+                    # This creates {zip_base_name}.zip
+                    zip_path = shutil.make_archive(zip_base_name, 'zip', settings.USERS_DIR)
+                    
+                    if self.discord_queue:
+                        self.discord_queue.put({
+                            "type": "file",
+                            "path": zip_path,
+                            "filename": f"{folder_name}.zip",
+                            "content": f"**Backup {next_num}** ({folder_name})"
+                        })
             except Exception as e:
-                self._log(f"⚠️ Failed to create/send zip backup: {e}")
+                self._log(f"️ Failed to create/send zip backup: {e}")
 
             elapsed = time.time() - start_time
             self.last_backup_hash = current_hash
-            msg = f"✅ Backup {next_num} completed in {elapsed:.2f}s: {folder_name}"
+            msg = f"Backup {next_num} completed in {elapsed:.2f}s: {folder_name}"
             self._log(msg)
             self.log_event("BACKUP", folder_name)
             return "success"
             
         except Exception as e:
-            self._log(f"❌ Backup failed: {str(e)}")
+            self._log(f"Backup failed: {str(e)}")
             return "failed"
 
     async def start_scheduler(self):
-        self._log(f"⏳ Backup scheduler started. Next run: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
+        self._log(f"⏳ Backup scheduler started (Interval: {settings.BACKUP_INTERVAL_HOURS}h). Next run: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
         while True:
             now = time.time()
             if now >= self.next_run_timestamp:
                 success = await self.perform_backup()
                 if success:
                     # Schedule next
-                    self.next_run_timestamp = self.last_run_timestamp + (6 * 60 * 60)
+                    self.next_run_timestamp = self.last_run_timestamp + (settings.BACKUP_INTERVAL_HOURS * 60 * 60)
                     self._log(f"⏰ Next backup scheduled for: {datetime.datetime.fromtimestamp(self.next_run_timestamp).strftime('%H:%M')}")
                 else:
-                    # Retry in 1 hour if failed? Or keep trying?
-                    # Let's retry in 1 hour
+                    # Retry in 1 hour
                     self.next_run_timestamp = time.time() + (60 * 60)
-                    self._log("⚠️ Backup failed, retrying in 1 hour.")
+                    self._log("️ Backup failed, retrying in 1 hour.")
             
             # Check every minute
             await asyncio.sleep(60)
