@@ -14,23 +14,31 @@ Gru Songs is a simple local music player app built with Flutter, that can option
 
 ## Getting Started
 
-Simply install the app from the releases page, by default it will use my private server for stat syncing.
+Simply install the app from the releases page.
+If you want to sync data across devices, you must host your own server.
 
 ### Good to know
 
-User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file—like play count, favorites, or "suggest less" status—will be lost or reset. This can also impact shuffle personality weight system.
+User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file—like play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
+We do have a feature to sync file names across devices :)
 
 ## For developers / if you want to run your own private server
 1. **Backend:**
    - Clone the repo
    - Navigate to `server/`.
    - Install dependencies: `pip install -r requirements.txt`.
-   - Configure `.env` if you  want to use the discord bot for logging. (check .env.example)
    - Run: `python main.py`.
+      - It will guide you trough a first time setup.
 
 2. **Frontend:**
+### Run the app
    - Install Flutter dependencies: `flutter pub get`.
    - Run the app: `flutter run`.
+
+### Build the app for different platforms
+   - flutter build apk --release
+   - flutter build ios --release
+   - flutter build macos --release
 
 ## License
 
