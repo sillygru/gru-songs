@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
@@ -9,10 +10,10 @@ void showSongOptionsMenu(
     {Song? song}) {
   showModalBottomSheet(
     context: context,
-    builder: (context) {
+    builder: (sheetContext) {
       return Consumer(
-        builder: (context, ref, child) {
-          final userData = ref.watch(userDataProvider);
+        builder: (consumerContext, consumerRef, child) {
+          final userData = consumerRef.watch(userDataProvider);
           final isFavorite = userData.isFavorite(songFilename);
           final isSuggestLess = userData.isSuggestLess(songFilename);
 
@@ -36,7 +37,7 @@ void showSongOptionsMenu(
                     title: const Text("Play Next"),
                     onTap: () {
                       ref.read(audioPlayerManagerProvider).playNext(song);
-                      Navigator.pop(context);
+                      Navigator.pop(sheetContext);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                             content: Text("Added to Next Up: ${song.title}"),
@@ -48,16 +49,28 @@ void showSongOptionsMenu(
                     leading: const Icon(Icons.drive_file_move_outlined),
                     title: const Text("Move to Folder"),
                     onTap: () async {
-                      Navigator.pop(context); // Close bottom sheet
+                      if (kDebugMode) {
+                        debugPrint("UI: Move Song tapped for ${song.title}");
+                      }
+                      Navigator.pop(sheetContext); // Close bottom sheet
 
                       final storage = ref.read(storageServiceProvider);
                       final rootPath = await storage.getMusicFolderPath();
-                      if (rootPath == null) return;
+                      if (rootPath == null) {
+                        if (kDebugMode)
+                          debugPrint("UI: ERROR - rootPath is null");
+                        return;
+                      }
 
                       if (context.mounted) {
+                        if (kDebugMode)
+                          debugPrint("UI: Opening folder picker...");
                         final targetPath =
                             await showFolderPicker(context, rootPath);
                         if (targetPath != null) {
+                          if (kDebugMode) {
+                            debugPrint("UI: Selected target path: $targetPath");
+                          }
                           try {
                             await ref
                                 .read(songsProvider.notifier)
@@ -70,6 +83,8 @@ void showSongOptionsMenu(
                               );
                             }
                           } catch (e) {
+                            if (kDebugMode)
+                              debugPrint("UI: ERROR during move: $e");
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -77,6 +92,14 @@ void showSongOptionsMenu(
                               );
                             }
                           }
+                        } else {
+                          if (kDebugMode)
+                            debugPrint("UI: Folder picker cancelled");
+                        }
+                      } else {
+                        if (kDebugMode) {
+                          debugPrint(
+                              "UI: ERROR - context not mounted after pop");
                         }
                       }
                     },
@@ -93,7 +116,7 @@ void showSongOptionsMenu(
                     ref
                         .read(userDataProvider.notifier)
                         .toggleFavorite(songFilename);
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                   },
                 ),
                 ListTile(
@@ -104,7 +127,7 @@ void showSongOptionsMenu(
                     ref
                         .read(userDataProvider.notifier)
                         .toggleSuggestLess(songFilename);
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                   },
                 ),
               ],

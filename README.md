@@ -13,19 +13,6 @@ Gru Songs is a simple local music player app built with Flutter, that can option
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
 - **Background Play:** Full integration with system media controls and background playback.
 
-## Tech Stack
-
-- **Frontend:** Flutter, Riverpod (State Management), Just Audio.
-- **Backend:** Python, FastAPI, Mutagen (Metadata).
-- **Networking:** Tailscale Funnel for secure, private access.
-
-## Architecture
-
-The project follows clean coding practices for long-term maintainability:
-- **Riverpod** for robust state management and dependency injection.
-- **Repository Pattern** to decouple data sources from the UI.
-- **Modular Backend** to separate API routing from business logic.
-
 ## Getting Started
 
 Simply install the app from the releases page, by default it will use my private server for stat syncing.

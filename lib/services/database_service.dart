@@ -81,6 +81,10 @@ class DatabaseService {
   /// Full bidirectional sync (Download latest from server)
   Future<void> sync(String username) async {
     if (await StorageService().getIsLocalMode()) return;
+    if (ApiService.baseUrl.isEmpty) {
+      debugPrint('Sync skipped: No server URL configured');
+      return;
+    }
     await downloadStatsFromServer(username);
     await downloadFinalStatsFromServer(username);
   }
@@ -88,6 +92,7 @@ class DatabaseService {
   /// Upload local changes to server (Additive merge)
   Future<void> syncBack(String username) async {
     if (await StorageService().getIsLocalMode()) return;
+    if (ApiService.baseUrl.isEmpty) return;
     await uploadStatsToServer(username);
   }
 
@@ -95,6 +100,7 @@ class DatabaseService {
   /// This is a read-only sync - we don't overwrite server stats
   Future<void> downloadStatsFromServer(String username) async {
     if (await StorageService().getIsLocalMode()) return;
+    if (ApiService.baseUrl.isEmpty) return;
     final docDir = await getApplicationDocumentsDirectory();
     final path = join(docDir.path, '${username}_stats.db');
 
@@ -126,6 +132,7 @@ class DatabaseService {
   /// Server should only ADD new events, never delete existing ones
   Future<void> uploadStatsToServer(String username) async {
     if (await StorageService().getIsLocalMode()) return;
+    if (ApiService.baseUrl.isEmpty) return;
     final docDir = await getApplicationDocumentsDirectory();
     final path = join(docDir.path, '${username}_stats.db');
     final file = File(path);
@@ -153,6 +160,7 @@ class DatabaseService {
   /// Downloads final_stats.json from server (contains shuffle state, etc.)
   Future<void> downloadFinalStatsFromServer(String username) async {
     if (await StorageService().getIsLocalMode()) return;
+    if (ApiService.baseUrl.isEmpty) return;
     final docDir = await getApplicationDocumentsDirectory();
     final path = join(docDir.path, '${username}_final_stats.json');
 

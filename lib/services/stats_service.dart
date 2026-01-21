@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'api_service.dart';
 import 'database_service.dart';
+import 'storage_service.dart';
 
 class StatsService {
   final http.Client _client;
@@ -65,6 +66,9 @@ class StatsService {
     await DatabaseService.instance.insertPlayEvent(payload);
 
     // 2. Try to send to server (Legacy / Immediate)
+    if (ApiService.baseUrl.isEmpty) return;
+    if (await StorageService().getIsLocalMode()) return;
+
     try {
       final response = await _client
           .post(
@@ -81,12 +85,15 @@ class StatsService {
         throw Exception('Server returned ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Legacy stats tracking failed (Normal for local-first): $e');
+      debugPrint('Legacy stats tracking failed: $e');
     }
   }
 
   Future<void> _syncDbs() async {
     if (_isSyncing) return;
+    if (ApiService.baseUrl.isEmpty) return;
+    if (await StorageService().getIsLocalMode()) return;
+
     _isSyncing = true;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -114,46 +121,14 @@ class StatsService {
       debugPrint('Error reading local stats summary: $e');
     }
 
-    // Fallback to API if local fails
-    try {
-      final response = await _client.get(
-        Uri.parse('${ApiService.baseUrl}/user/shuffle'),
-        headers: {
-          'x-username': username,
-        },
-      ).timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-    } catch (e) {
-      debugPrint('Stats summary error: $e');
-    }
+    // Server-side fallback removed - shuffling is local now
     return null;
   }
 
   Future<void> updateShuffleState(
       String username, Map<String, dynamic> state) async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse('${ApiService.baseUrl}/user/shuffle'),
-            headers: {
-              'Content-Type': 'application/json',
-              'x-username': username,
-            },
-            body: jsonEncode(state),
-          )
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode != 200) {
-        throw Exception('Server returned ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Shuffle state update error (offline?): $e');
-      // For shuffle state, we mostly rely on StorageService which already
-      // persists it locally. The sync happens in AudioPlayerManager.
-    }
+    // Strictly local now
+    return;
   }
 
   void dispose() {

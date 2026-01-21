@@ -5,7 +5,6 @@ import 'auth_provider.dart';
 import 'providers.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
-import '../models/shuffle_config.dart';
 
 class UserDataState {
   final List<String> favorites;
@@ -98,9 +97,12 @@ class UserDataNotifier extends Notifier<UserDataState> {
       );
       _updateManager();
 
-      ref
-          .read(syncProvider.notifier)
-          .updateTask('userData', SyncStatus.usingCache);
+      final isLocalMode = await StorageService().getIsLocalMode();
+      if (!isLocalMode) {
+        ref
+            .read(syncProvider.notifier)
+            .updateTask('userData', SyncStatus.usingCache);
+      }
     } catch (e) {
       debugPrint('Error loading local user data: $e');
     }
@@ -123,7 +125,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
   /// 4. Update local cache with server state
   Future<void> _syncWithServer() async {
     if (_username == null) return;
-    if (await StorageService().getIsLocalMode()) return;
+    if (await StorageService().getIsLocalMode()) {
+      debugPrint('UserData: Local mode enabled, skipping server sync');
+      return;
+    }
 
     final syncNotifier = ref.read(syncProvider.notifier);
     final service = ref.read(userDataServiceProvider);
@@ -141,7 +146,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final serverData = await service.getUserData(_username!);
       final serverFavs = Set<String>.from(serverData['favorites'] ?? []);
       final serverSL = Set<String>.from(serverData['suggestLess'] ?? []);
-      final serverShuffleState = serverData['shuffleState'];
+      // serverShuffleState ignored - shuffling is strictly local now
 
       debugPrint(
           'Sync: Server has ${serverFavs.length} favorites, local has ${localFavs.length}');
@@ -180,23 +185,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
       await DatabaseService.instance.setFavorites(mergedFavs);
       await DatabaseService.instance.setSuggestLess(mergedSL);
 
-      // 7. Update shuffle state from server
-      if (serverShuffleState != null && serverShuffleState is Map) {
-        try {
-          final audioManager = ref.read(audioPlayerManagerProvider);
-          final updatedShuffleState = ShuffleState.fromJson(
-              Map<String, dynamic>.from(serverShuffleState));
-          await audioManager.updateShuffleState(updatedShuffleState);
-        } catch (e) {
-          debugPrint('Failed to update shuffle state: $e');
-        }
-      }
-
-      // 8. Download stats DB for local viewing (read-only sync)
+      // 7. Download stats DB for local viewing (read-only sync)
       await DatabaseService.instance.downloadStatsFromServer(_username!);
       await DatabaseService.instance.downloadFinalStatsFromServer(_username!);
 
-      // 9. Update UI state
+      // 8. Update UI state
       state = state.copyWith(
         favorites: mergedFavs,
         suggestLess: mergedSL,

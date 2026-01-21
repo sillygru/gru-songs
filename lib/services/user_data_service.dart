@@ -18,6 +18,14 @@ class UserDataService {
   // --- Comprehensive User Data Sync ---
 
   Future<Map<String, dynamic>> getUserData(String username) async {
+    if (ApiService.baseUrl.isEmpty) {
+      return {
+        'favorites': [],
+        'suggestLess': [],
+        'shuffleState': {},
+      };
+    }
+
     final headers = _getHeaders(username);
     final response = await _client.get(
       Uri.parse('${ApiService.baseUrl}/user/data'),
@@ -38,6 +46,8 @@ class UserDataService {
 
   Future<void> updateUserData(
       String username, Map<String, dynamic> userData) async {
+    if (ApiService.baseUrl.isEmpty) return;
+
     final body = jsonEncode(userData);
     debugPrint('UserDataService: POST /user/data for $username -> $body');
     await _client.post(
@@ -50,6 +60,8 @@ class UserDataService {
   // --- Legacy Individual Methods (for backward compatibility) ---
 
   Future<List<String>> getFavorites(String username) async {
+    if (ApiService.baseUrl.isEmpty) return [];
+
     final response = await _client.get(
       Uri.parse('${ApiService.baseUrl}/user/favorites'),
       headers: _getHeaders(username),
@@ -63,6 +75,7 @@ class UserDataService {
 
   Future<void> addFavorite(
       String username, String songFilename, String sessionId) async {
+    if (ApiService.baseUrl.isEmpty) return;
     await _client.post(
       Uri.parse('${ApiService.baseUrl}/user/favorites'),
       headers: _getHeaders(username),
@@ -72,6 +85,7 @@ class UserDataService {
   }
 
   Future<void> removeFavorite(String username, String songFilename) async {
+    if (ApiService.baseUrl.isEmpty) return;
     await _client.delete(
       Uri.parse('${ApiService.baseUrl}/user/favorites/$songFilename'),
       headers: _getHeaders(username),
@@ -81,6 +95,7 @@ class UserDataService {
   // --- Suggest Less ---
 
   Future<List<String>> getSuggestLess(String username) async {
+    if (ApiService.baseUrl.isEmpty) return [];
     final response = await _client.get(
       Uri.parse('${ApiService.baseUrl}/user/suggest-less'),
       headers: _getHeaders(username),
@@ -93,6 +108,7 @@ class UserDataService {
   }
 
   Future<void> addSuggestLess(String username, String songFilename) async {
+    if (ApiService.baseUrl.isEmpty) return;
     await _client.post(
       Uri.parse('${ApiService.baseUrl}/user/suggest-less'),
       headers: _getHeaders(username),
@@ -101,6 +117,7 @@ class UserDataService {
   }
 
   Future<void> removeSuggestLess(String username, String songFilename) async {
+    if (ApiService.baseUrl.isEmpty) return;
     await _client.delete(
       Uri.parse('${ApiService.baseUrl}/user/suggest-less/$songFilename'),
       headers: _getHeaders(username),

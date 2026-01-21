@@ -8,6 +8,7 @@ import '../../services/audio_player_manager.dart';
 import '../../services/library_logic.dart';
 import '../widgets/gru_image.dart';
 import '../widgets/song_options_menu.dart';
+import '../widgets/folder_options_menu.dart';
 import '../widgets/folder_grid_image.dart';
 import 'song_list_screen.dart';
 
@@ -166,6 +167,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               return ListTile(
                 leading: FolderGridImage(songs: folderSongs),
                 title: Text(folderName),
+                trailing: IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  onPressed: () {
+                    showFolderOptionsMenu(
+                        context, ref, folderName, folderRelativePath);
+                  },
+                ),
                 onTap: () {
                   Navigator.push(
                     context,
