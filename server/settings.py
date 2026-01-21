@@ -7,7 +7,11 @@ if os.getenv("GRUSONGS_TESTING") != "true":
     load_dotenv()
 
 class Settings:
-    VERSION: str = "6.3.2"
+    VERSION: str = "7.2.0"
+
+    @property
+    def BASE_DIR(self) -> str:
+        return os.path.dirname(os.path.abspath(__file__))
 
     @property
     def MUSIC_DIR(self) -> str:

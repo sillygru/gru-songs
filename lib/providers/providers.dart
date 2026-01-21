@@ -9,6 +9,7 @@ import '../services/audio_player_manager.dart';
 import '../services/storage_service.dart';
 import '../services/scanner_service.dart';
 import '../services/database_service.dart';
+import '../services/file_manager_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import '../providers/auth_provider.dart';
@@ -101,6 +102,10 @@ final scannerServiceProvider = Provider<ScannerService>((ref) {
   return ScannerService();
 });
 
+final fileManagerServiceProvider = Provider<FileManagerService>((ref) {
+  return FileManagerService(ref.watch(apiServiceProvider));
+});
+
 final songRepositoryProvider = Provider<SongRepository>((ref) {
   return SongRepository(ref.watch(apiServiceProvider));
 });
@@ -187,9 +192,38 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         }
       }
 
+      final musicPath = await storage.getMusicFolderPath();
+      if (musicPath != null) {
+        await ref
+            .read(fileManagerServiceProvider)
+            .syncRenamesFromServer(musicPath);
+      }
+
       final songs = await _performFullScan();
       ref.read(audioPlayerManagerProvider).refreshSongs(songs);
       return songs;
+    });
+  }
+
+  Future<void> renameSong(Song song, String newTitle,
+      {int deviceCount = 0}) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      await ref
+          .read(fileManagerServiceProvider)
+          .renameSong(song, newTitle, deviceCount: deviceCount);
+      return _performFullScan();
+    });
+  }
+
+  Future<void> updateSongTitle(Song song, String newTitle,
+      {int deviceCount = 0}) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      await ref
+          .read(fileManagerServiceProvider)
+          .updateSongTitle(song, newTitle, deviceCount: deviceCount);
+      return _performFullScan();
     });
   }
 
@@ -229,7 +263,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         await targetDir.create(recursive: true);
       }
 
-      if (kDebugMode) debugPrint("MOVE_SONG: Executing rename...");
+      if (kDebugMode) {
+        debugPrint("MOVE_SONG: Executing rename...");
+      }
       // Cross-platform safe move
       try {
         await oldFile.rename(newPath);
@@ -240,7 +276,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         await oldFile.copy(newPath);
         await oldFile.delete();
       }
-      if (kDebugMode) debugPrint("MOVE_SONG: Move successful");
+      if (kDebugMode) {
+        debugPrint("MOVE_SONG: Move successful");
+      }
 
       // Also try to move lyrics if they exist
       if (song.lyricsUrl != null) {
@@ -254,14 +292,19 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             await oldLyricsFile.copy(newLyricsPath);
             await oldLyricsFile.delete();
           }
-          if (kDebugMode)
+          if (kDebugMode) {
             debugPrint("MOVE_SONG: Lyrics moved to $newLyricsPath");
+          }
         }
       }
 
-      if (kDebugMode) debugPrint("MOVE_SONG: Refreshing provider...");
+      if (kDebugMode) {
+        debugPrint("MOVE_SONG: Refreshing provider...");
+      }
       await refresh();
-      if (kDebugMode) debugPrint("MOVE_SONG: Finished");
+      if (kDebugMode) {
+        debugPrint("MOVE_SONG: Finished");
+      }
     } catch (e, stack) {
       debugPrint('MOVE_SONG: ERROR: $e');
       if (kDebugMode) {
@@ -288,7 +331,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
       final folderName = p.basename(oldFolderPath);
       final newPath = p.join(targetParentPath, folderName);
-      if (kDebugMode) debugPrint("MOVE_FOLDER: New Path: $newPath");
+      if (kDebugMode) {
+        debugPrint("MOVE_FOLDER: New Path: $newPath");
+      }
 
       if (p.equals(oldDir.path, newPath)) {
         if (kDebugMode) {
@@ -313,7 +358,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         await targetParentDir.create(recursive: true);
       }
 
-      if (kDebugMode) debugPrint("MOVE_FOLDER: Executing rename...");
+      if (kDebugMode) {
+        debugPrint("MOVE_FOLDER: Executing rename...");
+      }
       try {
         await oldDir.rename(newPath);
       } catch (e) {
@@ -335,11 +382,17 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         }
         await oldDir.delete(recursive: true);
       }
-      if (kDebugMode) debugPrint("MOVE_FOLDER: Rename successful");
+      if (kDebugMode) {
+        debugPrint("MOVE_FOLDER: Rename successful");
+      }
 
-      if (kDebugMode) debugPrint("MOVE_FOLDER: Refreshing provider...");
+      if (kDebugMode) {
+        debugPrint("MOVE_FOLDER: Refreshing provider...");
+      }
       await refresh();
-      if (kDebugMode) debugPrint("MOVE_FOLDER: Finished");
+      if (kDebugMode) {
+        debugPrint("MOVE_FOLDER: Finished");
+      }
     } catch (e, stack) {
       debugPrint('MOVE_FOLDER: ERROR: $e');
       if (kDebugMode) {

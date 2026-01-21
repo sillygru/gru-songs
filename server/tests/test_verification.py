@@ -3,7 +3,7 @@ import os
 import shutil
 import tempfile
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 
 # Setup env BEFORE any other imports to prevent settings.py from failing
 os.environ["GRUSONGS_TESTING"] = "true"
@@ -35,14 +35,15 @@ services.music_service.get_song_duration.return_value = 180.0 # Fake 3 min song
 
 # 5. Import Services
 from database_manager import db_manager
-# Force re-init of db_manager with new settings
-db_manager.users_dir = TEST_USERS_DIR
-
 from user_service import user_service
 from models import StatsEntry
 
 def test_everything():
-    with patch("user_service.music_service.get_song_duration", return_value=180.0):
+    with patch("settings.Settings.USERS_DIR", new_callable=PropertyMock) as mock_users_dir, \
+         patch("user_service.music_service.get_song_duration", return_value=180.0):
+        
+        mock_users_dir.return_value = TEST_USERS_DIR
+        
         try:
             print("\n--- 1. Testing User Creation ---")
             username = "testuser"

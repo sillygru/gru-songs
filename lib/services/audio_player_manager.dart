@@ -602,7 +602,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _allSongs = newSongs;
     _songMap = {for (var s in newSongs) s.filename: s};
 
-    // Update URLs in queues to reflect moves/renames
+    // Check if current song was renamed (filename changed) or moved
+    final currentIdx = _player.currentIndex;
+    final currentItemBefore =
+        (currentIdx != null && currentIdx < _effectiveQueue.length)
+            ? _effectiveQueue[currentIdx]
+            : null;
+
+    // Update URLs and filenames in queues to reflect moves/renames
     _effectiveQueue = _effectiveQueue.map((item) {
       final updatedSong = _songMap[item.song.filename];
       return updatedSong != null ? item.copyWith(song: updatedSong) : item;
@@ -615,6 +622,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     _updateQueueNotifier();
     _savePlaybackState();
+
+    // If something changed in the current item, we need to rebuild the player queue
+    // to update the AudioSource (which contains the filename/URL)
+    if (currentIdx != null && currentItemBefore != null) {
+      final currentItemAfter = _effectiveQueue[currentIdx];
+      if (currentItemBefore.song.url != currentItemAfter.song.url ||
+          currentItemBefore.song.filename != currentItemAfter.song.filename) {
+        _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
+      }
+    }
   }
 
   Future<AudioSource> _createAudioSource(QueueItem item) async {

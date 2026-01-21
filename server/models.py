@@ -73,3 +73,14 @@ class StatsSummary(BaseModel):
 class FavoriteRequest(BaseModel):
     song_filename: str
     session_id: str = "unknown"
+
+class RenameRequest(BaseModel):
+    old_filename: str
+    new_name: str # Can be new filename or new title
+    type: str = "file" # "file" or "metadata"
+    device_count: int = 0
+
+class AcknowledgeRenameRequest(BaseModel):
+    old_filename: str
+    new_name: str
+    type: str = "file"

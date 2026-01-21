@@ -952,6 +952,155 @@ class UserService:
                 session.commit()
         return True
 
+    # --- Renaming ---
+
+    def _get_rename_queue_path(self):
+        return os.path.join(settings.BASE_DIR, "rename_queue.json")
+
+    def _load_rename_queue(self) -> Dict[str, List[Dict[str, Any]]]:
+        path = self._get_rename_queue_path()
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+
+    def _save_rename_queue(self, queue: Dict[str, List[Dict[str, Any]]]):
+        with open(self._get_rename_queue_path(), "w") as f:
+            json.dump(queue, f, indent=4)
+
+    def _add_to_rename_queue(self, username: str, old_filename: str, new_name: str, device_count: int, type: str = "file"):
+        queue = self._load_rename_queue()
+        if username not in queue:
+            queue[username] = []
+        
+        # Add new rename task
+        queue[username].append({
+            "old": old_filename,
+            "new": new_name,
+            "type": type,
+            "timestamp": time.time(),
+            "devices_left": device_count
+        })
+        
+        # Cleanup: Remove tasks older than 30 days
+        now = time.time()
+        thirty_days = 30 * 24 * 60 * 60
+        queue[username] = [t for t in queue[username] if now - t["timestamp"] < thirty_days and t["devices_left"] > 0]
+        
+        self._save_rename_queue(queue)
+
+    def rename_file(self, username: str, old_filename: str, new_name: str, device_count: int = 0, type: str = "file"):
+        # 1. Flush stats first
+        self.flush_stats()
+
+        if type == "file":
+            # --- Physical File Rename Logic ---
+            new_filename = new_name
+            # Update [username]_data.db (Favorite, SuggestLess)
+            with Session(db_manager.get_user_data_engine(username)) as session:
+                # Favorites
+                fav = session.execute(select(Favorite).where(Favorite.filename == old_filename)).scalar_one_or_none()
+                if fav:
+                    existing = session.execute(select(Favorite).where(Favorite.filename == new_filename)).scalar_one_or_none()
+                    if existing:
+                        session.delete(fav)
+                    else:
+                        session.delete(fav)
+                        session.add(Favorite(filename=new_filename, added_at=fav.added_at))
+                
+                # SuggestLess
+                sl = session.execute(select(SuggestLess).where(SuggestLess.filename == old_filename)).scalar_one_or_none()
+                if sl:
+                    existing = session.execute(select(SuggestLess).where(SuggestLess.filename == new_filename)).scalar_one_or_none()
+                    if existing:
+                        session.delete(sl)
+                    else:
+                        session.delete(sl)
+                        session.add(SuggestLess(filename=new_filename, added_at=sl.added_at))
+                
+                session.commit()
+
+            # Update [username]_stats.db (PlayEvent)
+            with Session(db_manager.get_user_stats_engine(username)) as session:
+                from sqlalchemy import update
+                session.execute(
+                    update(PlayEvent).where(PlayEvent.song_filename == old_filename).values(song_filename=new_filename)
+                )
+                session.commit()
+
+            # Update final_stats.json (history)
+            summary = self._get_summary_no_flush(username)
+            shuffle = summary.get("shuffle_state", {})
+            history = shuffle.get("history", [])
+            
+            updated_history = []
+            for h in history:
+                if isinstance(h, dict):
+                    if h.get("filename") == old_filename:
+                        h["filename"] = new_filename
+                    updated_history.append(h)
+                elif isinstance(h, str):
+                    if h == old_filename:
+                        updated_history.append(new_filename)
+                    else:
+                        updated_history.append(h)
+            
+            shuffle["history"] = updated_history
+            summary["shuffle_state"] = shuffle
+            
+            final_path = self._get_final_stats_path(username)
+            with open(final_path, "w") as f:
+                json.dump(summary, f, indent=4)
+            
+            log_msg = f"**{username}** renamed file `{old_filename}` to `{new_filename}`"
+        else:
+            # --- Metadata Title Update Logic ---
+            new_title = new_name
+            # Update global Upload record if it exists so server knows the new title
+            with Session(db_manager.get_uploads_engine()) as session:
+                upload = session.execute(select(Upload).where(Upload.filename == old_filename)).scalar_one_or_none()
+                if upload:
+                    upload.title = new_title
+                    session.add(upload)
+                    session.commit()
+            
+            log_msg = f"**{username}** updated title of `{old_filename}` to `{new_title}`"
+
+        # 5. Handle rename queue for other devices
+        if device_count > 0:
+            self._add_to_rename_queue(username, old_filename, new_name, device_count, type=type)
+
+        self.log_to_discord(log_msg)
+        return True, "Rename/Update processed"
+
+    def get_pending_renames(self, username: str) -> List[Dict[str, Any]]:
+        queue = self._load_rename_queue()
+        if username not in queue:
+            return []
+        
+        # Return tasks that haven't been completed by all devices
+        return [t for t in queue[username] if t["devices_left"] > 0]
+
+    def acknowledge_rename(self, username: str, old_filename: str, new_name: str, type: str = "file"):
+        queue = self._load_rename_queue()
+        if username not in queue:
+            return False
+            
+        found = False
+        for t in queue[username]:
+            if t["old"] == old_filename and t["new"] == new_name and t.get("type", "file") == type:
+                if t["devices_left"] > 0:
+                    t["devices_left"] -= 1
+                    found = True
+                    break
+        
+        if found:
+            self._save_rename_queue(queue)
+        return found
+
     # --- Uploads (Global) ---
 
     def record_upload(self, username: str, filename: str, title: str = None, artist: str = None, source: str = "file", original_filename: str = None, youtube_url: str = None):

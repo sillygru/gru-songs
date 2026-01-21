@@ -1,0 +1,10 @@
+{
+    "testuser": [
+        {
+            "old": "old.mp3",
+            "new": "new.mp3",
+            "timestamp": 1769025887.080572,
+            "devices_left": 0
+        }
+    ]
+}

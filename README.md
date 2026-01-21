@@ -1,4 +1,4 @@
-# Gru Songs (v7.1.0)
+# Gru Songs (v7.2.0)
 
 ## ⚠️ This is a vibe coded mess of a project !! ⚠️
 Meaning, don't expect everything to work perfectly, half broken features should be expected.
@@ -11,7 +11,6 @@ Gru Songs is a simple local music player app built with Flutter, that can option
 - **Folder Based Organization:** Organize your music with intuitive folder structure support.
 - **Metadata:** Automatic extraction of album art, titles, and artist info.
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
-- **Background Play:** Full integration with system media controls and background playback.
 
 ## Getting Started
 
@@ -19,7 +18,7 @@ Simply install the app from the releases page, by default it will use my private
 
 ### Good to know
 
-User data is purely based off filenames, so if you rename a file, data associated to it will be reset. (Stats, wether or not it was favorited/suggested less, will affect shuffle personality)
+User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file—like play count, favorites, or "suggest less" status—will be lost or reset. This can also impact shuffle personality weight system.
 
 ## For developers / if you want to run your own private server
 1. **Backend:**

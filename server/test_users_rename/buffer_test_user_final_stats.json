@@ -1,0 +1,25 @@
+{
+    "total_play_time": 170.0,
+    "total_sessions": 1,
+    "shuffle_state": {
+        "config": {},
+        "history": [
+            {
+                "filename": "track2.mp3",
+                "timestamp": 1769025887.5389729
+            },
+            {
+                "filename": "track1.mp3",
+                "timestamp": 1769025887.5356622
+            }
+        ]
+    },
+    "total_background_playtime": 0,
+    "total_foreground_playtime": 0,
+    "total_songs_played": 2,
+    "total_songs_played_ratio_over_020": 2,
+    "total_skipped": 0,
+    "platform_usage": {
+        "unknown": 1
+    }
+}

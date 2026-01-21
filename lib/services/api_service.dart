@@ -134,6 +134,66 @@ class ApiService {
     }
   }
 
+  Future<void> renameFile(String oldFilename, String newName, int deviceCount,
+      {String type = "file"}) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/user/rename-file'),
+        headers: _headers,
+        body: jsonEncode({
+          'old_filename': oldFilename,
+          'new_name': newName,
+          'type': type,
+          'device_count': deviceCount,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Rename failed: ${response.body}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<List<dynamic>> getPendingRenames() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/user/pending-renames'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to get pending renames');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> acknowledgeRename(String oldFilename, String newName,
+      {String type = "file"}) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/user/acknowledge-rename'),
+        headers: _headers,
+        body: jsonEncode({
+          'old_filename': oldFilename,
+          'new_name': newName,
+          'type': type,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Acknowledge rename failed: ${response.body}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   String getFullUrl(String relativeUrl) {
     if (relativeUrl.startsWith('http')) return relativeUrl;
     final cleanRelative =

@@ -22,7 +22,7 @@ from services import music_service
 from user_service import user_service
 from backup_service import backup_service
 from discord_bot import run_bot
-from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, FavoriteRequest
+from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, FavoriteRequest, RenameRequest, AcknowledgeRenameRequest
 
 # Global queue and process for discord bot
 discord_queue = Queue()
@@ -304,6 +304,32 @@ def remove_suggest_less(filename: str, x_username: str = Header(None)):
         raise HTTPException(status_code=401, detail="User not authenticated")
     user_service.remove_suggest_less(x_username, filename)
     return {"status": "removed"}
+
+# --- Renaming Routes ---
+
+@app.post("/user/rename-file")
+def rename_file(req: RenameRequest, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    success, message = user_service.rename_file(x_username, req.old_filename, req.new_name, req.device_count, type=req.type)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"message": message}
+
+@app.get("/user/pending-renames")
+def get_pending_renames(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_pending_renames(x_username)
+
+@app.post("/user/acknowledge-rename")
+def acknowledge_rename(req: AcknowledgeRenameRequest, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    user_service.acknowledge_rename(x_username, req.old_filename, req.new_name, type=req.type)
+    return {"status": "ok"}
 
 
 # --- User DB & Stats Mirroring Routes ---

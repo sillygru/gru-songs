@@ -17,13 +17,21 @@ import 'storage_service.dart';
 /// - Stats are additive-only (never delete from server)
 /// - DB file uploads are ONLY for stats (which are additive)
 class DatabaseService {
-  static final DatabaseService instance = DatabaseService._init();
+  static DatabaseService _instance = DatabaseService._init();
+  static DatabaseService get instance => _instance;
+
+  @visibleForTesting
+  static set instance(DatabaseService mock) => _instance = mock;
+
   Database? _statsDatabase;
   Database? _userDataDatabase;
   String? _currentUsername;
   Completer<void>? _initCompleter;
 
   DatabaseService._init();
+
+  @visibleForTesting
+  DatabaseService.forTest();
 
   Future<void> initForUser(String username) async {
     if (_currentUsername == username && _statsDatabase != null) return;
@@ -265,6 +273,51 @@ class DatabaseService {
     if (_userDataDatabase == null) return;
     await _userDataDatabase!
         .delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
+  }
+
+  /// Renames a file in all database tables.
+  /// If the target filename already exists, stats are merged.
+  Future<void> renameFile(String oldFilename, String newFilename) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null || _userDataDatabase == null) return;
+
+    // 1. Update User Data DB (Favorites, SuggestLess)
+    await _userDataDatabase!.transaction((txn) async {
+      // For favorites/suggestless, if target exists, we just delete the old one
+      // (effectively "merging" the fact that it is a favorite)
+
+      // Check if new exists in favorite
+      final newFav = await txn
+          .query('favorite', where: 'filename = ?', whereArgs: [newFilename]);
+      if (newFav.isNotEmpty) {
+        await txn.delete('favorite',
+            where: 'filename = ?', whereArgs: [oldFilename]);
+      } else {
+        await txn.update('favorite', {'filename': newFilename},
+            where: 'filename = ?', whereArgs: [oldFilename]);
+      }
+
+      // Check if new exists in suggestless
+      final newSL = await txn.query('suggestless',
+          where: 'filename = ?', whereArgs: [newFilename]);
+      if (newSL.isNotEmpty) {
+        await txn.delete('suggestless',
+            where: 'filename = ?', whereArgs: [oldFilename]);
+      } else {
+        await txn.update('suggestless', {'filename': newFilename},
+            where: 'filename = ?', whereArgs: [oldFilename]);
+      }
+    });
+
+    // 2. Update Stats DB (PlayEvents)
+    await _statsDatabase!.transaction((txn) async {
+      // We always update the filename in playevent.
+      // This effectively merges stats because play count queries group by song_filename.
+      await txn.update('playevent', {'song_filename': newFilename},
+          where: 'song_filename = ?', whereArgs: [oldFilename]);
+    });
+
+    debugPrint('Renamed DB entries from $oldFilename to $newFilename');
   }
 
   /// Replaces all local suggestless with the given list (used when syncing FROM server)
