@@ -10,7 +10,8 @@ double calculateWeight(
     QueueItem? prev,
     ShuffleState shuffleState,
     List<String> favorites,
-    List<String> suggestLess) {
+    List<String> suggestLess,
+    [Map<String, ({int count, double avgRatio})>? skipStats]) {
   double weight = 1.0;
   final song = item.song;
   final config = shuffleState.config;
@@ -48,6 +49,24 @@ double calculateWeight(
 
   if (suggestLess.contains(song.filename)) {
     weight *= config.suggestLessMultiplier;
+  }
+
+  // 4. Global Penalties (Multi-tier skip penalty)
+  if (skipStats != null) {
+    final stats = skipStats[song.filename];
+    if (stats != null) {
+      if (stats.count >= 4) {
+        if (stats.avgRatio < 0.10) {
+          weight *= 0.05; // 95% penalty
+        }
+      } else if (stats.count == 3) {
+        weight *= 0.30; // 70% penalty
+      } else if (stats.count == 2) {
+        weight *= 0.60; // 40% penalty
+      } else if (stats.count == 1) {
+        weight *= 0.85; // 15% penalty
+      }
+    }
   }
 
   return max(0.001, weight);
@@ -167,6 +186,41 @@ void main() {
       );
       final weight = calculateWeight(item1, null, state, [], ['s1.mp3']);
       expect(weight, greaterThan(0));
+    });
+
+    test('Multi-tier skip penalty: 1 skip (15% reduction)', () {
+      final state = const ShuffleState();
+      final stats = {'s1.mp3': (count: 1, avgRatio: 0.5)};
+      final weight = calculateWeight(item1, null, state, [], [], stats);
+      expect(weight, closeTo(0.85, 0.001));
+    });
+
+    test('Multi-tier skip penalty: 2 skips (40% reduction)', () {
+      final state = const ShuffleState();
+      final stats = {'s1.mp3': (count: 2, avgRatio: 0.5)};
+      final weight = calculateWeight(item1, null, state, [], [], stats);
+      expect(weight, closeTo(0.60, 0.001));
+    });
+
+    test('Multi-tier skip penalty: 3 skips (70% reduction)', () {
+      final state = const ShuffleState();
+      final stats = {'s1.mp3': (count: 3, avgRatio: 0.5)};
+      final weight = calculateWeight(item1, null, state, [], [], stats);
+      expect(weight, closeTo(0.30, 0.001));
+    });
+
+    test('Multi-tier skip penalty: 4+ skips, low avg ratio (95% reduction)', () {
+      final state = const ShuffleState();
+      final stats = {'s1.mp3': (count: 4, avgRatio: 0.05)};
+      final weight = calculateWeight(item1, null, state, [], [], stats);
+      expect(weight, closeTo(0.05, 0.001));
+    });
+
+    test('Multi-tier skip penalty: 4+ skips, high avg ratio (no penalty)', () {
+      final state = const ShuffleState();
+      final stats = {'s1.mp3': (count: 4, avgRatio: 0.5)};
+      final weight = calculateWeight(item1, null, state, [], [], stats);
+      expect(weight, equals(1.0));
     });
   });
 }

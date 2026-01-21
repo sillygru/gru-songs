@@ -297,6 +297,26 @@ class DatabaseService {
     }
   }
 
+  Future<Map<String, ({int count, double avgRatio})>> getSkipStats() async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return {};
+    try {
+      // Get count of "immediate skips" and average play ratio for all songs
+      final results = await _statsDatabase!.rawQuery(
+          'SELECT song_filename, COUNT(CASE WHEN play_ratio < 0.10 THEN 1 END) as skip_count, AVG(play_ratio) as avg_ratio FROM playevent GROUP BY song_filename');
+      return {
+        for (var r in results)
+          r['song_filename'] as String: (
+            count: r['skip_count'] as int,
+            avgRatio: (r['avg_ratio'] as num).toDouble()
+          )
+      };
+    } catch (e) {
+      debugPrint('Error fetching skip stats: $e');
+      return {};
+    }
+  }
+
   Future<void> insertPlayEvent(Map<String, dynamic> event) async {
     await _ensureInitialized();
     if (_statsDatabase == null) return;

@@ -610,15 +610,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       {QueueItem? lastItem}) async {
     if (items.isEmpty) return [];
 
-    // Fetch local play counts for weighting
+    // Fetch local play counts and skip stats for weighting
     final playCounts = await DatabaseService.instance.getPlayCounts();
+    final skipStats = await DatabaseService.instance.getSkipStats();
 
     final result = <QueueItem>[];
     final remaining = List<QueueItem>.from(items);
     QueueItem? prev = lastItem;
     while (remaining.isNotEmpty) {
       final weights = remaining
-          .map((item) => _calculateWeight(item, prev, playCounts))
+          .map((item) => _calculateWeight(item, prev, playCounts, skipStats))
           .toList();
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
       if (totalWeight <= 0) {
@@ -645,7 +646,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   double _calculateWeight(
-      QueueItem item, QueueItem? prev, Map<String, int> playCounts) {
+      QueueItem item,
+      QueueItem? prev,
+      Map<String, int> playCounts,
+      Map<String, ({int count, double avgRatio})> skipStats) {
     double weight = 1.0;
     final song = item.song;
     final config = _shuffleState.config;
@@ -731,6 +735,23 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             weight *= 0.05; // Don't play immediate repeats
           }
         }
+      }
+    }
+
+    // --- Global Penalties ---
+    // Multi-tier skip penalty logic
+    final stats = skipStats[song.filename];
+    if (stats != null) {
+      if (stats.count >= 4) {
+        if (stats.avgRatio < 0.10) {
+          weight *= 0.05; // 95% penalty
+        }
+      } else if (stats.count == 3) {
+        weight *= 0.30; // 70% penalty
+      } else if (stats.count == 2) {
+        weight *= 0.60; // 40% penalty
+      } else if (stats.count == 1) {
+        weight *= 0.85; // 15% penalty
       }
     }
 
