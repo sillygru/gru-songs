@@ -279,6 +279,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       setState(() => _isLoading = true);
       // Local Mode
       try {
+        // Clear the server URL when switching to local mode
+        ApiService.setBaseUrl("");
+        await StorageService().setServerUrl("");
         await StorageService().setIsLocalMode(true);
         await StorageService().setLocalUsername(username);
         await StorageService().setSetupComplete(true);

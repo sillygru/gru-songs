@@ -69,7 +69,12 @@ Future<void> main() async {
     final isLocal = await storage.getIsLocalMode();
     if (!isLocal) {
       final savedUrl = await storage.getServerUrl();
-      if (savedUrl != null) ApiService.setBaseUrl(savedUrl);
+      if (savedUrl != null && savedUrl.isNotEmpty) {
+        ApiService.setBaseUrl(savedUrl);
+      }
+    } else {
+      // If in local mode, ensure the API URL is cleared to prevent any accidental syncs
+      ApiService.setBaseUrl("");
     }
   }
 

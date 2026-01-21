@@ -3,6 +3,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
+import 'dart:io';
 import 'dart:math';
 import 'dart:convert';
 import 'dart:async'; // For Timer
@@ -352,21 +353,23 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> _savePlaybackState() async {
-    final prefs = await SharedPreferences.getInstance();
+    if (_username == null) return;
+
     final currentIndex = _player.currentIndex;
     final currentSong =
         (currentIndex != null && currentIndex < _effectiveQueue.length)
             ? _effectiveQueue[currentIndex].song
             : null;
 
-    if (currentSong != null) {
-      await prefs.setString('last_song_filename', currentSong.filename);
-    }
-    await prefs.setString('last_effective_queue',
-        jsonEncode(_effectiveQueue.map((e) => e.toJson()).toList()));
-    await prefs.setString('last_original_queue',
-        jsonEncode(_originalQueue.map((e) => e.toJson()).toList()));
-    await prefs.setInt('last_position_ms', _player.position.inMilliseconds);
+    final state = {
+      'last_song_filename': currentSong?.filename,
+      'last_effective_queue': _effectiveQueue.map((e) => e.toJson()).toList(),
+      'last_original_queue': _originalQueue.map((e) => e.toJson()).toList(),
+      'last_position_ms': _player.position.inMilliseconds,
+      'is_restricted_to_original': _isRestrictedToOriginal,
+    };
+
+    await _storageService.savePlaybackState(_username!, state);
   }
 
   void _updateDurations() {
@@ -456,39 +459,190 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
 
     // 1. Fallback to Local Storage (Always local-first now)
-    final prefs = await SharedPreferences.getInstance();
-    final savedEffectiveQueueJson = prefs.getString('last_effective_queue');
-    final savedOriginalQueueJson = prefs.getString('last_original_queue');
-    final savedPositionMs = prefs.getInt('last_position_ms') ?? 0;
-    final lastSongFilename = prefs.getString('last_song_filename');
+    final savedState = _username != null
+        ? await _storageService.loadPlaybackState(_username!)
+        : null;
 
-    if (savedEffectiveQueueJson != null && savedOriginalQueueJson != null) {
+    if (savedState != null) {
       try {
-        final List<dynamic> effJson = jsonDecode(savedEffectiveQueueJson);
-        final List<dynamic> origJson = jsonDecode(savedOriginalQueueJson);
-        _effectiveQueue = effJson.map((j) => QueueItem.fromJson(j)).toList();
-        _originalQueue = origJson.map((j) => QueueItem.fromJson(j)).toList();
+        final List<dynamic> effJson = savedState['last_effective_queue'] ?? [];
+        final List<dynamic> origJson = savedState['last_original_queue'] ?? [];
 
-        int initialIndex = 0;
-        Duration? resumePosition;
-
-        if (lastSongFilename != null) {
-          initialIndex = _effectiveQueue
-              .indexWhere((item) => item.song.filename == lastSongFilename);
-          if (initialIndex != -1) {
-            resumePosition = Duration(milliseconds: savedPositionMs);
-          } else {
-            initialIndex = 0;
+        // Parse effective queue and filter out items with missing files
+        _effectiveQueue = effJson.expand((j) {
+          try {
+            final queueItem = QueueItem.fromJson(j);
+            // Check if the song file still exists
+            if (queueItem.song.url.isNotEmpty) {
+              final file = File(queueItem.song.url);
+              if (file.existsSync()) {
+                return [queueItem];
+              } else {
+                debugPrint(
+                    'Skipping queue item with missing file: ${queueItem.song.url}');
+                return <QueueItem>[];
+              }
+            } else {
+              debugPrint(
+                  'Skipping queue item with empty URL: ${queueItem.song.filename}');
+              return <QueueItem>[];
+            }
+          } catch (e) {
+            debugPrint('Failed to parse a QueueItem from effectiveQueue: $e');
+            return <QueueItem>[];
           }
-        }
+        }).toList();
 
-        await _rebuildQueue(
-            initialIndex: initialIndex,
-            startPlaying: false,
-            initialPosition: resumePosition);
-        return;
+        // Parse original queue and filter out items with missing files
+        _originalQueue = origJson.expand((j) {
+          try {
+            final queueItem = QueueItem.fromJson(j);
+            // Check if the song file still exists
+            if (queueItem.song.url.isNotEmpty) {
+              final file = File(queueItem.song.url);
+              if (file.existsSync()) {
+                return [queueItem];
+              } else {
+                debugPrint(
+                    'Skipping queue item with missing file: ${queueItem.song.url}');
+                return <QueueItem>[];
+              }
+            } else {
+              debugPrint(
+                  'Skipping queue item with empty URL: ${queueItem.song.filename}');
+              return <QueueItem>[];
+            }
+          } catch (e) {
+            debugPrint('Failed to parse a QueueItem from originalQueue: $e');
+            return <QueueItem>[];
+          }
+        }).toList();
+
+        // If both queues are empty after filtering, fall back to a fresh state
+        if (_effectiveQueue.isEmpty && _originalQueue.isEmpty) {
+          debugPrint(
+              'Both queues are empty after filtering for missing files, starting fresh');
+        } else {
+          _isRestrictedToOriginal =
+              savedState['is_restricted_to_original'] ?? false;
+
+          final savedPositionMs = savedState['last_position_ms'] ?? 0;
+          final lastSongFilename = savedState['last_song_filename'];
+
+          int initialIndex = 0;
+          Duration? resumePosition;
+
+          if (lastSongFilename != null) {
+            initialIndex = _effectiveQueue
+                .indexWhere((item) => item.song.filename == lastSongFilename);
+            if (initialIndex != -1) {
+              resumePosition = Duration(milliseconds: savedPositionMs);
+            } else {
+              initialIndex = 0;
+            }
+          }
+
+          await _rebuildQueue(
+              initialIndex: initialIndex,
+              startPlaying: false,
+              initialPosition: resumePosition);
+          return;
+        }
       } catch (e) {
         // Ignore malformed persistence state, fallback to default
+      }
+    } else {
+      // Compatibility fallback to SharedPreferences for older versions
+      final prefs = await SharedPreferences.getInstance();
+      final savedEffectiveQueueJson = prefs.getString('last_effective_queue');
+      final savedOriginalQueueJson = prefs.getString('last_original_queue');
+      final savedPositionMs = prefs.getInt('last_position_ms') ?? 0;
+      final lastSongFilename = prefs.getString('last_song_filename');
+
+      if (savedEffectiveQueueJson != null && savedOriginalQueueJson != null) {
+        try {
+          final List<dynamic> effJson = jsonDecode(savedEffectiveQueueJson);
+          final List<dynamic> origJson = jsonDecode(savedOriginalQueueJson);
+
+          // Parse effective queue and filter out items with missing files
+          _effectiveQueue = effJson.expand((j) {
+            try {
+              final queueItem = QueueItem.fromJson(j);
+              // Check if the song file still exists
+              if (queueItem.song.url.isNotEmpty) {
+                final file = File(queueItem.song.url);
+                if (file.existsSync()) {
+                  return [queueItem];
+                } else {
+                  debugPrint(
+                      'Skipping legacy queue item with missing file: ${queueItem.song.url}');
+                  return <QueueItem>[];
+                }
+              } else {
+                debugPrint(
+                    'Skipping legacy queue item with empty URL: ${queueItem.song.filename}');
+                return <QueueItem>[];
+              }
+            } catch (e) {
+              debugPrint(
+                  'Failed to parse a QueueItem from legacy effectiveQueue: $e');
+              return <QueueItem>[];
+            }
+          }).toList();
+
+          // Parse original queue and filter out items with missing files
+          _originalQueue = origJson.expand((j) {
+            try {
+              final queueItem = QueueItem.fromJson(j);
+              // Check if the song file still exists
+              if (queueItem.song.url.isNotEmpty) {
+                final file = File(queueItem.song.url);
+                if (file.existsSync()) {
+                  return [queueItem];
+                } else {
+                  debugPrint(
+                      'Skipping legacy queue item with missing file: ${queueItem.song.url}');
+                  return <QueueItem>[];
+                }
+              } else {
+                debugPrint(
+                    'Skipping legacy queue item with empty URL: ${queueItem.song.filename}');
+                return <QueueItem>[];
+              }
+            } catch (e) {
+              debugPrint(
+                  'Failed to parse a QueueItem from legacy originalQueue: $e');
+              return <QueueItem>[];
+            }
+          }).toList();
+
+          // If both queues are empty after filtering, fall back to a fresh state
+          if (_effectiveQueue.isEmpty && _originalQueue.isEmpty) {
+            debugPrint(
+                'Both legacy queues are empty after filtering for missing files, starting fresh');
+          } else {
+            int initialIndex = 0;
+            Duration? resumePosition;
+
+            if (lastSongFilename != null) {
+              initialIndex = _effectiveQueue
+                  .indexWhere((item) => item.song.filename == lastSongFilename);
+              if (initialIndex != -1) {
+                resumePosition = Duration(milliseconds: savedPositionMs);
+              } else {
+                initialIndex = 0;
+              }
+            }
+
+            await _rebuildQueue(
+                initialIndex: initialIndex,
+                startPlaying: false,
+                initialPosition: resumePosition);
+            return;
+          }
+        } catch (e) {
+          // Ignore
+        }
       }
     }
 

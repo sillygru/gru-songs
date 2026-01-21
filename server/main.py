@@ -28,8 +28,10 @@ from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpd
 discord_queue = Queue()
 command_queue = Queue()
 bot_process = None
+last_periodic_flush = None
 
 async def listen_for_commands():
+    global last_periodic_flush
     while True:
         try:
             # Check for commands from bot process
@@ -45,11 +47,16 @@ async def listen_for_commands():
                         discord_queue.put(f"Backup triggered by {requester} (Reset Timer: {reset})...")
                     
                     success, msg = await backup_service.trigger_backup(reset_timer=reset)
+                elif cmd_type == "flush":
+                    requester = cmd_data.get("requester", "Unknown")
+                    if settings.LOG_TO_DISCORD:
+                        discord_queue.put(f"💾 Flush triggered by {requester}...")
                     
-                    # Log result back to discord
-                    # Result is already logged by backup_service._log which goes to discord_queue
-                    # But we can add extra confirmation if needed
-                    pass
+                    # Flush stats
+                    user_service.flush_stats()
+                    
+                    # Reset the periodic flush timer
+                    last_periodic_flush = asyncio.get_event_loop().time()
                     
         except Exception as e:
             print(f"Error in command listener: {e}")
@@ -123,9 +130,18 @@ app.add_middleware(
 # --- Background Task for Stats Flushing ---
 
 async def periodic_flush():
+    global last_periodic_flush
+    last_periodic_flush = asyncio.get_event_loop().time()
+    
     while True:
-        await asyncio.sleep(300) # 5 minutes
-        user_service.flush_stats()
+        await asyncio.sleep(1)  # Check every second
+        
+        current_time = asyncio.get_event_loop().time()
+        elapsed = current_time - last_periodic_flush
+        
+        if elapsed >= 300:  # 5 minutes
+            user_service.flush_stats()
+            last_periodic_flush = current_time
 
 # --- Auth Routes ---
 
@@ -387,6 +403,9 @@ async def upload_user_db(db_type: str, file: UploadFile = File(...), x_username:
                 
                 server_session.commit()
             
+            # Recalculate final stats after merge
+            user_service.recalculate_final_stats(x_username, log_discord=False)
+
             os.unlink(tmp_path)
             return {"message": "stats merged"}
             

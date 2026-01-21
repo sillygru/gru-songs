@@ -373,13 +373,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       onTap: () async {
                         final storage = ref.read(storageServiceProvider);
                         await storage.setSetupComplete(false);
+                        // Also clear the server URL to prevent accidental syncs
+                        await storage.setServerUrl("");
                         ref.read(setupProvider.notifier).setComplete(false);
                         await ref.read(authProvider.notifier).logout();
                       },
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v7.0.2",
+                      "Gru Songs v7.1.0",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,

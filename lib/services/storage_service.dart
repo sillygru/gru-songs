@@ -33,6 +33,34 @@ class StorageService {
     return File('$path/shuffle_state_$username.json');
   }
 
+  Future<File> _getPlaybackStateFile(String username) async {
+    final path = await _localPath;
+    return File('$path/playback_state_$username.json');
+  }
+
+  Future<void> savePlaybackState(
+      String username, Map<String, dynamic> state) async {
+    try {
+      final file = await _getPlaybackStateFile(username);
+      await file.writeAsString(jsonEncode(state));
+    } catch (e) {
+      debugPrint('Error saving playback state: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> loadPlaybackState(String username) async {
+    try {
+      final file = await _getPlaybackStateFile(username);
+      if (!await file.exists()) return null;
+
+      final content = await file.readAsString();
+      return jsonDecode(content);
+    } catch (e) {
+      debugPrint('Error loading playback state: $e');
+      return null;
+    }
+  }
+
   // Folder Paths
   Future<String?> getMusicFolderPath() async {
     final prefs = await SharedPreferences.getInstance();

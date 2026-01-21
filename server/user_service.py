@@ -187,6 +187,9 @@ class UserService:
                 session.add(UserData(username=new_username, password_hash=u_data.password_hash, created_at=u_data.created_at))
                 session.commit()
 
+        # Recalculate stats for the new username to ensure consistency
+        self.recalculate_final_stats(new_username, log_discord=False)
+
         self.log_to_discord(f"**{current_username}** changed username to **{new_username}**")
         return True, "Username updated"
 
@@ -230,9 +233,74 @@ class UserService:
 
         self.log_to_discord(log_msg)
 
+    def recalculate_final_stats(self, username: str, log_discord: bool = True):
+        """
+        Recalculates final_stats.json from scratch using the SQL database.
+        Use this when final_stats.json might be out of sync with the database.
+        """
+        path = os.path.join(settings.USERS_DIR, f"{username}_stats.db")
+        if not os.path.exists(path):
+            return
+
+        # Initialize new summary from current one to preserve shuffle_state
+        final_path = self._get_final_stats_path(username)
+        summary_data = self._get_summary_no_flush(username)
+        
+        # Reset all calculated stats (but keep shuffle_state)
+        summary_data["total_play_time"] = 0
+        summary_data["total_sessions"] = 0
+        summary_data["total_background_playtime"] = 0
+        summary_data["total_foreground_playtime"] = 0
+        summary_data["total_songs_played"] = 0
+        summary_data["total_songs_played_ratio_over_020"] = 0
+        summary_data["total_skipped"] = 0
+        summary_data["platform_usage"] = {}
+        
+        # Recalculate from SQL database
+        with Session(db_manager.get_user_stats_engine(username)) as session:
+            # Get all sessions for platform usage and count
+            sessions = session.execute(select(PlaySession)).scalars().all()
+            summary_data["total_sessions"] = len(sessions)
+            for sess in sessions:
+                platform = sess.platform or "unknown"
+                summary_data["platform_usage"][platform] = summary_data["platform_usage"].get(platform, 0) + 1
+            
+            # Get all events for other stats
+            events = session.execute(select(PlayEvent)).scalars().all()
+            
+            for event in events:
+                # Total play time
+                summary_data["total_play_time"] = round(summary_data["total_play_time"] + event.duration_played, 2)
+                
+                # Foreground/background
+                if event.foreground_duration:
+                    summary_data["total_foreground_playtime"] = round(summary_data["total_foreground_playtime"] + event.foreground_duration, 2)
+                if event.background_duration:
+                    summary_data["total_background_playtime"] = round(summary_data["total_background_playtime"] + event.background_duration, 2)
+                
+                # Songs played (ratio > 0.20)
+                if event.play_ratio > 0.20:
+                    summary_data["total_songs_played"] += 1
+                    if event.event_type != "favorite":
+                        summary_data["total_songs_played_ratio_over_020"] += 1
+                
+                # Skips
+                if event.event_type == 'skip' and event.play_ratio < 0.20:
+                    summary_data["total_skipped"] += 1
+        
+        # Write back to file
+        with open(final_path, "w") as f:
+            json.dump(summary_data, f, indent=4)
+        
+        logger.info(f"Recalculated final_stats.json for {username} from SQL database")
+        if log_discord:
+            self.log_to_discord(f"Recalculated stats for **{username}** from database")
+
     def get_stats_summary(self, username: str) -> Dict[str, Any]:
         # Flush to ensure JSON is up to date
         self.flush_stats()
+        # Recalculate from database to ensure accuracy
+        self.recalculate_final_stats(username, log_discord=False)
         return self._get_summary_no_flush(username)
 
     def update_shuffle_state(self, username: str, shuffle_state_data: Dict[str, Any]):
@@ -417,6 +485,12 @@ class UserService:
                     if "platform_usage" not in summary_data:
                         summary_data["platform_usage"] = {}
 
+                    # Track which sessions existed BEFORE this flush
+                    existing_sessions = set()
+                    with Session(db_manager.get_user_stats_engine(username)) as session:
+                        existing = session.execute(select(PlaySession.id)).scalars().all()
+                        existing_sessions = set(existing)
+
                     processed_sessions = set()
 
                     for stats in events:
@@ -470,14 +544,11 @@ class UserService:
 
                         # Session/Platform Logic
                         if stats.session_id not in processed_sessions:
-                            # We only want to increment total_sessions if it's actually a NEW session
-                            # Check if session already exists in SQL
-                            with Session(db_manager.get_user_stats_engine(username)) as session:
-                                existing_sess = session.execute(select(PlaySession).where(PlaySession.id == stats.session_id)).scalar_one_or_none()
-                                if not existing_sess:
-                                    summary_data["total_sessions"] += 1
-                                    p = stats.platform or "unknown"
-                                    summary_data["platform_usage"][p] = summary_data["platform_usage"].get(p, 0) + 1
+                            # Check if this was a NEW session (didn't exist before this flush)
+                            if stats.session_id not in existing_sessions:
+                                summary_data["total_sessions"] += 1
+                                p = stats.platform or "unknown"
+                                summary_data["platform_usage"][p] = summary_data["platform_usage"].get(p, 0) + 1
                             processed_sessions.add(stats.session_id)
                     
                     with open(final_path, "w") as f:

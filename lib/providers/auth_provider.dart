@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
+import '../services/api_service.dart';
 
 class AuthState {
   final String? username;
@@ -76,6 +77,8 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('username');
+    // Also clear the API base URL to prevent accidental syncs after logout
+    ApiService.setBaseUrl("");
     state = AuthState();
   }
 
