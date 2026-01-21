@@ -16,7 +16,7 @@ os.environ["BACKUPS_DIR"] = os.path.join(TEST_DIR, "backups")
 os.makedirs(os.environ["USERS_DIR"], exist_ok=True)
 os.makedirs(os.environ["MUSIC_DIR"], exist_ok=True)
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database_manager import db_manager
 from user_service import user_service
@@ -26,6 +26,10 @@ def test_fun_stats_logic():
     username = "fun_user"
     db_manager.init_global_dbs()
     user_service.create_user(username, "pass")
+    
+    # Populate metadata
+    user_service.record_upload(username, "song1.mp3", title="Song One", artist="Artist A")
+    user_service.record_upload(username, "song2.mp3", title="Song Two", artist="Artist B")
     
     # Mock song list
     mock_songs = [

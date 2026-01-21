@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from multiprocessing import Process, Queue
 
 from settings import settings
+from database_manager import db_manager
 from services import music_service
 from user_service import user_service
 from backup_service import backup_service

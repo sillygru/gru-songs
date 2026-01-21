@@ -22,7 +22,7 @@ os.makedirs(TEST_MUSIC_DIR, exist_ok=True)
 print(f"Test running in: {TEST_DIR}")
 
 # 2. Add server dir to path
-server_path = os.path.dirname(os.path.abspath(__file__))
+server_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(server_path)
 
 # 3. Import settings

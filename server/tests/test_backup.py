@@ -12,8 +12,8 @@ os.environ["MUSIC_DIR"] = os.path.join(test_dir, "music")
 os.environ["USERS_DIR"] = os.path.join(test_dir, "users")
 os.environ["BACKUPS_DIR"] = os.path.join(test_dir, "backups")
 
-# Add current directory to path so we can import modules
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add server directory to path so we can import modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backup_service import backup_service
 from settings import settings

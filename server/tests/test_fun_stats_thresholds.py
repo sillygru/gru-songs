@@ -16,7 +16,7 @@ os.environ["BACKUPS_DIR"] = os.path.join(TEST_DIR, "backups")
 os.makedirs(os.environ["USERS_DIR"], exist_ok=True)
 os.makedirs(os.environ["MUSIC_DIR"], exist_ok=True)
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database_manager import db_manager
 from user_service import user_service

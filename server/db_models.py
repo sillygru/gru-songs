@@ -21,6 +21,7 @@ class Upload(Base):
     filename: Mapped[str] = mapped_column(String, primary_key=True)
     uploader_username: Mapped[str] = mapped_column(String, index=True)
     title: Mapped[str] = mapped_column(String)
+    artist: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     source: Mapped[str] = mapped_column(String)
     original_filename: Mapped[str] = mapped_column(String)
     youtube_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)

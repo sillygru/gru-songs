@@ -550,7 +550,7 @@ class UserService:
         with Session(db_manager.get_uploads_engine()) as session:
             uploads = session.execute(select(Upload)).scalars().all()
             for u in uploads:
-                metadata_map[u.filename] = {"title": u.title, "artist": "Unknown"}
+                metadata_map[u.filename] = {"title": u.title, "artist": u.artist or "Unknown"}
         
         # Total library songs is hard to know without the actual files, 
         # but we can use unique filenames ever seen in stats as a proxy
@@ -883,7 +883,7 @@ class UserService:
 
     # --- Uploads (Global) ---
 
-    def record_upload(self, username: str, filename: str, title: str = None, source: str = "file", original_filename: str = None, youtube_url: str = None):
+    def record_upload(self, username: str, filename: str, title: str = None, artist: str = None, source: str = "file", original_filename: str = None, youtube_url: str = None):
         if title is None:
             title = filename.rsplit('.', 1)[0]
             
@@ -894,6 +894,7 @@ class UserService:
                     filename=filename,
                     uploader_username=username,
                     title=title,
+                    artist=artist,
                     source=source,
                     original_filename=original_filename if original_filename else filename,
                     youtube_url=youtube_url,
@@ -902,6 +903,7 @@ class UserService:
                 session.add(upload)
             else:
                 upload.title = title
+                upload.artist = artist
                 upload.uploader_username = username
                 session.add(upload)
             session.commit()

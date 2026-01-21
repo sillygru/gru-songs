@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 # Ensure we can import from server directory
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db_models import PlayEvent, PlaySession
 from database_manager import db_manager

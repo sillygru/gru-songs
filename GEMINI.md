@@ -209,9 +209,6 @@ Changes to shuffle must be coordinated between:
 - `ios/Runner/Info.plist`: iOS permissions and ATS configuration
 - `macos/Runner/Info.plist`: macOS permissions
 
-## Server API (Optional Sync Mode)
-
-Base URL: `http://samsung-sm-sm-a127f.tail6d7f03.ts.net:9000` (configurable via `StorageService`)
 
 ### Key Endpoints
 - **Auth**: `/auth/signup`, `/auth/login`, `/auth/update-password`, `/auth/update-username`

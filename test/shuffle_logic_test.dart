@@ -5,12 +5,8 @@ import 'package:gru_songs/models/shuffle_config.dart';
 import 'dart:math';
 
 // Mock/Simplified version of the weight calculation logic from AudioPlayerManager for isolated testing
-double calculateWeight(
-    QueueItem item,
-    QueueItem? prev,
-    ShuffleState shuffleState,
-    List<String> favorites,
-    List<String> suggestLess,
+double calculateWeight(QueueItem item, QueueItem? prev,
+    ShuffleState shuffleState, List<String> favorites, List<String> suggestLess,
     [Map<String, ({int count, double avgRatio})>? skipStats]) {
   double weight = 1.0;
   final song = item.song;
@@ -209,7 +205,8 @@ void main() {
       expect(weight, closeTo(0.30, 0.001));
     });
 
-    test('Multi-tier skip penalty: 4+ skips, low avg ratio (95% reduction)', () {
+    test('Multi-tier skip penalty: 4+ skips, low avg ratio (95% reduction)',
+        () {
       final state = const ShuffleState();
       final stats = {'s1.mp3': (count: 4, avgRatio: 0.05)};
       final weight = calculateWeight(item1, null, state, [], [], stats);

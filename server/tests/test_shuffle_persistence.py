@@ -8,6 +8,9 @@ os.environ["MUSIC_DIR"] = os.path.join(test_base, "music")
 os.environ["USERS_DIR"] = os.path.join(test_base, "users")
 os.environ["BACKUPS_DIR"] = os.path.join(test_base, "backups")
 
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 import shutil
 from user_service import UserService
