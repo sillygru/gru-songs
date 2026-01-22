@@ -83,27 +83,6 @@ class ApiService {
     }
   }
 
-  Future<http.Response> downloadYoutube(String url, String title) async {
-    try {
-      // Send as form data because FastAPI uses Form(...)
-      final response = await _client.post(
-        Uri.parse('$baseUrl/music/yt-dlp'),
-        headers: {
-          ..._headers,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: {
-          'url': url,
-          'title': title,
-        },
-      );
-
-      return response;
-    } catch (e) {
-      rethrow;
-    }
-  }
-
   Future<String?> fetchLyrics(String url) async {
     try {
       final response = await _client.get(

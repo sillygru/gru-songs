@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'cache_management_screen.dart';
-import 'downloader_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/providers.dart';
@@ -419,22 +418,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         );
                       },
                     ),
-                    if (authState.username == 'gru') ...[
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Admin'),
-                      _buildListTile(
-                        icon: Icons.download_outlined,
-                        title: 'Server Downloader',
-                        subtitle: 'Download songs from YouTube via server',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const DownloaderScreen()),
-                          );
-                        },
-                      ),
-                    ],
                     const SizedBox(height: 24),
                     _buildSectionTitle('Actions'),
                     _buildListTile(
@@ -453,7 +436,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v7.3.0",
+                      "Gru Songs v7.3.1",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,

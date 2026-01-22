@@ -11,27 +11,14 @@ class AddSongsScreen extends ConsumerStatefulWidget {
   ConsumerState<AddSongsScreen> createState() => _AddSongsScreenState();
 }
 
-class _AddSongsScreenState extends ConsumerState<AddSongsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final _youtubeUrlController = TextEditingController();
-  final _youtubeFilenameController = TextEditingController();
+class _AddSongsScreenState extends ConsumerState<AddSongsScreen> {
   final _uploadFilenameController = TextEditingController();
 
   File? _selectedFile;
   bool _isLoading = false;
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
   void dispose() {
-    _tabController.dispose();
-    _youtubeUrlController.dispose();
-    _youtubeFilenameController.dispose();
     _uploadFilenameController.dispose();
     super.dispose();
   }
@@ -80,55 +67,15 @@ class _AddSongsScreenState extends ConsumerState<AddSongsScreen>
     }
   }
 
-  Future<void> _handleYoutubeDownload() async {
-    final url = _youtubeUrlController.text.trim();
-    if (url.isEmpty) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final apiService = ref.read(apiServiceProvider);
-      await apiService.downloadYoutube(
-          url, _youtubeFilenameController.text.trim());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Download started on server')));
-        _youtubeUrlController.clear();
-        _youtubeFilenameController.clear();
-        // Refresh song list (might take a bit, so maybe wait or just invalidate)
-        ref.invalidate(songsProvider);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Download failed: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add Songs'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.upload_file), text: 'Upload Local'),
-            Tab(icon: Icon(Icons.link), text: 'YouTube Link'),
-          ],
-        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildUploadTab(),
-                _buildYoutubeTab(),
-              ],
-            ),
+          : _buildUploadTab(),
     );
   }
 
@@ -183,55 +130,6 @@ class _AddSongsScreenState extends ConsumerState<AddSongsScreen>
           'Allowed formats: mp3, m4a, flac, wav, alac',
           style: TextStyle(color: Colors.grey),
           textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildYoutubeTab() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _youtubeUrlController,
-                  decoration: const InputDecoration(
-                    labelText: 'YouTube URL',
-                    border: OutlineInputBorder(),
-                    hintText: 'https://youtube.com/watch?v=...',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _youtubeFilenameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Target Filename (optional)',
-                    border: OutlineInputBorder(),
-                    helperText: 'e.g. AwesomeSong.m4a',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _handleYoutubeDownload,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download from YouTube'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'The server will download the audio using yt-dlp and save it to the music library.',
-            style: TextStyle(color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
         ),
       ],
     );
