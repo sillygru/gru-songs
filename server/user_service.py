@@ -68,6 +68,9 @@ class UserService:
         if not os.path.exists(path):
             return None
 
+        # Ensure new columns exist (Migration helper)
+        self._ensure_user_data_columns(username)
+
         try:
             with Session(db_manager.get_user_data_engine(username)) as session:
                 user = session.execute(select(UserData).where(UserData.username == username)).scalar_one_or_none()
@@ -81,10 +84,71 @@ class UserService:
                     "password": user.password_hash,
                     "created_at": str(user.created_at),
                     "favorites": [f.filename for f in favorites],
-                    "suggest_less": [s.filename for s in suggest_less]
+                    "suggest_less": [s.filename for s in suggest_less],
+                    "theme_mode": user.theme_mode,
+                    "sync_theme": bool(user.sync_theme)
                 }
         except Exception:
             return None
+
+    def get_theme_settings(self, username: str) -> Dict[str, Any]:
+        path = os.path.join(settings.USERS_DIR, f"{username}_data.db")
+        if not os.path.exists(path):
+            return {"theme_mode": None, "sync_theme": False}
+
+        self._ensure_user_data_columns(username)
+        try:
+            with Session(db_manager.get_user_data_engine(username)) as session:
+                user = session.execute(select(UserData).where(UserData.username == username)).scalar_one_or_none()
+                if not user: return {"theme_mode": None, "sync_theme": False}
+                return {
+                    "theme_mode": user.theme_mode,
+                    "sync_theme": bool(user.sync_theme)
+                }
+        except Exception:
+            return {"theme_mode": None, "sync_theme": False}
+
+    def update_theme_settings(self, username: str, theme_mode: Optional[str], sync_theme: bool):
+        path = os.path.join(settings.USERS_DIR, f"{username}_data.db")
+        if not os.path.exists(path):
+            return False
+
+        self._ensure_user_data_columns(username)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            user = session.execute(select(UserData).where(UserData.username == username)).scalar_one_or_none()
+            if user:
+                user.theme_mode = theme_mode
+                user.sync_theme = 1 if sync_theme else 0
+                session.add(user)
+                session.commit()
+        return True
+
+    def _ensure_user_data_columns(self, username: str):
+        """Simple migration to add theme columns if they don't exist."""
+        from sqlalchemy import text
+        path = os.path.join(settings.USERS_DIR, f"{username}_data.db")
+        if not os.path.exists(path):
+            return
+
+        try:
+            engine = db_manager.get_user_data_engine(username)
+            with engine.connect() as conn:
+                # Check if userdata table exists first
+                table_check = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='userdata'")).fetchone()
+                if not table_check:
+                    return
+
+                # Check columns
+                result = conn.execute(text("PRAGMA table_info(userdata)")).fetchall()
+                existing_cols = {r[1] for r in result}
+                
+                if "theme_mode" not in existing_cols:
+                    conn.execute(text("ALTER TABLE userdata ADD COLUMN theme_mode TEXT"))
+                if "sync_theme" not in existing_cols:
+                    conn.execute(text("ALTER TABLE userdata ADD COLUMN sync_theme INTEGER DEFAULT 0"))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Migration error for {username}: {e}")
             
     def create_user(self, username: str, password: str):
         with Session(db_manager.get_global_users_engine()) as session:

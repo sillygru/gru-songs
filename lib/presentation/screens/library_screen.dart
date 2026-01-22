@@ -6,10 +6,9 @@ import '../../providers/providers.dart';
 import '../../providers/user_data_provider.dart';
 import '../../services/audio_player_manager.dart';
 import '../../services/library_logic.dart';
-import '../widgets/gru_image.dart';
-import '../widgets/song_options_menu.dart';
 import '../widgets/folder_options_menu.dart';
 import '../widgets/folder_grid_image.dart';
+import '../widgets/song_list_item.dart';
 import 'song_list_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -48,7 +47,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Library'),
+          title: const Text('Library',
+              style: TextStyle(fontWeight: FontWeight.w900)),
           actions: [
             songsAsyncValue.when(
               data: (songs) => IconButton(
@@ -132,7 +132,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     height: 48,
                     decoration: BoxDecoration(
                       color: Colors.red.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.favorite, color: Colors.red),
                   ),
@@ -165,8 +165,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               final folderSongs = content.subFolderSongs[folderName] ?? [];
 
               return ListTile(
-                leading: FolderGridImage(songs: folderSongs),
-                title: Text(folderName),
+                leading: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: FolderGridImage(songs: folderSongs),
+                ),
+                title: Text(folderName,
+                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                subtitle: Text('${folderSongs.length} items'),
                 trailing: IconButton(
                   icon: const Icon(Icons.more_vert),
                   onPressed: () {
@@ -188,44 +194,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
             final songIndex = folderIndex - sortedSubFolders.length;
             final song = immediateSongs[songIndex];
-            final isSuggestLess = userData.isSuggestLess(song.filename);
+            final isPlaying =
+                audioManager.currentSongNotifier.value?.filename ==
+                    song.filename;
 
-            return ListTile(
-              leading: Hero(
-                tag: 'lib_art_${song.url}_${widget.relativePath}',
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: GruImage(
-                    url: song.coverUrl ?? '',
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                    errorWidget: const Icon(Icons.music_note),
-                  ),
-                ),
-              ),
-              title: Text(
-                song.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isSuggestLess ? Colors.grey : null,
-                  decoration: isSuggestLess ? TextDecoration.lineThrough : null,
-                ),
-              ),
-              subtitle: Text(
-                song.artist,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: isSuggestLess ? Colors.grey : null),
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: () {
-                  showSongOptionsMenu(context, ref, song.filename, song.title,
-                      song: song);
-                },
-              ),
+            return SongListItem(
+              song: song,
+              isPlaying: isPlaying,
               onTap: () {
                 audioManager.playSong(song, contextQueue: immediateSongs);
               },
@@ -263,17 +238,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final sortedArtists = artistMap.keys.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-    return ListView.builder(
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.85,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
       itemCount: sortedArtists.length,
-      padding: const EdgeInsets.only(bottom: 100),
       itemBuilder: (context, index) {
         final artist = sortedArtists[index];
         final artistSongs = artistMap[artist]!;
 
-        return ListTile(
-          leading: FolderGridImage(songs: artistSongs),
-          title: Text(artist),
-          subtitle: Text('${artistSongs.length} songs'),
+        return GestureDetector(
           onTap: () {
             Navigator.push(
               context,
@@ -285,6 +263,35 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             );
           },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  clipBehavior: Clip.antiAlias,
+                  child: FolderGridImage(songs: artistSongs),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                '${artistSongs.length} songs',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -295,19 +302,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final sortedAlbums = albumMap.keys.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-    return ListView.builder(
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.85,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
       itemCount: sortedAlbums.length,
-      padding: const EdgeInsets.only(bottom: 100),
       itemBuilder: (context, index) {
         final album = sortedAlbums[index];
         final albumSongs = albumMap[album]!;
         final artist =
             albumSongs.isNotEmpty ? albumSongs[0].artist : 'Unknown Artist';
 
-        return ListTile(
-          leading: FolderGridImage(songs: albumSongs),
-          title: Text(album),
-          subtitle: Text(artist),
+        return GestureDetector(
           onTap: () {
             Navigator.push(
               context,
@@ -319,6 +329,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             );
           },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  clipBehavior: Clip.antiAlias,
+                  child: FolderGridImage(songs: albumSongs),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                album,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
         );
       },
     );

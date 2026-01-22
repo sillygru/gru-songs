@@ -2,9 +2,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/gru_image.dart';
+import '../widgets/song_list_item.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../widgets/song_options_menu.dart';
 import 'song_list_screen.dart';
 
 import 'search_screen.dart';
@@ -118,7 +118,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: CustomScrollView(
               slivers: [
                 SliverAppBar.large(
-                  title: const Text('Gru Songs'),
+                  title: const Text('Gru Songs',
+                      style: TextStyle(fontWeight: FontWeight.w900)),
+                  centerTitle: false,
                   actions: [
                     IconButton(
                       icon: const Icon(Icons.shuffle),
@@ -150,96 +152,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                     child: Text(
-                      'Library Quick Links',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      'Library',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                     ),
                   ),
                 ),
                 SliverToBoxAdapter(
                   child: SizedBox(
-                    height: 140,
+                    height: 120,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: GestureDetector(
-                            onTap: () {
-                              final favSongs = songs
-                                  .where((s) => userData.isFavorite(s.filename))
-                                  .toList();
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => SongListScreen(
-                                    title: 'Favorites',
-                                    songs: favSongs,
-                                  ),
+                        _buildLibraryCard(
+                          context,
+                          'Favorites',
+                          Icons.favorite,
+                          Colors.redAccent,
+                          () {
+                            final favSongs = songs
+                                .where((s) => userData.isFavorite(s.filename))
+                                .toList();
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SongListScreen(
+                                  title: 'Favorites',
+                                  songs: favSongs,
                                 ),
-                              );
-                            },
-                            child: Column(
-                              children: [
-                                Card(
-                                  elevation: 4,
-                                  shadowColor:
-                                      Colors.red.withValues(alpha: 0.4),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16)),
-                                  child: Container(
-                                    width: 100,
-                                    height: 100,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Colors.red.shade800,
-                                          Colors.red.shade900
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: const Icon(Icons.favorite,
-                                        size: 48, color: Colors.white),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Favorites',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
-                          ),
+                              ),
+                            );
+                          },
                         ),
+                        // Add more quick links if needed here
                       ],
                     ),
                   ),
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                     child: Text(
-                      'Recommended for You',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      'Recommended',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                     ),
                   ),
                 ),
                 SliverToBoxAdapter(
                   child: SizedBox(
-                    height: 220,
+                    height: 240,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       itemCount: topRecommendations.length,
@@ -254,43 +223,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   contextQueue: topRecommendations);
                             },
                             child: SizedBox(
-                              width: 150,
+                              width: 160,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Hero(
                                     tag: 'art_${song.filename}',
-                                    child: Card(
-                                      elevation: 6,
-                                      shape: RoundedRectangleBorder(
+                                    child: AspectRatio(
+                                      aspectRatio: 1,
+                                      child: Container(
+                                        decoration: BoxDecoration(
                                           borderRadius:
-                                              BorderRadius.circular(12)),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: GruImage(
-                                        url: song.coverUrl ?? '',
-                                        width: 150,
-                                        height: 150,
-                                        fit: BoxFit.cover,
-                                        errorWidget: Container(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .surfaceContainerHighest,
-                                          child: const Center(
-                                              child: Icon(Icons.broken_image,
-                                                  color: Colors.grey)),
+                                              BorderRadius.circular(16),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.2),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          child: GruImage(
+                                            url: song.coverUrl ?? '',
+                                            fit: BoxFit.cover,
+                                            errorWidget: Container(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .surfaceContainerHighest,
+                                              child: const Center(
+                                                  child: Icon(
+                                                      Icons.broken_image,
+                                                      color: Colors.grey)),
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 12),
                                   Text(
                                     song.title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 15),
+                                        fontSize: 16),
                                   ),
+                                  const SizedBox(height: 4),
                                   Text(
                                     song.artist,
                                     maxLines: 1,
@@ -298,7 +281,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodySmall
-                                        ?.copyWith(color: Colors.grey[400]),
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -311,13 +298,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                    child: Text(
-                      'All Songs',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'All Songs',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                        Text(
+                          '${songs.length} songs',
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -325,84 +324,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final song = songs[index];
-                      final isSuggestLess =
-                          userData.isSuggestLess(song.filename);
+                      // We don't need detailed isPlaying check here for list performance,
+                      // or we can add it if we want to highlight currently playing song.
+                      // For now passing false or check simple equality
+                      final isPlaying =
+                          audioManager.currentSongNotifier.value?.filename ==
+                              song.filename;
 
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        leading: Hero(
-                          tag: 'list_art_${song.filename}',
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: GruImage(
-                              url: song.coverUrl ?? '',
-                              width: 56,
-                              height: 56,
-                              fit: BoxFit.cover,
-                              errorWidget: const Icon(Icons.music_note),
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          song.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            color: isSuggestLess ? Colors.grey : null,
-                            decoration: isSuggestLess
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
-                        ),
-                        subtitle: Text(
-                          song.artist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: isSuggestLess ? Colors.grey : null),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (song.playCount > 0)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  "${song.playCount}",
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer,
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              icon: const Icon(Icons.more_vert),
-                              onPressed: () {
-                                showSongOptionsMenu(
-                                    context, ref, song.filename, song.title,
-                                    song: song);
-                              },
-                            ),
-                          ],
-                        ),
-                        onLongPress: () {
-                          showSongOptionsMenu(
-                              context, ref, song.filename, song.title,
-                              song: song);
-                        },
+                      return SongListItem(
+                        song: song,
+                        isPlaying: isPlaying,
                         onTap: () {
                           audioManager.playSong(song, contextQueue: songs);
                         },
@@ -446,6 +377,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLibraryCard(BuildContext context, String title, IconData icon,
+      Color color, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border:
+                    Border.all(color: color.withValues(alpha: 0.1), width: 1),
+              ),
+              child: Icon(icon, size: 36, color: color),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );

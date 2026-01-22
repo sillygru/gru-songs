@@ -54,6 +54,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ValueNotifier<ShuffleState> shuffleStateNotifier =
       ValueNotifier(const ShuffleState());
   final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
+  final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
 
   AudioPlayerManager(this._apiService, this._statsService, this._storageService,
       this._username) {
@@ -192,6 +193,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _foregroundDuration = 0.0;
           _backgroundDuration = 0.0;
           _playStartTime = _player.playing ? DateTime.now() : null;
+          currentSongNotifier.value = _songMap[newFilename];
           _savePlaybackState();
         }
       }
@@ -578,6 +580,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 initialIndex: initialIndex,
                 startPlaying: false,
                 initialPosition: resumePosition);
+            currentSongNotifier.value = _effectiveQueue[initialIndex].song;
             return;
           }
         } catch (e) {

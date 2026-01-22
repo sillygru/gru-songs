@@ -27,15 +27,33 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 500),
-              child: _currentStep == 0
-                  ? _buildModeSelection()
-                  : _buildConfiguration(),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Theme.of(context)
+                  .colorScheme
+                  .primaryContainer
+                  .withValues(alpha: 0.1),
+              Theme.of(context).scaffoldBackgroundColor,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32.0),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 450),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _currentStep == 0
+                      ? _buildModeSelection()
+                      : _buildConfiguration(),
+                ),
+              ),
             ),
           ),
         ),
@@ -45,33 +63,42 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   Widget _buildModeSelection() {
     return Column(
+      key: const ValueKey('mode_selection'),
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Icon(Icons.music_note_rounded,
+            size: 80, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 24),
         Text(
-          'Welcome to Gru Songs',
-          style: Theme.of(context).textTheme.headlineLarge,
+          'Gru Songs',
+          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                letterSpacing: -1,
+              ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Text(
-          'Choose how you want to use the app',
-          style: Theme.of(context).textTheme.titleMedium,
+          'High-performance music streaming',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 48),
         _buildModeCard(
-          title: 'Local Only',
+          title: 'Local Experience',
           description:
-              'Keep everything on this device. No server required. No sync.',
-          icon: Icons.smartphone,
+              'Keep everything on this device. No server required. Fast and private.',
+          icon: Icons.smartphone_rounded,
           isLocal: true,
         ),
         const SizedBox(height: 16),
         _buildModeCard(
           title: 'Sync with Server',
-          description: 'Sync stats and favorites with a self-hosted server.',
-          icon: Icons.cloud_sync,
+          description: 'Sync stats and favorites with your self-hosted server.',
+          icon: Icons.cloud_sync_rounded,
           isLocal: false,
         ),
       ],
@@ -84,8 +111,24 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     required IconData icon,
     required bool isLocal,
   }) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: Theme.of(context)
+              .colorScheme
+              .outlineVariant
+              .withValues(alpha: 0.5),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: InkWell(
         onTap: () {
           setState(() {
@@ -93,30 +136,46 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             _currentStep = 1;
           });
         },
+        borderRadius: BorderRadius.circular(24),
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Row(
             children: [
-              Icon(icon,
-                  size: 48, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 24),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon,
+                    size: 32, color: Theme.of(context).colorScheme.primary),
+              ),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleLarge,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 18),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
                       description,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right),
+              Icon(Icons.chevron_right_rounded,
+                  color: Theme.of(context).colorScheme.primary),
             ],
           ),
         ),
@@ -125,89 +184,106 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Widget _buildConfiguration() {
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                setState(() {
-                  _currentStep = 0;
-                });
-              },
-            ),
+    return Column(
+      key: const ValueKey('configuration'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _currentStep = 0),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('Back'),
           ),
-          const SizedBox(height: 24),
-          Text(
-            _isLocalMode ? 'Local Setup' : 'Server Setup',
-            style: Theme.of(context).textTheme.headlineMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 32),
-          if (!_isLocalMode) ...[
-            Text(
-              'Enter your server address (e.g., http://192.168.1.5:9000)',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _serverUrlController,
-              decoration: const InputDecoration(
-                labelText: 'Server URL',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.dns),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          _isLocalMode ? 'Welcome' : 'Server Connection',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
               ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          TextField(
-            controller: _usernameController,
-            decoration: const InputDecoration(
-              labelText: 'Username',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.person),
-            ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 32),
+        if (!_isLocalMode) ...[
+          _buildTextField(
+            controller: _serverUrlController,
+            label: 'Server URL',
+            hint: 'http://192.168.1.5:9000',
+            icon: Icons.dns_rounded,
           ),
-          if (!_isLocalMode) ...[
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock),
-              ),
-              obscureText: true,
-            ),
-          ],
-          const SizedBox(height: 32),
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator())
-          else
-            FilledButton(
-              onPressed: _submit,
-              child: Text(_isLocalMode
-                  ? 'Start Using App'
-                  : (_isLogin ? 'Connect & Login' : 'Connect & Sign Up')),
-            ),
-          if (!_isLocalMode) ...[
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _isLogin = !_isLogin;
-                });
-              },
-              child: Text(_isLogin
-                  ? 'Need an account? Sign up'
-                  : 'Have an account? Login'),
-            ),
-          ],
+          const SizedBox(height: 16),
         ],
+        _buildTextField(
+          controller: _usernameController,
+          label: 'Username',
+          icon: Icons.person_rounded,
+        ),
+        if (!_isLocalMode) ...[
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _passwordController,
+            label: 'Password',
+            icon: Icons.lock_rounded,
+            obscureText: true,
+          ),
+        ],
+        const SizedBox(height: 40),
+        if (_isLoading)
+          const Center(child: CircularProgressIndicator())
+        else
+          SizedBox(
+            height: 56,
+            child: FilledButton(
+              onPressed: _submit,
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(
+                _isLocalMode
+                    ? 'Start Listening'
+                    : (_isLogin ? 'Connect & Login' : 'Create & Connect'),
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ),
+        if (!_isLocalMode) ...[
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _isLogin = !_isLogin;
+              });
+            },
+            child: Text(_isLogin
+                ? 'Need an account? Sign up'
+                : 'Already have an account? Login'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    String? hint,
+    required IconData icon,
+    bool obscureText = false,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        filled: true,
+        fillColor: Theme.of(context).colorScheme.surface,
       ),
     );
   }

@@ -11,6 +11,8 @@ import 'services/storage_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'presentation/screens/setup_screen.dart';
 import 'providers/setup_provider.dart';
+import 'providers/theme_provider.dart';
+import 'theme/app_theme.dart';
 
 class MyHttpOverrides extends HttpOverrides {
   @override
@@ -102,29 +104,12 @@ class GruSongsApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     final isSetupComplete = ref.watch(setupProvider);
+    final themeState = ref.watch(themeProvider);
 
     return MaterialApp(
       title: 'Gru Songs',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.red,
-          brightness: Brightness.dark,
-          surface: Colors.black,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121212),
-          scrolledUnderElevation: 0,
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF1E1E1E),
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
+      theme: GruTheme.getTheme(themeState.mode),
       home: (!isSetupComplete || !authState.isAuthenticated)
           ? const SetupScreen()
           : const MainScreen(),

@@ -1,7 +1,4 @@
-# Gru Songs (v7.2.0)
-
-## ⚠️ This is a vibe coded mess of a project !! ⚠️
-Meaning, don't expect everything to work perfectly, half broken features should be expected.
+# Gru Songs (v7.3.0)
 
 ## What is Gru Songs?
 Gru Songs is a simple local music player app built with Flutter, that can optionally connect to a server to sync stats.
@@ -21,6 +18,10 @@ If you want to sync data across devices, you must host your own server.
 
 User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file—like play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
 We do have a feature to sync file names across devices :)
+
+### Others
+This is a vibe coded project, if features are half-broken, that is normal.
+This was originally a personal side project, so there might be leftovers of pre-configured stuff of when this was only meant for my personal use (mostly server stuff, frontend's great on this aspect)
 
 ## For developers / if you want to run your own private server
 1. **Backend:**

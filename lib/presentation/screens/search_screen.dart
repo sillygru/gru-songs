@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../widgets/gru_image.dart';
 import '../../providers/providers.dart';
-import '../widgets/song_options_menu.dart';
+import '../widgets/song_list_item.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -33,9 +32,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         title: TextField(
           controller: _searchController,
           autofocus: true,
-          decoration: const InputDecoration(
+          style: const TextStyle(fontSize: 18),
+          decoration: InputDecoration(
             hintText: 'Search songs, artists...',
             border: InputBorder.none,
+            hintStyle: TextStyle(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withValues(alpha: 0.5)),
           ),
           onChanged: (value) {
             setState(() {
@@ -62,20 +67,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
               children: [
-                ChoiceChip(
+                FilterChip(
                   label: const Text('All'),
                   selected: !_searchLibrary,
                   onSelected: (selected) {
                     if (selected) setState(() => _searchLibrary = false);
                   },
+                  showCheckmark: false,
                 ),
                 const SizedBox(width: 8),
-                ChoiceChip(
+                FilterChip(
                   label: const Text('Library'),
                   selected: _searchLibrary,
                   onSelected: (selected) {
                     if (selected) setState(() => _searchLibrary = true);
                   },
+                  showCheckmark: false,
                 ),
               ],
             ),
@@ -99,8 +106,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 }).toList();
 
                 if (_query.isEmpty && !_searchLibrary) {
-                  return const Center(
-                      child: Text('Search for your favorite music'));
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search,
+                            size: 80,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest),
+                        const SizedBox(height: 16),
+                        const Text('Search your music collection'),
+                      ],
+                    ),
+                  );
                 }
 
                 if (filteredSongs.isEmpty) {
@@ -111,27 +130,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   itemCount: filteredSongs.length,
                   itemBuilder: (context, index) {
                     final song = filteredSongs[index];
-                    return ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: GruImage(
-                          url: song.coverUrl ?? '',
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          errorWidget: const Icon(Icons.music_note),
-                        ),
-                      ),
-                      title: Text(song.title),
-                      subtitle: Text(song.artist),
+                    final isPlaying =
+                        audioManager.currentSongNotifier.value?.filename ==
+                            song.filename;
+
+                    return SongListItem(
+                      song: song,
+                      isPlaying: isPlaying,
                       onTap: () {
                         audioManager.playSong(song,
                             contextQueue: filteredSongs);
-                      },
-                      onLongPress: () {
-                        showSongOptionsMenu(
-                            context, ref, song.filename, song.title,
-                            song: song);
                       },
                     );
                   },

@@ -13,7 +13,7 @@ void main() {
     );
 
     // Verify that we are on the SetupScreen
-    expect(find.text('Welcome to Gru Songs'), findsOneWidget);
-    expect(find.text('Local Only'), findsOneWidget);
+    expect(find.text('Gru Songs'), findsOneWidget);
+    expect(find.text('Local Experience'), findsOneWidget);
   });
 }

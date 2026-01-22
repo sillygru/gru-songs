@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'auth_provider.dart';
 import 'providers.dart';
+import 'theme_provider.dart';
+import '../theme/app_theme.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 
@@ -146,7 +148,46 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final serverData = await service.getUserData(_username!);
       final serverFavs = Set<String>.from(serverData['favorites'] ?? []);
       final serverSL = Set<String>.from(serverData['suggestLess'] ?? []);
-      // serverShuffleState ignored - shuffling is strictly local now
+
+      // Theme Sync Logic
+      final localThemeState = ref.read(themeProvider);
+      final serverThemeModeStr = serverData['themeMode'] as String?;
+      final serverSyncTheme = serverData['syncTheme'] as bool? ?? false;
+
+      if (localThemeState.syncTheme) {
+        // Local wants to sync.
+        if (serverSyncTheme) {
+          // Both want to sync. Check if local is newer or server is newer.
+          // For simplicity, we'll assume the server is the truth for Pull,
+          // but we push if we have a change that wasn't synced.
+          if (serverThemeModeStr != null &&
+              serverThemeModeStr != localThemeState.mode.toString()) {
+            final remoteMode = GruThemeMode.values.firstWhere(
+              (e) => e.toString() == serverThemeModeStr,
+              orElse: () => GruThemeMode.classic,
+            );
+            ref.read(themeProvider.notifier).updateFromSync(remoteMode, true);
+            debugPrint('Sync: Updated local theme from server: $remoteMode');
+          }
+        } else {
+          // Server doesn't have sync enabled yet. Push local settings.
+          await service.updateUserData(_username!, {
+            'themeMode': localThemeState.mode.toString(),
+            'syncTheme': true,
+          });
+          debugPrint('Sync: Pushed local theme settings to server');
+        }
+      } else if (serverSyncTheme) {
+        // Server has sync enabled, but local doesn't.
+        // This usually means a new device or user just enabled it elsewhere.
+        // We follow the server.
+        final remoteMode = GruThemeMode.values.firstWhere(
+          (e) => e.toString() == serverThemeModeStr,
+          orElse: () => GruThemeMode.classic,
+        );
+        ref.read(themeProvider.notifier).updateFromSync(remoteMode, true);
+        debugPrint('Sync: Enabled theme sync from server: $remoteMode');
+      }
 
       debugPrint(
           'Sync: Server has ${serverFavs.length} favorites, local has ${localFavs.length}');

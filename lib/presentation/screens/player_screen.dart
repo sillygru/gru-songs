@@ -11,7 +11,6 @@ import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../widgets/song_options_menu.dart';
 import '../widgets/next_up_sheet.dart';
 
 class PositionData {
@@ -280,502 +279,538 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 20,
+            color: Colors.black.withValues(alpha: 0.6),
+            blurRadius: 30,
             spreadRadius: 5,
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      child: StreamBuilder<SequenceState?>(
-        stream: player.sequenceStateStream,
-        builder: (context, snapshot) {
-          final state = snapshot.data;
-          final metadata = state?.currentSource?.tag as MediaItem?;
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        child: StreamBuilder<SequenceState?>(
+          stream: player.sequenceStateStream,
+          builder: (context, snapshot) {
+            final state = snapshot.data;
+            final metadata = state?.currentSource?.tag as MediaItem?;
 
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 24),
-                decoration: BoxDecoration(
-                    color: Colors.grey[600],
-                    borderRadius: BorderRadius.circular(2)),
-              ),
-              if (metadata != null) ...[
-                Expanded(
-                  child: LayoutBuilder(builder: (context, constraints) {
-                    return GestureDetector(
-                      onVerticalDragUpdate: (details) {
-                        if (details.primaryDelta! < -5) {
-                          if (!_showLyrics &&
-                              metadata.extras?['lyricsUrl'] != null) {
-                            _toggleLyrics(
-                                metadata.extras!['lyricsUrl'] as String);
-                          }
-                        } else if (details.primaryDelta! > 5) {
-                          if (_showLyrics) {
-                            setState(() => _showLyrics = false);
-                          }
-                        }
-                      },
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
-                        child: !_showLyrics
-                            ? Center(
-                                child: AspectRatio(
-                                  aspectRatio: 1,
-                                  child: Hero(
-                                    tag: 'now_playing_art_${metadata.id}',
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(16),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.4),
-                                            blurRadius: 16,
-                                            offset: const Offset(0, 8),
-                                          ),
-                                        ],
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: GruImage(
-                                          key: ValueKey('art_${metadata.id}'),
-                                          url:
-                                              metadata.artUri?.toString() ?? '',
-                                          width: constraints.maxWidth,
-                                          height: constraints.maxWidth,
-                                          cacheWidth:
-                                              600, // Reasonable cap for RAM
-                                          fit: BoxFit.cover,
-                                          errorWidget: const Icon(
-                                              Icons.music_note,
-                                              size: 100),
-                                        ),
-                                      ),
+            return Stack(
+              children: [
+                // Immersive Blurred Background for the whole screen
+                if (metadata != null) ...[
+                  Positioned.fill(
+                    child: Opacity(
+                      opacity: 0.15,
+                      child: GruImage(
+                        url: metadata.artUri?.toString() ?? '',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+                      child: Container(color: Colors.transparent),
+                    ),
+                  ),
+                ],
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 32),
+                        decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(2)),
+                      ),
+                      if (metadata != null) ...[
+                        Expanded(
+                          child: LayoutBuilder(builder: (context, constraints) {
+                            return GestureDetector(
+                              onVerticalDragUpdate: (details) {
+                                if (details.primaryDelta! < -5) {
+                                  if (!_showLyrics &&
+                                      metadata.extras?['lyricsUrl'] != null) {
+                                    _toggleLyrics(metadata.extras!['lyricsUrl']
+                                        as String);
+                                  }
+                                } else if (details.primaryDelta! > 5) {
+                                  if (_showLyrics) {
+                                    setState(() => _showLyrics = false);
+                                  }
+                                }
+                              },
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 400),
+                                transitionBuilder: (child, animation) {
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: ScaleTransition(
+                                      scale:
+                                          Tween<double>(begin: 0.95, end: 1.0)
+                                              .animate(animation),
+                                      child: child,
                                     ),
-                                  ),
-                                ),
-                              )
-                            : ClipRRect(
-                                borderRadius: BorderRadius.circular(24),
-                                child: Stack(
-                                  children: [
-                                    // Immersive Blurred Background
-                                    Positioned.fill(
-                                      child: Hero(
-                                        tag: 'lyrics_bg_${metadata.id}',
-                                        child: GruImage(
-                                          url:
-                                              metadata.artUri?.toString() ?? '',
-                                          fit: BoxFit.cover,
-                                          cacheWidth: 600,
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned.fill(
-                                      child: BackdropFilter(
-                                        filter: ImageFilter.blur(
-                                            sigmaX: 50, sigmaY: 50),
-                                        child: Container(
-                                          color: Colors.black
-                                              .withValues(alpha: 0.45),
-                                        ),
-                                      ),
-                                    ),
-                                    // Gradient overlay for better readability and fade effects
-                                    Positioned.fill(
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topCenter,
-                                            end: Alignment.bottomCenter,
-                                            colors: [
-                                              Colors.black
-                                                  .withValues(alpha: 0.3),
-                                              Colors.transparent,
-                                              Colors.transparent,
-                                              Colors.black
-                                                  .withValues(alpha: 0.3),
-                                            ],
-                                            stops: const [0.0, 0.2, 0.8, 1.0],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Container(
-                                      key: _lyricsContainerKey,
-                                      child: _loadingLyrics
-                                          ? const Center(
-                                              child:
-                                                  CircularProgressIndicator())
-                                          : (_lyrics == null ||
-                                                  _lyrics!.isEmpty)
-                                              ? const Center(
-                                                  child: Text(
-                                                    'No lyrics available',
-                                                    style: TextStyle(
-                                                        color: Colors.white70,
-                                                        fontSize: 18),
+                                  );
+                                },
+                                child: !_showLyrics
+                                    ? Center(
+                                        child: AspectRatio(
+                                          aspectRatio: 1,
+                                          child: Hero(
+                                            tag:
+                                                'now_playing_art_${metadata.id}',
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(24),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withValues(alpha: 0.5),
+                                                    blurRadius: 32,
+                                                    offset: const Offset(0, 12),
                                                   ),
-                                                )
-                                              : ShaderMask(
-                                                  shaderCallback: (rect) {
-                                                    return const LinearGradient(
-                                                      begin:
-                                                          Alignment.topCenter,
-                                                      end: Alignment
-                                                          .bottomCenter,
-                                                      colors: [
-                                                        Colors.black,
-                                                        Colors.transparent,
-                                                        Colors.transparent,
-                                                        Colors.black
-                                                      ],
-                                                      stops: [
-                                                        0.0,
-                                                        0.05,
-                                                        0.95,
-                                                        1.0
-                                                      ],
-                                                    ).createShader(rect);
-                                                  },
-                                                  blendMode: BlendMode.dstOut,
-                                                  child: NotificationListener<
-                                                      ScrollNotification>(
-                                                    onNotification:
-                                                        (notification) {
-                                                      if (notification
-                                                          is UserScrollNotification) {
-                                                        if (notification
-                                                                .direction !=
-                                                            ScrollDirection
-                                                                .idle) {
-                                                          if (_autoScrollEnabled) {
-                                                            setState(() =>
-                                                                _autoScrollEnabled =
-                                                                    false);
-                                                          }
-                                                        }
-                                                      } else if (notification
-                                                          is ScrollEndNotification) {
-                                                        _checkAndReenableAutoScroll();
-                                                      }
-                                                      return false;
-                                                    },
-                                                    child:
-                                                        SingleChildScrollView(
-                                                      controller:
-                                                          _lyricsScrollController,
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          vertical: 80),
-                                                      child: Column(
-                                                        children: List.generate(
-                                                            _lyrics!.length,
-                                                            (index) {
-                                                          final isCurrent = index ==
-                                                              _currentLyricIndex;
-                                                          final hasTime =
-                                                              _lyrics![index]
-                                                                      .time !=
-                                                                  Duration.zero;
-                                                          return InkWell(
-                                                            key: _lyricKeys?[
-                                                                index],
-                                                            onTap: hasTime
-                                                                ? () {
-                                                                    player.seek(
-                                                                        _lyrics![index]
-                                                                            .time);
+                                                ],
+                                              ),
+                                              child: ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(24),
+                                                child: GruImage(
+                                                  key: ValueKey(
+                                                      'art_${metadata.id}'),
+                                                  url: metadata.artUri
+                                                          ?.toString() ??
+                                                      '',
+                                                  width: constraints.maxWidth,
+                                                  height: constraints.maxWidth,
+                                                  cacheWidth: 800,
+                                                  fit: BoxFit.cover,
+                                                  errorWidget: const Icon(
+                                                      Icons.music_note,
+                                                      size: 100),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : ClipRRect(
+                                        borderRadius: BorderRadius.circular(24),
+                                        child: Stack(
+                                          children: [
+                                            // Immersive Blurred Background for lyrics
+                                            Positioned.fill(
+                                              child: Hero(
+                                                tag: 'lyrics_bg_${metadata.id}',
+                                                child: GruImage(
+                                                  url: metadata.artUri
+                                                          ?.toString() ??
+                                                      '',
+                                                  fit: BoxFit.cover,
+                                                  cacheWidth: 600,
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned.fill(
+                                              child: BackdropFilter(
+                                                filter: ImageFilter.blur(
+                                                    sigmaX: 50, sigmaY: 50),
+                                                child: Container(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.55),
+                                                ),
+                                              ),
+                                            ),
+                                            Container(
+                                              key: _lyricsContainerKey,
+                                              child: _loadingLyrics
+                                                  ? const Center(
+                                                      child:
+                                                          CircularProgressIndicator())
+                                                  : (_lyrics == null ||
+                                                          _lyrics!.isEmpty)
+                                                      ? const Center(
+                                                          child: Text(
+                                                            'No lyrics available',
+                                                            style: TextStyle(
+                                                                color: Colors
+                                                                    .white70,
+                                                                fontSize: 18),
+                                                          ),
+                                                        )
+                                                      : ShaderMask(
+                                                          shaderCallback:
+                                                              (rect) {
+                                                            return const LinearGradient(
+                                                              begin: Alignment
+                                                                  .topCenter,
+                                                              end: Alignment
+                                                                  .bottomCenter,
+                                                              colors: [
+                                                                Colors.black,
+                                                                Colors
+                                                                    .transparent,
+                                                                Colors
+                                                                    .transparent,
+                                                                Colors.black
+                                                              ],
+                                                              stops: [
+                                                                0.0,
+                                                                0.05,
+                                                                0.95,
+                                                                1.0
+                                                              ],
+                                                            ).createShader(
+                                                                rect);
+                                                          },
+                                                          blendMode:
+                                                              BlendMode.dstOut,
+                                                          child: NotificationListener<
+                                                              ScrollNotification>(
+                                                            onNotification:
+                                                                (notification) {
+                                                              if (notification
+                                                                  is UserScrollNotification) {
+                                                                if (notification
+                                                                        .direction !=
+                                                                    ScrollDirection
+                                                                        .idle) {
+                                                                  if (_autoScrollEnabled) {
                                                                     setState(() =>
                                                                         _autoScrollEnabled =
-                                                                            true);
+                                                                            false);
                                                                   }
-                                                                : null,
+                                                                }
+                                                              } else if (notification
+                                                                  is ScrollEndNotification) {
+                                                                _checkAndReenableAutoScroll();
+                                                              }
+                                                              return false;
+                                                            },
                                                             child:
-                                                                AnimatedContainer(
-                                                              duration:
-                                                                  const Duration(
-                                                                      milliseconds:
-                                                                          500),
-                                                              curve: Curves
-                                                                  .easeOutQuart,
-                                                              width: double
-                                                                  .infinity,
-                                                              padding: EdgeInsets
-                                                                  .symmetric(
-                                                                      horizontal:
-                                                                          24,
-                                                                      vertical: isCurrent
-                                                                          ? 28
-                                                                          : 16),
-                                                              child:
-                                                                  AnimatedDefaultTextStyle(
-                                                                duration:
-                                                                    const Duration(
-                                                                        milliseconds:
-                                                                            500),
-                                                                curve: Curves
-                                                                    .easeOutQuart,
-                                                                textAlign:
-                                                                    TextAlign
-                                                                        .center,
-                                                                style:
-                                                                    TextStyle(
-                                                                  fontSize:
-                                                                      isCurrent
-                                                                          ? 32
-                                                                          : 24,
-                                                                  fontWeight: isCurrent
-                                                                      ? FontWeight
-                                                                          .bold
-                                                                      : FontWeight
-                                                                          .w600,
-                                                                  color: isCurrent
-                                                                      ? Colors
-                                                                          .white
-                                                                      : Colors
-                                                                          .white
-                                                                          .withValues(
-                                                                              alpha: 0.35),
-                                                                  height: 1.3,
-                                                                  letterSpacing:
-                                                                      isCurrent
-                                                                          ? -0.8
-                                                                          : -0.2,
-                                                                  shadows:
-                                                                      isCurrent
-                                                                          ? [
-                                                                              Shadow(
-                                                                                color: Colors.black.withValues(alpha: 0.3),
-                                                                                offset: const Offset(0, 4),
-                                                                                blurRadius: 12,
-                                                                              )
-                                                                            ]
-                                                                          : [],
-                                                                ),
-                                                                child: Text(
-                                                                    _lyrics![
-                                                                            index]
-                                                                        .text),
+                                                                SingleChildScrollView(
+                                                              controller:
+                                                                  _lyricsScrollController,
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      vertical:
+                                                                          80),
+                                                              child: Column(
+                                                                children: List
+                                                                    .generate(
+                                                                        _lyrics!
+                                                                            .length,
+                                                                        (index) {
+                                                                  final isCurrent =
+                                                                      index ==
+                                                                          _currentLyricIndex;
+                                                                  final hasTime = _lyrics![
+                                                                              index]
+                                                                          .time !=
+                                                                      Duration
+                                                                          .zero;
+                                                                  return InkWell(
+                                                                    key: _lyricKeys?[
+                                                                        index],
+                                                                    onTap: hasTime
+                                                                        ? () {
+                                                                            player.seek(_lyrics![index].time);
+                                                                            setState(() =>
+                                                                                _autoScrollEnabled = true);
+                                                                          }
+                                                                        : null,
+                                                                    child:
+                                                                        AnimatedContainer(
+                                                                      duration: const Duration(
+                                                                          milliseconds:
+                                                                              500),
+                                                                      curve: Curves
+                                                                          .easeOutQuart,
+                                                                      width: double
+                                                                          .infinity,
+                                                                      padding: EdgeInsets.symmetric(
+                                                                          horizontal:
+                                                                              24,
+                                                                          vertical: isCurrent
+                                                                              ? 28
+                                                                              : 16),
+                                                                      child:
+                                                                          AnimatedDefaultTextStyle(
+                                                                        duration:
+                                                                            const Duration(milliseconds: 500),
+                                                                        curve: Curves
+                                                                            .easeOutQuart,
+                                                                        textAlign:
+                                                                            TextAlign.center,
+                                                                        style:
+                                                                            TextStyle(
+                                                                          fontSize: isCurrent
+                                                                              ? 30
+                                                                              : 22,
+                                                                          fontWeight: isCurrent
+                                                                              ? FontWeight.bold
+                                                                              : FontWeight.w600,
+                                                                          color: isCurrent
+                                                                              ? Colors.white
+                                                                              : Colors.white.withValues(alpha: 0.3),
+                                                                          height:
+                                                                              1.3,
+                                                                          letterSpacing: isCurrent
+                                                                              ? -0.5
+                                                                              : -0.2,
+                                                                        ),
+                                                                        child: Text(
+                                                                            _lyrics![index].text),
+                                                                      ),
+                                                                    ),
+                                                                  );
+                                                                }),
                                                               ),
                                                             ),
-                                                          );
-                                                        }),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                    ),
-                                  ],
-                                ),
+                                                          ),
+                                                        ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                               ),
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  metadata.title,
-                  style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  '${metadata.artist ?? 'Unknown Artist'} • ${metadata.album ?? 'Unknown Album'}',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[400]),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-              const SizedBox(height: 32),
-              StreamBuilder<PositionData>(
-                stream: _positionDataStream,
-                builder: (context, snapshot) {
-                  final positionData = snapshot.data;
-                  return ProgressBar(
-                    progress: positionData?.position ?? Duration.zero,
-                    buffered: positionData?.bufferedPosition ?? Duration.zero,
-                    total: positionData?.duration ?? Duration.zero,
-                    onSeek: player.seek,
-                  );
-                },
-              ),
-              if (isDesktop || isIPad) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.volume_down, size: 20),
-                    Expanded(
-                      child: StreamBuilder<double>(
-                        stream: player.volumeStream,
+                            );
+                          }),
+                        ),
+                        const SizedBox(height: 32),
+                        Text(
+                          metadata.title,
+                          style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${metadata.artist ?? 'Unknown Artist'} • ${metadata.album ?? 'Unknown Album'}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.7),
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 32),
+                      StreamBuilder<PositionData>(
+                        stream: _positionDataStream,
                         builder: (context, snapshot) {
-                          return Slider(
-                            value: snapshot.data ?? 1.0,
-                            onChanged: player.setVolume,
+                          final positionData = snapshot.data;
+                          return ProgressBar(
+                            progress: positionData?.position ?? Duration.zero,
+                            buffered:
+                                positionData?.bufferedPosition ?? Duration.zero,
+                            total: positionData?.duration ?? Duration.zero,
+                            progressBarColor:
+                                Theme.of(context).colorScheme.primary,
+                            baseBarColor: Colors.white.withValues(alpha: 0.1),
+                            bufferedBarColor:
+                                Colors.white.withValues(alpha: 0.2),
+                            thumbColor: Theme.of(context).colorScheme.primary,
+                            timeLabelTextStyle: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                            onSeek: player.seek,
                           );
                         },
                       ),
-                    ),
-                    const Icon(Icons.volume_up, size: 20),
-                  ],
+                      if (isDesktop || isIPad) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.volume_down,
+                                size: 20, color: Colors.white60),
+                            Expanded(
+                              child: StreamBuilder<double>(
+                                stream: player.volumeStream,
+                                builder: (context, snapshot) {
+                                  return Slider(
+                                    value: snapshot.data ?? 1.0,
+                                    activeColor:
+                                        Theme.of(context).colorScheme.primary,
+                                    inactiveColor: Colors.white10,
+                                    onChanged: player.setVolume,
+                                  );
+                                },
+                              ),
+                            ),
+                            const Icon(Icons.volume_up,
+                                size: 20, color: Colors.white60),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          // Lyrics
+                          IconButton(
+                            icon: const Icon(Icons.lyrics_outlined),
+                            color: _showLyrics
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.white60,
+                            onPressed: () {
+                              if (metadata?.extras?['lyricsUrl'] != null) {
+                                _toggleLyrics(
+                                    metadata!.extras!['lyricsUrl'] as String);
+                              }
+                            },
+                          ),
+                          // Queue
+                          IconButton(
+                            icon: const Icon(Icons.queue_music),
+                            color: Colors.white60,
+                            onPressed: () {
+                              showModalBottomSheet(
+                                context: context,
+                                backgroundColor: Colors.transparent,
+                                builder: (context) => const NextUpSheet(),
+                              );
+                            },
+                          ),
+                          // Shuffle
+                          ValueListenableBuilder<bool>(
+                            valueListenable: ref
+                                .read(audioPlayerManagerProvider)
+                                .shuffleNotifier,
+                            builder: (context, isShuffled, child) {
+                              return IconButton(
+                                icon: Icon(Icons.shuffle,
+                                    color: isShuffled
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.white60),
+                                onLongPress: () =>
+                                    _showShuffleSettings(context, ref),
+                                onPressed: () async {
+                                  await ref
+                                      .read(audioPlayerManagerProvider)
+                                      .toggleShuffle();
+                                },
+                              );
+                            },
+                          ),
+                          // Repeat
+                          StreamBuilder<LoopMode>(
+                            stream: player.loopModeStream,
+                            builder: (context, snapshot) {
+                              final loopMode = snapshot.data ?? LoopMode.off;
+                              IconData iconData = Icons.repeat;
+                              Color color = Colors.white60;
+                              if (loopMode == LoopMode.one) {
+                                iconData = Icons.repeat_one;
+                                color = Theme.of(context).colorScheme.primary;
+                              } else if (loopMode == LoopMode.all) {
+                                iconData = Icons.repeat;
+                                color = Theme.of(context).colorScheme.primary;
+                              }
+                              return IconButton(
+                                icon: Icon(iconData, color: color),
+                                onPressed: () {
+                                  final nextMode = LoopMode.values[
+                                      (loopMode.index + 1) %
+                                          LoopMode.values.length];
+                                  player.setLoopMode(nextMode);
+                                },
+                              );
+                            },
+                          ),
+                          // Favorite
+                          IconButton(
+                            icon: Icon(userData.isFavorite(metadata?.id ?? '')
+                                ? Icons.favorite
+                                : Icons.favorite_border),
+                            color: userData.isFavorite(metadata?.id ?? '')
+                                ? Colors.redAccent
+                                : Colors.white60,
+                            onPressed: () {
+                              if (metadata != null) {
+                                ref
+                                    .read(userDataProvider.notifier)
+                                    .toggleFavorite(metadata.id);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Previous
+                          IconButton(
+                            icon: const Icon(Icons.skip_previous_rounded,
+                                size: 48),
+                            color: Colors.white,
+                            onPressed: () {
+                              if (player.position.inSeconds > 3) {
+                                player.seek(Duration.zero);
+                              } else {
+                                player.seekToPrevious();
+                              }
+                            },
+                          ),
+                          const SizedBox(width: 24),
+                          // Play/Pause
+                          StreamBuilder<PlayerState>(
+                            stream: player.playerStateStream,
+                            builder: (context, snapshot) {
+                              final playerState = snapshot.data;
+                              final playing = playerState?.playing ?? false;
+                              return IconButton(
+                                icon: Icon(
+                                    playing
+                                        ? Icons.pause_circle_filled_rounded
+                                        : Icons.play_circle_filled_rounded,
+                                    size: 96),
+                                color: Colors.white,
+                                onPressed: playing ? player.pause : player.play,
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 24),
+                          // Next
+                          IconButton(
+                            icon: const Icon(Icons.skip_next_rounded, size: 48),
+                            color: Colors.white,
+                            onPressed:
+                                player.hasNext ? player.seekToNext : null,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
               ],
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  // Lyrics
-                  IconButton(
-                    icon: const Icon(Icons.lyrics_outlined),
-                    color: _showLyrics ? Colors.deepPurple : Colors.white70,
-                    onPressed: () {
-                      if (metadata?.extras?['lyricsUrl'] != null) {
-                        _toggleLyrics(metadata!.extras!['lyricsUrl'] as String);
-                      }
-                    },
-                  ),
-                  // Queue
-                  IconButton(
-                    icon: const Icon(Icons.queue_music),
-                    color: Colors.white70,
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        backgroundColor: Colors.transparent,
-                        builder: (context) => const NextUpSheet(),
-                      );
-                    },
-                  ),
-                  // Shuffle
-                  ValueListenableBuilder<bool>(
-                    valueListenable:
-                        ref.read(audioPlayerManagerProvider).shuffleNotifier,
-                    builder: (context, isShuffled, child) {
-                      return IconButton(
-                        icon: Icon(Icons.shuffle,
-                            color: isShuffled
-                                ? Colors.deepPurple
-                                : Colors.white70),
-                        onLongPress: () => _showShuffleSettings(context, ref),
-                        onPressed: () async {
-                          await ref
-                              .read(audioPlayerManagerProvider)
-                              .toggleShuffle();
-                        },
-                      );
-                    },
-                  ),
-                  // Repeat
-                  StreamBuilder<LoopMode>(
-                    stream: player.loopModeStream,
-                    builder: (context, snapshot) {
-                      final loopMode = snapshot.data ?? LoopMode.off;
-                      IconData iconData = Icons.repeat;
-                      Color color = Colors.white70;
-                      if (loopMode == LoopMode.one) {
-                        iconData = Icons.repeat_one;
-                        color = Colors.deepPurple;
-                      } else if (loopMode == LoopMode.all) {
-                        iconData = Icons.repeat;
-                        color = Colors.deepPurple;
-                      }
-                      return IconButton(
-                        icon: Icon(iconData, color: color),
-                        onPressed: () {
-                          final nextMode = LoopMode.values[
-                              (loopMode.index + 1) % LoopMode.values.length];
-                          player.setLoopMode(nextMode);
-                        },
-                      );
-                    },
-                  ),
-                  // Favorite
-                  GestureDetector(
-                    onLongPress: () {
-                      if (metadata != null) {
-                        final songs = ref.read(songsProvider).value ?? [];
-                        final song = songs
-                            .where((s) => s.filename == metadata.id)
-                            .firstOrNull;
-                        showSongOptionsMenu(
-                            context, ref, metadata.id, metadata.title,
-                            song: song);
-                      }
-                    },
-                    child: IconButton(
-                      icon: Icon(userData.isFavorite(metadata?.id ?? '')
-                          ? Icons.favorite
-                          : Icons.favorite_border),
-                      color: userData.isFavorite(metadata?.id ?? '')
-                          ? Colors.red
-                          : Colors.white70,
-                      onPressed: () {
-                        if (metadata != null) {
-                          ref
-                              .read(userDataProvider.notifier)
-                              .toggleFavorite(metadata.id);
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Previous
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous, size: 48),
-                    onPressed: () {
-                      if (player.position.inSeconds > 3) {
-                        player.seek(Duration.zero);
-                      } else {
-                        player.seekToPrevious();
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 24),
-                  // Play/Pause
-                  StreamBuilder<PlayerState>(
-                    stream: player.playerStateStream,
-                    builder: (context, snapshot) {
-                      final playerState = snapshot.data;
-                      final playing = playerState?.playing ?? false;
-                      return IconButton(
-                        icon: Icon(
-                            playing
-                                ? Icons.pause_circle_filled
-                                : Icons.play_circle_filled,
-                            size: 84),
-                        onPressed: playing ? player.pause : player.play,
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 24),
-                  // Next
-                  IconButton(
-                    icon: const Icon(Icons.skip_next, size: 48),
-                    onPressed: player.hasNext ? player.seekToNext : null,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

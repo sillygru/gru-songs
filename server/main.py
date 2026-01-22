@@ -224,11 +224,14 @@ def get_user_data(x_username: str = Header(None)):
     favorites = user_service.get_favorites(x_username)
     suggest_less = user_service.get_suggest_less(x_username)
     shuffle_state = user_service.get_stats_summary(x_username).get("shuffle_state", {})
+    theme_settings = user_service.get_theme_settings(x_username)
 
     return {
         "favorites": favorites,
         "suggestLess": suggest_less,
-        "shuffleState": shuffle_state
+        "shuffleState": shuffle_state,
+        "themeMode": theme_settings["theme_mode"],
+        "syncTheme": theme_settings["sync_theme"]
     }
 
 @app.post("/user/data")
@@ -240,6 +243,8 @@ def update_user_data(data: Dict[str, Any], x_username: str = Header(None)):
     favorites = data.get("favorites", [])
     suggest_less = data.get("suggestLess", [])
     shuffle_state = data.get("shuffleState", {})
+    theme_mode = data.get("themeMode")
+    sync_theme = data.get("syncTheme", False)
 
     # MERGE favorites - only ADD new ones
     current_favorites = set(user_service.get_favorites(x_username))
@@ -258,6 +263,9 @@ def update_user_data(data: Dict[str, Any], x_username: str = Header(None)):
     # Update shuffle state
     if shuffle_state:
         user_service.update_shuffle_state(x_username, shuffle_state)
+
+    # Update theme settings
+    user_service.update_theme_settings(x_username, theme_mode, sync_theme)
 
     return {"status": "updated"}
 

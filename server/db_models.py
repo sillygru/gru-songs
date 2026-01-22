@@ -33,6 +33,8 @@ class UserData(Base):
     username: Mapped[str] = mapped_column(String, primary_key=True)
     password_hash: Mapped[str] = mapped_column(String)
     created_at: Mapped[float] = mapped_column(Float)
+    theme_mode: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    sync_theme: Mapped[bool] = mapped_column(Integer, default=0)
 
 class Favorite(Base):
     __tablename__ = "favorite"

@@ -7,7 +7,7 @@ if os.getenv("GRUSONGS_TESTING") != "true":
     load_dotenv()
 
 class Settings:
-    VERSION: str = "7.2.0"
+    VERSION: str = "7.3.0"
 
     @property
     def BASE_DIR(self) -> str:
