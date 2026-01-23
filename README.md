@@ -1,4 +1,4 @@
-# Gru Songs (v7.3.1)
+# Gru Songs (v3.2.1)
 
 ## What is Gru Songs?
 Gru Songs is a simple local music player app built with Flutter, that can optionally connect to a server to sync stats.
@@ -40,6 +40,12 @@ This was originally a personal side project, so there might be leftovers of pre-
    - flutter build apk --release
    - flutter build ios --release
    - flutter build macos --release
+
+
+## Ignore/notes to self
+### Versioning rules:
+- This project uses major.minor.patch versioning format.
+   - Version numbering is based on update impact
 
 ## License
 
