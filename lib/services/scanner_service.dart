@@ -19,7 +19,8 @@ class ScannerService {
   ];
 
   Future<List<Song>> scanDirectory(String path,
-      {String? lyricsPath,
+      {List<Song>? existingSongs,
+      String? lyricsPath,
       Map<String, int>? playCounts,
       void Function(double progress)? onProgress}) async {
     // Request permissions before accessing storage
@@ -50,10 +51,14 @@ class ScannerService {
       await coversDir.create(recursive: true);
     }
 
+    // Create a lookup map for existing songs to speed up scanning
+    final Map<String, Song> existingSongsMap =
+        existingSongs != null ? {for (var s in existingSongs) s.url: s} : {};
+
     try {
-      // 1. Get all entities first
+      // 1. Get all entities first (asynchronously)
       final List<FileSystemEntity> entities =
-          dir.listSync(recursive: true, followLinks: false);
+          await dir.list(recursive: true, followLinks: false).toList();
       final List<File> audioFiles = entities
           .whereType<File>()
           .where((f) =>
@@ -63,14 +68,39 @@ class ScannerService {
       final Map<String, String?> folderCoverCache = {};
 
       // 2. Process in chunks or parallel to speed up (using Future.wait for I/O bound parts)
-      // But since metadata reading is CPU bound and sync, we process carefully
       final List<Song> songs = [];
 
       for (int i = 0; i < audioFiles.length; i++) {
         final file = audioFiles[i];
-        final song = await _processSingleFile(
-            file, coversDir, folderCoverCache, lyricsPath, effectivePlayCounts);
-        songs.add(song);
+        final fileStat = await file.stat();
+        final currentMtime = fileStat.modified.millisecondsSinceEpoch / 1000.0;
+
+        // Check if we can reuse existing song data
+        final existingSong = existingSongsMap[file.path];
+        if (existingSong != null &&
+            existingSong.mtime != null &&
+            (existingSong.mtime! - currentMtime).abs() < 0.1) {
+          // Song hasn't changed, reuse it but update play count if needed
+          songs.add(Song(
+            title: existingSong.title,
+            artist: existingSong.artist,
+            album: existingSong.album,
+            filename: existingSong.filename,
+            url: existingSong.url,
+            coverUrl: existingSong.coverUrl,
+            lyricsUrl: existingSong.lyricsUrl,
+            playCount: effectivePlayCounts[existingSong.filename] ??
+                existingSong.playCount,
+            duration: existingSong.duration,
+            mtime: currentMtime,
+          ));
+        } else {
+          // New or changed song, process it
+          final song = await _processSingleFile(file, coversDir,
+              folderCoverCache, lyricsPath, effectivePlayCounts,
+              mtime: currentMtime);
+          songs.add(song);
+        }
 
         if (onProgress != null) {
           onProgress((i + 1) / audioFiles.length);
@@ -90,7 +120,8 @@ class ScannerService {
       Directory coversDir,
       Map<String, String?> folderCoverCache,
       String? lyricsPath,
-      Map<String, int> playCounts) async {
+      Map<String, int> playCounts,
+      {double? mtime}) async {
     final filename = p.basename(file.path);
     final parentPath = file.parent.path;
     p.extension(file.path).toLowerCase();
@@ -148,7 +179,8 @@ class ScannerService {
       lyricsUrl: lyricsUrl,
       playCount: playCounts[filename] ?? 0,
       duration: duration,
-      mtime: file.statSync().modified.millisecondsSinceEpoch / 1000.0,
+      mtime:
+          mtime ?? (await file.stat()).modified.millisecondsSinceEpoch / 1000.0,
     );
   }
 

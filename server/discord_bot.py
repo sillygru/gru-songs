@@ -103,23 +103,12 @@ def run_bot(queue, command_queue):
                 "requester": str(ctx.author)
             })
             if reset_bool:
-                await ctx.send("⏳ Backup requested (Timer WILL be reset).")
+                await ctx.send("Backup requested (Timer WILL be reset).")
             else:
-                await ctx.send("⏳ Backup requested (Timer will NOT be reset).")
+                await ctx.send("Backup requested (Timer will NOT be reset).")
         else:
             await ctx.send("Internal Error: Command queue not available.")
 
-    @bot.command(name="flush")
-    async def flush_cmd(ctx):
-        # Send command to main process via queue
-        if bot.command_queue:
-            bot.command_queue.put({
-                "command": "flush",
-                "requester": str(ctx.author)
-            })
-            await ctx.send("Flushing stats and resetting 5-minute timer...")
-        else:
-            await ctx.send("Internal Error: Command queue not available.")
 
     @bot.command(name="stats")
     async def stats(ctx, username: str = None):

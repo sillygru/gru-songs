@@ -152,7 +152,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final cached = await storage.loadSongs();
     if (cached.isNotEmpty) {
       // Return cached immediately, then update in background
-      _backgroundScanUpdate();
+      _backgroundScanUpdate(cached);
       return cached;
     }
 
@@ -160,7 +160,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     return _performFullScan();
   }
 
-  Future<List<Song>> _performFullScan() async {
+  Future<List<Song>> _performFullScan(
+      {bool isBackground = false, List<Song>? existingSongs}) async {
     final storage = ref.read(storageServiceProvider);
     final scanner = ref.read(scannerServiceProvider);
 
@@ -169,12 +170,16 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     if (musicPath == null || musicPath.isEmpty) return [];
 
-    ref.read(isScanningProvider.notifier).state = true;
+    // Only show scanning indicator for non-background scans
+    if (!isBackground) {
+      ref.read(isScanningProvider.notifier).state = true;
+    }
     ref.read(scanProgressProvider.notifier).state = 0.0;
 
     try {
       final songs = await scanner.scanDirectory(
         musicPath,
+        existingSongs: existingSongs,
         lyricsPath: lyricsPath,
         onProgress: (progress) {
           ref.read(scanProgressProvider.notifier).state = progress;
@@ -183,27 +188,55 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       await storage.saveSongs(songs);
       return songs;
     } finally {
-      ref.read(isScanningProvider.notifier).state = false;
+      if (!isBackground) {
+        ref.read(isScanningProvider.notifier).state = false;
+      }
       ref.read(scanProgressProvider.notifier).state = 0.0;
     }
   }
 
-  Future<void> _backgroundScanUpdate() async {
+  Future<void> _backgroundScanUpdate(List<Song> existingSongs) async {
     try {
-      final songs = await _performFullScan();
-      ref.read(audioPlayerManagerProvider).refreshSongs(songs);
-      state = AsyncValue.data(songs);
+      // Background scan doesn't trigger the scanning indicator
+      final songs = await _performFullScan(
+          isBackground: true, existingSongs: existingSongs);
+
+      // Only update if there are actual changes to avoid unnecessary rebuilds
+      // We compare length and a few other things as a quick check
+      bool hasChanges = songs.length != existingSongs.length;
+      if (!hasChanges) {
+        // More thorough check: compare URLs and mtimes
+        for (int i = 0; i < songs.length; i++) {
+          if (songs[i].url != existingSongs[i].url ||
+              songs[i].mtime != existingSongs[i].mtime) {
+            hasChanges = true;
+            break;
+          }
+        }
+      }
+
+      if (hasChanges) {
+        ref.read(audioPlayerManagerProvider).refreshSongs(songs);
+        state = AsyncValue.data(songs);
+      }
     } catch (e) {
       debugPrint('Background scan failed: $e');
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool isBackground = false}) async {
     final storage = ref.read(storageServiceProvider);
     final pullEnabled = await storage.getPullToRefreshEnabled();
-    if (!pullEnabled) return;
+    if (!pullEnabled && !isBackground) return;
 
-    state = await AsyncValue.guard(() async {
+    // If it's a background refresh, we don't want to set the state to loading
+    // as it would clear the current UI list.
+    if (!isBackground) {
+      // For manual refresh, we can show loading if we want,
+      // but AsyncNotifier usually handles this via state.
+    }
+
+    final newState = await AsyncValue.guard<List<Song>>(() async {
       final isLocalMode = await storage.getIsLocalMode();
       final serverMode = await storage.getServerRefreshMode();
 
@@ -222,14 +255,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           }
         }
 
-        // If server mode is sync_only, we don't scan for songs unless explicitly asked
-        // but wait, the default for server mode is sync_only, so we should return current songs?
         if (serverMode == 'sync_only') {
-          return state.value ?? [];
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('Local mode: Skipping server sync');
+          return state.value ?? <Song>[];
         }
       }
 
@@ -240,15 +267,40 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             .syncRenamesFromServer(musicPath);
       }
 
-      final songs = await _performFullScan();
+      // Pass isBackground to _performFullScan
+      final songs = await _performFullScan(
+          isBackground: isBackground, existingSongs: state.value);
       ref.read(audioPlayerManagerProvider).refreshSongs(songs);
       return songs;
     });
+
+    if (isBackground) {
+      // Only update if not null and actually has changes
+      if (newState.hasValue) {
+        final newSongs = newState.value!;
+        final oldSongs = state.value ?? [];
+        bool hasChanges = newSongs.length != oldSongs.length;
+        if (!hasChanges) {
+          for (int i = 0; i < newSongs.length; i++) {
+            if (newSongs[i].url != oldSongs[i].url ||
+                newSongs[i].mtime != oldSongs[i].mtime) {
+              hasChanges = true;
+              break;
+            }
+          }
+        }
+        if (hasChanges) {
+          state = newState;
+        }
+      }
+    } else {
+      state = newState;
+    }
   }
 
   Future<void> forceFullScan() async {
-    state = await AsyncValue.guard(() async {
-      final songs = await _performFullScan();
+    state = await AsyncValue.guard<List<Song>>(() async {
+      final songs = await _performFullScan(); // No existingSongs = full scan
       ref.read(audioPlayerManagerProvider).refreshSongs(songs);
       return songs;
     });

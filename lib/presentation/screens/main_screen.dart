@@ -30,8 +30,7 @@ class SyncIndicator extends ConsumerWidget {
         IconData icon = Icons.sync;
         bool showSpinner = false;
 
-        if (isScanning) {
-        }
+        if (isScanning) {}
 
         if (syncState.status == SyncStatus.syncing) {
           showSpinner = true;
@@ -107,7 +106,8 @@ class MainScreen extends ConsumerStatefulWidget {
   ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends ConsumerState<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
   final List<Widget> _screens = [
@@ -115,6 +115,27 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     const LibraryScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Trigger background refresh when app returns to foreground
+      // This will use the optimized scanner we just implemented
+      ref.read(songsProvider.notifier).refresh(isBackground: true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
