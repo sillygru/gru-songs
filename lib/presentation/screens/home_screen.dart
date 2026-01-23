@@ -1,12 +1,9 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/gru_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/scanning_progress_bar.dart';
-import '../../models/song.dart';
 import '../../providers/providers.dart';
-import 'song_list_screen.dart';
 
 import 'search_screen.dart';
 
@@ -38,7 +35,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final songsAsyncValue = ref.watch(songsProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
-    final userData = ref.watch(userDataProvider);
 
     // Listen for data changes to initialize audio
     ref.listen(songsProvider, (previous, next) {
@@ -82,36 +78,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             );
           }
 
-          final random = Random();
+          final topRecommendations = ref.watch(recommendationsProvider);
 
-          // Weighted recommendation logic
-          final recommendations = List<Song>.from(songs);
-
-          recommendations.sort((a, b) {
-            double score(Song s) {
-              // Base score from play count
-              double val = log(s.playCount + 1.5) * 2.0;
-
-              // Boost for favorites
-              if (userData.isFavorite(s.filename)) {
-                val += 5.0;
+          // Initial generation of recommendations if empty
+          if (topRecommendations.isEmpty && songs.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (ref.read(recommendationsProvider).isEmpty) {
+                ref
+                    .read(recommendationsProvider.notifier)
+                    .generate(songs, ref.read(userDataProvider));
               }
-
-              // Heavy penalty for suggest-less (but not absolute block)
-              if (userData.isSuggestLess(s.filename)) {
-                val -= 10.0;
-              }
-
-              // Add randomness
-              val += random.nextDouble() * 4.0;
-
-              return val;
-            }
-
-            return score(b).compareTo(score(a));
-          });
-
-          final topRecommendations = recommendations.take(10).toList();
+            });
+          }
 
           return RefreshIndicator(
             onRefresh: () async {
@@ -119,10 +97,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ref.read(songsProvider.notifier).refresh(),
                 ref.read(userDataProvider.notifier).refresh(),
               ]);
+              // Explicitly regenerate recommendations on manual refresh
+              final updatedSongs = ref.read(songsProvider).value ?? [];
+              final updatedUserData = ref.read(userDataProvider);
+              ref
+                  .read(recommendationsProvider.notifier)
+                  .generate(updatedSongs, updatedUserData);
             },
             child: CustomScrollView(
               slivers: [
-                SliverAppBar.large(
+                SliverAppBar(
+                  floating: true,
+                  snap: true,
                   title: const Text('Gru Songs',
                       style: TextStyle(fontWeight: FontWeight.w900)),
                   centerTitle: false,
@@ -154,50 +140,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       },
                     ),
                   ],
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-                    child: Text(
-                      'Library',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                    ),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 120,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: [
-                        _buildLibraryCard(
-                          context,
-                          'Favorites',
-                          Icons.favorite,
-                          Colors.redAccent,
-                          () {
-                            final favSongs = songs
-                                .where((s) => userData.isFavorite(s.filename))
-                                .toList();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => SongListScreen(
-                                  title: 'Favorites',
-                                  songs: favSongs,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        // Add more quick links if needed here
-                      ],
-                    ),
-                  ),
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
@@ -339,6 +281,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       return SongListItem(
                         song: song,
                         isPlaying: isPlaying,
+                        heroTagPrefix: 'all_songs',
                         onTap: () {
                           audioManager.playSong(song, contextQueue: songs);
                         },
@@ -382,38 +325,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLibraryCard(BuildContext context, String title, IconData icon,
-      Color color, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Column(
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(20),
-                border:
-                    Border.all(color: color.withValues(alpha: 0.1), width: 1),
-              ),
-              child: Icon(icon, size: 36, color: color),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
         ),
       ),
     );

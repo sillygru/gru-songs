@@ -46,6 +46,11 @@ class SuggestLess(Base):
     filename: Mapped[str] = mapped_column(String, primary_key=True)
     added_at: Mapped[float] = mapped_column(Float, default=lambda: datetime.now().timestamp())
 
+class Hidden(Base):
+    __tablename__ = "hidden"
+    filename: Mapped[str] = mapped_column(String, primary_key=True)
+    hidden_at: Mapped[float] = mapped_column(Float, default=lambda: datetime.now().timestamp())
+
 # --- [username]_stats.db ---
 class PlaySession(Base):
     __tablename__ = "playsession"

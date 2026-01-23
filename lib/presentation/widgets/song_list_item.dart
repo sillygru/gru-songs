@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../providers/settings_provider.dart';
 import 'gru_image.dart';
 import 'song_options_menu.dart';
+import 'audio_visualizer.dart';
 
 class SongListItem extends ConsumerWidget {
   final Song song;
   final bool isPlaying;
   final VoidCallback onTap;
   final bool showMenu;
+  final String? heroTagPrefix;
 
   const SongListItem({
     super.key,
@@ -17,13 +20,20 @@ class SongListItem extends ConsumerWidget {
     this.isPlaying = false,
     required this.onTap,
     this.showMenu = true,
+    this.heroTagPrefix,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userData = ref.watch(userDataProvider);
+    final settings = ref.watch(settingsProvider);
     final isSuggestLess = userData.isSuggestLess(song.filename);
     final isFavorite = userData.isFavorite(song.filename);
+
+    // Use a more robust unique tag for Hero
+    final heroTag = heroTagPrefix != null
+        ? '${heroTagPrefix}_${song.filename}'
+        : 'list_art_${song.filename}_${key.toString()}';
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -58,7 +68,7 @@ class SongListItem extends ConsumerWidget {
                 Stack(
                   children: [
                     Hero(
-                      tag: 'list_art_${song.filename}_${key.toString()}',
+                      tag: heroTag,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: GruImage(
@@ -82,9 +92,16 @@ class SongListItem extends ConsumerWidget {
                             color: Colors.black.withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Center(
-                            child: Icon(Icons.graphic_eq,
-                                color: Colors.white, size: 24),
+                          child: Center(
+                            child: settings.visualizerEnabled
+                                ? const AudioVisualizer(
+                                    color: Colors.white,
+                                    width: 24,
+                                    height: 24,
+                                    isPlaying: true,
+                                  )
+                                : const Icon(Icons.graphic_eq,
+                                    color: Colors.white, size: 24),
                           ),
                         ),
                       ),
@@ -119,12 +136,6 @@ class SongListItem extends ConsumerWidget {
                               ),
                             ),
                           ),
-                          if (isFavorite) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.favorite,
-                                size: 14,
-                                color: Theme.of(context).colorScheme.primary),
-                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -164,6 +175,30 @@ class SongListItem extends ConsumerWidget {
                         ),
                       ),
                     ),
+                  IconButton(
+                    icon: Icon(
+                      isFavorite
+                          ? Icons.favorite
+                          : (isSuggestLess
+                              ? Icons.heart_broken
+                              : Icons.favorite_border),
+                      color: isFavorite
+                          ? Theme.of(context).colorScheme.primary
+                          : (isSuggestLess
+                              ? Colors.grey
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.5)),
+                    ),
+                    onPressed: () {
+                      ref
+                          .read(userDataProvider.notifier)
+                          .toggleFavorite(song.filename);
+                    },
+                    iconSize: 18,
+                    visualDensity: VisualDensity.compact,
+                  ),
                   IconButton(
                     icon: const Icon(Icons.more_vert),
                     onPressed: () {

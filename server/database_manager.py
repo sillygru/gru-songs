@@ -45,11 +45,11 @@ class DatabaseManager:
 
     def init_user_dbs(self, username: str):
         # Create tables for specific user DBs
-        from db_models import UserData, Favorite, SuggestLess, PlaySession, PlayEvent
+        from db_models import UserData, Favorite, SuggestLess, Hidden, PlaySession, PlayEvent
         
         # 1. User Data DB
         e_data = self.get_user_data_engine(username)
-        Base.metadata.create_all(e_data, tables=[UserData.__table__, Favorite.__table__, SuggestLess.__table__])
+        Base.metadata.create_all(e_data, tables=[UserData.__table__, Favorite.__table__, SuggestLess.__table__, Hidden.__table__])
         
         # 2. Stats DB
         e_stats = self.get_user_stats_engine(username)

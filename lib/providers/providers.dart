@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -147,17 +148,37 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   @override
   Future<List<Song>> build() async {
     final storage = ref.watch(storageServiceProvider);
+    final userData = ref.watch(userDataProvider);
 
     // 1. Load instantly from cache
     final cached = await storage.loadSongs();
     if (cached.isNotEmpty) {
+      // De-duplicate by filename to avoid Hero tag conflicts and UI glitches
+      final seenFilenames = <String>{};
+      final uniqueCached = cached.where((s) {
+        if (seenFilenames.contains(s.filename)) return false;
+        seenFilenames.add(s.filename);
+        return true;
+      }).toList();
+
+      final filtered =
+          uniqueCached.where((s) => !userData.isHidden(s.filename)).toList();
       // Return cached immediately, then update in background
-      _backgroundScanUpdate(cached);
-      return cached;
+      _backgroundScanUpdate(uniqueCached);
+      return filtered;
     }
 
     // 2. If no cache, perform initial scan
-    return _performFullScan();
+    final scanned = await _performFullScan();
+
+    final seenFilenames = <String>{};
+    final uniqueScanned = scanned.where((s) {
+      if (seenFilenames.contains(s.filename)) return false;
+      seenFilenames.add(s.filename);
+      return true;
+    }).toList();
+
+    return uniqueScanned.where((s) => !userData.isHidden(s.filename)).toList();
   }
 
   Future<List<Song>> _performFullScan(
@@ -185,8 +206,19 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           ref.read(scanProgressProvider.notifier).state = progress;
         },
       );
-      await storage.saveSongs(songs);
-      return songs;
+
+      // De-duplicate by filename
+      final seenFilenames = <String>{};
+      final uniqueSongs = songs.where((s) {
+        if (seenFilenames.contains(s.filename)) return false;
+        seenFilenames.add(s.filename);
+        return true;
+      }).toList();
+
+      await storage.saveSongs(uniqueSongs);
+
+      // Return all songs from scan, build() will filter them
+      return uniqueSongs;
     } finally {
       if (!isBackground) {
         ref.read(isScanningProvider.notifier).state = false;
@@ -201,14 +233,19 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       final songs = await _performFullScan(
           isBackground: true, existingSongs: existingSongs);
 
+      final userData = ref.read(userDataProvider);
+      final filteredSongs =
+          songs.where((s) => !userData.isHidden(s.filename)).toList();
+
       // Only update if there are actual changes to avoid unnecessary rebuilds
       // We compare length and a few other things as a quick check
-      bool hasChanges = songs.length != existingSongs.length;
+      bool hasChanges = filteredSongs.length != (state.value?.length ?? 0);
       if (!hasChanges) {
+        final currentSongs = state.value ?? [];
         // More thorough check: compare URLs and mtimes
-        for (int i = 0; i < songs.length; i++) {
-          if (songs[i].url != existingSongs[i].url ||
-              songs[i].mtime != existingSongs[i].mtime) {
+        for (int i = 0; i < filteredSongs.length; i++) {
+          if (filteredSongs[i].url != currentSongs[i].url ||
+              filteredSongs[i].mtime != currentSongs[i].mtime) {
             hasChanges = true;
             break;
           }
@@ -217,7 +254,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
       if (hasChanges) {
         ref.read(audioPlayerManagerProvider).refreshSongs(songs);
-        state = AsyncValue.data(songs);
+        state = AsyncValue.data(filteredSongs);
       }
     } catch (e) {
       debugPrint('Background scan failed: $e');
@@ -271,7 +308,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       final songs = await _performFullScan(
           isBackground: isBackground, existingSongs: state.value);
       ref.read(audioPlayerManagerProvider).refreshSongs(songs);
-      return songs;
+
+      final userData = ref.read(userDataProvider);
+      return songs.where((s) => !userData.isHidden(s.filename)).toList();
     });
 
     if (isBackground) {
@@ -302,7 +341,24 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     state = await AsyncValue.guard<List<Song>>(() async {
       final songs = await _performFullScan(); // No existingSongs = full scan
       ref.read(audioPlayerManagerProvider).refreshSongs(songs);
-      return songs;
+      final userData = ref.read(userDataProvider);
+      return songs.where((s) => !userData.isHidden(s.filename)).toList();
+    });
+  }
+
+  Future<void> hideSong(Song song) async {
+    await ref.read(userDataProvider.notifier).toggleHidden(song.filename);
+    // state will auto-update because build() watches userDataProvider
+  }
+
+  Future<void> deleteSongFile(Song song) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(fileManagerServiceProvider).deleteSongFile(song);
+      final songs = await _performFullScan();
+      ref.read(audioPlayerManagerProvider).refreshSongs(songs);
+      final userData = ref.read(userDataProvider);
+      return songs.where((s) => !userData.isHidden(s.filename)).toList();
     });
   }
 
@@ -506,6 +562,53 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
 final songsProvider =
     AsyncNotifierProvider<SongsNotifier, List<Song>>(SongsNotifier.new);
+
+class RecommendationsNotifier extends Notifier<List<Song>> {
+  @override
+  List<Song> build() {
+    return [];
+  }
+
+  void generate(List<Song> songs, UserDataState userData) {
+    if (songs.isEmpty) {
+      state = [];
+      return;
+    }
+
+    final random = Random();
+    final recommendations = List<Song>.from(songs);
+
+    recommendations.sort((a, b) {
+      double score(Song s) {
+        // Base score from play count
+        double val = log(s.playCount + 1.5) * 2.0;
+
+        // Boost for favorites
+        if (userData.isFavorite(s.filename)) {
+          val += 5.0;
+        }
+
+        // Heavy penalty for suggest-less (but not absolute block)
+        if (userData.isSuggestLess(s.filename)) {
+          val -= 10.0;
+        }
+
+        // Add randomness
+        val += random.nextDouble() * 4.0;
+
+        return val;
+      }
+
+      return score(b).compareTo(score(a));
+    });
+
+    state = recommendations.take(10).toList();
+  }
+}
+
+final recommendationsProvider =
+    NotifierProvider<RecommendationsNotifier, List<Song>>(
+        RecommendationsNotifier.new);
 
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(() {
   return UserDataNotifier();

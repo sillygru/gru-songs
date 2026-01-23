@@ -12,7 +12,7 @@ from sqlalchemy import select, func, delete, or_
 from settings import settings
 from services import music_service
 from database_manager import db_manager
-from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, PlaySession, PlayEvent
+from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, Hidden, PlaySession, PlayEvent
 from models import StatsEntry
 
 logger = logging.getLogger("uvicorn.error")
@@ -958,6 +958,7 @@ class UserService:
     # --- Favorites ---
     
     def get_favorites(self, username: str):
+        db_manager.init_user_dbs(username)
         with Session(db_manager.get_user_data_engine(username)) as session:
             favs = session.execute(select(Favorite)).scalars().all()
             return [f.filename for f in favs]
@@ -1013,6 +1014,28 @@ class UserService:
             sl = session.execute(select(SuggestLess).where(SuggestLess.filename == song_filename)).scalar_one_or_none()
             if sl:
                 session.delete(sl)
+                session.commit()
+        return True
+
+    # --- Hidden ---
+
+    def get_hidden(self, username: str):
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            hidden = session.execute(select(Hidden)).scalars().all()
+            return [h.filename for h in hidden]
+
+    def add_hidden(self, username: str, song_filename: str):
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            if not session.execute(select(Hidden).where(Hidden.filename == song_filename)).scalar_one_or_none():
+                session.add(Hidden(filename=song_filename))
+                session.commit()
+        return True
+
+    def remove_hidden(self, username: str, song_filename: str):
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            h = session.execute(select(Hidden).where(Hidden.filename == song_filename)).scalar_one_or_none()
+            if h:
+                session.delete(h)
                 session.commit()
         return True
 

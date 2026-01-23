@@ -221,12 +221,14 @@ def get_user_data(x_username: str = Header(None)):
     # Get all user data in one call
     favorites = user_service.get_favorites(x_username)
     suggest_less = user_service.get_suggest_less(x_username)
+    hidden = user_service.get_hidden(x_username)
     shuffle_state = user_service.get_stats_summary(x_username).get("shuffle_state", {})
     theme_settings = user_service.get_theme_settings(x_username)
 
     return {
         "favorites": favorites,
         "suggestLess": suggest_less,
+        "hidden": hidden,
         "shuffleState": shuffle_state,
         "themeMode": theme_settings["theme_mode"],
         "syncTheme": theme_settings["sync_theme"]
@@ -240,6 +242,7 @@ def update_user_data(data: Dict[str, Any], x_username: str = Header(None)):
     # Update all user data in one call
     favorites = data.get("favorites", [])
     suggest_less = data.get("suggestLess", [])
+    hidden = data.get("hidden", [])
     shuffle_state = data.get("shuffleState", {})
     theme_mode = data.get("themeMode")
     sync_theme = data.get("syncTheme", False)
@@ -257,6 +260,13 @@ def update_user_data(data: Dict[str, Any], x_username: str = Header(None)):
 
     for filename in new_suggest_less - current_suggest_less:
         user_service.add_suggest_less(x_username, filename)
+
+    # MERGE hidden
+    current_hidden = set(user_service.get_hidden(x_username))
+    new_hidden = set(hidden)
+
+    for filename in new_hidden - current_hidden:
+        user_service.add_hidden(x_username, filename)
 
     # Update shuffle state
     if shuffle_state:
@@ -309,6 +319,28 @@ def remove_suggest_less(filename: str, x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
     user_service.remove_suggest_less(x_username, filename)
+    return {"status": "removed"}
+
+# --- Hidden Routes ---
+
+@app.get("/user/hidden")
+def get_hidden(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_hidden(x_username)
+
+@app.post("/user/hidden")
+def add_hidden(req: FavoriteRequest, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.add_hidden(x_username, req.song_filename)
+    return {"status": "added"}
+
+@app.delete("/user/hidden/{filename}")
+def remove_hidden(filename: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.remove_hidden(x_username, filename)
     return {"status": "removed"}
 
 # --- Renaming Routes ---

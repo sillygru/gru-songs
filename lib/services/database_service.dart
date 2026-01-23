@@ -50,6 +50,10 @@ class DatabaseService {
       _userDataDatabase =
           await _openDatabase('${username}_data.db', _userDataSchema);
 
+      // --- AUTO-MIGRATION: Ensure tables exist even if DB already exists ---
+      await _userDataDatabase!.execute(
+          'CREATE TABLE IF NOT EXISTS hidden (filename TEXT PRIMARY KEY, hidden_at REAL)');
+
       _initCompleter!.complete();
     } catch (e) {
       debugPrint('Database initialization failed: $e');
@@ -275,16 +279,66 @@ class DatabaseService {
         .delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
   }
 
+  Future<List<String>> getHidden() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    try {
+      final results = await _userDataDatabase!.query('hidden');
+      return results.map((r) => r['filename'] as String).toList();
+    } catch (e) {
+      debugPrint('Error getting hidden: $e');
+      return [];
+    }
+  }
+
+  Future<void> addHidden(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    await _userDataDatabase!.insert(
+      'hidden',
+      {
+        'filename': filename,
+        'hidden_at': DateTime.now().millisecondsSinceEpoch / 1000.0
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> removeHidden(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    await _userDataDatabase!
+        .delete('hidden', where: 'filename = ?', whereArgs: [filename]);
+  }
+
+  Future<void> setHidden(List<String> hidden) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('hidden');
+      for (final filename in hidden) {
+        await txn.insert(
+            'hidden',
+            {
+              'filename': filename,
+              'hidden_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
   /// Renames a file in all database tables.
   /// If the target filename already exists, stats are merged.
   Future<void> renameFile(String oldFilename, String newFilename) async {
     await _ensureInitialized();
     if (_statsDatabase == null || _userDataDatabase == null) return;
 
-    // 1. Update User Data DB (Favorites, SuggestLess)
+    // 1. Update User Data DB (Favorites, SuggestLess, Hidden)
     await _userDataDatabase!.transaction((txn) async {
-      // For favorites/suggestless, if target exists, we just delete the old one
-      // (effectively "merging" the fact that it is a favorite)
+      // For favorites/suggestless/hidden, if target exists, we just delete the old one
+      // (effectively "merging" the fact that it is a favorite/suggestless/hidden)
 
       // Check if new exists in favorite
       final newFav = await txn
@@ -305,6 +359,17 @@ class DatabaseService {
             where: 'filename = ?', whereArgs: [oldFilename]);
       } else {
         await txn.update('suggestless', {'filename': newFilename},
+            where: 'filename = ?', whereArgs: [oldFilename]);
+      }
+
+      // Check if new exists in hidden
+      final newHidden = await txn
+          .query('hidden', where: 'filename = ?', whereArgs: [newFilename]);
+      if (newHidden.isNotEmpty) {
+        await txn
+            .delete('hidden', where: 'filename = ?', whereArgs: [oldFilename]);
+      } else {
+        await txn.update('hidden', {'filename': newFilename},
             where: 'filename = ?', whereArgs: [oldFilename]);
       }
     });
@@ -450,6 +515,10 @@ class DatabaseService {
     CREATE TABLE IF NOT EXISTS suggestless (
       filename TEXT PRIMARY KEY,
       added_at REAL
+    );
+    CREATE TABLE IF NOT EXISTS hidden (
+      filename TEXT PRIMARY KEY,
+      hidden_at REAL
     );
   ''';
 }

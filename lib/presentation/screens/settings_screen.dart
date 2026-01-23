@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../providers/providers.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
 import 'cache_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
@@ -86,6 +87,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return const ScanningProgressBar();
     }
 
+    final settings = ref.watch(settingsProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Settings"),
@@ -102,6 +105,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 title: 'App Theme',
                 subtitle: 'Choose your visual style',
                 onTap: () => _showThemeSelector(context),
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.waves_rounded),
+                title: const Text('Audio Visualizer'),
+                subtitle: const Text('Show animated wave while playing'),
+                value: settings.visualizerEnabled,
+                onChanged: (val) {
+                  ref.read(settingsProvider.notifier).setVisualizerEnabled(val);
+                },
               ),
               FutureBuilder<bool>(
                 future: ref.read(storageServiceProvider).getIsLocalMode(),

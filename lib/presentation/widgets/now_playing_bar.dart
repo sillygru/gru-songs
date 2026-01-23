@@ -6,7 +6,9 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'gru_image.dart';
 import '../../providers/providers.dart';
+import '../../providers/settings_provider.dart';
 import '../screens/player_screen.dart';
+import 'audio_visualizer.dart';
 
 class NowPlayingBar extends ConsumerWidget {
   const NowPlayingBar({super.key});
@@ -14,6 +16,7 @@ class NowPlayingBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(audioPlayerManagerProvider).player;
+    final settings = ref.watch(settingsProvider);
     final isDesktop =
         !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
     final isIPad = !kIsWeb &&
@@ -85,14 +88,50 @@ class NowPlayingBar extends ConsumerWidget {
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  child: GruImage(
-                                    key: ValueKey(
-                                        'now_playing_art_${metadata.id}'),
-                                    url: metadata.artUri?.toString() ?? '',
-                                    width: 44,
-                                    height: 44,
-                                    fit: BoxFit.cover,
-                                    errorWidget: const Icon(Icons.music_note),
+                                  child: Stack(
+                                    children: [
+                                      GruImage(
+                                        key: ValueKey(
+                                            'now_playing_art_${metadata.id}'),
+                                        url: metadata.artUri?.toString() ?? '',
+                                        width: 44,
+                                        height: 44,
+                                        fit: BoxFit.cover,
+                                        errorWidget:
+                                            const Icon(Icons.music_note),
+                                      ),
+                                      StreamBuilder<PlayerState>(
+                                        stream: player.playerStateStream,
+                                        builder: (context, snapshot) {
+                                          final playing =
+                                              snapshot.data?.playing ?? false;
+                                          if (!playing) {
+                                            return const SizedBox.shrink();
+                                          }
+
+                                          return Positioned.fill(
+                                            child: Container(
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.3),
+                                              child: Center(
+                                                child:
+                                                    settings.visualizerEnabled
+                                                        ? const AudioVisualizer(
+                                                            width: 20,
+                                                            height: 20,
+                                                            color: Colors.white,
+                                                            isPlaying: true,
+                                                          )
+                                                        : const Icon(
+                                                            Icons.graphic_eq,
+                                                            color: Colors.white,
+                                                            size: 18),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),

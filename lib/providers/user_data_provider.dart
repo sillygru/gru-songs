@@ -11,11 +11,13 @@ import '../services/storage_service.dart';
 class UserDataState {
   final List<String> favorites;
   final List<String> suggestLess;
+  final List<String> hidden;
   final bool isLoading;
 
   UserDataState({
     this.favorites = const [],
     this.suggestLess = const [],
+    this.hidden = const [],
     this.isLoading = false,
   });
 
@@ -37,14 +39,25 @@ class UserDataState {
     return false;
   }
 
+  bool isHidden(String filename) {
+    final searchBasename = p.basename(filename).toLowerCase();
+    for (final h in hidden) {
+      if (h.toLowerCase() == filename.toLowerCase()) return true;
+      if (p.basename(h).toLowerCase() == searchBasename) return true;
+    }
+    return false;
+  }
+
   UserDataState copyWith({
     List<String>? favorites,
     List<String>? suggestLess,
+    List<String>? hidden,
     bool? isLoading,
   }) {
     return UserDataState(
       favorites: favorites ?? this.favorites,
       suggestLess: suggestLess ?? this.suggestLess,
+      hidden: hidden ?? this.hidden,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -91,10 +104,12 @@ class UserDataNotifier extends Notifier<UserDataState> {
     try {
       final localFavs = await DatabaseService.instance.getFavorites();
       final localSL = await DatabaseService.instance.getSuggestLess();
+      final localHidden = await DatabaseService.instance.getHidden();
 
       state = state.copyWith(
         favorites: localFavs,
         suggestLess: localSL,
+        hidden: localHidden,
         isLoading: false,
       );
       _updateManager();
@@ -117,6 +132,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     ref.read(audioPlayerManagerProvider).setUserData(
           favorites: state.favorites,
           suggestLess: state.suggestLess,
+          hidden: state.hidden,
         );
   }
 
@@ -143,11 +159,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
           Set<String>.from(await DatabaseService.instance.getFavorites());
       final localSL =
           Set<String>.from(await DatabaseService.instance.getSuggestLess());
+      final localHidden =
+          Set<String>.from(await DatabaseService.instance.getHidden());
 
       // 2. Fetch server state (source of truth)
       final serverData = await service.getUserData(_username!);
       final serverFavs = Set<String>.from(serverData['favorites'] ?? []);
       final serverSL = Set<String>.from(serverData['suggestLess'] ?? []);
+      final serverHidden = Set<String>.from(serverData['hidden'] ?? []);
 
       // Theme Sync Logic
       final localThemeState = ref.read(themeProvider);
@@ -193,11 +212,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
           'Sync: Server has ${serverFavs.length} favorites, local has ${localFavs.length}');
       debugPrint(
           'Sync: Server has ${serverSL.length} suggestLess, local has ${localSL.length}');
+      debugPrint(
+          'Sync: Server has ${serverHidden.length} hidden, local has ${localHidden.length}');
 
       // 3. Find local-only additions (items in local but not in server)
       //    These need to be pushed TO the server
       final localOnlyFavs = localFavs.difference(serverFavs);
       final localOnlySL = localSL.difference(serverSL);
+      final localOnlyHidden = localHidden.difference(serverHidden);
 
       // 4. Push local additions to server via individual API calls
       for (final filename in localOnlyFavs) {
@@ -218,13 +240,24 @@ class UserDataNotifier extends Notifier<UserDataState> {
         }
       }
 
+      for (final filename in localOnlyHidden) {
+        try {
+          await service.addHidden(_username!, filename);
+          debugPrint('Sync: Pushed local hidden to server: $filename');
+        } catch (e) {
+          debugPrint('Sync: Failed to push hidden $filename: $e');
+        }
+      }
+
       // 5. Merge: Final state = Server state + Local additions
       final mergedFavs = serverFavs.union(localOnlyFavs).toList();
       final mergedSL = serverSL.union(localOnlySL).toList();
+      final mergedHidden = serverHidden.union(localOnlyHidden).toList();
 
       // 6. Update local cache with merged state
       await DatabaseService.instance.setFavorites(mergedFavs);
       await DatabaseService.instance.setSuggestLess(mergedSL);
+      await DatabaseService.instance.setHidden(mergedHidden);
 
       // 7. Download stats DB for local viewing (read-only sync)
       await DatabaseService.instance.downloadStatsFromServer(_username!);
@@ -234,13 +267,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
       state = state.copyWith(
         favorites: mergedFavs,
         suggestLess: mergedSL,
+        hidden: mergedHidden,
         isLoading: false,
       );
       _updateManager();
 
       syncNotifier.updateTask('userData', SyncStatus.upToDate);
       debugPrint(
-          'Sync complete: ${mergedFavs.length} favorites, ${mergedSL.length} suggestLess');
+          'Sync complete: ${mergedFavs.length} favorites, ${mergedSL.length} suggestLess, ${mergedHidden.length} hidden');
     } catch (e) {
       debugPrint('Sync with server failed: $e');
       syncNotifier.setError();
@@ -374,6 +408,54 @@ class UserDataNotifier extends Notifier<UserDataState> {
       } else {
         await service.addSuggestLess(_username!, songFilename);
         debugPrint('Added suggestLess to server: $songFilename');
+      }
+    } catch (e) {
+      debugPrint('Server API call failed (offline?): $e');
+    }
+  }
+
+  /// Toggle hidden with proper sync
+  Future<void> toggleHidden(String songFilename) async {
+    if (_username == null) return;
+
+    final service = ref.read(userDataServiceProvider);
+    final isHidden = state.isHidden(songFilename);
+
+    // Find actual match
+    String actualFilename = songFilename;
+    if (isHidden) {
+      actualFilename = state.hidden.firstWhere(
+        (h) =>
+            h.toLowerCase() == songFilename.toLowerCase() ||
+            p.basename(h).toLowerCase() ==
+                p.basename(songFilename).toLowerCase(),
+        orElse: () => songFilename,
+      );
+    }
+
+    // 1. Optimistic local update
+    final newHidden = List<String>.from(state.hidden);
+
+    if (isHidden) {
+      newHidden.remove(actualFilename);
+      await DatabaseService.instance.removeHidden(actualFilename);
+    } else {
+      newHidden.add(songFilename);
+      await DatabaseService.instance.addHidden(songFilename);
+    }
+
+    state = state.copyWith(hidden: newHidden);
+    _updateManager();
+
+    // 2. Call server API
+    if (await StorageService().getIsLocalMode()) return;
+    try {
+      if (isHidden) {
+        await service.removeHidden(_username!, actualFilename);
+        debugPrint('Removed hidden from server: $actualFilename');
+      } else {
+        await service.addHidden(_username!, songFilename);
+        debugPrint('Added hidden to server: $songFilename');
       }
     } catch (e) {
       debugPrint('Server API call failed (offline?): $e');

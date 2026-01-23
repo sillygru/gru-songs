@@ -251,6 +251,94 @@ void showSongOptionsMenu(
                     Navigator.pop(sheetContext);
                   },
                 ),
+                if (song != null)
+                  ListTile(
+                    leading:
+                        const Icon(Icons.delete_outline, color: Colors.red),
+                    title: const Text("Delete",
+                        style: TextStyle(color: Colors.red)),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+
+                      final String? action = await showDialog<String>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text("Delete Song"),
+                          content: const Text(
+                              "Choose whether to just hide this song from your library or delete the physical file from your device."),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, "hide"),
+                              child: const Text("Remove from library"),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, "delete"),
+                              style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red),
+                              child: const Text("Delete file"),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (action == "hide") {
+                        await ref.read(songsProvider.notifier).hideSong(song);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content:
+                                    Text("Removed ${song.title} from library")),
+                          );
+                        }
+                      } else if (action == "delete") {
+                        if (!context.mounted) return;
+                        final bool confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text("Confirm Delete"),
+                                content: Text(
+                                    "Are you sure you want to permanently delete '${song.title}' from your device? This cannot be undone."),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text("Cancel"),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    style: TextButton.styleFrom(
+                                        foregroundColor: Colors.red),
+                                    child: const Text("Delete Permanently"),
+                                  ),
+                                ],
+                              ),
+                            ) ??
+                            false;
+
+                        if (confirm) {
+                          try {
+                            await ref
+                                .read(songsProvider.notifier)
+                                .deleteSongFile(song);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text("Deleted ${song.title}")),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text("Error deleting file: $e")),
+                              );
+                            }
+                          }
+                        }
+                      }
+                    },
+                  ),
               ],
             ),
           );

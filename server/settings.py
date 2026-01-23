@@ -2,12 +2,8 @@ import os
 from dotenv import load_dotenv
 from config_manager import config_manager
 
-# Skip loading .env if we're in testing mode to avoid server-specific paths
-if os.getenv("GRUSONGS_TESTING") != "true":
-    load_dotenv()
-
 class Settings:
-    VERSION: str = "3.3.1"
+    VERSION: str = "3.4.0"
 
     @property
     def BASE_DIR(self) -> str:

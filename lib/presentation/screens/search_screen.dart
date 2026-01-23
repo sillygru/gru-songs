@@ -137,6 +137,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     return SongListItem(
                       song: song,
                       isPlaying: isPlaying,
+                      heroTagPrefix: 'search',
                       onTap: () {
                         audioManager.playSong(song,
                             contextQueue: filteredSongs);

@@ -36,6 +36,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // User data for weighting (Fallback / Offline)
   List<String> _favorites = [];
   List<String> _suggestLess = [];
+  List<String> _hidden = [];
 
   // Shuffle state
   ShuffleState _shuffleState = const ShuffleState();
@@ -86,9 +87,22 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return false;
   }
 
-  void setUserData({List<String>? favorites, List<String>? suggestLess}) {
+  bool _isHidden(String filename) {
+    if (_hidden.contains(filename)) return true;
+    final searchBasename = p.basename(filename);
+    for (final h in _hidden) {
+      if (p.basename(h) == searchBasename) return true;
+    }
+    return false;
+  }
+
+  void setUserData(
+      {List<String>? favorites,
+      List<String>? suggestLess,
+      List<String>? hidden}) {
     if (favorites != null) _favorites = favorites;
     if (suggestLess != null) _suggestLess = suggestLess;
+    if (hidden != null) _hidden = hidden;
   }
 
   Future<void> updateShuffleConfig(ShuffleConfig config) async {
@@ -602,8 +616,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void refreshSongs(List<Song> newSongs) {
-    _allSongs = newSongs;
-    _songMap = {for (var s in newSongs) s.filename: s};
+    _allSongs = newSongs.where((s) => !_isHidden(s.filename)).toList();
+    _songMap = {for (var s in _allSongs) s.filename: s};
 
     // Check if current song was renamed (filename changed) or moved
     final currentIdx = _player.currentIndex;

@@ -537,12 +537,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                                                           .easeOutQuart,
                                                                       width: double
                                                                           .infinity,
-                                                                      padding: EdgeInsets.symmetric(
+                                                                      padding: const EdgeInsets
+                                                                          .symmetric(
                                                                           horizontal:
                                                                               24,
-                                                                          vertical: isCurrent
-                                                                              ? 28
-                                                                              : 16),
+                                                                          vertical:
+                                                                              20),
                                                                       child:
                                                                           AnimatedDefaultTextStyle(
                                                                         duration:
@@ -553,20 +553,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                                                             TextAlign.center,
                                                                         style:
                                                                             TextStyle(
-                                                                          fontSize: isCurrent
-                                                                              ? 30
-                                                                              : 22,
+                                                                          fontSize:
+                                                                              26,
                                                                           fontWeight: isCurrent
                                                                               ? FontWeight.bold
-                                                                              : FontWeight.w600,
+                                                                              : FontWeight.w500,
                                                                           color: isCurrent
                                                                               ? Colors.white
                                                                               : Colors.white.withValues(alpha: 0.3),
                                                                           height:
                                                                               1.3,
-                                                                          letterSpacing: isCurrent
-                                                                              ? -0.5
-                                                                              : -0.2,
+                                                                          letterSpacing:
+                                                                              -0.3,
                                                                         ),
                                                                         child: Text(
                                                                             _lyrics![index].text),

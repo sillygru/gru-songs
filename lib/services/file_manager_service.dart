@@ -114,6 +114,17 @@ class FileManagerService {
     debugPrint("Successfully renamed ${song.filename} to $newFilename");
   }
 
+  /// Deletes a song file from the filesystem.
+  Future<void> deleteSongFile(Song song) async {
+    final file = File(song.url);
+    if (await file.exists()) {
+      await file.delete();
+      debugPrint("Deleted file: ${song.url}");
+    } else {
+      throw Exception("File does not exist: ${song.url}");
+    }
+  }
+
   /// Checks for renames performed on other devices and applies them locally.
   Future<void> syncRenamesFromServer(String rootPath) async {
     if (await StorageService().getIsLocalMode()) return;

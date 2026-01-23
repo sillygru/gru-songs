@@ -21,7 +21,9 @@ class SongListScreen extends ConsumerWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar.large(
+          SliverAppBar(
+            floating: true,
+            snap: true,
             title: Text(title,
                 style: const TextStyle(fontWeight: FontWeight.w900)),
             actions: [
@@ -63,6 +65,7 @@ class SongListScreen extends ConsumerWidget {
                   return SongListItem(
                     song: song,
                     isPlaying: isPlaying,
+                    heroTagPrefix: 'song_list_$title',
                     onTap: () {
                       audioManager.playSong(song, contextQueue: songs);
                     },

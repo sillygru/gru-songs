@@ -123,4 +123,36 @@ class UserDataService {
       headers: _getHeaders(username),
     );
   }
+
+  // --- Hidden ---
+
+  Future<List<String>> getHidden(String username) async {
+    if (ApiService.baseUrl.isEmpty) return [];
+    final response = await _client.get(
+      Uri.parse('${ApiService.baseUrl}/user/hidden'),
+      headers: _getHeaders(username),
+    );
+
+    if (response.statusCode == 200) {
+      return List<String>.from(jsonDecode(response.body));
+    }
+    return [];
+  }
+
+  Future<void> addHidden(String username, String songFilename) async {
+    if (ApiService.baseUrl.isEmpty) return;
+    await _client.post(
+      Uri.parse('${ApiService.baseUrl}/user/hidden'),
+      headers: _getHeaders(username),
+      body: jsonEncode({'song_filename': songFilename}),
+    );
+  }
+
+  Future<void> removeHidden(String username, String songFilename) async {
+    if (ApiService.baseUrl.isEmpty) return;
+    await _client.delete(
+      Uri.parse('${ApiService.baseUrl}/user/hidden/$songFilename'),
+      headers: _getHeaders(username),
+    );
+  }
 }
