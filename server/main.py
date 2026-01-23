@@ -125,8 +125,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Custom stream route removed as server is now offline-first for media
-
 # --- Background Task for Stats Flushing ---
 
 async def periodic_flush():

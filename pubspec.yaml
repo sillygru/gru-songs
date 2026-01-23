@@ -1,7 +1,7 @@
 name: gru_songs
 description: "A high-performance music streaming app built with Flutter."
 publish_to: 'none'
-version: 3.2.1+1
+version: 3.3.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -14,13 +14,13 @@ dependencies:
   just_audio_background: ^0.0.1-beta.16
   audio_session: ^0.2.2
   http: ^1.2.1
-  cached_network_image: ^3.2.1
+  cached_network_image: ^3.3.0
   rxdart: ^0.28.0
   audio_video_progress_bar: ^2.0.1
   flutter_riverpod: ^3.1.0
   equatable: ^2.0.8
   shared_preferences: ^2.2.2
-  flutter_cache_manager: ^3.2.1
+  flutter_cache_manager: ^3.3.0
   path_provider: ^2.1.1
   intl: ^0.20.2
   uuid: ^4.3.3

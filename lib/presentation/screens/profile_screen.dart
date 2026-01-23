@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
-import 'cache_management_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/providers.dart';
-import '../../providers/theme_provider.dart';
-import '../../theme/app_theme.dart';
 import '../../models/shuffle_config.dart';
 import '../widgets/fun_stats_view.dart';
+import '../widgets/scanning_progress_bar.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -21,31 +19,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _newUsernameController = TextEditingController();
-
-  Future<void> _selectMusicFolder() async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory != null) {
-      final storage = ref.read(storageServiceProvider);
-      await storage.setMusicFolderPath(selectedDirectory);
-      ref.invalidate(songsProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Music folder updated")));
-      }
-    }
-  }
-
-  Future<void> _selectLyricsFolder() async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory != null) {
-      final storage = ref.read(storageServiceProvider);
-      await storage.setLyricsFolderPath(selectedDirectory);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Lyrics folder updated")));
-      }
-    }
-  }
 
   void _showChangeUsernameDialog() {
     showDialog(
@@ -153,52 +126,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  void _showThemeSelector(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Consumer(builder: (context, ref, child) {
-          final currentTheme = ref.watch(themeProvider);
-          return AlertDialog(
-            title: const Text("Select Theme"),
-            content: RadioGroup<GruThemeMode>(
-              groupValue: currentTheme.mode,
-              onChanged: (val) {
-                if (val != null) {
-                  ref.read(themeProvider.notifier).setTheme(val);
-                  Navigator.pop(context);
-                }
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var theme in GruThemeMode.values)
-                    RadioListTile<GruThemeMode>(
-                      title:
-                          Text(theme.toString().split('.').last.toUpperCase()),
-                      value: theme,
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Close"),
-              ),
-            ],
-          );
-        });
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (ref.watch(isScanningProvider)) {
+      return const ScanningProgressBar();
+    }
+
     final authState = ref.watch(authProvider);
     final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
-    // Use ValueListenableBuilder to listen to shuffle state changes from manager
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
@@ -337,36 +273,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         }),
                     const SizedBox(height: 24),
 
-                    _buildSectionTitle('Appearance'),
-                    _buildListTile(
-                      icon: Icons.palette_outlined,
-                      title: 'App Theme',
-                      subtitle: 'Choose your visual style',
-                      onTap: () => _showThemeSelector(context),
-                    ),
-                    FutureBuilder<bool>(
-                      future: ref.read(storageServiceProvider).getIsLocalMode(),
-                      builder: (context, snapshot) {
-                        final isLocalMode = snapshot.data ?? false;
-                        if (isLocalMode) return const SizedBox.shrink();
-
-                        final themeState = ref.watch(themeProvider);
-                        return SwitchListTile(
-                          secondary: const Icon(Icons.sync_rounded),
-                          title: const Text('Sync Theme'),
-                          subtitle: const Text(
-                              'Sync your visual style across devices'),
-                          value: themeState.syncTheme,
-                          onChanged: (val) {
-                            ref.read(themeProvider.notifier).setSyncTheme(val);
-                            // Trigger a sync refresh to push the change
-                            ref.read(userDataProvider.notifier).refresh();
-                          },
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 24),
-
                     _buildSectionTitle('Account'),
                     _buildListTile(
                       icon: Icons.person_outline,
@@ -380,41 +286,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       onTap: _showChangePasswordDialog,
                     ),
                     const SizedBox(height: 24),
-                    _buildSectionTitle('Storage & Folders'),
-                    FutureBuilder<String?>(
-                        future: ref
-                            .read(storageServiceProvider)
-                            .getMusicFolderPath(),
-                        builder: (context, snapshot) {
-                          return _buildListTile(
-                            icon: Icons.library_music_outlined,
-                            title: 'Music Folder',
-                            subtitle: snapshot.data ?? 'Not selected',
-                            onTap: _selectMusicFolder,
-                          );
-                        }),
-                    FutureBuilder<String?>(
-                        future: ref
-                            .read(storageServiceProvider)
-                            .getLyricsFolderPath(),
-                        builder: (context, snapshot) {
-                          return _buildListTile(
-                            icon: Icons.lyrics_outlined,
-                            title: 'Lyrics Folder',
-                            subtitle:
-                                snapshot.data ?? 'Not selected (Optional)',
-                            onTap: _selectLyricsFolder,
-                          );
-                        }),
+                    _buildSectionTitle('App'),
                     _buildListTile(
-                      icon: Icons.storage_outlined,
-                      title: 'Manage Cache',
-                      subtitle: 'Internal app cache management',
+                      icon: Icons.settings,
+                      title: 'Settings',
+                      subtitle: 'Theme, Storage, Cache & Sync',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) => const CacheManagementScreen()),
+                              builder: (_) => const SettingsScreen()),
                         );
                       },
                     ),
@@ -428,7 +309,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       onTap: () async {
                         final storage = ref.read(storageServiceProvider);
                         await storage.setSetupComplete(false);
-                        // Also clear the server URL to prevent accidental syncs
                         await storage.setServerUrl("");
                         ref.read(setupProvider.notifier).setComplete(false);
                         await ref.read(authProvider.notifier).logout();
@@ -436,7 +316,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v3.2.1",
+                      "Gru Songs v3.3.0",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,

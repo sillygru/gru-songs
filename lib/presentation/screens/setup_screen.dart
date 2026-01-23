@@ -78,14 +78,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 8),
-        Text(
-          'High-performance music streaming',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-          textAlign: TextAlign.center,
-        ),
         const SizedBox(height: 48),
         _buildModeCard(
           title: 'Local Experience',

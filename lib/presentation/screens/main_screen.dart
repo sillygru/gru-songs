@@ -12,22 +12,32 @@ class SyncIndicator extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final syncState = ref.watch(syncProvider);
+    final isScanning = ref.watch(isScanningProvider);
 
     return FutureBuilder<bool>(
       future: ref.read(storageServiceProvider).getIsLocalMode(),
       builder: (context, snapshot) {
         final isLocalMode = snapshot.data ?? false;
-        if (isLocalMode) return const SizedBox.shrink();
-
-        if (syncState.status == SyncStatus.upToDate && !syncState.hasError) {
+        if (isLocalMode && !isScanning) return const SizedBox.shrink();
+        if (syncState.status == SyncStatus.upToDate &&
+            !syncState.hasError &&
+            !isScanning) {
           return const SizedBox.shrink();
         }
 
         Color bgColor = Colors.blue;
         String text = "Syncing...";
         IconData icon = Icons.sync;
+        bool showSpinner = false;
 
-        if (syncState.status == SyncStatus.offline || syncState.hasError) {
+        if (isScanning) {
+        }
+
+        if (syncState.status == SyncStatus.syncing) {
+          showSpinner = true;
+          text = "Syncing with server...";
+        } else if (syncState.status == SyncStatus.offline ||
+            syncState.hasError) {
           bgColor = Colors.orange.shade900;
           text = "Offline - Using Cached Data";
           icon = Icons.cloud_off;
@@ -35,6 +45,12 @@ class SyncIndicator extends ConsumerWidget {
           bgColor = Colors.blueGrey.shade700;
           text = "Using Cached Data";
           icon = Icons.storage;
+        }
+
+        if (!showSpinner &&
+            syncState.status == SyncStatus.upToDate &&
+            !syncState.hasError) {
+          return const SizedBox.shrink();
         }
 
         return SafeArea(
@@ -52,7 +68,7 @@ class SyncIndicator extends ConsumerWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (syncState.status == SyncStatus.syncing)
+                      if (showSpinner)
                         const SizedBox(
                           width: 14,
                           height: 14,

@@ -7,7 +7,7 @@ def clear_screen():
 
 def print_header():
     print("=" * 60)
-    print("      GRU SONGS SERVER - FIRST TIME SETUP WIZARD (v3.2.1)      ")
+    print("      GRU SONGS SERVER - FIRST TIME SETUP WIZARD (v3.3.0)      ")
     print("=" * 60)
     print()
 

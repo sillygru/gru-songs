@@ -19,7 +19,9 @@ class ScannerService {
   ];
 
   Future<List<Song>> scanDirectory(String path,
-      {String? lyricsPath, Map<String, int>? playCounts}) async {
+      {String? lyricsPath,
+      Map<String, int>? playCounts,
+      void Function(double progress)? onProgress}) async {
     // Request permissions before accessing storage
     if (Platform.isAndroid) {
       // Request all relevant storage permissions
@@ -64,10 +66,15 @@ class ScannerService {
       // But since metadata reading is CPU bound and sync, we process carefully
       final List<Song> songs = [];
 
-      for (var file in audioFiles) {
+      for (int i = 0; i < audioFiles.length; i++) {
+        final file = audioFiles[i];
         final song = await _processSingleFile(
             file, coversDir, folderCoverCache, lyricsPath, effectivePlayCounts);
         songs.add(song);
+
+        if (onProgress != null) {
+          onProgress((i + 1) / audioFiles.length);
+        }
       }
 
       return songs;

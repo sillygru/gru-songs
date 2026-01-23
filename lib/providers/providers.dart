@@ -75,6 +75,25 @@ class SyncNotifier extends Notifier<SyncState> {
 final syncProvider =
     NotifierProvider<SyncNotifier, SyncState>(SyncNotifier.new);
 
+class ScanProgressNotifier extends Notifier<double> {
+  @override
+  double build() => 0.0;
+  @override
+  set state(double value) => super.state = value;
+}
+
+class IsScanningNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+  @override
+  set state(bool value) => super.state = value;
+}
+
+final scanProgressProvider =
+    NotifierProvider<ScanProgressNotifier, double>(ScanProgressNotifier.new);
+final isScanningProvider =
+    NotifierProvider<IsScanningNotifier, bool>(IsScanningNotifier.new);
+
 // Services & Repositories
 final apiServiceProvider = Provider<ApiService>((ref) {
   final apiService = ApiService();
@@ -150,10 +169,23 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     if (musicPath == null || musicPath.isEmpty) return [];
 
-    final songs =
-        await scanner.scanDirectory(musicPath, lyricsPath: lyricsPath);
-    await storage.saveSongs(songs);
-    return songs;
+    ref.read(isScanningProvider.notifier).state = true;
+    ref.read(scanProgressProvider.notifier).state = 0.0;
+
+    try {
+      final songs = await scanner.scanDirectory(
+        musicPath,
+        lyricsPath: lyricsPath,
+        onProgress: (progress) {
+          ref.read(scanProgressProvider.notifier).state = progress;
+        },
+      );
+      await storage.saveSongs(songs);
+      return songs;
+    } finally {
+      ref.read(isScanningProvider.notifier).state = false;
+      ref.read(scanProgressProvider.notifier).state = 0.0;
+    }
   }
 
   Future<void> _backgroundScanUpdate() async {
@@ -167,10 +199,13 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   }
 
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
+    final storage = ref.read(storageServiceProvider);
+    final pullEnabled = await storage.getPullToRefreshEnabled();
+    if (!pullEnabled) return;
+
     state = await AsyncValue.guard(() async {
-      final storage = ref.read(storageServiceProvider);
       final isLocalMode = await storage.getIsLocalMode();
+      final serverMode = await storage.getServerRefreshMode();
 
       if (!isLocalMode) {
         // Force a full bidirectional sync of stats, data, and settings
@@ -186,6 +221,12 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             }
           }
         }
+
+        // If server mode is sync_only, we don't scan for songs unless explicitly asked
+        // but wait, the default for server mode is sync_only, so we should return current songs?
+        if (serverMode == 'sync_only') {
+          return state.value ?? [];
+        }
       } else {
         if (kDebugMode) {
           debugPrint('Local mode: Skipping server sync');
@@ -199,6 +240,14 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             .syncRenamesFromServer(musicPath);
       }
 
+      final songs = await _performFullScan();
+      ref.read(audioPlayerManagerProvider).refreshSongs(songs);
+      return songs;
+    });
+  }
+
+  Future<void> forceFullScan() async {
+    state = await AsyncValue.guard(() async {
       final songs = await _performFullScan();
       ref.read(audioPlayerManagerProvider).refreshSongs(songs);
       return songs;

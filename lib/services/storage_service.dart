@@ -12,6 +12,8 @@ class StorageService {
   static const String _isSetupCompleteKey = 'is_setup_complete_v2';
   static const String _isLocalModeKey = 'is_local_mode';
   static const String _localUsernameKey = 'local_username';
+  static const String _pullToRefreshEnabledKey = 'pull_to_refresh_enabled';
+  static const String _serverRefreshModeKey = 'server_refresh_mode';
 
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -120,6 +122,26 @@ class StorageService {
   Future<void> setLocalUsername(String username) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_localUsernameKey, username);
+  }
+
+  Future<bool> getPullToRefreshEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_pullToRefreshEnabledKey) ?? true;
+  }
+
+  Future<void> setPullToRefreshEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_pullToRefreshEnabledKey, value);
+  }
+
+  Future<String> getServerRefreshMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_serverRefreshModeKey) ?? 'sync_only';
+  }
+
+  Future<void> setServerRefreshMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_serverRefreshModeKey, mode);
   }
 
   Future<void> saveSongs(List<Song> songs) async {

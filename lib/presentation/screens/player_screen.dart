@@ -671,7 +671,35 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                         children: [
                           // Lyrics
                           IconButton(
-                            icon: const Icon(Icons.lyrics_outlined),
+                            icon: metadata?.extras?['lyricsUrl'] != null
+                                ? const Icon(Icons.lyrics_outlined)
+                                : Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      const Icon(Icons.lyrics_outlined,
+                                          color: Colors.white24),
+                                      Transform.rotate(
+                                        angle: 0.8,
+                                        child: Container(
+                                          width: 2.5,
+                                          height: 24,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white60,
+                                            borderRadius:
+                                                BorderRadius.circular(1),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Theme.of(context)
+                                                    .scaffoldBackgroundColor,
+                                                blurRadius: 0,
+                                                spreadRadius: 1,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                             color: _showLyrics
                                 ? Theme.of(context).colorScheme.primary
                                 : Colors.white60,
