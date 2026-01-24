@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:just_audio/just_audio.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
@@ -87,22 +88,33 @@ class SongListItem extends ConsumerWidget {
                     ),
                     if (isPlaying)
                       Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: settings.visualizerEnabled
-                                ? const AudioVisualizer(
-                                    color: Colors.white,
-                                    width: 24,
-                                    height: 24,
-                                    isPlaying: true,
-                                  )
-                                : const Icon(Icons.graphic_eq,
-                                    color: Colors.white, size: 24),
-                          ),
+                        child: StreamBuilder<PlayerState>(
+                          stream: ref
+                              .read(audioPlayerManagerProvider)
+                              .player
+                              .playerStateStream,
+                          builder: (context, snapshot) {
+                            final playing = snapshot.data?.playing ?? false;
+                            if (!playing) return const SizedBox.shrink();
+
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: settings.visualizerEnabled
+                                    ? const AudioVisualizer(
+                                        color: Colors.white,
+                                        width: 24,
+                                        height: 24,
+                                        isPlaying: true,
+                                      )
+                                    : const Icon(Icons.graphic_eq,
+                                        color: Colors.white, size: 24),
+                              ),
+                            );
+                          },
                         ),
                       ),
                   ],

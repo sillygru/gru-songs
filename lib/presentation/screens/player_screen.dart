@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
@@ -12,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/next_up_sheet.dart';
+import 'song_list_screen.dart';
 
 class PositionData {
   final Duration position;
@@ -38,12 +40,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   final ScrollController _lyricsScrollController = ScrollController();
   final GlobalKey _lyricsContainerKey = GlobalKey();
   int _currentLyricIndex = -1;
+  late TapGestureRecognizer _artistRecognizer;
+  late TapGestureRecognizer _albumRecognizer;
 
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
 
   @override
   void initState() {
     super.initState();
+    _artistRecognizer = TapGestureRecognizer();
+    _albumRecognizer = TapGestureRecognizer();
     player.sequenceStateStream.listen((state) {
       final tag = state.currentSource?.tag;
       final String? songId = tag is MediaItem ? tag.id : null;
@@ -153,6 +159,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void dispose() {
     _lyricsScrollController.dispose();
+    _artistRecognizer.dispose();
+    _albumRecognizer.dispose();
     super.dispose();
   }
 
@@ -257,6 +265,52 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         );
       },
     );
+  }
+
+  void _navigateToArtist(String artist) {
+    final allSongs = ref.read(songsProvider).value ?? [];
+    final artistSongs = allSongs.where((s) {
+      final songArtist = s.artist.isEmpty ? 'Unknown Artist' : s.artist;
+      return songArtist == artist;
+    }).toList();
+
+    if (artistSongs.isNotEmpty) {
+      // Close player screen first
+      Navigator.pop(context);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SongListScreen(
+            title: artist,
+            songs: artistSongs,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _navigateToAlbum(String album) {
+    final allSongs = ref.read(songsProvider).value ?? [];
+    final albumSongs = allSongs.where((s) {
+      final songAlbum = s.album.isEmpty ? 'Unknown Album' : s.album;
+      return songAlbum == album;
+    }).toList();
+
+    if (albumSongs.isNotEmpty) {
+      // Close player screen first
+      Navigator.pop(context);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SongListScreen(
+            title: album,
+            songs: albumSongs,
+          ),
+        ),
+      );
+    }
   }
 
   Stream<PositionData> get _positionDataStream =>
@@ -596,19 +650,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          '${metadata.artist ?? 'Unknown Artist'} • ${metadata.album ?? 'Unknown Album'}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant
-                                .withValues(alpha: 0.7),
-                          ),
+                        RichText(
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              fontFamily: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.fontFamily,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.7),
+                            ),
+                            children: [
+                              TextSpan(
+                                text: metadata.artist ?? 'Unknown Artist',
+                                recognizer: _artistRecognizer
+                                  ..onTap = () => _navigateToArtist(
+                                      metadata.artist ?? 'Unknown Artist'),
+                              ),
+                              const TextSpan(text: ' • '),
+                              TextSpan(
+                                text: metadata.album ?? 'Unknown Album',
+                                recognizer: _albumRecognizer
+                                  ..onTap = () => _navigateToAlbum(
+                                      metadata.album ?? 'Unknown Album'),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                       const SizedBox(height: 32),

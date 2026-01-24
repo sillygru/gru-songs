@@ -19,7 +19,7 @@ def update_version():
     new_comma = new_version.replace('.', ',')
 
     exclude_dirs = {'.git', '.dart_tool', 'build', 'ios/Pods', 'macos/Pods', '.pytest_cache', '__pycache__', '.gradle', 'backups', 'users', 'ephemeral'}
-    exclude_files = {'pubspec.lock', 'update_version.py', '.metadata'}
+    exclude_files = {'pubspec.lock', 'update_version.py', '.metadata', 'pubspec.yaml'}
 
     updated_count = 0
 
