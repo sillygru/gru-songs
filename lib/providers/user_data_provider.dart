@@ -73,6 +73,8 @@ class UserDataState {
 class UserDataNotifier extends Notifier<UserDataState> {
   String? _username;
   bool _initialized = false;
+  bool _isSyncing = false;
+  DateTime? _lastSyncTime;
 
   @override
   UserDataState build() {
@@ -148,11 +150,18 @@ class UserDataNotifier extends Notifier<UserDataState> {
       return;
     }
 
+    if (_isSyncing) {
+      debugPrint('UserData sync already in progress, skipping');
+      return;
+    }
+
     final syncNotifier = ref.read(syncProvider.notifier);
     final service = ref.read(userDataServiceProvider);
 
     try {
+      _isSyncing = true;
       syncNotifier.updateTask('userData', SyncStatus.syncing);
+      _lastSyncTime = DateTime.now();
 
       // 1. Get current local state BEFORE fetching server
       final localFavs =
@@ -278,13 +287,26 @@ class UserDataNotifier extends Notifier<UserDataState> {
     } catch (e) {
       debugPrint('Sync with server failed: $e');
       syncNotifier.setError();
+    } finally {
+      _isSyncing = false;
     }
   }
 
-  /// Manual refresh triggered by pull-to-refresh
-  Future<void> refresh() async {
+  /// Manual refresh triggered by pull-to-refresh or background events
+  Future<void> refresh({bool force = true}) async {
     if (_username == null) return;
-    state = state.copyWith(isLoading: true);
+
+    if (!force && _lastSyncTime != null) {
+      final diff = DateTime.now().difference(_lastSyncTime!);
+      if (diff.inSeconds < 60) {
+        debugPrint('UserData sync throttled (last sync ${diff.inSeconds}s ago)');
+        return;
+      }
+    }
+
+    if (force) {
+      state = state.copyWith(isLoading: true);
+    }
     await _syncWithServer();
   }
 

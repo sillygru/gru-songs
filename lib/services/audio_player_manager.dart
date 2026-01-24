@@ -15,12 +15,16 @@ import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/providers.dart';
+
 class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
   final ApiService _apiService;
   final StatsService _statsService;
   final StorageService _storageService;
   final String? _username;
+  final Ref? _ref;
 
   List<QueueItem> _originalQueue = [];
   List<QueueItem> _effectiveQueue = [];
@@ -58,7 +62,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
 
   AudioPlayerManager(this._apiService, this._statsService, this._storageService,
-      this._username) {
+      this._username, [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
     if (_username != null) {
       DatabaseService.instance.initForUser(_username!);
@@ -259,42 +263,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
     // syncShuffleState() removed - strictly local now
 
-    // Start periodic sync of all user data every 5 minutes if not in local mode
-    _syncTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
-      if (await _storageService.getIsLocalMode()) return;
-      _syncAllUserDataPeriodically();
-    });
-  }
-
-  Future<void> _syncAllUserDataPeriodically() async {
-    if (_username == null) return;
-    if (await _storageService.getIsLocalMode()) return;
-    if (ApiService.baseUrl.isEmpty) return;
-
-    try {
-      // Trigger comprehensive sync through the provider
-      final response = await _apiService.client.get(
-        Uri.parse('${ApiService.baseUrl}/user/data'),
-        headers: {'x-username': _username!},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final serverFavs = List<String>.from(data['favorites'] ?? []);
-        final serverSuggestLess = List<String>.from(data['suggestLess'] ?? []);
-        // Shuffle state from server is ignored - strictly local now
-
-        // Update local database
-        await _updateLocalUserData(serverFavs, serverSuggestLess);
-      }
-    } catch (e) {
-      debugPrint('Periodic user data sync failed: $e');
-    }
-  }
-
-  Future<void> _updateLocalUserData(
-      List<String> favorites, List<String> suggestLess) async {
-    // ... (Existing Logic) ...
+    // Start periodic sync removed - handled by SongsNotifier.refresh()
+    // triggered on startup, resumes, and play events.
   }
 
   Future<ShuffleState?> syncShuffleState() async {
@@ -365,6 +335,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _backgroundDuration = 0.0;
     if (eventType == 'skip' || eventType == 'complete') {
       _playStartTime = null;
+
+      // Trigger background sync on play events as requested
+      if (_ref != null) {
+        Future.delayed(const Duration(seconds: 1), () {
+          _ref!.read(songsProvider.notifier).refresh(isBackground: true);
+        });
+      }
     } else {
       if (_playStartTime != null) _playStartTime = DateTime.now();
     }

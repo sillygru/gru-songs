@@ -62,3 +62,4 @@ GruSongs.ipa
 .gradle/
 .kotlin/
 server/config.json
+android/build/reports/problems/problems-report.html

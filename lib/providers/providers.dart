@@ -137,6 +137,7 @@ final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
     ref.watch(statsServiceProvider),
     ref.watch(storageServiceProvider),
     authState.username,
+    ref,
   );
 
   ref.onDispose(() => manager.dispose());
@@ -145,6 +146,9 @@ final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
 
 // Data Providers
 class SongsNotifier extends AsyncNotifier<List<Song>> {
+  bool _isRefreshing = false;
+  DateTime? _lastRefreshTime;
+
   @override
   Future<List<Song>> build() async {
     final storage = ref.watch(storageServiceProvider);
@@ -266,74 +270,91 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final pullEnabled = await storage.getPullToRefreshEnabled();
     if (!pullEnabled && !isBackground) return;
 
-    // If it's a background refresh, we don't want to set the state to loading
-    // as it would clear the current UI list.
-    if (!isBackground) {
-      // For manual refresh, we can show loading if we want,
-      // but AsyncNotifier usually handles this via state.
+    if (_isRefreshing) {
+      debugPrint('SongsNotifier: Refresh already in progress, skipping');
+      return;
     }
 
-    final newState = await AsyncValue.guard<List<Song>>(() async {
-      final isLocalMode = await storage.getIsLocalMode();
-      final serverMode = await storage.getServerRefreshMode();
+    if (isBackground && _lastRefreshTime != null) {
+      final diff = DateTime.now().difference(_lastRefreshTime!);
+      if (diff.inSeconds < 60) {
+        debugPrint(
+            'SongsNotifier: Background refresh throttled (last refresh ${diff.inSeconds}s ago)');
+        return;
+      }
+    }
 
-      if (!isLocalMode) {
-        // Force a full bidirectional sync of stats, data, and settings
-        final auth = ref.read(authProvider);
-        if (auth.username != null && ApiService.baseUrl.isNotEmpty) {
-          try {
-            await DatabaseService.instance.sync(auth.username!);
-            await ref.read(userDataProvider.notifier).refresh();
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint(
-                  'Sync failed during refresh (continuing to local scan): $e');
+    _isRefreshing = true;
+    _lastRefreshTime = DateTime.now();
+
+    try {
+      final newState = await AsyncValue.guard<List<Song>>(() async {
+        final isLocalMode = await storage.getIsLocalMode();
+        final serverMode = await storage.getServerRefreshMode();
+
+        if (!isLocalMode) {
+          // Force a full bidirectional sync of stats, data, and settings
+          final auth = ref.read(authProvider);
+          if (auth.username != null && ApiService.baseUrl.isNotEmpty) {
+            try {
+              await DatabaseService.instance.sync(auth.username!);
+              // Background refresh doesn't force UserDataNotifier to show loading
+              await ref
+                  .read(userDataProvider.notifier)
+                  .refresh(force: !isBackground);
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint(
+                    'Sync failed during refresh (continuing to local scan): $e');
+              }
             }
+          }
+
+          if (serverMode == 'sync_only') {
+            return state.value ?? <Song>[];
           }
         }
 
-        if (serverMode == 'sync_only') {
-          return state.value ?? <Song>[];
+        final musicPath = await storage.getMusicFolderPath();
+        if (musicPath != null) {
+          await ref
+              .read(fileManagerServiceProvider)
+              .syncRenamesFromServer(musicPath);
         }
-      }
 
-      final musicPath = await storage.getMusicFolderPath();
-      if (musicPath != null) {
-        await ref
-            .read(fileManagerServiceProvider)
-            .syncRenamesFromServer(musicPath);
-      }
+        // Pass isBackground to _performFullScan
+        final songs = await _performFullScan(
+            isBackground: isBackground, existingSongs: state.value);
+        ref.read(audioPlayerManagerProvider).refreshSongs(songs);
 
-      // Pass isBackground to _performFullScan
-      final songs = await _performFullScan(
-          isBackground: isBackground, existingSongs: state.value);
-      ref.read(audioPlayerManagerProvider).refreshSongs(songs);
+        final userData = ref.read(userDataProvider);
+        return songs.where((s) => !userData.isHidden(s.filename)).toList();
+      });
 
-      final userData = ref.read(userDataProvider);
-      return songs.where((s) => !userData.isHidden(s.filename)).toList();
-    });
-
-    if (isBackground) {
-      // Only update if not null and actually has changes
-      if (newState.hasValue) {
-        final newSongs = newState.value!;
-        final oldSongs = state.value ?? [];
-        bool hasChanges = newSongs.length != oldSongs.length;
-        if (!hasChanges) {
-          for (int i = 0; i < newSongs.length; i++) {
-            if (newSongs[i].url != oldSongs[i].url ||
-                newSongs[i].mtime != oldSongs[i].mtime) {
-              hasChanges = true;
-              break;
+      if (isBackground) {
+        // Only update if not null and actually has changes
+        if (newState.hasValue) {
+          final newSongs = newState.value!;
+          final oldSongs = state.value ?? [];
+          bool hasChanges = newSongs.length != oldSongs.length;
+          if (!hasChanges) {
+            for (int i = 0; i < newSongs.length; i++) {
+              if (newSongs[i].url != oldSongs[i].url ||
+                  newSongs[i].mtime != oldSongs[i].mtime) {
+                hasChanges = true;
+                break;
+              }
             }
           }
+          if (hasChanges) {
+            state = newState;
+          }
         }
-        if (hasChanges) {
-          state = newState;
-        }
+      } else {
+        state = newState;
       }
-    } else {
-      state = newState;
+    } finally {
+      _isRefreshing = false;
     }
   }
 
