@@ -77,22 +77,24 @@ class _AudioVisualizerState extends State<AudioVisualizer>
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.width,
-      height: widget.height,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: List.generate(_barHeights.length, (index) {
-          return Container(
-            width: widget.width / (_barHeights.length * 2),
-            height: widget.height * _barHeights[index],
-            decoration: BoxDecoration(
-              color: widget.color,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          );
-        }),
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(_barHeights.length, (index) {
+            return Container(
+              width: widget.width / (_barHeights.length * 2),
+              height: widget.height * _barHeights[index],
+              decoration: BoxDecoration(
+                color: widget.color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        ),
       ),
     );
   }

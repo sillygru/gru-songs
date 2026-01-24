@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../../providers/user_data_provider.dart';
 import '../../services/audio_player_manager.dart';
 import '../../services/library_logic.dart';
 import '../widgets/folder_options_menu.dart';
@@ -24,14 +23,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final songsAsyncValue = ref.watch(songsProvider);
-    final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
     final isRoot = widget.relativePath == null;
 
     if (!isRoot) {
       return songsAsyncValue.when(
-        data: (allSongs) =>
-            _buildFolderView(context, allSongs, userData, audioManager),
+        data: (allSongs) => _buildFolderView(context, allSongs, audioManager),
         loading: () => Scaffold(
           appBar: AppBar(title: Text(widget.relativePath ?? 'Library')),
           body: const Center(child: CircularProgressIndicator()),
@@ -84,7 +81,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           body: songsAsyncValue.when(
             data: (allSongs) => TabBarView(
               children: [
-                _buildFolderView(context, allSongs, userData, audioManager),
+                _buildFolderView(context, allSongs, audioManager),
                 _buildArtistsView(context, allSongs),
                 _buildAlbumsView(context, allSongs),
               ],
@@ -98,7 +95,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildFolderView(BuildContext context, List<Song> allSongs,
-      UserDataState userData, AudioPlayerManager audioManager) {
+      AudioPlayerManager audioManager) {
+    final userData = ref.watch(userDataProvider);
     return FutureBuilder<String?>(
       future: ref.read(storageServiceProvider).getMusicFolderPath(),
       builder: (context, snapshot) {
@@ -199,12 +197,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
           final songIndex = folderIndex - sortedSubFolders.length;
           final song = immediateSongs[songIndex];
-          final isPlaying =
-              audioManager.currentSongNotifier.value?.filename == song.filename;
 
           return SongListItem(
             song: song,
-            isPlaying: isPlaying,
             heroTagPrefix: 'library_${widget.relativePath ?? 'root'}',
             onTap: () {
               audioManager.playSong(song, contextQueue: immediateSongs);

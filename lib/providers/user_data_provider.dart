@@ -14,38 +14,48 @@ class UserDataState {
   final List<String> hidden;
   final bool isLoading;
 
+  // Optimized lookup sets
+  final Set<String> _favSet;
+  final Set<String> _favBasenameSet;
+  final Set<String> _slSet;
+  final Set<String> _slBasenameSet;
+  final Set<String> _hiddenSet;
+  final Set<String> _hiddenBasenameSet;
+
   UserDataState({
     this.favorites = const [],
     this.suggestLess = const [],
     this.hidden = const [],
     this.isLoading = false,
-  });
+  })  : _favSet = favorites.map((e) => e.toLowerCase()).toSet(),
+        _favBasenameSet =
+            favorites.map((e) => p.basename(e).toLowerCase()).toSet(),
+        _slSet = suggestLess.map((e) => e.toLowerCase()).toSet(),
+        _slBasenameSet =
+            suggestLess.map((e) => p.basename(e).toLowerCase()).toSet(),
+        _hiddenSet = hidden.map((e) => e.toLowerCase()).toSet(),
+        _hiddenBasenameSet =
+            hidden.map((e) => p.basename(e).toLowerCase()).toSet();
 
   bool isFavorite(String filename) {
-    final searchBasename = p.basename(filename).toLowerCase();
-    for (final fav in favorites) {
-      if (fav.toLowerCase() == filename.toLowerCase()) return true;
-      if (p.basename(fav).toLowerCase() == searchBasename) return true;
-    }
-    return false;
+    final lowerFilename = filename.toLowerCase();
+    if (_favSet.contains(lowerFilename)) return true;
+    final searchBasename = p.basename(lowerFilename);
+    return _favBasenameSet.contains(searchBasename);
   }
 
   bool isSuggestLess(String filename) {
-    final searchBasename = p.basename(filename).toLowerCase();
-    for (final sl in suggestLess) {
-      if (sl.toLowerCase() == filename.toLowerCase()) return true;
-      if (p.basename(sl).toLowerCase() == searchBasename) return true;
-    }
-    return false;
+    final lowerFilename = filename.toLowerCase();
+    if (_slSet.contains(lowerFilename)) return true;
+    final searchBasename = p.basename(lowerFilename);
+    return _slBasenameSet.contains(searchBasename);
   }
 
   bool isHidden(String filename) {
-    final searchBasename = p.basename(filename).toLowerCase();
-    for (final h in hidden) {
-      if (h.toLowerCase() == filename.toLowerCase()) return true;
-      if (p.basename(h).toLowerCase() == searchBasename) return true;
-    }
-    return false;
+    final lowerFilename = filename.toLowerCase();
+    if (_hiddenSet.contains(lowerFilename)) return true;
+    final searchBasename = p.basename(lowerFilename);
+    return _hiddenBasenameSet.contains(searchBasename);
   }
 
   UserDataState copyWith({
@@ -126,8 +136,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
       debugPrint('Error loading local user data: $e');
     }
 
-    // 3. Perform proper sync with server
-    await _syncWithServer();
+    // 3. Perform proper sync with server (DEFERRED to allow instant startup)
+    Future.delayed(const Duration(seconds: 2), () => _syncWithServer());
   }
 
   void _updateManager() {
@@ -299,7 +309,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
     if (!force && _lastSyncTime != null) {
       final diff = DateTime.now().difference(_lastSyncTime!);
       if (diff.inSeconds < 60) {
-        debugPrint('UserData sync throttled (last sync ${diff.inSeconds}s ago)');
+        debugPrint(
+            'UserData sync throttled (last sync ${diff.inSeconds}s ago)');
         return;
       }
     }

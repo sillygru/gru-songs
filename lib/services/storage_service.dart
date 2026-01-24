@@ -147,10 +147,10 @@ class StorageService {
   Future<void> saveSongs(List<Song> songs) async {
     try {
       final file = await _songsFile;
-      final jsonList = songs.map((s) => s.toJson()).toList();
+      final jsonList = await compute(
+          (List<Song> data) => data.map((s) => s.toJson()).toList(), songs);
       await file.writeAsString(jsonEncode(jsonList));
     } catch (e) {
-      // Ignore errors during cache write
       debugPrint('Error saving songs cache: $e');
     }
   }
@@ -161,8 +161,12 @@ class StorageService {
       if (!await file.exists()) return [];
 
       final content = await file.readAsString();
-      final List<dynamic> jsonList = jsonDecode(content);
-      return jsonList.map((json) => Song.fromJson(json)).toList();
+      if (content.isEmpty) return [];
+
+      return await compute((String jsonStr) {
+        final List<dynamic> jsonList = jsonDecode(jsonStr);
+        return jsonList.map((json) => Song.fromJson(json)).toList();
+      }, content);
     } catch (e) {
       debugPrint('Error loading songs cache: $e');
       return [];

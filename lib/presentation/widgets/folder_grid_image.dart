@@ -62,25 +62,45 @@ class FolderGridImage extends StatelessWidget {
       child: SizedBox(
         width: size,
         height: size,
-        child: GridView.builder(
-          padding: EdgeInsets.zero,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 0,
-            mainAxisSpacing: 0,
-          ),
-          itemCount: 4,
-          itemBuilder: (context, index) {
-            // If we have fewer than 4, we cycle through them to fill the grid
-            final url = covers[index % displayCount];
-            return GruImage(
-              url: url,
-              width: size / 2,
-              height: size / 2,
-              fit: BoxFit.cover,
-            );
-          },
+        child: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GruImage(
+                      url: covers[0],
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Expanded(
+                    child: GruImage(
+                      url: covers[1 % displayCount],
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GruImage(
+                      url: covers[2 % displayCount],
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Expanded(
+                    child: GruImage(
+                      url: covers[3 % displayCount],
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
