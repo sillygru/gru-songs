@@ -21,10 +21,28 @@ class UserService:
     def __init__(self):
         # Ensure global DBs exist
         db_manager.init_global_dbs()
+        self._ensure_uploads_columns()
         self.discord_queue = None
         self._stats_buffer = defaultdict(list) # username -> list of StatsEntry
         self._last_flush = time.time()
         self._is_flushing = False
+
+    def _ensure_uploads_columns(self):
+        """Simple migration to add album column to uploads if it doesn't exist."""
+        from sqlalchemy import text
+        try:
+            engine = db_manager.get_uploads_engine()
+            with engine.connect() as conn:
+                # Check columns
+                result = conn.execute(text("PRAGMA table_info(upload)")).fetchall()
+                existing_cols = {r[1] for r in result}
+                
+                if "album" not in existing_cols:
+                    conn.execute(text("ALTER TABLE upload ADD COLUMN album TEXT"))
+                    conn.commit()
+                    logger.info("Migration: Added 'album' column to upload table")
+        except Exception as e:
+            logger.error(f"Migration error for uploads: {e}")
 
     def set_discord_queue(self, queue):
         self.discord_queue = queue
@@ -32,6 +50,14 @@ class UserService:
     def log_to_discord(self, message: str):
         if self.discord_queue and settings.LOG_TO_DISCORD:
             self.discord_queue.put(message)
+
+    def _format_duration(self, seconds: float) -> str:
+        total_seconds = int(round(seconds))
+        m = total_seconds // 60
+        s = total_seconds % 60
+        if m > 0:
+            return f"{m}m {s}s"
+        return f"{s}s"
 
     def _get_final_stats_path(self, username: str):
         return os.path.join(settings.USERS_DIR, f"{username}_final_stats.json")
@@ -284,11 +310,11 @@ class UserService:
         log_msg = (
             f"{emoji} **{username}** | `{stats.song_filename}`\n"
             f"> **Action:** {stats.event_type.upper()}\n"
-            f"> **Progress:** {round(stats.duration_played, 1)}s / {round(total_length, 1)}s ({ratio_pct}%)\n"
+            f"> **Progress:** {self._format_duration(stats.duration_played)} / {self._format_duration(total_length)} ({ratio_pct}%)\n"
         )
         
         if fg_val > 0 or bg_val > 0:
-            log_msg += f"> **Activity:**  FG: {round(fg_val, 1)}s |  BG: {round(bg_val, 1)}s\n"
+            log_msg += f"> **Activity:**  FG: {self._format_duration(fg_val)} |  BG: {self._format_duration(bg_val)}\n"
         
         log_msg += (
             f"> **Device:** `{stats.platform or 'unknown'}`\n"
@@ -1058,7 +1084,7 @@ class UserService:
         with open(self._get_rename_queue_path(), "w") as f:
             json.dump(queue, f, indent=4)
 
-    def _add_to_rename_queue(self, username: str, old_filename: str, new_name: str, device_count: int, type: str = "file"):
+    def _add_to_rename_queue(self, username: str, old_filename: str, new_name: str, device_count: int, type: str = "file", artist: str = None, album: str = None):
         queue = self._load_rename_queue()
         if username not in queue:
             queue[username] = []
@@ -1068,6 +1094,8 @@ class UserService:
             "old": old_filename,
             "new": new_name,
             "type": type,
+            "artist": artist,
+            "album": album,
             "timestamp": time.time(),
             "devices_left": device_count
         })
@@ -1079,7 +1107,7 @@ class UserService:
         
         self._save_rename_queue(queue)
 
-    def rename_file(self, username: str, old_filename: str, new_name: str, device_count: int = 0, type: str = "file"):
+    def rename_file(self, username: str, old_filename: str, new_name: str, device_count: int = 0, type: str = "file", artist: str = None, album: str = None):
         # 1. Flush stats first
         self.flush_stats()
 
@@ -1144,21 +1172,23 @@ class UserService:
             
             log_msg = f"**{username}** renamed file `{old_filename}` to `{new_filename}`"
         else:
-            # --- Metadata Title Update Logic ---
+            # --- Metadata Update Logic ---
             new_title = new_name
-            # Update global Upload record if it exists so server knows the new title
+            # Update global Upload record if it exists so server knows the new metadata
             with Session(db_manager.get_uploads_engine()) as session:
                 upload = session.execute(select(Upload).where(Upload.filename == old_filename)).scalar_one_or_none()
                 if upload:
                     upload.title = new_title
+                    if artist is not None: upload.artist = artist
+                    if album is not None: upload.album = album
                     session.add(upload)
                     session.commit()
             
-            log_msg = f"**{username}** updated title of `{old_filename}` to `{new_title}`"
+            log_msg = f"**{username}** updated metadata of `{old_filename}` (Title: {new_title}, Artist: {artist}, Album: {album})"
 
         # 5. Handle rename queue for other devices
         if device_count > 0:
-            self._add_to_rename_queue(username, old_filename, new_name, device_count, type=type)
+            self._add_to_rename_queue(username, old_filename, new_name, device_count, type=type, artist=artist, album=album)
 
         self.log_to_discord(log_msg)
         return True, "Rename/Update processed"
@@ -1171,13 +1201,14 @@ class UserService:
         # Return tasks that haven't been completed by all devices
         return [t for t in queue[username] if t["devices_left"] > 0]
 
-    def acknowledge_rename(self, username: str, old_filename: str, new_name: str, type: str = "file"):
+    def acknowledge_rename(self, username: str, old_filename: str, new_name: str, type: str = "file", artist: str = None, album: str = None):
         queue = self._load_rename_queue()
         if username not in queue:
             return False
             
         found = False
         for t in queue[username]:
+            # Use artist/album in match to be sure we are acknowledging the right one if multiple exist (unlikely but safer)
             if t["old"] == old_filename and t["new"] == new_name and t.get("type", "file") == type:
                 if t["devices_left"] > 0:
                     t["devices_left"] -= 1

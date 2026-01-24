@@ -350,7 +350,10 @@ def rename_file(req: RenameRequest, x_username: str = Header(None)):
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
     
-    success, message = user_service.rename_file(x_username, req.old_filename, req.new_name, req.device_count, type=req.type)
+    success, message = user_service.rename_file(
+        x_username, req.old_filename, req.new_name, req.device_count, 
+        type=req.type, artist=req.artist, album=req.album
+    )
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"message": message}
@@ -366,7 +369,10 @@ def acknowledge_rename(req: AcknowledgeRenameRequest, x_username: str = Header(N
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
     
-    user_service.acknowledge_rename(x_username, req.old_filename, req.new_name, type=req.type)
+    user_service.acknowledge_rename(
+        x_username, req.old_filename, req.new_name, 
+        type=req.type, artist=req.artist, album=req.album
+    )
     return {"status": "ok"}
 
 

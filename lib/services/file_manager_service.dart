@@ -29,7 +29,7 @@ class FileManagerService {
   Future<void> updateSongTitle(Song song, String newTitle,
       {int deviceCount = 0}) async {
     // 1. Update locally
-    await _updateMetadataInternal(song.url, newTitle);
+    await _updateMetadataInternal(song.url, title: newTitle);
 
     // 2. Notify server if not in local mode
     if (!await StorageService().getIsLocalMode()) {
@@ -43,17 +43,65 @@ class FileManagerService {
     }
   }
 
+  /// Updates all metadata for a song and notifies the server.
+  Future<void> updateSongMetadata(
+      Song song, String title, String artist, String album,
+      {int deviceCount = 0}) async {
+    // 1. Update locally
+    await _updateMetadataInternal(song.url,
+        title: title, artist: artist, album: album);
+
+    // 2. Notify server if not in local mode
+    if (!await StorageService().getIsLocalMode()) {
+      try {
+        await _apiService.renameFile(song.filename, title, deviceCount,
+            type: "metadata", artist: artist, album: album);
+      } catch (e) {
+        debugPrint(
+            "Server metadata update notification failed: $e. It will need manual sync later.");
+      }
+    }
+  }
+
+  /// Updates lyrics for a song.
+  Future<void> updateLyrics(Song song, String lyricsContent) async {
+    String? lyricsPath = song.lyricsUrl;
+
+    if (lyricsPath == null) {
+      // Create new lyrics file in the lyrics folder if configured
+      final lyricsFolder = await StorageService().getLyricsFolderPath();
+      if (lyricsFolder != null) {
+        final songTitle = p.basenameWithoutExtension(song.filename);
+        lyricsPath = p.join(lyricsFolder, "$songTitle.lrc");
+      } else {
+        // Fallback: put it next to the song
+        final songDir = p.dirname(song.url);
+        final songTitle = p.basenameWithoutExtension(song.filename);
+        lyricsPath = p.join(songDir, "$songTitle.lrc");
+      }
+    }
+
+    try {
+      final file = File(lyricsPath);
+      await file.writeAsString(lyricsContent);
+      debugPrint("Updated lyrics for ${song.filename} at $lyricsPath");
+    } catch (e) {
+      throw Exception("Failed to update lyrics: $e");
+    }
+  }
+
   /// Internal method to update metadata without server notification.
-  Future<void> _updateMetadataInternal(String fileUrl, String newTitle) async {
+  Future<void> _updateMetadataInternal(String fileUrl,
+      {String? title, String? artist, String? album}) async {
     try {
       // Read existing metadata
       final metadata = await MetadataGod.readMetadata(file: fileUrl);
 
       // Create updated metadata object
       final updatedMetadata = Metadata(
-        title: newTitle,
-        artist: metadata.artist,
-        album: metadata.album,
+        title: title ?? metadata.title,
+        artist: artist ?? metadata.artist,
+        album: album ?? metadata.album,
         albumArtist: metadata.albumArtist,
         trackNumber: metadata.trackNumber,
         trackTotal: metadata.trackTotal,
@@ -69,8 +117,7 @@ class FileManagerService {
         file: fileUrl,
         metadata: updatedMetadata,
       );
-      debugPrint(
-          "Successfully updated metadata title for $fileUrl to $newTitle");
+      debugPrint("Successfully updated metadata for $fileUrl");
     } catch (e) {
       throw Exception("Failed to update song metadata: $e");
     }
@@ -97,7 +144,22 @@ class FileManagerService {
       throw Exception("Failed to rename file on filesystem: $e");
     }
 
-    // 2. Update local DB
+    // 2. Also rename lyrics if they exist and match the old filename
+    if (song.lyricsUrl != null) {
+      final oldLyricsFile = File(song.lyricsUrl!);
+      if (await oldLyricsFile.exists()) {
+        final lyricsDir = p.dirname(song.lyricsUrl!);
+        final lyricsExt = p.extension(song.lyricsUrl!);
+        final newLyricsPath = p.join(lyricsDir, "$newTitle$lyricsExt");
+        try {
+          await oldLyricsFile.rename(newLyricsPath);
+        } catch (e) {
+          debugPrint("Failed to rename lyrics file: $e");
+        }
+      }
+    }
+
+    // 3. Update local DB
     await DatabaseService.instance.renameFile(song.filename, newFilename);
 
     // 3. Notify server if not in local mode
@@ -172,13 +234,16 @@ class FileManagerService {
                   type: "file");
             }
           } else {
-            // Metadata Title Sync
+            // Metadata Title/Artist/Album Sync
             try {
-              await _updateMetadataInternal(localFile.path, newName);
+              final artist = task['artist'] as String?;
+              final album = task['album'] as String?;
+              await _updateMetadataInternal(localFile.path,
+                  title: newName, artist: artist, album: album);
               await _apiService.acknowledgeRename(oldName, newName,
-                  type: "metadata");
+                  type: "metadata", artist: artist, album: album);
               debugPrint(
-                  "Applied remote metadata title update: $oldName -> $newName");
+                  "Applied remote metadata update: $oldName -> $newName (Artist: $artist, Album: $album)");
             } catch (e) {
               debugPrint(
                   "Failed to apply remote metadata update for $oldName: $e");

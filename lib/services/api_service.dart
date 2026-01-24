@@ -114,7 +114,7 @@ class ApiService {
   }
 
   Future<void> renameFile(String oldFilename, String newName, int deviceCount,
-      {String type = "file"}) async {
+      {String type = "file", String? artist, String? album}) async {
     try {
       final response = await _client.post(
         Uri.parse('$baseUrl/user/rename-file'),
@@ -124,6 +124,8 @@ class ApiService {
           'new_name': newName,
           'type': type,
           'device_count': deviceCount,
+          if (artist != null) 'artist': artist,
+          if (album != null) 'album': album,
         }),
       );
 
@@ -153,7 +155,7 @@ class ApiService {
   }
 
   Future<void> acknowledgeRename(String oldFilename, String newName,
-      {String type = "file"}) async {
+      {String type = "file", String? artist, String? album}) async {
     try {
       final response = await _client.post(
         Uri.parse('$baseUrl/user/acknowledge-rename'),
@@ -162,6 +164,8 @@ class ApiService {
           'old_filename': oldFilename,
           'new_name': newName,
           'type': type,
+          if (artist != null) 'artist': artist,
+          if (album != null) 'album': album,
         }),
       );
 

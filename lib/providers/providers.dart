@@ -405,6 +405,28 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     });
   }
 
+  Future<void> updateSongMetadata(
+      Song song, String title, String artist, String album,
+      {int deviceCount = 0}) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(fileManagerServiceProvider).updateSongMetadata(
+          song, title, artist, album,
+          deviceCount: deviceCount);
+      return _performFullScan();
+    });
+  }
+
+  Future<void> updateLyrics(Song song, String lyricsContent) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      await ref
+          .read(fileManagerServiceProvider)
+          .updateLyrics(song, lyricsContent);
+      return _performFullScan();
+    });
+  }
+
   Future<void> moveSong(Song song, String targetDirectoryPath) async {
     if (kDebugMode) {
       debugPrint("MOVE_SONG: Starting move for ${song.title}");

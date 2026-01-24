@@ -22,15 +22,11 @@ class ManualMockApiService extends ApiService {
 
   @override
   Future<void> renameFile(String oldFilename, String newName, int deviceCount,
-      {String type = "file"}) async {
+      {String? album, String? artist, String type = "file"}) async {
     lastOld = oldFilename;
-
     lastNew = newName;
-
     lastCount = deviceCount;
-
     lastType = type;
-
     renameCalled = true;
   }
 
