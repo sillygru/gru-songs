@@ -15,16 +15,8 @@ class NowPlayingBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return const _NowPlayingBarContent();
-  }
-}
-
-class _NowPlayingBarContent extends ConsumerWidget {
-  const _NowPlayingBarContent();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(audioPlayerManagerProvider).player;
+    final settings = ref.watch(settingsProvider);
     final isDesktop =
         !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
     final isIPad = !kIsWeb &&
@@ -108,7 +100,37 @@ class _NowPlayingBarContent extends ConsumerWidget {
                                         errorWidget:
                                             const Icon(Icons.music_note),
                                       ),
-                                      _PlayingOverlay(player: player),
+                                      StreamBuilder<PlayerState>(
+                                        stream: player.playerStateStream,
+                                        builder: (context, snapshot) {
+                                          final playing =
+                                              snapshot.data?.playing ?? false;
+                                          if (!playing) {
+                                            return const SizedBox.shrink();
+                                          }
+
+                                          return Positioned.fill(
+                                            child: Container(
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.3),
+                                              child: Center(
+                                                child:
+                                                    settings.visualizerEnabled
+                                                        ? const AudioVisualizer(
+                                                            width: 20,
+                                                            height: 20,
+                                                            color: Colors.white,
+                                                            isPlaying: true,
+                                                          )
+                                                        : const Icon(
+                                                            Icons.graphic_eq,
+                                                            color: Colors.white,
+                                                            size: 18),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -163,7 +185,40 @@ class _NowPlayingBarContent extends ConsumerWidget {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                _PlayPauseButton(player: player),
+                                StreamBuilder<PlayerState>(
+                                  stream: player.playerStateStream,
+                                  builder: (context, snapshot) {
+                                    final playerState = snapshot.data;
+                                    final playing =
+                                        playerState?.playing ?? false;
+                                    final processingState =
+                                        playerState?.processingState;
+
+                                    if (processingState ==
+                                        ProcessingState.buffering) {
+                                      return const Padding(
+                                        padding: EdgeInsets.all(8.0),
+                                        child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2)),
+                                      );
+                                    }
+
+                                    return IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(8),
+                                      icon: Icon(
+                                          playing
+                                              ? Icons.pause
+                                              : Icons.play_arrow,
+                                          size: 30),
+                                      onPressed:
+                                          playing ? player.pause : player.play,
+                                    );
+                                  },
+                                ),
                                 IconButton(
                                   constraints: const BoxConstraints(),
                                   padding: const EdgeInsets.all(8),
@@ -177,105 +232,28 @@ class _NowPlayingBarContent extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    _ProgressBar(player: player),
+                    StreamBuilder<Duration>(
+                      stream: player.positionStream,
+                      builder: (context, snapshot) {
+                        final position = snapshot.data ?? Duration.zero;
+                        final duration = player.duration ?? Duration.zero;
+                        final progress = duration.inMilliseconds > 0
+                            ? position.inMilliseconds / duration.inMilliseconds
+                            : 0.0;
+                        return LinearProgressIndicator(
+                          value: progress.clamp(0.0, 1.0),
+                          minHeight: 2.5,
+                          backgroundColor: Colors.white.withValues(alpha: 0.05),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).colorScheme.primary),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
             ),
           ),
-        );
-      },
-    );
-  }
-}
-
-class _PlayingOverlay extends ConsumerWidget {
-  final AudioPlayer player;
-  const _PlayingOverlay({required this.player});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    return StreamBuilder<PlayerState>(
-      stream: player.playerStateStream,
-      builder: (context, snapshot) {
-        final playing = snapshot.data?.playing ?? false;
-        if (!playing) return const SizedBox.shrink();
-
-        return Positioned.fill(
-          child: Container(
-            color: Colors.black.withValues(alpha: 0.3),
-            child: Center(
-              child: settings.visualizerEnabled
-                  ? const AudioVisualizer(
-                      width: 20,
-                      height: 20,
-                      color: Colors.white,
-                      isPlaying: true,
-                    )
-                  : const Icon(Icons.graphic_eq, color: Colors.white, size: 18),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _PlayPauseButton extends StatelessWidget {
-  final AudioPlayer player;
-  const _PlayPauseButton({required this.player});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<PlayerState>(
-      stream: player.playerStateStream,
-      builder: (context, snapshot) {
-        final playerState = snapshot.data;
-        final playing = playerState?.playing ?? false;
-        final processingState = playerState?.processingState;
-
-        if (processingState == ProcessingState.buffering) {
-          return const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2)),
-          );
-        }
-
-        return IconButton(
-          constraints: const BoxConstraints(),
-          padding: const EdgeInsets.all(8),
-          icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 30),
-          onPressed: playing ? player.pause : player.play,
-        );
-      },
-    );
-  }
-}
-
-class _ProgressBar extends StatelessWidget {
-  final AudioPlayer player;
-  const _ProgressBar({required this.player});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<Duration>(
-      stream: player.positionStream,
-      builder: (context, snapshot) {
-        final position = snapshot.data ?? Duration.zero;
-        final duration = player.duration ?? Duration.zero;
-        final progress = duration.inMilliseconds > 0
-            ? position.inMilliseconds / duration.inMilliseconds
-            : 0.0;
-        return LinearProgressIndicator(
-          value: progress.clamp(0.0, 1.0),
-          minHeight: 2.5,
-          backgroundColor: Colors.white.withValues(alpha: 0.05),
-          valueColor: AlwaysStoppedAnimation<Color>(
-              Theme.of(context).colorScheme.primary),
         );
       },
     );

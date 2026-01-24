@@ -62,8 +62,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
 
   AudioPlayerManager(this._apiService, this._statsService, this._storageService,
-      this._username,
-      [this._ref]) {
+      this._username, [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
     if (_username != null) {
       DatabaseService.instance.initForUser(_username!);

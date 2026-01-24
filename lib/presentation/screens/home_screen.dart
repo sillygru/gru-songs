@@ -267,13 +267,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 ),
-                SliverFixedExtentList(
-                  itemExtent: 80,
+                SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final song = songs[index];
+                      // We don't need detailed isPlaying check here for list performance,
+                      // or we can add it if we want to highlight currently playing song.
+                      // For now passing false or check simple equality
+                      final isPlaying =
+                          audioManager.currentSongNotifier.value?.filename ==
+                              song.filename;
+
                       return SongListItem(
                         song: song,
+                        isPlaying: isPlaying,
                         heroTagPrefix: 'all_songs',
                         onTap: () {
                           audioManager.playSong(song, contextQueue: songs);

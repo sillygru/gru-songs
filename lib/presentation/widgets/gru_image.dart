@@ -40,6 +40,9 @@ class _GruImageState extends State<GruImage> {
   @override
   void didUpdateWidget(GruImage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      setState(() {});
+    }
   }
 
   @override
@@ -73,21 +76,13 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: widget.cacheWidth ??
-            (widget.width != null
-                ? (widget.width! * MediaQuery.of(context).devicePixelRatio)
-                    .round()
-                : null),
-        cacheHeight: widget.cacheHeight ??
-            (widget.height != null
-                ? (widget.height! * MediaQuery.of(context).devicePixelRatio)
-                    .round()
-                : null),
+        cacheWidth: widget.cacheWidth,
+        cacheHeight: widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
-            duration: const Duration(milliseconds: 200),
+            duration: const Duration(milliseconds: 500),
             curve: Curves.easeOut,
             child: child,
           );
@@ -102,21 +97,13 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: widget.cacheWidth ??
-            (widget.width != null
-                ? (widget.width! * MediaQuery.of(context).devicePixelRatio)
-                    .round()
-                : null),
-        cacheHeight: widget.cacheHeight ??
-            (widget.height != null
-                ? (widget.height! * MediaQuery.of(context).devicePixelRatio)
-                    .round()
-                : null),
+        cacheWidth: widget.cacheWidth,
+        cacheHeight: widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
-            duration: const Duration(milliseconds: 200),
+            duration: const Duration(milliseconds: 500),
             curve: Curves.easeOut,
             child: child,
           );
