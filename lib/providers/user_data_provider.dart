@@ -299,7 +299,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
     if (!force && _lastSyncTime != null) {
       final diff = DateTime.now().difference(_lastSyncTime!);
       if (diff.inSeconds < 60) {
-        debugPrint('UserData sync throttled (last sync ${diff.inSeconds}s ago)');
+        debugPrint(
+            'UserData sync throttled (last sync ${diff.inSeconds}s ago)');
         return;
       }
     }

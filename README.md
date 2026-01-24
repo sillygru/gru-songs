@@ -3,6 +3,8 @@
 ## What is Gru Songs?
 Gru Songs is a simple local music player app built with Flutter, that can optionally connect to a server to sync stats.
 
+[Features](#features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
+
 ## Features
 
 - **Folder Based Organization:** Organize your music with intuitive folder structure support.
@@ -14,12 +16,22 @@ Gru Songs is a simple local music player app built with Flutter, that can option
 Simply install the app from the releases page.
 If you want to sync data across devices, you must host your own server.
 
-### Good to know
+## Good to know
 
 User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file—like play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
 We do have a feature to sync file names across devices :)
 
-### Others
+## Screenshots
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sillygru/gru-songs/main/assets/screenshots/image01.jpg" width="200" />
+  <img src="https://raw.githubusercontent.com/sillygru/gru-songs/main/assets/screenshots/image02.jpg" width="200" />
+  <img src="https://raw.githubusercontent.com/sillygru/gru-songs/main/assets/screenshots/image03.jpg" width="200" />
+  <img src="https://raw.githubusercontent.com/sillygru/gru-songs/main/assets/screenshots/image04.jpg" width="200" />
+</p>
+
+## Others
+### "*Don't mind half broken features*"
 This is a vibe coded project, if features are half-broken, that is normal.
 This was originally a personal side project, so there might be leftovers of pre-configured stuff of when this was only meant for my personal use (mostly server stuff, frontend's great on this aspect)
 
