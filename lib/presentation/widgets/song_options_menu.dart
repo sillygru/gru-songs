@@ -5,6 +5,7 @@ import '../../providers/providers.dart';
 import '../../models/song.dart';
 import 'folder_picker.dart';
 import '../screens/edit_metadata_screen.dart';
+import 'playlist_selection_dialog.dart';
 
 void showSongOptionsMenu(
     BuildContext context, WidgetRef ref, String songFilename, String songTitle,
@@ -107,6 +108,116 @@ void showSongOptionsMenu(
                               "UI: ERROR - context not mounted after pop");
                         }
                       }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.playlist_add),
+                    title: const Text("Add to Playlist"),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+
+                      final playlists = ref.read(userDataProvider).playlists;
+                      final sorted = List.of(playlists)
+                        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+                      if (sorted.isEmpty) {
+                        showDialog(
+                            context: context,
+                            builder: (_) => PlaylistSelectionDialog(
+                                songFilename: songFilename));
+                      } else {
+                        final latest = sorted.first;
+                        if (latest.songs
+                            .any((s) => s.songFilename == songFilename)) {
+                          showDialog(
+                              context: context,
+                              builder: (_) => PlaylistSelectionDialog(
+                                  songFilename: songFilename));
+                        } else {
+                          ref
+                              .read(userDataProvider.notifier)
+                              .addSongToPlaylist(latest.id, songFilename);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("Added to ${latest.name}"),
+                              action: SnackBarAction(
+                                  label: "Change",
+                                  onPressed: () {
+                                    ref
+                                        .read(userDataProvider.notifier)
+                                        .removeSongFromPlaylist(
+                                            latest.id, songFilename);
+                                    showDialog(
+                                        context: context,
+                                        builder: (_) => PlaylistSelectionDialog(
+                                            songFilename: songFilename));
+                                  }),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.playlist_add_circle_outlined),
+                    title: const Text("Add to New Playlist"),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      // Trigger new playlist dialog directly via a hack or reuse
+                      // We can just open SelectionDialog but trigger "new" immediately?
+                      // Or just replicate the new dialog logic.
+                      // Let's reuse the helper inside PlaylistSelectionDialog if possible, or just build it here.
+                      // Simplest is to just show input dialog here.
+
+                      final controller = TextEditingController();
+                      showDialog(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('New Playlist'),
+                          content: TextField(
+                            controller: controller,
+                            decoration: const InputDecoration(
+                                hintText: 'Playlist Name'),
+                            autofocus: true,
+                            onSubmitted: (value) {
+                              if (value.trim().isNotEmpty) {
+                                ref
+                                    .read(userDataProvider.notifier)
+                                    .createPlaylist(value.trim(), songFilename);
+                                Navigator.pop(dialogContext);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content:
+                                          Text('Created playlist "$value"')),
+                                );
+                              }
+                            },
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                final name = controller.text.trim();
+                                if (name.isNotEmpty) {
+                                  ref
+                                      .read(userDataProvider.notifier)
+                                      .createPlaylist(name, songFilename);
+                                  Navigator.pop(dialogContext);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text('Created playlist "$name"')),
+                                  );
+                                }
+                              },
+                              child: const Text('Create'),
+                            ),
+                          ],
+                        ),
+                      );
                     },
                   ),
                   ListTile(

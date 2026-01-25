@@ -12,7 +12,7 @@ from sqlalchemy import select, func, delete, or_
 from settings import settings
 from services import music_service
 from database_manager import db_manager
-from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, Hidden, PlaySession, PlayEvent
+from db_models import GlobalUser, Upload, UserData, Favorite, SuggestLess, Hidden, PlaySession, PlayEvent, Playlist, PlaylistSong
 from models import StatsEntry
 
 logger = logging.getLogger("uvicorn.error")
@@ -269,10 +269,6 @@ class UserService:
         with Session(db_manager.get_user_data_engine(new_username)) as session:
             u_data = session.execute(select(UserData)).scalars().first() # Should be only one
             if u_data:
-                # SQLAlchemy doesn't allow changing PK. If username is PK, we might need a workaround.
-                # In db_models.py, UserData.username is primary_key=True.
-                # Since we renamed the whole DB file and it's a new session, it might be fine or we might need to recreate.
-                # Actually, in SQLite it's better to just delete and re-insert if PK changes, but let's see.
                 session.delete(u_data)
                 session.add(UserData(username=new_username, password_hash=u_data.password_hash, created_at=u_data.created_at))
                 session.commit()
@@ -981,6 +977,120 @@ class UserService:
 
         return {"stats": stats}
             
+    # --- Playlists ---
+
+    def _ensure_playlist_db(self, username: str):
+        from sqlalchemy import text
+        engine = db_manager.get_user_data_engine(username)
+        # 1. Create tables if they don't exist
+        Playlist.metadata.create_all(engine)
+        PlaylistSong.metadata.create_all(engine)
+
+        # 2. Check for missing columns (Migration helper)
+        try:
+            with engine.connect() as conn:
+                # Check playlist table
+                result = conn.execute(text("PRAGMA table_info(playlist)")).fetchall()
+                existing_cols = {r[1] for r in result}
+                result = conn.execute(text("PRAGMA table_info(playlistsong)")).fetchall()
+                existing_cols = {r[1] for r in result}
+                
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Playlist migration error for {username}: {e}")
+
+    def get_playlists(self, username: str) -> List[Dict[str, Any]]:
+        self._ensure_playlist_db(username)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            playlists = session.execute(select(Playlist)).scalars().all()
+            result = []
+            for pl in playlists:
+                songs = session.execute(
+                    select(PlaylistSong)
+                    .where(PlaylistSong.playlist_id == pl.id)
+                    .order_by(PlaylistSong.added_at)
+                ).scalars().all()
+                
+                result.append({
+                    "id": pl.id,
+                    "name": pl.name,
+                    "created_at": pl.created_at,
+                    "updated_at": pl.updated_at,
+                    "songs": [
+                        {
+                            "song_filename": s.song_filename,
+                            "added_at": s.added_at
+                        } for s in songs
+                    ]
+                })
+            return result
+
+    def sync_playlists(self, username: str, client_playlists: List[Dict[str, Any]]):
+        """
+        Bidirectional sync of playlists.
+        - Client sends its full state.
+        - Server merges:
+          - If server has playlist client doesn't: KEEP server's (Client must explicitly delete).
+          - If client has playlist server doesn't: ADD to server.
+          - If both have: Merge songs (Union).
+        """
+        self._ensure_playlist_db(username)
+        server_playlists = self.get_playlists(username)
+        server_pl_map = {p["id"]: p for p in server_playlists}
+        
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            for c_pl in client_playlists:
+                p_id = c_pl["id"]
+                if p_id not in server_pl_map:
+                    # New playlist from client
+                    session.add(Playlist(
+                        id=p_id,
+                        name=c_pl["name"],
+                        created_at=c_pl["created_at"],
+                        updated_at=c_pl["updated_at"]
+                    ))
+                    # Add songs
+                    for song in c_pl.get("songs", []):
+                        session.add(PlaylistSong(
+                            playlist_id=p_id,
+                            song_filename=song["song_filename"],
+                            added_at=song["added_at"]
+                        ))
+                else:
+                    # Merge songs
+                    s_pl = server_pl_map[p_id]
+                    s_songs = {s["song_filename"] for s in s_pl["songs"]}
+                    
+                    # Update name/timestamp if client is newer? 
+                    # For now, trust client for metadata updates if newer
+                    if c_pl["updated_at"] > s_pl["updated_at"]:
+                         db_pl = session.execute(select(Playlist).where(Playlist.id == p_id)).scalar_one()
+                         db_pl.name = c_pl["name"]
+                         db_pl.updated_at = c_pl["updated_at"]
+                         session.add(db_pl)
+
+                    # Add new songs from client
+                    for song in c_pl.get("songs", []):
+                        if song["song_filename"] not in s_songs:
+                            session.add(PlaylistSong(
+                                playlist_id=p_id,
+                                song_filename=song["song_filename"],
+                                added_at=song["added_at"]
+                            ))
+            session.commit()
+            
+        return self.get_playlists(username)
+
+    def delete_playlist(self, username: str, playlist_id: str):
+        self._ensure_playlist_db(username)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            pl = session.execute(select(Playlist).where(Playlist.id == playlist_id)).scalar_one_or_none()
+            if pl:
+                session.execute(delete(PlaylistSong).where(PlaylistSong.playlist_id == playlist_id))
+                session.delete(pl)
+                session.commit()
+        return True
+
     # --- Favorites ---
     
     def get_favorites(self, username: str):
@@ -1135,7 +1245,19 @@ class UserService:
                     else:
                         session.delete(sl)
                         session.add(SuggestLess(filename=new_filename, added_at=sl.added_at))
-                
+                pl_songs = session.execute(select(PlaylistSong).where(PlaylistSong.song_filename == old_filename)).scalars().all()
+                for pl_s in pl_songs:
+                    existing = session.execute(
+                        select(PlaylistSong)
+                        .where(PlaylistSong.playlist_id == pl_s.playlist_id)
+                        .where(PlaylistSong.song_filename == new_filename)
+                    ).scalar_one_or_none()
+                    
+                    if existing:
+                        session.delete(pl_s)
+                    else:
+                        pl_s.song_filename = new_filename
+                        session.add(pl_s)
                 session.commit()
 
             # Update [username]_stats.db (PlayEvent)

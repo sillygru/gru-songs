@@ -1,23 +1,27 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 import 'auth_provider.dart';
 import 'providers.dart';
 import 'theme_provider.dart';
 import '../theme/app_theme.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
+import '../models/playlist.dart';
 
 class UserDataState {
   final List<String> favorites;
   final List<String> suggestLess;
   final List<String> hidden;
+  final List<Playlist> playlists;
   final bool isLoading;
 
   UserDataState({
     this.favorites = const [],
     this.suggestLess = const [],
     this.hidden = const [],
+    this.playlists = const [],
     this.isLoading = false,
   });
 
@@ -52,12 +56,14 @@ class UserDataState {
     List<String>? favorites,
     List<String>? suggestLess,
     List<String>? hidden,
+    List<Playlist>? playlists,
     bool? isLoading,
   }) {
     return UserDataState(
       favorites: favorites ?? this.favorites,
       suggestLess: suggestLess ?? this.suggestLess,
       hidden: hidden ?? this.hidden,
+      playlists: playlists ?? this.playlists,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -107,11 +113,13 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final localFavs = await DatabaseService.instance.getFavorites();
       final localSL = await DatabaseService.instance.getSuggestLess();
       final localHidden = await DatabaseService.instance.getHidden();
+      final localPlaylists = await DatabaseService.instance.getPlaylists();
 
       state = state.copyWith(
         favorites: localFavs,
         suggestLess: localSL,
         hidden: localHidden,
+        playlists: localPlaylists,
         isLoading: false,
       );
       _updateManager();
@@ -268,6 +276,17 @@ class UserDataNotifier extends Notifier<UserDataState> {
       await DatabaseService.instance.setSuggestLess(mergedSL);
       await DatabaseService.instance.setHidden(mergedHidden);
 
+      // --- Playlist Sync ---
+      final localPlaylists = await DatabaseService.instance.getPlaylists();
+      final localPlJson = localPlaylists.map((p) => p.toJson()).toList();
+      final mergedPlJson = await service.syncPlaylists(_username!, localPlJson);
+      final mergedPlaylists =
+          mergedPlJson.map((j) => Playlist.fromJson(j)).toList();
+
+      for (final pl in mergedPlaylists) {
+        await DatabaseService.instance.savePlaylist(pl);
+      }
+
       // 7. Download stats DB for local viewing (read-only sync)
       await DatabaseService.instance.downloadStatsFromServer(_username!);
       await DatabaseService.instance.downloadFinalStatsFromServer(_username!);
@@ -277,6 +296,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
         favorites: mergedFavs,
         suggestLess: mergedSL,
         hidden: mergedHidden,
+        playlists: mergedPlaylists,
         isLoading: false,
       );
       _updateManager();
@@ -482,6 +502,82 @@ class UserDataNotifier extends Notifier<UserDataState> {
       }
     } catch (e) {
       debugPrint('Server API call failed (offline?): $e');
+    }
+  }
+
+  // --- Playlist Management ---
+
+  Future<void> createPlaylist(String name, [String? firstSong]) async {
+    if (_username == null) return;
+
+    final id = const Uuid().v4();
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final playlist = Playlist(
+      id: id,
+      name: name,
+      createdAt: now,
+      updatedAt: now,
+      songs: firstSong != null
+          ? [PlaylistSong(songFilename: firstSong, addedAt: now)]
+          : [],
+    );
+
+    // Optimistic Update
+    await DatabaseService.instance.savePlaylist(playlist);
+    final newPlaylists = List<Playlist>.from(state.playlists)
+      ..insert(0, playlist);
+    state = state.copyWith(playlists: newPlaylists);
+
+    // Sync
+    await _syncWithServer();
+  }
+
+  Future<void> addSongToPlaylist(String playlistId, String songFilename) async {
+    if (_username == null) return;
+
+    // Optimistic
+    final plIndex = state.playlists.indexWhere((p) => p.id == playlistId);
+    if (plIndex == -1) return;
+
+    await DatabaseService.instance.addSongToPlaylist(playlistId, songFilename);
+
+    // Update state
+    final updatedPl = await DatabaseService.instance
+        .getPlaylists(); // Reload is safest to get correct order/timestamps
+    state = state.copyWith(playlists: updatedPl);
+
+    // Sync
+    await _syncWithServer();
+  }
+
+  Future<void> removeSongFromPlaylist(
+      String playlistId, String songFilename) async {
+    if (_username == null) return;
+
+    await DatabaseService.instance
+        .removeSongFromPlaylist(playlistId, songFilename);
+
+    // Update state
+    final updatedPl = await DatabaseService.instance.getPlaylists();
+    state = state.copyWith(playlists: updatedPl);
+
+    // Sync
+    await _syncWithServer();
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    if (_username == null) return;
+
+    // Optimistic
+    await DatabaseService.instance.deletePlaylist(playlistId);
+    final newPlaylists =
+        state.playlists.where((p) => p.id != playlistId).toList();
+    state = state.copyWith(playlists: newPlaylists);
+
+    // Server Call
+    final service = ref.read(userDataServiceProvider);
+    if (!await StorageService().getIsLocalMode()) {
+      await service.deletePlaylist(_username!, playlistId);
     }
   }
 }

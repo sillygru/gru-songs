@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'package:http/http.dart' as http;
 import 'storage_service.dart';
+import '../models/playlist.dart';
 
 /// DatabaseService handles local SQLite storage for offline access.
 ///
@@ -50,15 +51,60 @@ class DatabaseService {
       _userDataDatabase =
           await _openDatabase('${username}_data.db', _userDataSchema);
 
-      // --- AUTO-MIGRATION: Ensure tables exist even if DB already exists ---
-      await _userDataDatabase!.execute(
-          'CREATE TABLE IF NOT EXISTS hidden (filename TEXT PRIMARY KEY, hidden_at REAL)');
+      // --- AUTO-MIGRATION: Ensure tables and columns exist ---
+      await _ensureTablesAndColumns(_userDataDatabase!);
 
       _initCompleter!.complete();
     } catch (e) {
       debugPrint('Database initialization failed: $e');
       _initCompleter!.completeError(e);
       rethrow;
+    }
+  }
+
+  Future<void> _ensureTablesAndColumns(Database db) async {
+    // 1. Ensure Tables exist (redundant but safe)
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS favorite (filename TEXT PRIMARY KEY, added_at REAL)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS suggestless (filename TEXT PRIMARY KEY, added_at REAL)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS hidden (filename TEXT PRIMARY KEY, hidden_at REAL)');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS playlist (
+          id TEXT PRIMARY KEY,
+          name TEXT,
+          created_at REAL,
+          updated_at REAL
+        )
+    ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS playlist_song (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          playlist_id TEXT,
+          song_filename TEXT,
+          added_at REAL,
+          FOREIGN KEY (playlist_id) REFERENCES playlist (id)
+        )
+    ''');
+
+    // 2. Ensure specific columns exist (for future-proofing and existing installs)
+    // Example: If we added 'description' to playlist table
+    // await _addColumnIfNotExists(db, 'playlist', 'description', 'TEXT');
+  }
+
+  // ignore: unused_element
+  Future<void> _addColumnIfNotExists(Database db, String tableName,
+      String columnName, String columnType) async {
+    final List<Map<String, dynamic>> columns =
+        await db.rawQuery('PRAGMA table_info($tableName)');
+    final bool columnExists =
+        columns.any((column) => column['name'] == columnName);
+
+    if (!columnExists) {
+      await db
+          .execute('ALTER TABLE $tableName ADD COLUMN $columnName $columnType');
+      debugPrint('Migration: Added column $columnName to $tableName');
     }
   }
 
@@ -329,6 +375,147 @@ class DatabaseService {
     });
   }
 
+  // ==========================================================================
+  // PLAYLIST QUERIES
+  // ==========================================================================
+
+  Future<List<Playlist>> getPlaylists() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    try {
+      final plMaps = await _userDataDatabase!
+          .query('playlist', orderBy: 'updated_at DESC');
+      final playlists = <Playlist>[];
+
+      for (final plMap in plMaps) {
+        final id = plMap['id'] as String;
+        final songs = await _userDataDatabase!.query(
+          'playlist_song',
+          where: 'playlist_id = ?',
+          whereArgs: [id],
+          orderBy: 'added_at ASC',
+        );
+
+        playlists.add(Playlist(
+          id: id,
+          name: plMap['name'] as String,
+          createdAt: plMap['created_at'] as double,
+          updatedAt: plMap['updated_at'] as double,
+          songs: songs.map((s) => PlaylistSong.fromJson(s)).toList(),
+        ));
+      }
+      return playlists;
+    } catch (e) {
+      debugPrint('Error getting playlists: $e');
+      return [];
+    }
+  }
+
+  Future<void> savePlaylist(Playlist playlist) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      // Upsert playlist
+      await txn.insert(
+        'playlist',
+        {
+          'id': playlist.id,
+          'name': playlist.name,
+          'created_at': playlist.createdAt,
+          'updated_at': playlist.updatedAt,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // We don't delete existing songs here to be safe (sync might rely on additive),
+      // but if this is a "save whole playlist" call, we probably should replace songs.
+      // However, usually we modify incrementally.
+      // If we are syncing from server, we might want to replace.
+      // Let's assume this method is used for syncing OR creation.
+
+      // Ideally, if we save the whole object, we should match the object state.
+      // Delete all songs and re-insert.
+      await txn.delete('playlist_song',
+          where: 'playlist_id = ?', whereArgs: [playlist.id]);
+
+      for (final song in playlist.songs) {
+        await txn.insert('playlist_song', {
+          'playlist_id': playlist.id,
+          'song_filename': song.songFilename,
+          'added_at': song.addedAt,
+        });
+      }
+    });
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('playlist_song',
+          where: 'playlist_id = ?', whereArgs: [playlistId]);
+      await txn.delete('playlist', where: 'id = ?', whereArgs: [playlistId]);
+    });
+  }
+
+  Future<void> addSongToPlaylist(String playlistId, String songFilename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+    await _userDataDatabase!.transaction((txn) async {
+      // Check if already exists?
+      final existing = await txn.query('playlist_song',
+          where: 'playlist_id = ? AND song_filename = ?',
+          whereArgs: [playlistId, songFilename]);
+
+      if (existing.isEmpty) {
+        await txn.insert('playlist_song', {
+          'playlist_id': playlistId,
+          'song_filename': songFilename,
+          'added_at': now
+        });
+
+        // Update playlist timestamp
+        await txn.update('playlist', {'updated_at': now},
+            where: 'id = ?', whereArgs: [playlistId]);
+      }
+    });
+  }
+
+  Future<void> removeSongFromPlaylist(
+      String playlistId, String songFilename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('playlist_song',
+          where: 'playlist_id = ? AND song_filename = ?',
+          whereArgs: [playlistId, songFilename]);
+      // Update playlist timestamp
+      await txn.update('playlist',
+          {'updated_at': DateTime.now().millisecondsSinceEpoch / 1000.0},
+          where: 'id = ?', whereArgs: [playlistId]);
+    });
+  }
+
+  Future<void> updatePlaylistName(String playlistId, String newName) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.update(
+        'playlist',
+        {
+          'name': newName,
+          'updated_at': DateTime.now().millisecondsSinceEpoch / 1000.0
+        },
+        where: 'id = ?',
+        whereArgs: [playlistId]);
+  }
+
   /// Renames a file in all database tables.
   /// If the target filename already exists, stats are merged.
   Future<void> renameFile(String oldFilename, String newFilename) async {
@@ -371,6 +558,28 @@ class DatabaseService {
       } else {
         await txn.update('hidden', {'filename': newFilename},
             where: 'filename = ?', whereArgs: [oldFilename]);
+      }
+
+      // Update Playlist Songs
+      // Get all playlist entries for old filename
+      final plSongs = await txn.query('playlist_song',
+          where: 'song_filename = ?', whereArgs: [oldFilename]);
+      for (final plSong in plSongs) {
+        final playlistId = plSong['playlist_id'] as String;
+        // Check if new filename already in this playlist
+        final existing = await txn.query('playlist_song',
+            where: 'playlist_id = ? AND song_filename = ?',
+            whereArgs: [playlistId, newFilename]);
+
+        if (existing.isNotEmpty) {
+          // Delete old (merge)
+          await txn.delete('playlist_song',
+              where: 'id = ?', whereArgs: [plSong['id']]);
+        } else {
+          // Rename
+          await txn.update('playlist_song', {'song_filename': newFilename},
+              where: 'id = ?', whereArgs: [plSong['id']]);
+        }
       }
     });
 
@@ -519,6 +728,19 @@ class DatabaseService {
     CREATE TABLE IF NOT EXISTS hidden (
       filename TEXT PRIMARY KEY,
       hidden_at REAL
+    );
+    CREATE TABLE IF NOT EXISTS playlist (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      created_at REAL,
+      updated_at REAL
+    );
+    CREATE TABLE IF NOT EXISTS playlist_song (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      playlist_id TEXT,
+      song_filename TEXT,
+      added_at REAL,
+      FOREIGN KEY (playlist_id) REFERENCES playlist (id)
     );
   ''';
 }

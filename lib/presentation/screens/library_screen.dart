@@ -120,6 +120,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         final sortedSubFolders = content.subFolders;
         final immediateSongs = content.immediateSongs;
         final isRoot = widget.relativePath == null;
+        final playlists = userData.playlists;
 
         Widget folderIndexBuilder(BuildContext context, int index) {
           int offset = 0;
@@ -159,6 +160,79 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               );
             }
             offset = 1;
+
+            // 2. Playlists (at root only)
+            if (index - offset < playlists.length) {
+              final playlist = playlists[index - offset];
+              final playlistSongs = allSongs
+                  .where((s) =>
+                      playlist.songs.any((ps) => ps.songFilename == s.filename))
+                  .toList();
+
+              return ListTile(
+                leading: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.5),
+                        width: 2),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: FolderGridImage(songs: playlistSongs),
+                  ),
+                ),
+                title: Text(playlist.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                    '${playlist.songs.length} songs (${playlistSongs.length} found in library)'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  onPressed: () {
+                    // Show playlist options (Delete)
+                    showModalBottomSheet(
+                      context: context,
+                      builder: (context) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.delete_outline,
+                                  color: Colors.red),
+                              title: const Text('Delete Playlist',
+                                  style: TextStyle(color: Colors.red)),
+                              onTap: () {
+                                Navigator.pop(context);
+                                ref
+                                    .read(userDataProvider.notifier)
+                                    .deletePlaylist(playlist.id);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SongListScreen(
+                        title: playlist.name,
+                        songs: playlistSongs,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
+            offset += playlists.length;
           }
 
           final folderIndex = index - offset;
@@ -212,8 +286,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           );
         }
 
-        final itemCount =
-            (isRoot ? 1 : 0) + sortedSubFolders.length + immediateSongs.length;
+        final itemCount = (isRoot ? (1 + playlists.length) : 0) +
+            sortedSubFolders.length +
+            immediateSongs.length;
 
         if (isRoot) {
           return ListView.builder(

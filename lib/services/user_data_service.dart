@@ -57,6 +57,38 @@ class UserDataService {
     );
   }
 
+  // --- Playlists ---
+
+  Future<List<dynamic>> syncPlaylists(
+      String username, List<Map<String, dynamic>> playlists) async {
+    if (ApiService.baseUrl.isEmpty) {
+      return playlists; // Fallback to local if no server
+    }
+
+    try {
+      final response = await _client.post(
+        Uri.parse('${ApiService.baseUrl}/user/playlists'),
+        headers: _getHeaders(username),
+        body: jsonEncode(playlists),
+      );
+
+      if (response.statusCode == 200) {
+        return List<dynamic>.from(jsonDecode(response.body));
+      }
+    } catch (e) {
+      debugPrint('Sync playlists failed: $e');
+    }
+    return playlists;
+  }
+
+  Future<void> deletePlaylist(String username, String playlistId) async {
+    if (ApiService.baseUrl.isEmpty) return;
+    await _client.delete(
+      Uri.parse('${ApiService.baseUrl}/user/playlists/$playlistId'),
+      headers: _getHeaders(username),
+    );
+  }
+
   // --- Legacy Individual Methods (for backward compatibility) ---
 
   Future<List<String>> getFavorites(String username) async {

@@ -343,6 +343,27 @@ def remove_hidden(filename: str, x_username: str = Header(None)):
     user_service.remove_hidden(x_username, filename)
     return {"status": "removed"}
 
+# --- Playlist Routes ---
+
+@app.get("/user/playlists")
+def get_playlists(x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.get_playlists(x_username)
+
+@app.post("/user/playlists")
+def sync_playlists(playlists: List[Dict[str, Any]], x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user_service.sync_playlists(x_username, playlists)
+
+@app.delete("/user/playlists/{playlist_id}")
+def delete_playlist(playlist_id: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.delete_playlist(x_username, playlist_id)
+    return {"status": "deleted"}
+
 # --- Renaming Routes ---
 
 @app.post("/user/rename-file")

@@ -52,6 +52,22 @@ class Hidden(Base):
     filename: Mapped[str] = mapped_column(String, primary_key=True)
     hidden_at: Mapped[float] = mapped_column(Float, default=lambda: datetime.now().timestamp())
 
+class Playlist(Base):
+    __tablename__ = "playlist"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)
+
+class PlaylistSong(Base):
+    __tablename__ = "playlistsong"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    playlist_id: Mapped[str] = mapped_column(String, ForeignKey("playlist.id"), index=True)
+    song_filename: Mapped[str] = mapped_column(String)
+    added_at: Mapped[float] = mapped_column(Float)
+    
+    playlist: Mapped["Playlist"] = relationship("Playlist")
+
 # --- [username]_stats.db ---
 class PlaySession(Base):
     __tablename__ = "playsession"
