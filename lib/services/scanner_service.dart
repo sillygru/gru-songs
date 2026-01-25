@@ -26,14 +26,12 @@ class ScannerService {
     // Request permissions before accessing storage
     if (Platform.isAndroid) {
       // Request all relevant storage permissions
+      // For Android 13+ (API 33), we need READ_MEDIA_AUDIO and READ_MEDIA_IMAGES
+      // For older versions, we need READ_EXTERNAL_STORAGE
       var statusStorage = await Permission.storage.request();
-      var statusMediaLibrary = await Permission.mediaLibrary.request();
-      var statusManageExternalStorage =
-          await Permission.manageExternalStorage.request();
+      var statusAudio = await Permission.audio.request();
 
-      if (!statusStorage.isGranted &&
-          !statusMediaLibrary.isGranted &&
-          !statusManageExternalStorage.isGranted) {
+      if (!statusStorage.isGranted && !statusAudio.isGranted) {
         debugPrint('Storage permissions not granted. Cannot scan directory.');
         return []; // Return empty if permissions are not granted
       }
