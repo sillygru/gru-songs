@@ -1,4 +1,4 @@
-# Gru Songs (v3.5.2)
+# Gru Songs (v3.5.3)
 
 ## What is Gru Songs?
 Gru Songs is a simple local music player app built with Flutter, that can optionally connect to a server to sync stats.
@@ -10,7 +10,7 @@ Gru Songs is a simple local music player app built with Flutter, that can option
 - **Folder Based Organization:** Organize your music with intuitive folder structure support.
 - **Metadata:** Automatic extraction of album art, titles, and artist info.
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
-- **Cross-device sync** Can sync stats across devices, requires server tho.
+- **Cross-device sync:** Sync stats, favorites, playlists, and theme across devices (requires server).
 
 ## Getting Started
 
@@ -20,7 +20,6 @@ If you want to sync data across devices, you must host your own server.
 ## Good to know
 
 User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file—like play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
-We do have a feature to sync file names across devices :)
 
 ## Screenshots
 
@@ -49,10 +48,12 @@ This was originally a personal side project, so there might be leftovers of pre-
    - Install Flutter dependencies: `flutter pub get`.
    - Run the app: `flutter run`.
 
-### Build the app for different platforms
-   - flutter build apk --release
-   - flutter build ios --release
-   - flutter build macos --release
+### Build the app for Android
+
+- **ARMv8 (arm64):**
+  - `flutter build apk --release --target-platform=android-arm64`
+- **ARMv7:**
+  - `flutter build apk --release --target-platform=android-arm`
 
 
 ## Ignore/notes to self

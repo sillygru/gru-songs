@@ -3,52 +3,33 @@ import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
 import 'package:metadata_god/metadata_god.dart';
 import 'database_service.dart';
-import 'api_service.dart';
 import '../models/song.dart';
 import 'storage_service.dart';
 import 'android_storage_service.dart';
 
 class FileManagerService {
-  final ApiService _apiService;
+  /// Updates the song title in the file metadata.
+  Future<void> updateSongTitle(Song song, String newTitle) async {
+    debugPrint(
+        'FileManager: updateSongTitle called for ${song.filename} -> $newTitle');
 
-  FileManagerService(this._apiService);
-
-  /// Updates the song title in the file metadata and notifies the server.
-  Future<void> updateSongTitle(Song song, String newTitle,
-      {int deviceCount = 0}) async {
-    // 1. Update locally
-    await _updateMetadataInternal(song.url, title: newTitle);
-
-    // 2. Notify server if not in local mode
-    if (!await StorageService().getIsLocalMode()) {
-      try {
-        await _apiService.renameFile(song.filename, newTitle, deviceCount,
-            type: "metadata");
-      } catch (e) {
-        debugPrint(
-            "Server title update notification failed: $e. It will need manual sync later.");
-      }
+    try {
+      // 1. Update locally
+      debugPrint('FileManager: Starting local metadata update...');
+      await _updateMetadataInternal(song.url, title: newTitle);
+      debugPrint('FileManager: Local metadata update successful');
+    } catch (e) {
+      debugPrint('FileManager: updateSongTitle failed: $e');
+      rethrow;
     }
   }
 
-  /// Updates all metadata for a song and notifies the server.
+  /// Updates all metadata for a song.
   Future<void> updateSongMetadata(
-      Song song, String title, String artist, String album,
-      {int deviceCount = 0}) async {
+      Song song, String title, String artist, String album) async {
     // 1. Update locally
     await _updateMetadataInternal(song.url,
         title: title, artist: artist, album: album);
-
-    // 2. Notify server if not in local mode
-    if (!await StorageService().getIsLocalMode()) {
-      try {
-        await _apiService.renameFile(song.filename, title, deviceCount,
-            type: "metadata", artist: artist, album: album);
-      } catch (e) {
-        debugPrint(
-            "Server metadata update notification failed: $e. It will need manual sync later.");
-      }
-    }
   }
 
   /// Updates lyrics for a song.
@@ -158,10 +139,8 @@ class FileManagerService {
     }
   }
 
-  /// Renames a song file locally and notifies the server.
-  /// [deviceCount] is the number of OTHER devices that need to sync this rename.
-  Future<void> renameSong(Song song, String newTitle,
-      {int deviceCount = 0}) async {
+  /// Renames a song file locally.
+  Future<void> renameSong(Song song, String newTitle) async {
     final oldPath = song.url;
     final directory = p.dirname(oldPath);
     final extension = p.extension(oldPath);
@@ -238,17 +217,6 @@ class FileManagerService {
     // 3. Update local DB
     await DatabaseService.instance.renameFile(song.filename, newFilename);
 
-    // 3. Notify server if not in local mode
-    if (!await StorageService().getIsLocalMode()) {
-      try {
-        await _apiService.renameFile(song.filename, newFilename, deviceCount,
-            type: "file");
-      } catch (e) {
-        debugPrint(
-            "Server rename notification failed: $e. It will need manual sync later.");
-      }
-    }
-
     debugPrint("Successfully renamed ${song.filename} to $newFilename");
   }
 
@@ -280,118 +248,5 @@ class FileManagerService {
     } else {
       throw Exception("File does not exist: ${song.url}");
     }
-  }
-
-  /// Checks for renames performed on other devices and applies them locally.
-  Future<void> syncRenamesFromServer(String rootPath) async {
-    if (await StorageService().getIsLocalMode()) return;
-
-    try {
-      final pending = await _apiService.getPendingRenames();
-      if (pending.isEmpty) return;
-
-      // We need to find the files by their basename in the rootPath
-      final allFiles = _listAllAudioFiles(Directory(rootPath));
-
-      for (var task in pending) {
-        final oldName = task['old'] as String;
-        final newName = task['new'] as String;
-        final type = task['type'] as String? ?? "file";
-
-        // Find the file locally
-        File? localFile;
-        for (var file in allFiles) {
-          if (p.basename(file.path) == oldName) {
-            localFile = file;
-            break;
-          }
-        }
-
-        if (localFile != null) {
-          if (type == "file") {
-            // Physical Rename Sync
-            final directory = p.dirname(localFile.path);
-            final targetPath = p.join(directory, newName);
-
-            if (!await File(targetPath).exists()) {
-              try {
-                if (Platform.isAndroid) {
-                  final storage = StorageService();
-                  final treeUri = await storage.getMusicFolderTreeUri();
-                  final rootPath = await storage.getMusicFolderPath();
-                  if (treeUri != null &&
-                      treeUri.isNotEmpty &&
-                      rootPath != null) {
-                    if (!p.isWithin(rootPath, localFile.path) &&
-                        !p.equals(rootPath, p.dirname(localFile.path))) {
-                      throw Exception(
-                          'Source file is outside the music folder.');
-                    }
-                    final sourceRelativePath =
-                        p.relative(localFile.path, from: rootPath);
-                    await AndroidStorageService.renameFile(
-                      treeUri: treeUri,
-                      sourceRelativePath: sourceRelativePath,
-                      newName: newName,
-                    );
-                  } else {
-                    await localFile.rename(targetPath);
-                  }
-                } else {
-                  await localFile.rename(targetPath);
-                }
-                await DatabaseService.instance.renameFile(oldName, newName);
-                await _apiService.acknowledgeRename(oldName, newName,
-                    type: "file");
-                debugPrint("Applied remote file rename: $oldName -> $newName");
-              } catch (e) {
-                debugPrint("Failed to apply remote rename for $oldName: $e");
-              }
-            } else {
-              await DatabaseService.instance.renameFile(oldName, newName);
-              await _apiService.acknowledgeRename(oldName, newName,
-                  type: "file");
-            }
-          } else {
-            // Metadata Title/Artist/Album Sync
-            try {
-              final artist = task['artist'] as String?;
-              final album = task['album'] as String?;
-              await _updateMetadataInternal(localFile.path,
-                  title: newName, artist: artist, album: album);
-              await _apiService.acknowledgeRename(oldName, newName,
-                  type: "metadata", artist: artist, album: album);
-              debugPrint(
-                  "Applied remote metadata update: $oldName -> $newName (Artist: $artist, Album: $album)");
-            } catch (e) {
-              debugPrint(
-                  "Failed to apply remote metadata update for $oldName: $e");
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("Sync renames from server failed: $e");
-    }
-  }
-
-  List<File> _listAllAudioFiles(Directory dir) {
-    final List<File> audioFiles = [];
-    final supported = ['.mp3', '.m4a', '.wav', '.flac', '.ogg'];
-
-    if (!dir.existsSync()) return [];
-
-    try {
-      final entities = dir.listSync(recursive: true, followLinks: false);
-      for (var entity in entities) {
-        if (entity is File &&
-            supported.contains(p.extension(entity.path).toLowerCase())) {
-          audioFiles.add(entity);
-        }
-      }
-    } catch (e) {
-      debugPrint("Error listing files for rename sync: $e");
-    }
-    return audioFiles;
   }
 }

@@ -48,32 +48,20 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
       final newArtist = _artistController.text.trim();
       final newAlbum = _albumController.text.trim();
 
-      int deviceCount = 0;
-      final storage = ref.read(storageServiceProvider);
-      if (!await storage.getIsLocalMode()) {
-        if (mounted) {
-          deviceCount = await _showDeviceCountDialog(context);
-        }
-      }
-
       // 1. Handle Filename Rename if changed
       if (newFilename != p.basenameWithoutExtension(widget.song.filename)) {
         await ref
             .read(songsProvider.notifier)
-            .renameSong(widget.song, newFilename, deviceCount: deviceCount);
+            .renameSong(widget.song, newFilename);
       }
 
       // 2. Handle Metadata update
       if (newTitle != widget.song.title ||
           newArtist != widget.song.artist ||
           newAlbum != widget.song.album) {
-        // We need to re-fetch the song from provider or use the new one if rename happened
-        // But for simplicity, we use the original song object as it has the correct URL (until scan completes)
-        // Actually, renameSong triggers a full scan which might invalidate things.
-        // Let's just call updateSongMetadata.
-        await ref.read(songsProvider.notifier).updateSongMetadata(
-            widget.song, newTitle, newArtist, newAlbum,
-            deviceCount: deviceCount);
+        await ref
+            .read(songsProvider.notifier)
+            .updateSongMetadata(widget.song, newTitle, newArtist, newAlbum);
       }
 
       if (mounted) {
@@ -91,62 +79,6 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
-  }
-
-  Future<int> _showDeviceCountDialog(BuildContext context) async {
-    int count = 0;
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text("Sync to other devices?"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                  "How many other devices do you want to sync these changes to?"),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove),
-                    onPressed: count > 0 ? () => setState(() => count--) : null,
-                  ),
-                  Text(count.toString(),
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: count < 5 ? () => setState(() => count++) : null,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Warning: Stats will be split if you don't rename the file on other devices.",
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                count = 0;
-                Navigator.pop(context);
-              },
-              child: const Text("Don't Sync"),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Set Sync"),
-            ),
-          ],
-        ),
-      ),
-    );
-    return count;
   }
 
   @override
@@ -181,7 +113,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
               decoration: const InputDecoration(
                 labelText: "Filename (without extension)",
                 border: OutlineInputBorder(),
-                helperText: "Renaming the file will sync across devices.",
+                helperText: "Renaming the file will update it locally.",
               ),
             ),
             const SizedBox(height: 24),

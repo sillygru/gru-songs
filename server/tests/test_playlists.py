@@ -60,7 +60,7 @@ def test_playlist_crud():
     synced = user_service.get_playlists(username)
     assert len(synced) == 0
 
-def test_playlist_rename_file():
+def test_playlist_basic_sync():
     username = "testuser"
     user_service.create_user(username, "password")
     
@@ -79,15 +79,10 @@ def test_playlist_rename_file():
     ]
     user_service.sync_playlists(username, playlists)
     
-    # Rename file
-    user_service.rename_file(username, "old.mp3", "new.mp3", device_count=0)
-    
-    # Check playlist
     synced = user_service.get_playlists(username)
     assert len(synced[0]["songs"]) == 1
-    assert synced[0]["songs"][0]["song_filename"] == "new.mp3"
 
-def test_playlist_merge_on_rename():
+def test_playlist_multiple_songs():
     username = "testuser"
     user_service.create_user(username, "password")
     
@@ -107,9 +102,5 @@ def test_playlist_merge_on_rename():
     ]
     user_service.sync_playlists(username, playlists)
     
-    # Rename a.mp3 to b.mp3 (should merge/delete one)
-    user_service.rename_file(username, "a.mp3", "b.mp3", device_count=0)
-    
     synced = user_service.get_playlists(username)
-    assert len(synced[0]["songs"]) == 1
-    assert synced[0]["songs"][0]["song_filename"] == "b.mp3"
+    assert len(synced[0]["songs"]) == 2

@@ -6,8 +6,10 @@ import os
 import shutil
 import asyncio
 import tempfile
+import logging
 from contextlib import asynccontextmanager
 from multiprocessing import Process, Queue
+from sqlalchemy import text
 
 from config_manager import config_manager
 from setup_wizard import run_wizard
@@ -22,7 +24,10 @@ from services import music_service
 from user_service import user_service
 from backup_service import backup_service
 from discord_bot import run_bot
-from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, FavoriteRequest, RenameRequest, AcknowledgeRenameRequest
+from models import UserCreate, UserLogin, UserUpdate, StatsEntry, UserProfileUpdate, FavoriteRequest
+
+# Initialize logger
+logger = logging.getLogger("uvicorn.error")
 
 # Global queue and process for discord bot
 discord_queue = Queue()
@@ -67,7 +72,15 @@ async def listen_for_commands():
 async def lifespan(app: FastAPI):
     global bot_process
     # Startup logic
+    
+    # Run database migrations first
     backup_service.log_event("STARTUP")
+    try:
+        db_manager.run_full_migration()
+        logger.info("Database migrations completed on startup")
+    except Exception as e:
+        logger.error(f"Database migration failed on startup: {e}")
+        # Continue startup even if migration fails, but log the error
     
     # Check Discord validity
     is_discord_valid, discord_msg = settings.validate_discord()
@@ -364,38 +377,63 @@ def delete_playlist(playlist_id: str, x_username: str = Header(None)):
     user_service.delete_playlist(x_username, playlist_id)
     return {"status": "deleted"}
 
-# --- Renaming Routes ---
+# --- Debug Routes ---
 
-@app.post("/user/rename-file")
-def rename_file(req: RenameRequest, x_username: str = Header(None)):
+
+
+# --- Database Migration Routes ---
+
+@app.post("/admin/migrate-databases")
+async def migrate_databases(x_username: str = Header(None)):
+    """Trigger full database migration. Admin endpoint for manual migrations."""
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
     
-    success, message = user_service.rename_file(
-        x_username, req.old_filename, req.new_name, req.device_count, 
-        type=req.type, artist=req.artist, album=req.album
-    )
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"message": message}
+    # You might want to add admin check here
+    # For now, any authenticated user can trigger migrations
+    
+    try:
+        db_manager.run_full_migration()
+        return {"message": "Database migration completed successfully"}
+    except Exception as e:
+        logger.error(f"Database migration failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")
 
-@app.get("/user/pending-renames")
-def get_pending_renames(x_username: str = Header(None)):
-    if not x_username:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    return user_service.get_pending_renames(x_username)
-
-@app.post("/user/acknowledge-rename")
-def acknowledge_rename(req: AcknowledgeRenameRequest, x_username: str = Header(None)):
+@app.get("/admin/migration-status")
+def get_migration_status(x_username: str = Header(None)):
+    """Get current migration status."""
     if not x_username:
         raise HTTPException(status_code=401, detail="User not authenticated")
     
-    user_service.acknowledge_rename(
-        x_username, req.old_filename, req.new_name, 
-        type=req.type, artist=req.artist, album=req.album
-    )
-    return {"status": "ok"}
+    try:
+        status = {
+            "global_dbs": {
+                "users_db": os.path.exists(os.path.join(settings.USERS_DIR, "global_users.db")),
+                "uploads_db": os.path.exists(os.path.join(settings.USERS_DIR, "uploads.db"))
+            },
+            "user_dbs": []
+        }
+        
+        # Check user databases
+        if os.path.exists(settings.USERS_DIR):
+            for filename in os.listdir(settings.USERS_DIR):
+                if filename.endswith("_data.db"):
+                    username = filename.replace("_data.db", "")
+                    status["user_dbs"].append({
+                        "username": username,
+                        "data_db": True,
+                        "stats_db": os.path.exists(os.path.join(settings.USERS_DIR, f"{username}_stats.db"))
+                    })
+        
+        return status
+    except Exception as e:
+        logger.error(f"Failed to get migration status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
+@app.get("/debug/test")
+def debug_test():
+    """Simple debug endpoint to test server connectivity."""
+    return {"status": "ok", "message": "Server is responding"}
 
 # --- User DB & Stats Mirroring Routes ---
 

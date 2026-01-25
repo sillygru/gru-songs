@@ -609,20 +609,24 @@ class DatabaseService {
     // Update User Data DB (Favorites, SuggestLess, Hidden, Playlists)
     await _userDataDatabase!.transaction((txn) async {
       // Remove from favorites
-      await txn.delete('favorite', where: 'filename = ?', whereArgs: [filename]);
-      
+      await txn
+          .delete('favorite', where: 'filename = ?', whereArgs: [filename]);
+
       // Remove from suggestless
-      await txn.delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
-      
+      await txn
+          .delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
+
       // Remove from hidden
       await txn.delete('hidden', where: 'filename = ?', whereArgs: [filename]);
-      
+
       // Remove from all playlists
-      await txn.delete('playlist_song', where: 'song_filename = ?', whereArgs: [filename]);
+      await txn.delete('playlist_song',
+          where: 'song_filename = ?', whereArgs: [filename]);
     });
 
     // Note: We DO NOT delete play events to preserve statistics
-    debugPrint('Deleted user data entries for file $filename (stats preserved)');
+    debugPrint(
+        'Deleted user data entries for file $filename (stats preserved)');
   }
 
   /// Replaces all local suggestless with the given list (used when syncing FROM server)

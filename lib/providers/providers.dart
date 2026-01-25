@@ -96,15 +96,14 @@ class MetadataSaveNotifier extends Notifier<MetadataSaveState> {
   void start() {
     _token += 1;
     state = const MetadataSaveState(
-      status: MetadataSaveStatus.saving,
-      message: 'Saving metadata changes...');
+        status: MetadataSaveStatus.saving,
+        message: 'Saving metadata changes...');
   }
 
   void success() {
     final token = ++_token;
     state = const MetadataSaveState(
-      status: MetadataSaveStatus.success,
-      message: 'Metadata changes saved');
+        status: MetadataSaveStatus.success, message: 'Metadata changes saved');
     _scheduleReset(token);
   }
 
@@ -181,7 +180,7 @@ final scannerServiceProvider = Provider<ScannerService>((ref) {
 });
 
 final fileManagerServiceProvider = Provider<FileManagerService>((ref) {
-  return FileManagerService(ref.watch(apiServiceProvider));
+  return FileManagerService();
 });
 
 final songRepositoryProvider = Provider<SongRepository>((ref) {
@@ -375,13 +374,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           }
         }
 
-        final musicPath = await storage.getMusicFolderPath();
-        if (musicPath != null) {
-          await ref
-              .read(fileManagerServiceProvider)
-              .syncRenamesFromServer(musicPath);
-        }
-
         // Pass isBackground to _performFullScan
         final songs = await _performFullScan(
             isBackground: isBackground, existingSongs: state.value);
@@ -457,26 +449,43 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     });
   }
 
-  Future<void> renameSong(Song song, String newTitle,
-      {int deviceCount = 0}) async {
+  Future<void> renameSong(Song song, String newFilename) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      await ref
-          .read(fileManagerServiceProvider)
-          .renameSong(song, newTitle, deviceCount: deviceCount);
+      await ref.read(fileManagerServiceProvider).renameSong(song, newFilename);
       return _performFullScan();
     });
   }
 
-  Future<void> updateSongTitle(Song song, String newTitle,
-      {int deviceCount = 0}) async {
+  Future<void> updateSongTitle(Song song, String newTitle) async {
     final notifier = ref.read(metadataSaveProvider.notifier);
     notifier.start();
     unawaited(() async {
       try {
         await ref
             .read(fileManagerServiceProvider)
-            .updateSongTitle(song, newTitle, deviceCount: deviceCount);
+            .updateSongTitle(song, newTitle);
+        if (state.hasValue) {
+          final current = state.value ?? [];
+          state = AsyncValue.data([
+            for (final s in current)
+              if (s.filename == song.filename)
+                Song(
+                  title: newTitle,
+                  artist: s.artist,
+                  album: s.album,
+                  filename: s.filename,
+                  url: s.url,
+                  lyricsUrl: s.lyricsUrl,
+                  coverUrl: s.coverUrl,
+                  playCount: s.playCount,
+                  duration: s.duration,
+                  mtime: s.mtime,
+                )
+              else
+                s,
+          ]);
+        }
         await refresh(isBackground: true);
         notifier.success();
       } catch (e) {
@@ -487,15 +496,35 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   }
 
   Future<void> updateSongMetadata(
-      Song song, String title, String artist, String album,
-      {int deviceCount = 0}) async {
+      Song song, String title, String artist, String album) async {
     final notifier = ref.read(metadataSaveProvider.notifier);
     notifier.start();
     unawaited(() async {
       try {
-        await ref.read(fileManagerServiceProvider).updateSongMetadata(
-            song, title, artist, album,
-            deviceCount: deviceCount);
+        await ref
+            .read(fileManagerServiceProvider)
+            .updateSongMetadata(song, title, artist, album);
+        if (state.hasValue) {
+          final current = state.value ?? [];
+          state = AsyncValue.data([
+            for (final s in current)
+              if (s.filename == song.filename)
+                Song(
+                  title: title,
+                  artist: artist,
+                  album: album,
+                  filename: s.filename,
+                  url: s.url,
+                  lyricsUrl: s.lyricsUrl,
+                  coverUrl: s.coverUrl,
+                  playCount: s.playCount,
+                  duration: s.duration,
+                  mtime: s.mtime,
+                )
+              else
+                s,
+          ]);
+        }
         await refresh(isBackground: true);
         notifier.success();
       } catch (e) {

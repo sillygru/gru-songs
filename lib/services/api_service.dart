@@ -64,30 +64,6 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> uploadSong(File file, String? filename) async {
-    try {
-      final request =
-          http.MultipartRequest('POST', Uri.parse('$baseUrl/music/upload'));
-      request.headers.addAll(_headers);
-      request.files.add(await http.MultipartFile.fromPath('file', file.path));
-      if (filename != null && filename.isNotEmpty) {
-        request.fields['filename'] = filename;
-      }
-
-      final streamedResponse = await _client.send(request);
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-            'Upload failed (${response.statusCode}): ${response.body}');
-      }
-    } catch (e) {
-      rethrow;
-    }
-  }
-
   Future<String?> fetchLyrics(String url) async {
     try {
       final response = await _client.get(
@@ -119,70 +95,6 @@ class ApiService {
     _lastFunStatsFetch = DateTime.now();
     _lastCachedUsername = _username;
     return localStats;
-  }
-
-  Future<void> renameFile(String oldFilename, String newName, int deviceCount,
-      {String type = "file", String? artist, String? album}) async {
-    try {
-      final response = await _client.post(
-        Uri.parse('$baseUrl/user/rename-file'),
-        headers: _headers,
-        body: jsonEncode({
-          'old_filename': oldFilename,
-          'new_name': newName,
-          'type': type,
-          'device_count': deviceCount,
-          if (artist != null) 'artist': artist,
-          if (album != null) 'album': album,
-        }),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Rename failed: ${response.body}');
-      }
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  Future<List<dynamic>> getPendingRenames() async {
-    try {
-      final response = await _client.get(
-        Uri.parse('$baseUrl/user/pending-renames'),
-        headers: _headers,
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Failed to get pending renames');
-      }
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  Future<void> acknowledgeRename(String oldFilename, String newName,
-      {String type = "file", String? artist, String? album}) async {
-    try {
-      final response = await _client.post(
-        Uri.parse('$baseUrl/user/acknowledge-rename'),
-        headers: _headers,
-        body: jsonEncode({
-          'old_filename': oldFilename,
-          'new_name': newName,
-          'type': type,
-          if (artist != null) 'artist': artist,
-          if (album != null) 'album': album,
-        }),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Acknowledge rename failed: ${response.body}');
-      }
-    } catch (e) {
-      rethrow;
-    }
   }
 
   String getFullUrl(String relativeUrl) {
