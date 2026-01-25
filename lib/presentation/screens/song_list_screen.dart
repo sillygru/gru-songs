@@ -7,11 +7,13 @@ import '../widgets/song_list_item.dart';
 class SongListScreen extends ConsumerWidget {
   final String title;
   final List<Song> songs;
+  final String? playlistId;
 
   const SongListScreen({
     super.key,
     required this.title,
     required this.songs,
+    this.playlistId,
   });
 
   @override
@@ -66,6 +68,7 @@ class SongListScreen extends ConsumerWidget {
                     song: song,
                     isPlaying: isPlaying,
                     heroTagPrefix: 'song_list_$title',
+                    playlistId: playlistId,
                     onTap: () {
                       audioManager.playSong(song, contextQueue: songs);
                     },

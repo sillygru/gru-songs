@@ -216,6 +216,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                           child: GruImage(
                                             url: song.coverUrl ?? '',
                                             fit: BoxFit.cover,
+                                            // Enable memory-efficient caching for album art
+                                            memCacheWidth:
+                                                320, // 2x display width
+                                            memCacheHeight: 320,
                                             errorWidget: Container(
                                               color: Theme.of(context)
                                                   .colorScheme
@@ -231,27 +235,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 12),
-                                  Text(
-                                    song.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16),
+                                  Flexible(
+                                    child: Text(
+                                      song.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16),
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    song.artist,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                        ),
+                                  Flexible(
+                                    child: Text(
+                                      song.artist,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
                                   ),
                                 ],
                               ),

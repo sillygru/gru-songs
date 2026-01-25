@@ -5,11 +5,11 @@ import '../../providers/providers.dart';
 import '../../models/song.dart';
 import 'folder_picker.dart';
 import '../screens/edit_metadata_screen.dart';
-import 'playlist_selection_dialog.dart';
+import 'playlist_selector_screen.dart';
 
 void showSongOptionsMenu(
     BuildContext context, WidgetRef ref, String songFilename, String songTitle,
-    {Song? song}) {
+    {Song? song, String? playlistId}) {
   showModalBottomSheet(
     context: context,
     builder: (sheetContext) {
@@ -129,18 +129,12 @@ void showSongOptionsMenu(
                                 (a, b) => b.updatedAt.compareTo(a.updatedAt));
 
                           if (sorted.isEmpty) {
-                            showDialog(
-                                context: context,
-                                builder: (_) => PlaylistSelectionDialog(
-                                    songFilename: songFilename));
+                            showPlaylistSelector(context, ref, songFilename);
                           } else {
                             final latest = sorted.first;
                             if (latest.songs
                                 .any((s) => s.songFilename == songFilename)) {
-                              showDialog(
-                                  context: context,
-                                  builder: (_) => PlaylistSelectionDialog(
-                                      songFilename: songFilename));
+                              showPlaylistSelector(context, ref, songFilename);
                             } else {
                               ref
                                   .read(userDataProvider.notifier)
@@ -151,16 +145,8 @@ void showSongOptionsMenu(
                                   action: SnackBarAction(
                                       label: "Change",
                                       onPressed: () {
-                                        ref
-                                            .read(userDataProvider.notifier)
-                                            .removeSongFromPlaylist(
-                                                latest.id, songFilename);
-                                        showDialog(
-                                            context: context,
-                                            builder: (_) =>
-                                                PlaylistSelectionDialog(
-                                                    songFilename:
-                                                        songFilename));
+                                        showPlaylistSelector(
+                                            context, ref, songFilename);
                                       }),
                                 ),
                               );
@@ -173,11 +159,7 @@ void showSongOptionsMenu(
                         title: const Text("Add to New Playlist"),
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          // Trigger new playlist dialog directly via a hack or reuse
-                          // We can just open SelectionDialog but trigger "new" immediately?
-                          // Or just replicate the new dialog logic.
-                          // Let's reuse the helper inside PlaylistSelectionDialog if possible, or just build it here.
-                          // Simplest is to just show input dialog here.
+                          // Trigger new playlist dialog directly
 
                           final controller = TextEditingController();
                           showDialog(
@@ -232,6 +214,33 @@ void showSongOptionsMenu(
                           );
                         },
                       ),
+                      if (playlistId != null)
+                        ListTile(
+                          leading: const Icon(Icons.playlist_remove,
+                              color: Colors.red),
+                          title: const Text("Remove from current playlist",
+                              style: TextStyle(color: Colors.red)),
+                          onTap: () {
+                            ref
+                                .read(userDataProvider.notifier)
+                                .removeSongFromPlaylist(
+                                    playlistId, songFilename);
+                            Navigator.pop(sheetContext);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content:
+                                    Text("Removed $songTitle from playlist"),
+                                action: SnackBarAction(
+                                  label: "Change",
+                                  onPressed: () {
+                                    showPlaylistSelector(
+                                        context, ref, songFilename);
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ListTile(
                         leading: const Icon(Icons.edit_outlined),
                         title: const Text("Edit Metadata"),

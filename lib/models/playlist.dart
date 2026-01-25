@@ -35,6 +35,22 @@ class Playlist {
       'songs': songs.map((e) => e.toJson()).toList(),
     };
   }
+
+  Playlist copyWith({
+    String? id,
+    String? name,
+    double? createdAt,
+    double? updatedAt,
+    List<PlaylistSong>? songs,
+  }) {
+    return Playlist(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      songs: songs ?? this.songs,
+    );
+  }
 }
 
 class PlaylistSong {

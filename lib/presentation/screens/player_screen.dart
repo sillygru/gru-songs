@@ -12,6 +12,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../widgets/heart_context_menu.dart';
 import '../widgets/next_up_sheet.dart';
 import 'song_list_screen.dart';
 
@@ -841,20 +842,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             },
                           ),
                           // Favorite
-                          IconButton(
-                            icon: Icon(userData.isFavorite(metadata?.id ?? '')
-                                ? Icons.favorite
-                                : Icons.favorite_border),
-                            color: userData.isFavorite(metadata?.id ?? '')
-                                ? Colors.redAccent
-                                : Colors.white60,
-                            onPressed: () {
+                          GestureDetector(
+                            onLongPress: () {
                               if (metadata != null) {
-                                ref
-                                    .read(userDataProvider.notifier)
-                                    .toggleFavorite(metadata.id);
+                                showHeartContextMenu(
+                                  context: context,
+                                  ref: ref,
+                                  songFilename: metadata.id,
+                                  songTitle: metadata.title,
+                                );
                               }
                             },
+                            child: IconButton(
+                              icon: Icon(userData.isFavorite(metadata?.id ?? '')
+                                  ? Icons.favorite
+                                  : Icons.favorite_border),
+                              color: userData.isFavorite(metadata?.id ?? '')
+                                  ? Colors.redAccent
+                                  : Colors.white60,
+                              onPressed: () {
+                                if (metadata != null) {
+                                  ref
+                                      .read(userDataProvider.notifier)
+                                      .toggleFavorite(metadata.id);
+                                }
+                              },
+                            ),
                           ),
                         ],
                       ),

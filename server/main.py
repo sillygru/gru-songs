@@ -370,6 +370,20 @@ def sync_playlists(playlists: List[Dict[str, Any]], x_username: str = Header(Non
         raise HTTPException(status_code=401, detail="User not authenticated")
     return user_service.sync_playlists(x_username, playlists)
 
+@app.delete("/user/playlists/{playlist_id}/songs/{filename}")
+def remove_song_from_playlist(playlist_id: str, filename: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.remove_song_from_playlist(x_username, playlist_id, filename)
+    return {"status": "removed"}
+
+@app.post("/user/playlists/{playlist_id}/songs/{filename}")
+def add_song_to_playlist(playlist_id: str, filename: str, x_username: str = Header(None)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    user_service.add_song_to_playlist(x_username, playlist_id, filename)
+    return {"status": "added"}
+
 @app.delete("/user/playlists/{playlist_id}")
 def delete_playlist(playlist_id: str, x_username: str = Header(None)):
     if not x_username:

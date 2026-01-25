@@ -135,7 +135,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
 
     // 3. Perform proper sync with server
-    await _syncWithServer();
+    await syncWithServer();
   }
 
   void _updateManager() {
@@ -151,7 +151,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
   /// 2. Find local-only additions
   /// 3. Push local additions to server via API calls
   /// 4. Update local cache with server state
-  Future<void> _syncWithServer() async {
+  Future<void> syncWithServer() async {
     if (_username == null) return;
     if (await StorageService().getIsLocalMode()) {
       debugPrint('UserData: Local mode enabled, skipping server sync');
@@ -291,15 +291,39 @@ class UserDataNotifier extends Notifier<UserDataState> {
       await DatabaseService.instance.downloadStatsFromServer(_username!);
       await DatabaseService.instance.downloadFinalStatsFromServer(_username!);
 
-      // 8. Update UI state
-      state = state.copyWith(
-        favorites: mergedFavs,
-        suggestLess: mergedSL,
-        hidden: mergedHidden,
-        playlists: mergedPlaylists,
-        isLoading: false,
-      );
-      _updateManager();
+      // 8. Update UI state ONLY if changed
+      final favoritesChanged = !listEquals(mergedFavs, state.favorites);
+      final suggestLessChanged = !listEquals(mergedSL, state.suggestLess);
+      final hiddenChanged = !listEquals(mergedHidden, state.hidden);
+
+      // Playlist comparison
+      bool playlistsChanged = mergedPlaylists.length != state.playlists.length;
+      if (!playlistsChanged) {
+        for (int i = 0; i < mergedPlaylists.length; i++) {
+          if (mergedPlaylists[i].updatedAt != state.playlists[i].updatedAt ||
+              mergedPlaylists[i].id != state.playlists[i].id ||
+              mergedPlaylists[i].songs.length !=
+                  state.playlists[i].songs.length) {
+            playlistsChanged = true;
+            break;
+          }
+        }
+      }
+
+      if (favoritesChanged ||
+          suggestLessChanged ||
+          hiddenChanged ||
+          playlistsChanged ||
+          state.isLoading) {
+        state = state.copyWith(
+          favorites: mergedFavs,
+          suggestLess: mergedSL,
+          hidden: mergedHidden,
+          playlists: mergedPlaylists,
+          isLoading: false,
+        );
+        _updateManager();
+      }
 
       syncNotifier.updateTask('userData', SyncStatus.upToDate);
       debugPrint(
@@ -328,14 +352,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
     if (force) {
       state = state.copyWith(isLoading: true);
     }
-    await _syncWithServer();
+    await syncWithServer();
   }
 
   /// Toggle favorite with proper sync:
   /// 1. Update local immediately (optimistic)
   /// 2. Call server API
   /// 3. On failure, rollback local change
-  Future<void> toggleFavorite(String songFilename) async {
+  Future<void> toggleFavorite(String songFilename, {bool sync = true}) async {
     if (_username == null) return;
 
     final service = ref.read(userDataServiceProvider);
@@ -383,6 +407,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
 
     // 2. Call server API
+    if (!sync) return;
     if (await StorageService().getIsLocalMode()) return;
     try {
       if (isFav) {
@@ -529,40 +554,78 @@ class UserDataNotifier extends Notifier<UserDataState> {
     state = state.copyWith(playlists: newPlaylists);
 
     // Sync
-    await _syncWithServer();
+    await syncWithServer();
   }
 
-  Future<void> addSongToPlaylist(String playlistId, String songFilename) async {
+  Future<void> addSongToPlaylist(String playlistId, String songFilename,
+      {bool sync = true}) async {
     if (_username == null) return;
 
-    // Optimistic
-    final plIndex = state.playlists.indexWhere((p) => p.id == playlistId);
-    if (plIndex == -1) return;
-
+    // Optimistic local DB update
     await DatabaseService.instance.addSongToPlaylist(playlistId, songFilename);
 
-    // Update state
-    final updatedPl = await DatabaseService.instance
-        .getPlaylists(); // Reload is safest to get correct order/timestamps
-    state = state.copyWith(playlists: updatedPl);
+    // Optimistic state update
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final newPlaylists = state.playlists.map((pl) {
+      if (pl.id == playlistId) {
+        // Only add if not already present
+        if (!pl.songs.any((s) => s.songFilename == songFilename)) {
+          final updatedSongs = List<PlaylistSong>.from(pl.songs)
+            ..add(PlaylistSong(songFilename: songFilename, addedAt: now));
+          return pl.copyWith(songs: updatedSongs, updatedAt: now);
+        }
+      }
+      return pl;
+    }).toList();
 
-    // Sync
-    await _syncWithServer();
+    state = state.copyWith(playlists: newPlaylists);
+
+    // Sync in background
+    if (!sync) return;
+    if (!await StorageService().getIsLocalMode()) {
+      try {
+        final service = ref.read(userDataServiceProvider);
+        await service.addSongToPlaylist(_username!, playlistId, songFilename);
+      } catch (e) {
+        debugPrint('Failed to add song to server playlist: $e');
+      }
+    }
+    syncWithServer();
   }
 
-  Future<void> removeSongFromPlaylist(
-      String playlistId, String songFilename) async {
+  Future<void> removeSongFromPlaylist(String playlistId, String songFilename,
+      {bool sync = true}) async {
     if (_username == null) return;
 
+    // Optimistic local DB update
     await DatabaseService.instance
         .removeSongFromPlaylist(playlistId, songFilename);
 
-    // Update state
-    final updatedPl = await DatabaseService.instance.getPlaylists();
-    state = state.copyWith(playlists: updatedPl);
+    // Optimistic state update
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final newPlaylists = state.playlists.map((pl) {
+      if (pl.id == playlistId) {
+        final updatedSongs =
+            pl.songs.where((s) => s.songFilename != songFilename).toList();
+        return pl.copyWith(songs: updatedSongs, updatedAt: now);
+      }
+      return pl;
+    }).toList();
 
-    // Sync
-    await _syncWithServer();
+    state = state.copyWith(playlists: newPlaylists);
+
+    // Sync in background
+    if (!sync) return;
+    if (!await StorageService().getIsLocalMode()) {
+      try {
+        final service = ref.read(userDataServiceProvider);
+        await service.removeSongFromPlaylist(
+            _username!, playlistId, songFilename);
+      } catch (e) {
+        debugPrint('Failed to remove song from server playlist: $e');
+      }
+    }
+    syncWithServer();
   }
 
   Future<void> deletePlaylist(String playlistId) async {

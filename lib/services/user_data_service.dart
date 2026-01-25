@@ -89,6 +89,26 @@ class UserDataService {
     );
   }
 
+  Future<void> removeSongFromPlaylist(
+      String username, String playlistId, String songFilename) async {
+    if (ApiService.baseUrl.isEmpty) return;
+    await _client.delete(
+      Uri.parse(
+          '${ApiService.baseUrl}/user/playlists/$playlistId/songs/$songFilename'),
+      headers: _getHeaders(username),
+    );
+  }
+
+  Future<void> addSongToPlaylist(
+      String username, String playlistId, String songFilename) async {
+    if (ApiService.baseUrl.isEmpty) return;
+    await _client.post(
+      Uri.parse(
+          '${ApiService.baseUrl}/user/playlists/$playlistId/songs/$songFilename'),
+      headers: _getHeaders(username),
+    );
+  }
+
   // --- Legacy Individual Methods (for backward compatibility) ---
 
   Future<List<String>> getFavorites(String username) async {

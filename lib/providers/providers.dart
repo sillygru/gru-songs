@@ -205,6 +205,7 @@ final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
 class SongsNotifier extends AsyncNotifier<List<Song>> {
   bool _isRefreshing = false;
   DateTime? _lastRefreshTime;
+  Timer? _debounceTimer;
 
   @override
   Future<List<Song>> build() async {
@@ -225,8 +226,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
       final filtered =
           uniqueCached.where((s) => !userData.isHidden(s.filename)).toList();
-      // Return cached immediately, then update in background
-      _backgroundScanUpdate(uniqueCached);
+      // Return cached immediately, then update in background with debounce
+      _scheduleBackgroundScanUpdate(uniqueCached);
       return filtered;
     }
 
@@ -241,6 +242,13 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }).toList();
 
     return uniqueScanned.where((s) => !userData.isHidden(s.filename)).toList();
+  }
+
+  void _scheduleBackgroundScanUpdate(List<Song> existingSongs) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _backgroundScanUpdate(existingSongs);
+    });
   }
 
   Future<List<Song>> _performFullScan(
@@ -336,7 +344,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     if (isBackground && _lastRefreshTime != null) {
       final diff = DateTime.now().difference(_lastRefreshTime!);
-      if (diff.inSeconds < 60) {
+      if (diff.inSeconds < 30) {
+        // Reduced from 60 seconds for better responsiveness
         debugPrint(
             'SongsNotifier: Background refresh throttled (last refresh ${diff.inSeconds}s ago)');
         return;
@@ -356,11 +365,17 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           final auth = ref.read(authProvider);
           if (auth.username != null && ApiService.baseUrl.isNotEmpty) {
             try {
-              await DatabaseService.instance.sync(auth.username!);
-              // Background refresh doesn't force UserDataNotifier to show loading
-              await ref
-                  .read(userDataProvider.notifier)
-                  .refresh(force: !isBackground);
+              // Run sync in background for non-blocking refresh
+              if (!isBackground) {
+                await DatabaseService.instance.sync(auth.username!);
+                await ref
+                    .read(userDataProvider.notifier)
+                    .refresh(force: !isBackground);
+              } else {
+                unawaited(DatabaseService.instance.sync(auth.username!));
+                unawaited(
+                    ref.read(userDataProvider.notifier).refresh(force: false));
+              }
             } catch (e) {
               if (kDebugMode) {
                 debugPrint(

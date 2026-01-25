@@ -15,6 +15,7 @@ import 'presentation/screens/setup_screen.dart';
 import 'providers/setup_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/app_theme.dart';
+import 'dart:async';
 
 class MyHttpOverrides extends HttpOverrides {
   @override
@@ -26,32 +27,26 @@ class MyHttpOverrides extends HttpOverrides {
 }
 
 Future<void> main() async {
-  HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize MetadataGod early to prevent flutter_rust_bridge initialization errors
-  try {
-    await MetadataGod.initialize();
-  } catch (e) {
-    debugPrint("Failed to initialize MetadataGod: $e");
-  }
-
-  // Initialize Cache V3 and cleanup legacy caches
-  await CacheService.instance.init();
+  // Run initialization in parallel for faster startup
+  await Future.wait([
+    // Initialize MetadataGod early to prevent flutter_rust_bridge initialization errors
+    _initializeMetadataGod(),
+    // Initialize Cache V3 and cleanup legacy caches
+    CacheService.instance.init(),
+    // Setup audio session
+    _setupAudioSession(),
+    // Setup JustAudioBackground
+    _setupJustAudioBackground(),
+  ], eagerError: false);
 
   // Limit image cache to save RAM
-  PaintingBinding.instance.imageCache.maximumSize = 200; // images
+  PaintingBinding.instance.imageCache.maximumSize = 100; // Reduced from 200
   PaintingBinding.instance.imageCache.maximumSizeBytes =
-      50 * 1024 * 1024; // 50MB
+      30 * 1024 * 1024; // Reduced from 50MB
 
-  await AudioSession.instance.then(
-      (session) => session.configure(const AudioSessionConfiguration.music()));
-
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.sillygru.gru_songs.channel.audio',
-    androidNotificationChannelName: 'Audio playback',
-    androidNotificationOngoing: false,
-  );
+  HttpOverrides.global = MyHttpOverrides();
 
   // Check setup status and migration
   final storage = StorageService();
@@ -91,7 +86,8 @@ Future<void> main() async {
 
   if (isSetupComplete && username != null) {
     // Initialize database service for the user to start background coalescing
-    await DatabaseService.instance.initForUser(username);
+    // Don't block app startup for this
+    unawaited(DatabaseService.instance.initForUser(username));
   }
 
   runApp(ProviderScope(
@@ -102,6 +98,27 @@ Future<void> main() async {
     ],
     child: const GruSongsApp(),
   ));
+}
+
+Future<void> _initializeMetadataGod() async {
+  try {
+    await MetadataGod.initialize();
+  } catch (e) {
+    debugPrint("Failed to initialize MetadataGod: $e");
+  }
+}
+
+Future<void> _setupAudioSession() async {
+  await AudioSession.instance.then(
+      (session) => session.configure(const AudioSessionConfiguration.music()));
+}
+
+Future<void> _setupJustAudioBackground() async {
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'com.sillygru.gru_songs.channel.audio',
+    androidNotificationChannelName: 'Audio playback',
+    androidNotificationOngoing: false,
+  );
 }
 
 class InitializedSetupNotifier extends SetupNotifier {

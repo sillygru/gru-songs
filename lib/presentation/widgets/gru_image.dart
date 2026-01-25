@@ -12,6 +12,8 @@ class GruImage extends StatefulWidget {
   final Widget? errorWidget;
   final int? cacheWidth;
   final int? cacheHeight;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
 
   const GruImage({
     super.key,
@@ -25,6 +27,8 @@ class GruImage extends StatefulWidget {
     this.errorWidget,
     this.cacheWidth,
     this.cacheHeight,
+    this.memCacheWidth,
+    this.memCacheHeight,
   });
 
   @override
@@ -76,13 +80,14 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: widget.cacheWidth,
-        cacheHeight: widget.cacheHeight,
+        cacheWidth: widget.memCacheWidth ?? widget.cacheWidth,
+        cacheHeight: widget.memCacheHeight ?? widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
-            duration: const Duration(milliseconds: 500),
+            duration:
+                const Duration(milliseconds: 300), // Reduced animation duration
             curve: Curves.easeOut,
             child: child,
           );
@@ -97,13 +102,14 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: widget.cacheWidth,
-        cacheHeight: widget.cacheHeight,
+        cacheWidth: widget.memCacheWidth ?? widget.cacheWidth,
+        cacheHeight: widget.memCacheHeight ?? widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
-            duration: const Duration(milliseconds: 500),
+            duration:
+                const Duration(milliseconds: 300), // Reduced animation duration
             curve: Curves.easeOut,
             child: child,
           );

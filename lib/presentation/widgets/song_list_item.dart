@@ -6,6 +6,7 @@ import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import 'gru_image.dart';
 import 'song_options_menu.dart';
+import 'heart_context_menu.dart';
 import 'audio_visualizer.dart';
 
 class SongListItem extends ConsumerWidget {
@@ -14,6 +15,7 @@ class SongListItem extends ConsumerWidget {
   final VoidCallback onTap;
   final bool showMenu;
   final String? heroTagPrefix;
+  final String? playlistId;
 
   const SongListItem({
     super.key,
@@ -22,6 +24,7 @@ class SongListItem extends ConsumerWidget {
     required this.onTap,
     this.showMenu = true,
     this.heroTagPrefix,
+    this.playlistId,
   });
 
   @override
@@ -59,7 +62,7 @@ class SongListItem extends ConsumerWidget {
           onLongPress: showMenu
               ? () {
                   showSongOptionsMenu(context, ref, song.filename, song.title,
-                      song: song);
+                      song: song, playlistId: playlistId);
                 }
               : null,
           child: Padding(
@@ -83,6 +86,9 @@ class SongListItem extends ConsumerWidget {
                                 .surfaceContainerHighest,
                             child: const Icon(Icons.music_note),
                           ),
+                          // Enable memory-efficient caching
+                          memCacheWidth: 112, // 2x display size for sharpness
+                          memCacheHeight: 112,
                         ),
                       ),
                     ),
@@ -187,36 +193,46 @@ class SongListItem extends ConsumerWidget {
                         ),
                       ),
                     ),
-                  IconButton(
-                    icon: Icon(
-                      isFavorite
-                          ? Icons.favorite
-                          : (isSuggestLess
-                              ? Icons.heart_broken
-                              : Icons.favorite_border),
-                      color: isFavorite
-                          ? Theme.of(context).colorScheme.primary
-                          : (isSuggestLess
-                              ? Colors.grey
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant
-                                  .withValues(alpha: 0.5)),
-                    ),
-                    onPressed: () {
-                      ref
-                          .read(userDataProvider.notifier)
-                          .toggleFavorite(song.filename);
+                  GestureDetector(
+                    onLongPress: () {
+                      showHeartContextMenu(
+                        context: context,
+                        ref: ref,
+                        songFilename: song.filename,
+                        songTitle: song.title,
+                      );
                     },
-                    iconSize: 18,
-                    visualDensity: VisualDensity.compact,
+                    child: IconButton(
+                      icon: Icon(
+                        isFavorite
+                            ? Icons.favorite
+                            : (isSuggestLess
+                                ? Icons.heart_broken
+                                : Icons.favorite_border),
+                        color: isFavorite
+                            ? Theme.of(context).colorScheme.primary
+                            : (isSuggestLess
+                                ? Colors.grey
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant
+                                    .withValues(alpha: 0.5)),
+                      ),
+                      onPressed: () {
+                        ref
+                            .read(userDataProvider.notifier)
+                            .toggleFavorite(song.filename);
+                      },
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.more_vert),
                     onPressed: () {
                       showSongOptionsMenu(
                           context, ref, song.filename, song.title,
-                          song: song);
+                          song: song, playlistId: playlistId);
                     },
                     iconSize: 20,
                     visualDensity: VisualDensity.compact,

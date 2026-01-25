@@ -24,7 +24,7 @@ class ApiService {
     final HttpClient ioc = HttpClient();
     ioc.badCertificateCallback =
         (X509Certificate cert, String host, int port) => true;
-    ioc.connectionTimeout = const Duration(seconds: 30);
+    ioc.connectionTimeout = const Duration(seconds: 15); // Reduced from 30
     return IOClient(ioc);
   }
 
@@ -39,6 +39,7 @@ class ApiService {
         'User-Agent':
             'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
         'Accept': 'application/json',
+        'Connection': 'keep-alive', // Enable connection pooling
         if (_username != null) 'x-username': _username!,
         'Content-Type': 'application/json',
       };
@@ -78,12 +79,12 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getFunStats() async {
-    // 1. Check RAM Cache (5 minute TTL, also per-user)
+    // 1. Check RAM Cache (3 minute TTL, also per-user) - Reduced from 5 minutes
     if (_funStatsCache != null &&
         _lastFunStatsFetch != null &&
         _lastCachedUsername == _username) {
       final diff = DateTime.now().difference(_lastFunStatsFetch!);
-      if (diff.inMinutes < 5) {
+      if (diff.inMinutes < 3) {
         return _funStatsCache!;
       }
     }

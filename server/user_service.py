@@ -1057,29 +1057,67 @@ class UserService:
                             added_at=song["added_at"]
                         ))
                 else:
-                    # Merge songs
-                    s_pl = server_pl_map[p_id]
-                    s_songs = {s["song_filename"] for s in s_pl["songs"]}
+                    # Merge songs: Replace server list with client list to allow removals
+                    # (This is safe because sync_playlists sends the full state of each playlist from client)
+                    db_pl = session.execute(select(Playlist).where(Playlist.id == p_id)).scalar_one()
                     
-                    # Update name/timestamp if client is newer? 
-                    # For now, trust client for metadata updates if newer
-                    if c_pl["updated_at"] > s_pl["updated_at"]:
-                         db_pl = session.execute(select(Playlist).where(Playlist.id == p_id)).scalar_one()
+                    # Update metadata if client is newer or has changes
+                    if c_pl["updated_at"] > db_pl.updated_at or c_pl["name"] != db_pl.name:
                          db_pl.name = c_pl["name"]
                          db_pl.updated_at = c_pl["updated_at"]
                          session.add(db_pl)
 
-                    # Add new songs from client
+                    # Delete old songs and add current ones
+                    session.execute(delete(PlaylistSong).where(PlaylistSong.playlist_id == p_id))
                     for song in c_pl.get("songs", []):
-                        if song["song_filename"] not in s_songs:
-                            session.add(PlaylistSong(
-                                playlist_id=p_id,
-                                song_filename=song["song_filename"],
-                                added_at=song["added_at"]
-                            ))
+                        session.add(PlaylistSong(
+                            playlist_id=p_id,
+                            song_filename=song["song_filename"],
+                            added_at=song["added_at"]
+                        ))
             session.commit()
             
         return self.get_playlists(username)
+
+    def add_song_to_playlist(self, username: str, playlist_id: str, song_filename: str):
+        self._ensure_playlist_db(username)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            # Check if already exists
+            existing = session.execute(
+                select(PlaylistSong)
+                .where(PlaylistSong.playlist_id == playlist_id)
+                .where(PlaylistSong.song_filename == song_filename)
+            ).scalar_one_or_none()
+            
+            if not existing:
+                session.add(PlaylistSong(
+                    playlist_id=playlist_id,
+                    song_filename=song_filename,
+                    added_at=time.time()
+                ))
+                # Update timestamp
+                db_pl = session.execute(select(Playlist).where(Playlist.id == playlist_id)).scalar_one_or_none()
+                if db_pl:
+                    db_pl.updated_at = time.time()
+                    session.add(db_pl)
+                session.commit()
+        return True
+
+    def remove_song_from_playlist(self, username: str, playlist_id: str, song_filename: str):
+        self._ensure_playlist_db(username)
+        with Session(db_manager.get_user_data_engine(username)) as session:
+            session.execute(
+                delete(PlaylistSong)
+                .where(PlaylistSong.playlist_id == playlist_id)
+                .where(PlaylistSong.song_filename == song_filename)
+            )
+            # Update timestamp
+            db_pl = session.execute(select(Playlist).where(Playlist.id == playlist_id)).scalar_one_or_none()
+            if db_pl:
+                db_pl.updated_at = time.time()
+                session.add(db_pl)
+            session.commit()
+        return True
 
     def delete_playlist(self, username: str, playlist_id: str):
         self._ensure_playlist_db(username)

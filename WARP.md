@@ -28,7 +28,6 @@ dart format .
 flutter build apk --release           # Android
 flutter build ios --release           # iOS
 flutter build macos --release         # macOS
-
 # Run specific test file
 flutter test test/shuffle_logic_test.dart
 ```

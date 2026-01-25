@@ -226,6 +226,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       builder: (_) => SongListScreen(
                         title: playlist.name,
                         songs: playlistSongs,
+                        playlistId: playlist.id,
                       ),
                     ),
                   );
