@@ -7,7 +7,9 @@ import '../models/song.dart';
 
 class StorageService {
   static const String _musicFolderKey = 'music_folder_path';
+  static const String _musicFolderTreeUriKey = 'music_folder_tree_uri';
   static const String _lyricsFolderKey = 'lyrics_folder_path';
+  static const String _lyricsFolderTreeUriKey = 'lyrics_folder_tree_uri';
   static const String _serverUrlKey = 'server_base_url';
   static const String _isSetupCompleteKey = 'is_setup_complete_v2';
   static const String _isLocalModeKey = 'is_local_mode';
@@ -75,6 +77,16 @@ class StorageService {
     await prefs.setString(_musicFolderKey, path);
   }
 
+  Future<String?> getMusicFolderTreeUri() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_musicFolderTreeUriKey);
+  }
+
+  Future<void> setMusicFolderTreeUri(String uri) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_musicFolderTreeUriKey, uri);
+  }
+
   Future<String?> getLyricsFolderPath() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_lyricsFolderKey);
@@ -83,6 +95,16 @@ class StorageService {
   Future<void> setLyricsFolderPath(String path) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lyricsFolderKey, path);
+  }
+
+  Future<String?> getLyricsFolderTreeUri() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lyricsFolderTreeUriKey);
+  }
+
+  Future<void> setLyricsFolderTreeUri(String uri) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lyricsFolderTreeUriKey, uri);
   }
 
   Future<String?> getServerUrl() async {

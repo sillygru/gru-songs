@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
+import '../../services/android_storage_service.dart';
 import 'folder_grid_image.dart';
 
 class FolderPicker extends ConsumerStatefulWidget {
@@ -140,16 +141,34 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
                                         : p.join(widget.rootPath,
                                             _currentRelativePath, name);
 
-                                final newDir = Directory(newFolderPath);
-                                if (!await newDir.exists()) {
-                                  await newDir.create(recursive: true);
-                                  // We don't strictly need to refresh songsProvider here if we use
-                                  // _getMergedFolders, but it's good practice to keep state in sync
-                                  // if we want the scanner to eventually pick up changes.
-                                  await ref
-                                      .read(songsProvider.notifier)
-                                      .refresh();
+                                if (Platform.isAndroid) {
+                                  final storage =
+                                      ref.read(storageServiceProvider);
+                                  final treeUri =
+                                      await storage.getMusicFolderTreeUri();
+                                  if (treeUri == null || treeUri.isEmpty) {
+                                    throw Exception(
+                                        'Missing folder permission. Re-select the music folder.');
+                                  }
+                                  final relativePath =
+                                      _currentRelativePath.isEmpty
+                                          ? name
+                                          : p.join(_currentRelativePath, name);
+                                  await AndroidStorageService.createFolder(
+                                    treeUri: treeUri,
+                                    relativePath: relativePath,
+                                  );
+                                } else {
+                                  final newDir = Directory(newFolderPath);
+                                  if (!await newDir.exists()) {
+                                    await newDir.create(recursive: true);
+                                  }
                                 }
+
+                                // Keep state in sync for scanner refresh.
+                                await ref
+                                    .read(songsProvider.notifier)
+                                    .refresh();
 
                                 setState(() {
                                   _currentRelativePath =

@@ -344,6 +344,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
+      shrinkWrap: true,
       itemCount: sortedArtists.length,
       itemBuilder: (context, index) {
         final artist = sortedArtists[index];
@@ -376,7 +377,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               const SizedBox(height: 8),
               Text(
                 artist,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontWeight: FontWeight.bold),
@@ -408,6 +409,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
+      shrinkWrap: true,
       itemCount: sortedAlbums.length,
       itemBuilder: (context, index) {
         final album = sortedAlbums[index];
@@ -442,14 +444,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               const SizedBox(height: 8),
               Text(
                 album,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               Text(
                 artist,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(

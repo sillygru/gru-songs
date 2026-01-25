@@ -599,6 +599,32 @@ class DatabaseService {
     debugPrint('Renamed DB entries from $oldFilename to $newFilename');
   }
 
+  /// Deletes a file from user data tables only.
+  /// Removes the file from favorites, suggestless, hidden, and playlists.
+  /// Preserves play events to maintain statistics.
+  Future<void> deleteFile(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    // Update User Data DB (Favorites, SuggestLess, Hidden, Playlists)
+    await _userDataDatabase!.transaction((txn) async {
+      // Remove from favorites
+      await txn.delete('favorite', where: 'filename = ?', whereArgs: [filename]);
+      
+      // Remove from suggestless
+      await txn.delete('suggestless', where: 'filename = ?', whereArgs: [filename]);
+      
+      // Remove from hidden
+      await txn.delete('hidden', where: 'filename = ?', whereArgs: [filename]);
+      
+      // Remove from all playlists
+      await txn.delete('playlist_song', where: 'song_filename = ?', whereArgs: [filename]);
+    });
+
+    // Note: We DO NOT delete play events to preserve statistics
+    debugPrint('Deleted user data entries for file $filename (stats preserved)');
+  }
+
   /// Replaces all local suggestless with the given list (used when syncing FROM server)
   Future<void> setSuggestLess(List<String> suggestLess) async {
     await _ensureInitialized();

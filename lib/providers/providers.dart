@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -11,12 +12,25 @@ import '../services/storage_service.dart';
 import '../services/scanner_service.dart';
 import '../services/database_service.dart';
 import '../services/file_manager_service.dart';
+import '../services/android_storage_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import '../providers/auth_provider.dart';
 import 'user_data_provider.dart';
 
 enum SyncStatus { syncing, upToDate, offline, usingCache }
+
+enum MetadataSaveStatus { idle, saving, success, error }
+
+class MetadataSaveState {
+  final MetadataSaveStatus status;
+  final String message;
+
+  const MetadataSaveState({
+    this.status = MetadataSaveStatus.idle,
+    this.message = '',
+  });
+}
 
 class SyncState {
   final Map<String, SyncStatus> tasks;
@@ -73,8 +87,52 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 }
 
+class MetadataSaveNotifier extends Notifier<MetadataSaveState> {
+  int _token = 0;
+
+  @override
+  MetadataSaveState build() => const MetadataSaveState();
+
+  void start() {
+    _token += 1;
+    state = const MetadataSaveState(
+      status: MetadataSaveStatus.saving,
+      message: 'Saving metadata changes...');
+  }
+
+  void success() {
+    final token = ++_token;
+    state = const MetadataSaveState(
+      status: MetadataSaveStatus.success,
+      message: 'Metadata changes saved');
+    _scheduleReset(token);
+  }
+
+  void error([String message = 'Failed to save metadata changes']) {
+    final token = ++_token;
+    state = MetadataSaveState(
+      status: MetadataSaveStatus.error,
+      message: message,
+    );
+    _scheduleReset(token);
+  }
+
+  void _scheduleReset(int token) {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!ref.mounted) return;
+      if (_token == token) {
+        state = const MetadataSaveState();
+      }
+    });
+  }
+}
+
 final syncProvider =
     NotifierProvider<SyncNotifier, SyncState>(SyncNotifier.new);
+
+final metadataSaveProvider =
+    NotifierProvider<MetadataSaveNotifier, MetadataSaveState>(
+        MetadataSaveNotifier.new);
 
 class ScanProgressNotifier extends Notifier<double> {
   @override
@@ -375,13 +433,27 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   }
 
   Future<void> deleteSongFile(Song song) async {
+    // Get current songs before setting loading state
+    final currentSongs = state.value ?? [];
+
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
+      // Delete the physical file
       await ref.read(fileManagerServiceProvider).deleteSongFile(song);
-      final songs = await _performFullScan();
-      ref.read(audioPlayerManagerProvider).refreshSongs(songs);
+
+      // Remove from database
+      await DatabaseService.instance.deleteFile(song.filename);
+
+      // Remove the deleted song from the current list immediately
+      final updatedSongs =
+          currentSongs.where((s) => s.filename != song.filename).toList();
+
+      // Update audio player with the new list
+      ref.read(audioPlayerManagerProvider).refreshSongs(updatedSongs);
+
+      // Return the updated list immediately (no full scan needed)
       final userData = ref.read(userDataProvider);
-      return songs.where((s) => !userData.isHidden(s.filename)).toList();
+      return updatedSongs.where((s) => !userData.isHidden(s.filename)).toList();
     });
   }
 
@@ -398,25 +470,39 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
   Future<void> updateSongTitle(Song song, String newTitle,
       {int deviceCount = 0}) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
-      await ref
-          .read(fileManagerServiceProvider)
-          .updateSongTitle(song, newTitle, deviceCount: deviceCount);
-      return _performFullScan();
-    });
+    final notifier = ref.read(metadataSaveProvider.notifier);
+    notifier.start();
+    unawaited(() async {
+      try {
+        await ref
+            .read(fileManagerServiceProvider)
+            .updateSongTitle(song, newTitle, deviceCount: deviceCount);
+        await refresh(isBackground: true);
+        notifier.success();
+      } catch (e) {
+        notifier.error();
+        debugPrint('Failed to update song title: $e');
+      }
+    }());
   }
 
   Future<void> updateSongMetadata(
       Song song, String title, String artist, String album,
       {int deviceCount = 0}) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
-      await ref.read(fileManagerServiceProvider).updateSongMetadata(
-          song, title, artist, album,
-          deviceCount: deviceCount);
-      return _performFullScan();
-    });
+    final notifier = ref.read(metadataSaveProvider.notifier);
+    notifier.start();
+    unawaited(() async {
+      try {
+        await ref.read(fileManagerServiceProvider).updateSongMetadata(
+            song, title, artist, album,
+            deviceCount: deviceCount);
+        await refresh(isBackground: true);
+        notifier.success();
+      } catch (e) {
+        notifier.error();
+        debugPrint('Failed to update song metadata: $e');
+      }
+    }());
   }
 
   Future<void> updateLyrics(Song song, String lyricsContent) async {
@@ -437,6 +523,49 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }
 
     try {
+      final storage = ref.read(storageServiceProvider);
+      if (Platform.isAndroid) {
+        final treeUri = await storage.getMusicFolderTreeUri();
+        final rootPath = await storage.getMusicFolderPath();
+        if (treeUri != null && treeUri.isNotEmpty && rootPath != null) {
+          if (!p.isWithin(rootPath, song.url) &&
+              !p.equals(rootPath, p.dirname(song.url))) {
+            throw Exception('Source file is outside the music folder.');
+          }
+          if (!p.isWithin(rootPath, targetDirectoryPath) &&
+              !p.equals(rootPath, targetDirectoryPath)) {
+            throw Exception('Target folder is outside the music folder.');
+          }
+
+          final sourceRelativePath = p.relative(song.url, from: rootPath);
+          final targetRelativeDir =
+              p.relative(targetDirectoryPath, from: rootPath);
+          await AndroidStorageService.moveFile(
+            treeUri: treeUri,
+            sourceRelativePath: sourceRelativePath,
+            targetRelativeDir:
+                targetRelativeDir == '.' ? '' : targetRelativeDir,
+          );
+
+          if (song.lyricsUrl != null) {
+            final lyricsPath = song.lyricsUrl!;
+            if (p.isWithin(rootPath, lyricsPath) ||
+                p.equals(rootPath, p.dirname(lyricsPath))) {
+              final lyricsRelativePath = p.relative(lyricsPath, from: rootPath);
+              await AndroidStorageService.moveFile(
+                treeUri: treeUri,
+                sourceRelativePath: lyricsRelativePath,
+                targetRelativeDir:
+                    targetRelativeDir == '.' ? '' : targetRelativeDir,
+              );
+            }
+          }
+
+          await refresh();
+          return;
+        }
+      }
+
       final oldFile = File(song.url);
       if (!await oldFile.exists()) {
         if (kDebugMode) {
@@ -523,6 +652,34 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }
 
     try {
+      final storage = ref.read(storageServiceProvider);
+      if (Platform.isAndroid) {
+        final treeUri = await storage.getMusicFolderTreeUri();
+        final rootPath = await storage.getMusicFolderPath();
+        if (treeUri != null && treeUri.isNotEmpty && rootPath != null) {
+          if (!p.isWithin(rootPath, oldFolderPath) &&
+              !p.equals(rootPath, oldFolderPath)) {
+            throw Exception('Source folder is outside the music folder.');
+          }
+          if (!p.isWithin(rootPath, targetParentPath) &&
+              !p.equals(rootPath, targetParentPath)) {
+            throw Exception('Target folder is outside the music folder.');
+          }
+
+          final sourceRelativePath = p.relative(oldFolderPath, from: rootPath);
+          final targetParentRelativePath =
+              p.relative(targetParentPath, from: rootPath);
+          await AndroidStorageService.moveFolder(
+            treeUri: treeUri,
+            sourceRelativePath: sourceRelativePath,
+            targetParentRelativePath:
+                targetParentRelativePath == '.' ? '' : targetParentRelativePath,
+          );
+          await refresh();
+          return;
+        }
+      }
+
       final oldDir = Directory(oldFolderPath);
       if (!await oldDir.exists()) {
         if (kDebugMode) {

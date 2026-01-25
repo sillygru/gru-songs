@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from config_manager import config_manager
 
 class Settings:
-    VERSION: str = "3.5.1"
+    VERSION: str = "3.5.2"
 
     @property
     def BASE_DIR(self) -> str:

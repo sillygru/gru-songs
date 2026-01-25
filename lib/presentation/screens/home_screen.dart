@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/gru_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../providers/providers.dart';
+import '../../services/android_storage_service.dart';
 
 import 'search_screen.dart';
 
@@ -18,13 +20,29 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _selectMusicFolder() async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-
-    if (selectedDirectory != null) {
+    if (Platform.isAndroid) {
+      final selection = await AndroidStorageService.pickTree();
+      if (selection == null) return;
+      if (selection.path == null || selection.path!.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Unable to access selected folder")),
+          );
+        }
+        return;
+      }
       final storage = ref.read(storageServiceProvider);
-      await storage.setMusicFolderPath(selectedDirectory);
+      await storage.setMusicFolderTreeUri(selection.treeUri);
+      await storage.setMusicFolderPath(selection.path!);
       ref.invalidate(songsProvider);
+      return;
     }
+
+    final selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory == null) return;
+    final storage = ref.read(storageServiceProvider);
+    await storage.setMusicFolderPath(selectedDirectory);
+    ref.invalidate(songsProvider);
   }
 
   @override
@@ -160,6 +178,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       scrollDirection: Axis.horizontal,
                       itemCount: topRecommendations.length,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
+                      clipBehavior: Clip.antiAlias,
                       itemBuilder: (context, index) {
                         final song = topRecommendations[index];
                         return Padding(
@@ -214,7 +233,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   const SizedBox(height: 12),
                                   Text(
                                     song.title,
-                                    maxLines: 1,
+                                    maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                         fontWeight: FontWeight.bold,
@@ -223,7 +242,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   const SizedBox(height: 4),
                                   Text(
                                     song.artist,
-                                    maxLines: 1,
+                                    maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context)
                                         .textTheme

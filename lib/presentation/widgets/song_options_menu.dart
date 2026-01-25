@@ -20,9 +20,12 @@ void showSongOptionsMenu(
           final isSuggestLess = userData.isSuggestLess(songFilename);
 
           return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Text(
@@ -348,6 +351,8 @@ void showSongOptionsMenu(
                     },
                   ),
               ],
+            ),
+              ),
             ),
           );
         },

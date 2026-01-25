@@ -16,7 +16,7 @@
         android:largeHeap="true"
         android:usesCleartextTraffic="true">
         <activity
-            android:name="com.ryanheise.audioservice.AudioServiceActivity"
+            android:name="com.sillygru.gru_songs.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""

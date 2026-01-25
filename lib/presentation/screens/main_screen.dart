@@ -13,6 +13,7 @@ class SyncIndicator extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final syncState = ref.watch(syncProvider);
     final isScanning = ref.watch(isScanningProvider);
+    final metadataState = ref.watch(metadataSaveProvider);
 
     return FutureBuilder<bool>(
       future: ref.read(storageServiceProvider).getIsLocalMode(),
@@ -21,7 +22,8 @@ class SyncIndicator extends ConsumerWidget {
         if (isLocalMode && !isScanning) return const SizedBox.shrink();
         if (syncState.status == SyncStatus.upToDate &&
             !syncState.hasError &&
-            !isScanning) {
+            !isScanning &&
+            metadataState.status == MetadataSaveStatus.idle) {
           return const SizedBox.shrink();
         }
 
@@ -32,7 +34,20 @@ class SyncIndicator extends ConsumerWidget {
 
         if (isScanning) {}
 
-        if (syncState.status == SyncStatus.syncing) {
+        if (metadataState.status == MetadataSaveStatus.saving) {
+          showSpinner = true;
+          bgColor = Colors.orange.shade800;
+          text = metadataState.message;
+          icon = Icons.edit;
+        } else if (metadataState.status == MetadataSaveStatus.success) {
+          bgColor = Colors.green.shade700;
+          text = metadataState.message;
+          icon = Icons.check_circle;
+        } else if (metadataState.status == MetadataSaveStatus.error) {
+          bgColor = Colors.red.shade700;
+          text = metadataState.message;
+          icon = Icons.error;
+        } else if (syncState.status == SyncStatus.syncing) {
           showSpinner = true;
           text = "Syncing with server...";
         } else if (syncState.status == SyncStatus.offline ||
@@ -48,7 +63,8 @@ class SyncIndicator extends ConsumerWidget {
 
         if (!showSpinner &&
             syncState.status == SyncStatus.upToDate &&
-            !syncState.hasError) {
+            !syncState.hasError &&
+            metadataState.status == MetadataSaveStatus.idle) {
           return const SizedBox.shrink();
         }
 
