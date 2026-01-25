@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
-import 'providers.dart';
 
 class AuthState {
   final String? username;
@@ -47,8 +46,6 @@ class AuthNotifier extends Notifier<AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', username);
       state = state.copyWith(username: username, isLoading: false);
-      // Ensure we refresh songs and user data for the new user
-      Future.microtask(() => ref.read(songsProvider.notifier).refresh());
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -61,7 +58,6 @@ class AuthNotifier extends Notifier<AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', username);
       state = state.copyWith(username: username, isLoading: false);
-      Future.microtask(() => ref.read(songsProvider.notifier).refresh());
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -73,7 +69,6 @@ class AuthNotifier extends Notifier<AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', username);
       state = state.copyWith(username: username, isLoading: false);
-      Future.microtask(() => ref.read(songsProvider.notifier).refresh());
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -85,7 +80,6 @@ class AuthNotifier extends Notifier<AuthState> {
     // Also clear the API base URL to prevent accidental syncs after logout
     ApiService.setBaseUrl("");
     state = AuthState();
-    Future.microtask(() => ref.read(songsProvider.notifier).refresh());
   }
 
   Future<void> updatePassword(String oldPassword, String newPassword) async {
@@ -110,7 +104,6 @@ class AuthNotifier extends Notifier<AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', updatedName);
       state = state.copyWith(username: updatedName, isLoading: false);
-      Future.microtask(() => ref.read(songsProvider.notifier).refresh());
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;

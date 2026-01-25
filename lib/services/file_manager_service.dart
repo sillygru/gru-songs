@@ -9,21 +9,8 @@ import 'storage_service.dart';
 
 class FileManagerService {
   final ApiService _apiService;
-  bool _isMetadataInitialized = false;
 
-  FileManagerService(this._apiService) {
-    _initMetadata();
-  }
-
-  Future<void> _initMetadata() async {
-    if (_isMetadataInitialized) return;
-    try {
-      await MetadataGod.initialize();
-      _isMetadataInitialized = true;
-    } catch (e) {
-      debugPrint("Failed to initialize MetadataGod: $e");
-    }
-  }
+  FileManagerService(this._apiService);
 
   /// Updates the song title in the file metadata and notifies the server.
   Future<void> updateSongTitle(Song song, String newTitle,

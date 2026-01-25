@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:metadata_god/metadata_god.dart';
 import 'presentation/screens/main_screen.dart';
 import 'providers/auth_provider.dart';
 import 'services/cache_service.dart';
 import 'services/api_service.dart';
 import 'services/storage_service.dart';
+import 'services/database_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'presentation/screens/setup_screen.dart';
 import 'providers/setup_provider.dart';
@@ -26,6 +28,13 @@ class MyHttpOverrides extends HttpOverrides {
 Future<void> main() async {
   HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize MetadataGod early to prevent flutter_rust_bridge initialization errors
+  try {
+    await MetadataGod.initialize();
+  } catch (e) {
+    debugPrint("Failed to initialize MetadataGod: $e");
+  }
 
   // Initialize Cache V3 and cleanup legacy caches
   await CacheService.instance.init();
@@ -78,6 +87,11 @@ Future<void> main() async {
       // If in local mode, ensure the API URL is cleared to prevent any accidental syncs
       ApiService.setBaseUrl("");
     }
+  }
+
+  if (isSetupComplete && username != null) {
+    // Initialize database service for the user to start background coalescing
+    await DatabaseService.instance.initForUser(username);
   }
 
   runApp(ProviderScope(

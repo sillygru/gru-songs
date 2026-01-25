@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import '../models/song.dart';
+import 'database_service.dart';
 
 class ApiService {
   static String _baseUrl = "";
@@ -29,6 +30,10 @@ class ApiService {
 
   String? _username;
   void setUsername(String? username) => _username = username;
+
+  Map<String, dynamic>? _funStatsCache;
+  DateTime? _lastFunStatsFetch;
+  String? _lastCachedUsername;
 
   Map<String, String> get _headers => {
         'User-Agent':
@@ -97,20 +102,23 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getFunStats() async {
-    try {
-      final response = await _client.get(
-        Uri.parse('$baseUrl/stats/fun'),
-        headers: _headers,
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Failed to load fun stats');
+    // 1. Check RAM Cache (5 minute TTL, also per-user)
+    if (_funStatsCache != null &&
+        _lastFunStatsFetch != null &&
+        _lastCachedUsername == _username) {
+      final diff = DateTime.now().difference(_lastFunStatsFetch!);
+      if (diff.inMinutes < 5) {
+        return _funStatsCache!;
       }
-    } catch (e) {
-      rethrow;
     }
+
+    // 2. Local Calculation (Always used for speed and offline support)
+    // Since stats DB is synced bidirectionally, local calculation provides the same data as the server.
+    final localStats = await DatabaseService.instance.getFunStats();
+    _funStatsCache = localStats;
+    _lastFunStatsFetch = DateTime.now();
+    _lastCachedUsername = _username;
+    return localStats;
   }
 
   Future<void> renameFile(String oldFilename, String newName, int deviceCount,

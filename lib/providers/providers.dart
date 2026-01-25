@@ -153,9 +153,10 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   Future<List<Song>> build() async {
     final storage = ref.watch(storageServiceProvider);
     final userData = ref.watch(userDataProvider);
+    final auth = ref.watch(authProvider);
 
     // 1. Load instantly from cache
-    final cached = await storage.loadSongs();
+    final cached = await storage.loadSongs(auth.username);
     if (cached.isNotEmpty) {
       // De-duplicate by filename to avoid Hero tag conflicts and UI glitches
       final seenFilenames = <String>{};
@@ -189,6 +190,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       {bool isBackground = false, List<Song>? existingSongs}) async {
     final storage = ref.read(storageServiceProvider);
     final scanner = ref.read(scannerServiceProvider);
+    final auth = ref.read(authProvider);
 
     final musicPath = await storage.getMusicFolderPath();
     final lyricsPath = await storage.getLyricsFolderPath();
@@ -219,7 +221,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         return true;
       }).toList();
 
-      await storage.saveSongs(uniqueSongs);
+      await storage.saveSongs(auth.username, uniqueSongs);
 
       // Return all songs from scan, build() will filter them
       return uniqueSongs;

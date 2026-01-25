@@ -20,9 +20,10 @@ class StorageService {
     return directory.path;
   }
 
-  Future<File> get _songsFile async {
+  Future<File> _getSongsFile(String? username) async {
     final path = await _localPath;
-    return File('$path/cached_songs.json');
+    final suffix = username != null ? '_$username' : '';
+    return File('$path/cached_songs$suffix.json');
   }
 
   Future<File> _getUserDataFile(String username) async {
@@ -144,9 +145,9 @@ class StorageService {
     await prefs.setString(_serverRefreshModeKey, mode);
   }
 
-  Future<void> saveSongs(List<Song> songs) async {
+  Future<void> saveSongs(String? username, List<Song> songs) async {
     try {
-      final file = await _songsFile;
+      final file = await _getSongsFile(username);
       final jsonList = songs.map((s) => s.toJson()).toList();
       await file.writeAsString(jsonEncode(jsonList));
     } catch (e) {
@@ -155,9 +156,9 @@ class StorageService {
     }
   }
 
-  Future<List<Song>> loadSongs() async {
+  Future<List<Song>> loadSongs(String? username) async {
     try {
-      final file = await _songsFile;
+      final file = await _getSongsFile(username);
       if (!await file.exists()) return [];
 
       final content = await file.readAsString();
