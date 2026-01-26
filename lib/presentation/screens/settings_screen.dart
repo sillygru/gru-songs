@@ -5,10 +5,13 @@ import 'package:file_picker/file_picker.dart';
 import '../../providers/providers.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import 'cache_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../services/android_storage_service.dart';
+import '../../services/data_export_service.dart';
+import '../../services/telemetry_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -209,6 +212,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onTap: () {
                   ref.read(songsProvider.notifier).forceFullScan();
 
+                  TelemetryService.instance.trackEvent(
+                      'library_action',
+                      {
+                        'action': 'force_full_scan',
+                      },
+                      requiredLevel: 2);
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Scanning library...")),
                   );
@@ -217,8 +227,234 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          _buildTelemetrySettings(),
+          const SizedBox(height: 16),
+          _buildDataManagementSettings(),
+          const SizedBox(height: 16),
           _buildPullToRefreshSettings(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDataManagementSettings() {
+    final authState = ref.watch(authProvider);
+    final username = authState.username;
+
+    return _buildSettingsGroup(
+      title: 'Data Management',
+      children: [
+        _buildListTile(
+          icon: Icons.upload_file_rounded,
+          title: 'Export App Data',
+          subtitle: 'Backup your stats, favorites, and playlists to a .zip',
+          onTap: () async {
+            if (username == null) return;
+            try {
+              final exportService = DataExportService();
+              await exportService.exportUserData(username);
+
+              TelemetryService.instance.trackEvent(
+                  'data_management',
+                  {
+                    'action': 'export_data',
+                  },
+                  requiredLevel: 2);
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Export failed: $e")),
+                );
+              }
+            }
+          },
+        ),
+        _buildListTile(
+          icon: Icons.download_for_offline_rounded,
+          title: 'Import App Data',
+          subtitle: 'Restore or merge data from a backup .zip',
+          onTap: () => _handleImport(),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleImport() async {
+    final authState = ref.watch(authProvider);
+    final username = authState.username;
+    if (username == null) return;
+
+    try {
+      final exportService = DataExportService();
+      final validation = await exportService.validateBackup(username);
+
+      if (validation == null) return; // Picked nothing
+
+      if (!validation['valid']) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text("Invalid Backup"),
+              content: Text(validation['error']),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("OK"),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      // Valid backup, ask for merge strategy
+      if (mounted) {
+        final strategy = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Import Strategy"),
+            content: const Text(
+                "How would you like to import this data?\n\nAdditive: Add to your existing stats and data without duplicates.\n\nReplace: Wipe your current stats and data and replace them with the backup."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, "additive"),
+                child: const Text("ADDITIVE"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, "replace"),
+                child: const Text("REPLACE STATS"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("CANCEL"),
+              ),
+            ],
+          ),
+        );
+
+        if (strategy == null) return;
+
+        final additive = strategy == "additive";
+
+        // Show loading
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) =>
+                const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        await exportService.performImport(
+          username: username,
+          importPath: validation['importPath'],
+          additive: additive,
+        );
+
+        TelemetryService.instance.trackEvent(
+            'data_management',
+            {
+              'action': 'import_data',
+              'strategy': strategy,
+            },
+            requiredLevel: 2);
+
+        if (mounted) {
+          Navigator.pop(context); // Pop loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Import successful!")),
+          );
+          // Invalidate providers to refresh data
+          ref.invalidate(userDataProvider);
+          ref.invalidate(songsProvider);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        // Try to pop loading if it's there
+        if (Navigator.canPop(context)) Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Import failed: $e")),
+        );
+      }
+    }
+  }
+
+  Widget _buildTelemetrySettings() {
+    final settings = ref.watch(settingsProvider);
+    final levels = [
+      'Level 0',
+      'Level 1',
+      'Level 2',
+    ];
+
+    return _buildSettingsGroup(
+      title: 'Telemetry',
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Share anonymous data with developers?',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              Slider(
+                value: settings.telemetryLevel.toDouble().clamp(0, 2),
+                min: 0,
+                max: 2,
+                divisions: 2,
+                label: levels[settings.telemetryLevel.clamp(0, 2)],
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setTelemetryLevel(val.toInt());
+                },
+              ),
+              Center(
+                child: Text(
+                  levels[settings.telemetryLevel.clamp(0, 2)],
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildLevelExplanation(settings.telemetryLevel.clamp(0, 2)),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLevelExplanation(int level) {
+    final explanations = [
+      '• No data will be shared with developers.',
+      '• Basic app information (version, platform).\n• App startup notification.',
+      '• Everything in level 1.\n• Anonymous usage events (settings changed).\n• Library rescans and data management (import/export).',
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        explanations[level],
+        style: Theme.of(context).textTheme.bodySmall,
       ),
     );
   }

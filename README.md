@@ -1,4 +1,4 @@
-# Gru Songs (v3.6.1)
+# Gru Songs (v3.7.0)
 
 ## What is Gru Songs?
 Gru Songs is a simple local music player app built with Flutter.
@@ -6,10 +6,8 @@ Gru Songs is a simple local music player app built with Flutter.
 [Features](#features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
 
 ## Features
-- **Local Music Library:** Scan and organize your local music collection.
 - **Smart Shuffle:** Intelligent shuffle algorithm that learns from your listening habits.
-- **Favorites & Playlists:** Create and manage playlists, mark favorite songs.
-- **Folder Based Organization:** Organize your music with intuitive folder structure support.
+- **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists.
 - **Metadata:** Automatic extraction of album art, titles, and artist info.
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
 

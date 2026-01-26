@@ -14,6 +14,8 @@ class StorageService {
   static const String _isLocalModeKey = 'is_local_mode';
   static const String _localUsernameKey = 'local_username';
   static const String _pullToRefreshEnabledKey = 'pull_to_refresh_enabled';
+  static const String _telemetryLevelKey = 'telemetry_level';
+  static const String _hasSentFirstStartupKey = 'has_sent_first_startup';
 
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -143,6 +145,26 @@ class StorageService {
   Future<void> setPullToRefreshEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_pullToRefreshEnabledKey, value);
+  }
+
+  Future<int> getTelemetryLevel() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_telemetryLevelKey) ?? 1; // Default to level 1
+  }
+
+  Future<void> setTelemetryLevel(int level) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_telemetryLevelKey, level);
+  }
+
+  Future<bool> getHasSentFirstStartup() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_hasSentFirstStartupKey) ?? false;
+  }
+
+  Future<void> setHasSentFirstStartup(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hasSentFirstStartupKey, value);
   }
 
   Future<void> saveSongs(String? username, List<Song> songs) async {

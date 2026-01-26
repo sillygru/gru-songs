@@ -5,6 +5,7 @@ import 'library_screen.dart';
 import 'profile_screen.dart';
 import '../widgets/now_playing_bar.dart';
 import '../../providers/providers.dart';
+import '../../services/telemetry_service.dart';
 
 class SyncIndicator extends ConsumerWidget {
   const SyncIndicator({super.key});
@@ -128,6 +129,8 @@ class _MainScreenState extends ConsumerState<MainScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Track app launch (Level 1)
+    TelemetryService.instance.trackEvent('app_launch', {}, requiredLevel: 1);
   }
 
   @override

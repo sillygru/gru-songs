@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/storage_service.dart';
+import '../../services/telemetry_service.dart';
 
 class SetupScreen extends ConsumerStatefulWidget {
   const SetupScreen({super.key});
@@ -14,6 +16,7 @@ class SetupScreen extends ConsumerStatefulWidget {
 class _SetupScreenState extends ConsumerState<SetupScreen> {
   final _usernameController = TextEditingController();
   bool _isLoading = false;
+  bool _showTelemetry = false;
 
   @override
   Widget build(BuildContext context) {
@@ -71,42 +74,128 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     ),
                     const SizedBox(height: 48),
 
-                    // Username Input
-                    TextField(
-                      controller: _usernameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Username',
-                        hintText: 'Enter your username',
-                        prefixIcon: Icon(Icons.person_outline),
-                        border: OutlineInputBorder(),
+                    if (!_showTelemetry) ...[
+                      // Username Input
+                      TextField(
+                        controller: _usernameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Username',
+                          hintText: 'Enter your username',
+                          prefixIcon: Icon(Icons.person_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                        enabled: !_isLoading,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _handleLogin(),
                       ),
-                      enabled: !_isLoading,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _handleLogin(),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // Login Button
-                    FilledButton(
-                      onPressed: _isLoading ? null : _handleLogin,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      // Login Button
+                      FilledButton(
+                        onPressed: _isLoading ? null : _handleLogin,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Start Listening',
+                                style: TextStyle(fontSize: 16)),
                       ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Start Listening',
-                              style: TextStyle(fontSize: 16)),
-                    ),
+                    ] else ...[
+                      // Telemetry Section
+                      Text(
+                        'Share anonymous data with developers?',
+                        style: Theme.of(context).textTheme.titleSmall,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Consumer(builder: (context, ref, child) {
+                        final settings = ref.watch(settingsProvider);
+                        final levels = ['Level 0', 'Level 1', 'Level 2'];
+                        return Column(
+                          children: [
+                            Slider(
+                              value: settings.telemetryLevel
+                                  .toDouble()
+                                  .clamp(0, 2),
+                              min: 0,
+                              max: 2,
+                              divisions: 2,
+                              label:
+                                  levels[settings.telemetryLevel.clamp(0, 2)],
+                              onChanged: (val) {
+                                ref
+                                    .read(settingsProvider.notifier)
+                                    .setTelemetryLevel(val.toInt());
+                              },
+                            ),
+                            Text(
+                              levels[settings.telemetryLevel.clamp(0, 2)],
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Level explanation info
+                            _buildLevelExplanation(
+                                settings.telemetryLevel.clamp(0, 2)),
+                          ],
+                        );
+                      }),
+                      const SizedBox(height: 24),
+
+                      // Complete Button
+                      FilledButton(
+                        onPressed: _isLoading ? null : _handleComplete,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Complete Setup',
+                                style: TextStyle(fontSize: 16)),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLevelExplanation(int level) {
+    final explanations = [
+      '• No data will be shared with developers.',
+      '• Basic app information (version, platform).\n• App startup notification.',
+      '• Everything in level 1.\n• Anonymous usage events (settings changed).\n• Library rescans and data management (import/export).',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        explanations[level],
+        style: Theme.of(context).textTheme.bodySmall,
       ),
     );
   }
@@ -123,6 +212,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       return;
     }
 
+    setState(() => _showTelemetry = true);
+  }
+
+  Future<void> _handleComplete() async {
+    final username = _usernameController.text.trim();
     setState(() => _isLoading = true);
 
     try {
@@ -134,6 +228,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
       // Log in as local user
       await ref.read(authProvider.notifier).localLogin(username);
+
+      // Track first startup (always sent regardless of level)
+      final settings = ref.read(settingsProvider);
+      await TelemetryService.instance
+          .trackFirstStartup(settings.telemetryLevel);
 
       // Update setup provider to trigger UI rebuild
       ref.read(setupProvider.notifier).setComplete(true);

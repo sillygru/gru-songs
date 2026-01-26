@@ -1,7 +1,7 @@
 name: gru_songs
-description: "A high-performance music streaming app built with Flutter."
+description: "A feature packed local music player."
 publish_to: 'none'
-version: 3.4.2+1
+version: 3.7.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -30,6 +30,8 @@ dependencies:
   audio_metadata_reader: ^1.4.2
   metadata_god: ^1.1.0
   permission_handler: ^11.1.0
+  archive: ^3.6.1
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

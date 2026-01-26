@@ -19,12 +19,12 @@ def update_version():
     new_comma = new_version.replace('.', ',')
 
     exclude_dirs = {'.git', '.dart_tool', 'build', 'ios/Pods', 'macos/Pods', '.pytest_cache', '__pycache__', '.gradle', 'backups', 'users', 'ephemeral'}
-    exclude_files = {'pubspec.lock', 'update_version.py', '.metadata', 'pubspec.yaml'}
+    # Removed pubspec.yaml from exclude_files so we can process it specifically
+    exclude_files = {'pubspec.lock', 'update_version.py', '.metadata'}
 
     updated_count = 0
 
     for root, dirs, files in os.walk('.'):
-        # Skip excluded directories
         dirs[:] = [d for d in dirs if d not in exclude_dirs]
 
         for file in files:
@@ -34,21 +34,32 @@ def update_version():
             file_path = os.path.join(root, file)
 
             try:
-                # Read file content
+                # SPECIAL CASE: pubspec.yaml (Only edit line 4)
+                if file == 'pubspec.yaml':
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                    
+                    if len(lines) >= 4:
+                        # Index 3 is the 4th line
+                        if old_version in lines[3]:
+                            lines[3] = lines[3].replace(old_version, new_version)
+                            with open(file_path, 'w', encoding='utf-8') as f:
+                                f.writelines(lines)
+                            print(f"Updated (Line 4 only): {file_path}")
+                            updated_count += 1
+                    continue # Skip general logic for this file
+
+                # GENERAL CASE: All other files
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
 
                 changed = False
                 new_content = content
 
-                # Regular dot-separated version replacement
                 if old_version in content:
-                    # Specific check for pubspec.yaml to ensure we don't accidentally match other things
-                    # although x.x.x is usually unique enough.
                     new_content = new_content.replace(old_version, new_version)
                     changed = True
 
-                # Special case for Windows .rc files (comma-separated)
                 if file.endswith('.rc') and old_comma in content:
                     new_content = new_content.replace(old_comma, new_comma)
                     changed = True

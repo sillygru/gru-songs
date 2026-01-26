@@ -1133,6 +1133,105 @@ class DatabaseService {
     return join(docDir.path, dbName);
   }
 
+  Future<void> importData({
+    required String statsDbPath,
+    required String dataDbPath,
+    required bool additive,
+  }) async {
+    await _ensureInitialized();
+    final importedStatsDb = await openDatabase(statsDbPath);
+    final importedDataDb = await openDatabase(dataDbPath);
+
+    try {
+      await _statsDatabase!.transaction((txn) async {
+        if (!additive) {
+          await txn.delete('playevent');
+          await txn.delete('playsession');
+        }
+
+        // Import playsession
+        final sessions = await importedStatsDb.query('playsession');
+        for (final session in sessions) {
+          await txn.insert('playsession', session,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+
+        // Import playevent
+        final events = await importedStatsDb.query('playevent');
+        for (final event in events) {
+          final eventMap = Map<String, dynamic>.from(event);
+          eventMap.remove('id'); // Let local DB autoincrement
+
+          if (additive) {
+            // Check for duplicates: session_id, song_filename, timestamp
+            final existing = await txn.query('playevent',
+                where: 'session_id = ? AND song_filename = ? AND timestamp = ?',
+                whereArgs: [
+                  event['session_id'],
+                  event['song_filename'],
+                  event['timestamp']
+                ]);
+            if (existing.isEmpty) {
+              await txn.insert('playevent', eventMap);
+            }
+          } else {
+            await txn.insert('playevent', eventMap);
+          }
+        }
+      });
+
+      await _userDataDatabase!.transaction((txn) async {
+        if (!additive) {
+          await txn.delete('favorite');
+          await txn.delete('suggestless');
+          await txn.delete('hidden');
+          await txn.delete('playlist_song');
+          await txn.delete('playlist');
+        }
+
+        // Import favorites
+        final favorites = await importedDataDb.query('favorite');
+        for (final fav in favorites) {
+          await txn.insert('favorite', fav,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+
+        // Import suggestless
+        final suggestless = await importedDataDb.query('suggestless');
+        for (final sl in suggestless) {
+          await txn.insert('suggestless', sl,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+
+        // Import hidden
+        final hidden = await importedDataDb.query('hidden');
+        for (final h in hidden) {
+          await txn.insert('hidden', h,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+
+        // Import playlists
+        final playlists = await importedDataDb.query('playlist');
+        for (final pl in playlists) {
+          await txn.insert('playlist', pl,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+
+        // Import playlist_song
+        final playlistSongs = await importedDataDb.query('playlist_song');
+        for (final ps in playlistSongs) {
+          final psMap = Map<String, dynamic>.from(ps);
+          psMap.remove('id');
+          await txn.insert('playlist_song', psMap,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      });
+    } finally {
+      await importedStatsDb.close();
+      await importedDataDb.close();
+    }
+  }
+
   void dispose() {
     _coalesceTimer?.cancel();
     _statsDatabase?.close();
