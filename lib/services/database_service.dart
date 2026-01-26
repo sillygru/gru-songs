@@ -134,7 +134,7 @@ class DatabaseService {
   Future<void> addPlayEvent(Map<String, dynamic> stats) async {
     await _ensureInitialized();
     if (_statsDatabase == null) return;
-    
+
     await _statsDatabase!.insert('playevent', stats);
   }
 

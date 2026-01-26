@@ -51,22 +51,26 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     const SizedBox(height: 24),
                     Text(
                       'Gru Songs',
-                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                      style:
+                          Theme.of(context).textTheme.headlineLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Your personal music library',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.7),
+                          ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
-                    
+
                     // Username Input
                     TextField(
                       controller: _usernameController,
@@ -81,7 +85,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       onSubmitted: (_) => _handleLogin(),
                     ),
                     const SizedBox(height: 24),
-                    
+
                     // Login Button
                     FilledButton(
                       onPressed: _isLoading ? null : _handleLogin,
@@ -94,7 +98,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Start Listening', style: TextStyle(fontSize: 16)),
+                          : const Text('Start Listening',
+                              style: TextStyle(fontSize: 16)),
                     ),
                   ],
                 ),
@@ -129,7 +134,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
       // Log in as local user
       await ref.read(authProvider.notifier).localLogin(username);
-      
+
       // Update setup provider to trigger UI rebuild
       ref.read(setupProvider.notifier).setComplete(true);
     } catch (e) {

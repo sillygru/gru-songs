@@ -9,7 +9,7 @@ class AuthService {
     if (password.isEmpty) {
       throw Exception('Password cannot be empty');
     }
-    
+
     return {'message': 'Login successful', 'username': username};
   }
 
@@ -23,7 +23,8 @@ class AuthService {
     }
   }
 
-  Future<void> updatePassword(String username, String oldPassword, String newPassword) async {
+  Future<void> updatePassword(
+      String username, String oldPassword, String newPassword) async {
     // Local-only - just validate inputs
     if (oldPassword.isEmpty || newPassword.isEmpty) {
       throw Exception('Passwords cannot be empty');

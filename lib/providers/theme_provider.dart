@@ -41,7 +41,6 @@ class ThemeNotifier extends Notifier<ThemeState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('theme_mode', mode.toString());
   }
-
 }
 
 final themeProvider =

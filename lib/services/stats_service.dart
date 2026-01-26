@@ -9,8 +9,7 @@ class StatsService {
   final String _sessionId;
   late final String _platform;
 
-  StatsService()
-      : _sessionId = const Uuid().v4() {
+  StatsService() : _sessionId = const Uuid().v4() {
     if (kIsWeb) {
       _platform = 'web';
     } else if (Platform.isAndroid) {
@@ -36,11 +35,11 @@ class StatsService {
       if (username == null) return;
 
       await DatabaseService.instance.initForUser(username);
-      
+
       // Add platform info
       stats['platform'] = _platform;
       stats['session_id'] = _sessionId;
-      
+
       // Store in local database
       await DatabaseService.instance.addPlayEvent(stats);
     } catch (e) {

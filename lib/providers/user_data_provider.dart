@@ -128,11 +128,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
   /// Manual refresh - just reload from local database
   Future<void> refresh({bool force = true}) async {
     if (_username == null) return;
-    
+
     if (force) {
       state = state.copyWith(isLoading: true);
     }
-    
+
     await _initLocal();
   }
 

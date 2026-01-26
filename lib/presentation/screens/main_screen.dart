@@ -47,8 +47,7 @@ class SyncIndicator extends ConsumerWidget {
           bgColor = Colors.red.shade700;
           text = metadataState.message;
           icon = Icons.error;
-        } else if (syncState.status == SyncStatus.idle ||
-            syncState.hasError) {
+        } else if (syncState.status == SyncStatus.idle || syncState.hasError) {
           bgColor = Colors.orange.shade900;
           text = "Offline - Using Cached Data";
           icon = Icons.cloud_off;
