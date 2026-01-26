@@ -43,10 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-server/.env
 GruSongs.ipa
-/server/users
-/server/backups
 
 # Python
 .pytest_cache/
@@ -55,11 +52,8 @@ GruSongs.ipa
 # Local Music Data/Caches
 /gru_cache_v2/
 /songs/
-/server/songs/
-/server/backup_state.json
 
 # Android Caches
 .gradle/
 .kotlin/
-server/config.json
 android/build/reports/problems/problems-report.html

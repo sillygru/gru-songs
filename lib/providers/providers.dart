@@ -4,9 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import '../services/api_service.dart';
 import '../services/stats_service.dart';
-import '../services/user_data_service.dart';
 import '../services/audio_player_manager.dart';
 import '../services/storage_service.dart';
 import '../services/scanner_service.dart';
@@ -18,7 +16,7 @@ import '../models/song.dart';
 import '../providers/auth_provider.dart';
 import 'user_data_provider.dart';
 
-enum SyncStatus { syncing, upToDate, offline, usingCache }
+enum SyncStatus { idle }
 
 enum MetadataSaveStatus { idle, saving, success, error }
 
@@ -34,34 +32,24 @@ class MetadataSaveState {
 
 class SyncState {
   final Map<String, SyncStatus> tasks;
-  final DateTime? lastSync;
   final bool hasError;
 
   SyncState({
     this.tasks = const {},
-    this.lastSync,
     this.hasError = false,
   });
 
   SyncStatus get status {
-    if (hasError) return SyncStatus.offline;
-    if (tasks.values.any((s) => s == SyncStatus.syncing)) {
-      return SyncStatus.syncing;
-    }
-    if (tasks.values.any((s) => s == SyncStatus.usingCache)) {
-      return SyncStatus.usingCache;
-    }
-    return SyncStatus.upToDate;
+    if (hasError) return SyncStatus.idle;
+    return SyncStatus.idle;
   }
 
   SyncState copyWith({
     Map<String, SyncStatus>? tasks,
-    DateTime? lastSync,
     bool? hasError,
   }) {
     return SyncState(
       tasks: tasks ?? this.tasks,
-      lastSync: lastSync ?? this.lastSync,
       hasError: hasError ?? this.hasError,
     );
   }
@@ -81,9 +69,8 @@ class SyncNotifier extends Notifier<SyncState> {
 
   void setUpToDate() {
     final newTasks = Map<String, SyncStatus>.from(state.tasks);
-    newTasks.forEach((key, value) => newTasks[key] = SyncStatus.upToDate);
-    state = state.copyWith(
-        tasks: newTasks, lastSync: DateTime.now(), hasError: false);
+    newTasks.forEach((key, value) => newTasks[key] = SyncStatus.idle);
+    state = state.copyWith(tasks: newTasks, hasError: false);
   }
 }
 
@@ -153,26 +140,12 @@ final isScanningProvider =
     NotifierProvider<IsScanningNotifier, bool>(IsScanningNotifier.new);
 
 // Services & Repositories
-final apiServiceProvider = Provider<ApiService>((ref) {
-  final apiService = ApiService();
-  // Update apiService username when auth state changes
-  final authState = ref.watch(authProvider);
-  apiService.setUsername(authState.username);
-
-  ref.onDispose(() => apiService.dispose());
-  return apiService;
-});
-
 final storageServiceProvider = Provider<StorageService>((ref) {
   return StorageService();
 });
 
 final statsServiceProvider = Provider<StatsService>((ref) {
   return StatsService();
-});
-
-final userDataServiceProvider = Provider<UserDataService>((ref) {
-  return UserDataService(ref.watch(apiServiceProvider));
 });
 
 final scannerServiceProvider = Provider<ScannerService>((ref) {
@@ -184,13 +157,12 @@ final fileManagerServiceProvider = Provider<FileManagerService>((ref) {
 });
 
 final songRepositoryProvider = Provider<SongRepository>((ref) {
-  return SongRepository(ref.watch(apiServiceProvider));
+  return SongRepository();
 });
 
 final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
   final authState = ref.watch(authProvider);
   final manager = AudioPlayerManager(
-    ref.watch(apiServiceProvider),
     ref.watch(statsServiceProvider),
     ref.watch(storageServiceProvider),
     authState.username,
@@ -357,39 +329,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     try {
       final newState = await AsyncValue.guard<List<Song>>(() async {
-        final isLocalMode = await storage.getIsLocalMode();
-        final serverMode = await storage.getServerRefreshMode();
-
-        if (!isLocalMode) {
-          // Force a full bidirectional sync of stats, data, and settings
-          final auth = ref.read(authProvider);
-          if (auth.username != null && ApiService.baseUrl.isNotEmpty) {
-            try {
-              // Run sync in background for non-blocking refresh
-              if (!isBackground) {
-                await DatabaseService.instance.sync(auth.username!);
-                await ref
-                    .read(userDataProvider.notifier)
-                    .refresh(force: !isBackground);
-              } else {
-                unawaited(DatabaseService.instance.sync(auth.username!));
-                unawaited(
-                    ref.read(userDataProvider.notifier).refresh(force: false));
-              }
-            } catch (e) {
-              if (kDebugMode) {
-                debugPrint(
-                    'Sync failed during refresh (continuing to local scan): $e');
-              }
-            }
-          }
-
-          if (serverMode == 'sync_only') {
-            return state.value ?? <Song>[];
-          }
-        }
-
-        // Pass isBackground to _performFullScan
+        // Local-only refresh - just scan files
         final songs = await _performFullScan(
             isBackground: isBackground, existingSongs: state.value);
         ref.read(audioPlayerManagerProvider).refreshSongs(songs);

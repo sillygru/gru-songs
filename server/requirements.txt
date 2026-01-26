@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-python-dotenv
-mutagen
-passlib[bcrypt]
-python-multipart
-python-jose[cryptography]
-sqlalchemy
-discord.py

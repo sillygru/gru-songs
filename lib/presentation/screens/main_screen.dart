@@ -20,7 +20,7 @@ class SyncIndicator extends ConsumerWidget {
       builder: (context, snapshot) {
         final isLocalMode = snapshot.data ?? false;
         if (isLocalMode && !isScanning) return const SizedBox.shrink();
-        if (syncState.status == SyncStatus.upToDate &&
+        if (syncState.status == SyncStatus.idle &&
             !syncState.hasError &&
             !isScanning &&
             metadataState.status == MetadataSaveStatus.idle) {
@@ -47,22 +47,15 @@ class SyncIndicator extends ConsumerWidget {
           bgColor = Colors.red.shade700;
           text = metadataState.message;
           icon = Icons.error;
-        } else if (syncState.status == SyncStatus.syncing) {
-          showSpinner = true;
-          text = "Syncing with server...";
-        } else if (syncState.status == SyncStatus.offline ||
+        } else if (syncState.status == SyncStatus.idle ||
             syncState.hasError) {
           bgColor = Colors.orange.shade900;
           text = "Offline - Using Cached Data";
           icon = Icons.cloud_off;
-        } else if (syncState.status == SyncStatus.usingCache) {
-          bgColor = Colors.blueGrey.shade700;
-          text = "Using Cached Data";
-          icon = Icons.storage;
         }
 
         if (!showSpinner &&
-            syncState.status == SyncStatus.upToDate &&
+            syncState.status == SyncStatus.idle &&
             !syncState.hasError &&
             metadataState.status == MetadataSaveStatus.idle) {
           return const SizedBox.shrink();

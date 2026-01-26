@@ -10,7 +10,6 @@ import 'dart:async'; // For Timer
 import '../models/song.dart';
 import '../models/queue_item.dart';
 import '../models/shuffle_config.dart';
-import 'api_service.dart';
 import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
@@ -20,7 +19,6 @@ import '../providers/providers.dart';
 
 class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
-  final ApiService _apiService;
   final StatsService _statsService;
   final StorageService _storageService;
   final String? _username;
@@ -34,7 +32,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Flag to restrict auto-generation to original queue (e.g. for folder shuffle)
   bool _isRestrictedToOriginal = false;
 
-  // Server Sync State
+  // Sync State
   Timer? _syncTimer;
 
   // User data for weighting (Fallback / Offline)
@@ -61,8 +59,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
   final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
 
-  AudioPlayerManager(this._apiService, this._statsService, this._storageService,
-      this._username,
+  AudioPlayerManager(this._statsService, this._storageService, this._username,
       [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
     if (_username != null) {
@@ -321,11 +318,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     double finalDuration = _foregroundDuration + _backgroundDuration;
     if (finalDuration > 0.5) {
-      _statsService.track(
-          _username!, _currentSongFilename!, finalDuration, eventType,
-          foregroundDuration: _foregroundDuration,
-          backgroundDuration: _backgroundDuration,
-          totalLength: totalLength);
+      _statsService.trackStats({
+        'username': _username!,
+        'song_filename': _currentSongFilename!,
+        'duration_played': finalDuration,
+        'event_type': eventType,
+        'foreground_duration': _foregroundDuration,
+        'background_duration': _backgroundDuration,
+        'total_length': totalLength,
+      });
 
       // Add to local history if completed OR played for at least 5 seconds (to treat as a "seen" song for anti-repeat)
       if (eventType == 'complete' || finalDuration > 5.0) {
@@ -631,12 +632,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<AudioSource> _createAudioSource(QueueItem item) async {
     final song = item.song;
-    final bool isLocal =
-        song.url.startsWith('/') || song.url.startsWith('C:\\');
 
-    final Uri audioUri = isLocal
-        ? Uri.file(song.url)
-        : Uri.parse(_apiService.getFullUrl(song.url));
+    final Uri audioUri = Uri.file(song.url);
 
     Uri? artUri;
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {

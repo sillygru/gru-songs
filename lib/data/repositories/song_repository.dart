@@ -1,15 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import '../../models/song.dart';
-import '../../services/api_service.dart';
 
 class SongRepository {
-  final ApiService _apiService;
-
-  SongRepository(this._apiService);
+  SongRepository();
 
   Future<List<Song>> getSongs() async {
-    return _apiService.fetchSongs();
+    // Local-only - songs are managed by the scanner service
+    return [];
   }
 
   Future<String?> getLyrics(String url) async {
@@ -20,10 +18,9 @@ class SongRepository {
           return await file.readAsString();
         }
       } catch (e) {
-        debugPrint('Error reading local lyrics: $e');
+        debugPrint('Error reading lyrics file: $e');
       }
-      return null;
     }
-    return _apiService.fetchLyrics(url);
+    return null;
   }
 }

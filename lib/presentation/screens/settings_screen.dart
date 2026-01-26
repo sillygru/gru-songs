@@ -18,6 +18,11 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   Future<void> _selectMusicFolder() async {
     if (Platform.isAndroid) {
       final selection = await AndroidStorageService.pickTree();
@@ -158,29 +163,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ref.read(settingsProvider.notifier).setVisualizerEnabled(val);
                 },
               ),
-              FutureBuilder<bool>(
-                future: ref.read(storageServiceProvider).getIsLocalMode(),
-                builder: (context, snapshot) {
-                  final isLocalMode = snapshot.data ?? false;
-
-                  if (isLocalMode) return const SizedBox.shrink();
-
-                  final themeState = ref.watch(themeProvider);
-
-                  return SwitchListTile(
-                    secondary: const Icon(Icons.sync_rounded),
-                    title: const Text('Sync Theme'),
-                    subtitle:
-                        const Text('Sync your visual style across devices'),
-                    value: themeState.syncTheme,
-                    onChanged: (val) {
-                      ref.read(themeProvider.notifier).setSyncTheme(val);
-
-                      ref.read(userDataProvider.notifier).refresh();
-                    },
-                  );
-                },
-              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -277,8 +259,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return FutureBuilder<bool>(
       future: ref.read(storageServiceProvider).getIsLocalMode(),
       builder: (context, snapshot) {
-        final isLocalMode = snapshot.data ?? false;
-
         return _buildSettingsGroup(
           title: 'Pull to Refresh',
           children: [
@@ -300,38 +280,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 );
               },
             ),
-            if (!isLocalMode)
-              FutureBuilder<String>(
-                future: ref.read(storageServiceProvider).getServerRefreshMode(),
-                builder: (context, snapshot) {
-                  final mode = snapshot.data ?? 'sync_only';
-
-                  return RadioGroup<String>(
-                    groupValue: mode,
-                    onChanged: (val) async {
-                      if (val != null) {
-                        await ref
-                            .read(storageServiceProvider)
-                            .setServerRefreshMode(val);
-
-                        setState(() {});
-                      }
-                    },
-                    child: const Column(
-                      children: [
-                        RadioListTile<String>(
-                          title: Text('Sync with server only'),
-                          value: 'sync_only',
-                        ),
-                        RadioListTile<String>(
-                          title: Text('Sync and scan library'),
-                          value: 'sync_and_scan',
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
           ],
         );
       },

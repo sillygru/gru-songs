@@ -13,7 +13,6 @@ dependencies:
   just_audio: ^0.10.5
   just_audio_background: ^0.0.1-beta.16
   audio_session: ^0.2.2
-  http: ^1.2.1
   cached_network_image: ^3.4.1
   rxdart: ^0.28.0
   audio_video_progress_bar: ^2.0.1

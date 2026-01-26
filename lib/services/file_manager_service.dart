@@ -59,7 +59,7 @@ class FileManagerService {
     }
   }
 
-  /// Internal method to update metadata without server notification.
+  /// Internal method to update metadata.
   Future<void> _updateMetadataInternal(String fileUrl,
       {String? title, String? artist, String? album}) async {
     try {

@@ -1,21 +1,21 @@
-# Gru Songs (v3.6.0)
+# Gru Songs (v3.6.1)
 
 ## What is Gru Songs?
-Gru Songs is a simple local music player app built with Flutter, that can optionally connect to a server to sync stats.
+Gru Songs is a simple local music player app built with Flutter.
 
 [Features](#features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
 
 ## Features
-
+- **Local Music Library:** Scan and organize your local music collection.
+- **Smart Shuffle:** Intelligent shuffle algorithm that learns from your listening habits.
+- **Favorites & Playlists:** Create and manage playlists, mark favorite songs.
 - **Folder Based Organization:** Organize your music with intuitive folder structure support.
 - **Metadata:** Automatic extraction of album art, titles, and artist info.
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
-- **Cross-device sync:** Sync stats, favorites, playlists, and theme across devices (requires server).
 
 ## Getting Started
 
 Simply install the app from the releases page.
-If you want to sync data across devices, you must host your own server.
 
 ## Good to know
 
@@ -31,19 +31,11 @@ User data in Gru Songs is tied to the music file's name. If you rename a file ou
 </p>
 
 ## Others
-### “*Don't mind half broken features*”
-This is a vibe coded project, if features are half-broken, that is normal.
-This was originally a personal side project, so there might be leftovers of pre-configured stuff of when this was only meant for my personal use (mostly server stuff, frontend's great on this aspect)
+### "*Don't mind half broken features*"
+This is a vibe coded project, if features are half-baked, that is normal.
+This was originally a personal side project, so there might be leftovers of pre-configured stuff of when this was only meant for my personal use.
 
-## For developers / if you want to run your own private server
-1. **Backend:**
-   - Clone the repo
-   - Navigate to `server/`.
-   - Install dependencies: `pip install -r requirements.txt`.
-   - Run: `python main.py`.
-      - It will guide you trough a first time setup.
-
-2. **Frontend:**
+## For developers
 ### Run the app
    - Install Flutter dependencies: `flutter pub get`.
    - Run the app: `flutter run`.

@@ -1,23 +1,13 @@
-import 'dart:io';
 import 'dart:async';
 import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
-import 'api_service.dart';
-import 'package:http/http.dart' as http;
 import 'storage_service.dart';
 import '../models/playlist.dart';
 
-/// DatabaseService handles local SQLite storage for offline access.
-///
-/// SYNC PHILOSOPHY:
-/// - Server is the SOURCE OF TRUTH
-/// - Client stores local cache for offline access
-/// - Favorites/SuggestLess changes use explicit API calls (add/remove)
-/// - Stats are additive-only (never delete from server)
-/// - DB file uploads are ONLY for stats (which are additive)
+/// DatabaseService handles local SQLite storage.
 class DatabaseService {
   static DatabaseService _instance = DatabaseService._init();
   static DatabaseService get instance => _instance;
@@ -138,113 +128,18 @@ class DatabaseService {
   }
 
   // ==========================================================================
-  // SYNC METHODS - Proper bidirectional sync with server as source of truth
+  // STATS METHODS
   // ==========================================================================
 
-  /// Full bidirectional sync (Download latest from server)
-  Future<void> sync(String username) async {
-    if (await StorageService().getIsLocalMode()) return;
-    if (ApiService.baseUrl.isEmpty) {
-      debugPrint('Sync skipped: No server URL configured');
-      return;
-    }
-    await downloadStatsFromServer(username);
-    await downloadFinalStatsFromServer(username);
-  }
-
-  /// Upload local changes to server (Additive merge)
-  Future<void> syncBack(String username) async {
-    if (await StorageService().getIsLocalMode()) return;
-    if (ApiService.baseUrl.isEmpty) return;
-    await uploadStatsToServer(username);
-  }
-
-  /// Downloads stats DB from server (for offline viewing of play history)
-  /// This is a read-only sync - we don't overwrite server stats
-  Future<void> downloadStatsFromServer(String username) async {
-    if (await StorageService().getIsLocalMode()) return;
-    if (ApiService.baseUrl.isEmpty) return;
-    final docDir = await getApplicationDocumentsDirectory();
-    final path = join(docDir.path, '${username}_stats.db');
-
-    try {
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/user/db/stats'),
-        headers: {'x-username': username},
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-        // Close database before overwriting
-        await _statsDatabase?.close();
-        _statsDatabase = null;
-
-        final file = File(path);
-        await file.writeAsBytes(response.bodyBytes);
-
-        // Reopen
-        _statsDatabase =
-            await _openDatabase('${username}_stats.db', _statsSchema);
-        debugPrint('Downloaded stats DB from server');
-      }
-    } catch (e) {
-      debugPrint('Download stats DB failed (Offline?): $e');
-    }
-  }
-
-  /// Uploads local stats to server (additive merge on server side)
-  /// Server should only ADD new events, never delete existing ones
-  Future<void> uploadStatsToServer(String username) async {
-    if (await StorageService().getIsLocalMode()) return;
-    if (ApiService.baseUrl.isEmpty) return;
-    final docDir = await getApplicationDocumentsDirectory();
-    final path = join(docDir.path, '${username}_stats.db');
-    final file = File(path);
-
-    if (!await file.exists()) return;
-
-    try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('${ApiService.baseUrl}/user/db/stats'),
-      );
-      request.headers['x-username'] = username;
-      request.files.add(await http.MultipartFile.fromPath('file', path));
-
-      final response =
-          await request.send().timeout(const Duration(seconds: 30));
-      if (response.statusCode == 200) {
-        debugPrint('Uploaded stats DB to server');
-      }
-    } catch (e) {
-      debugPrint('Upload stats DB failed: $e');
-    }
-  }
-
-  /// Downloads final_stats.json from server (contains shuffle state, etc.)
-  Future<void> downloadFinalStatsFromServer(String username) async {
-    if (await StorageService().getIsLocalMode()) return;
-    if (ApiService.baseUrl.isEmpty) return;
-    final docDir = await getApplicationDocumentsDirectory();
-    final path = join(docDir.path, '${username}_final_stats.json');
-
-    try {
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/user/db/final_stats'),
-        headers: {'x-username': username},
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final file = File(path);
-        await file.writeAsBytes(response.bodyBytes);
-        debugPrint('Downloaded final_stats from server');
-      }
-    } catch (e) {
-      debugPrint('Download final_stats failed (Offline?): $e');
-    }
+  Future<void> addPlayEvent(Map<String, dynamic> stats) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return;
+    
+    await _statsDatabase!.insert('playevent', stats);
   }
 
   // ==========================================================================
-  // USER DATA QUERIES (Local cache - synced via API calls, not DB uploads)
+  // USER DATA QUERIES
   // ==========================================================================
 
   Future<List<String>> getFavorites() async {
@@ -279,7 +174,7 @@ class DatabaseService {
         .delete('favorite', where: 'filename = ?', whereArgs: [filename]);
   }
 
-  /// Replaces all local favorites with the given list (used when syncing FROM server)
+  /// Replaces all local favorites with the given list
   Future<void> setFavorites(List<String> favorites) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
@@ -433,13 +328,6 @@ class DatabaseService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
 
-      // We don't delete existing songs here to be safe (sync might rely on additive),
-      // but if this is a "save whole playlist" call, we probably should replace songs.
-      // However, usually we modify incrementally.
-      // If we are syncing from server, we might want to replace.
-      // Let's assume this method is used for syncing OR creation.
-
-      // Ideally, if we save the whole object, we should match the object state.
       // Delete all songs and re-insert.
       await txn.delete('playlist_song',
           where: 'playlist_id = ?', whereArgs: [playlist.id]);
@@ -629,7 +517,7 @@ class DatabaseService {
         'Deleted user data entries for file $filename (stats preserved)');
   }
 
-  /// Replaces all local suggestless with the given list (used when syncing FROM server)
+  /// Replaces all local suggestless with the given list
   Future<void> setSuggestLess(List<String> suggestLess) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;

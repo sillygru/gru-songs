@@ -1,25 +1,16 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
-import 'api_service.dart';
 import 'database_service.dart';
-import 'storage_service.dart';
 
 class StatsService {
-  final http.Client _client;
   final String _sessionId;
   late final String _platform;
-  bool _isSyncing = false;
-  Timer? _syncTimer;
 
   StatsService()
-      : _client = ApiService.createClient(),
-        _sessionId = const Uuid().v4() {
+      : _sessionId = const Uuid().v4() {
     if (kIsWeb) {
       _platform = 'web';
     } else if (Platform.isAndroid) {
@@ -32,106 +23,51 @@ class StatsService {
       _platform = 'windows';
     } else if (Platform.isLinux) {
       _platform = 'linux';
-    } else if (Platform.isFuchsia) {
-      _platform = 'fuchsia';
     } else {
       _platform = 'unknown';
     }
-
-    // Periodically sync DBs back to server
-    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) => _syncDbs());
   }
 
-  String get sessionId => _sessionId;
-
-  Future<void> track(
-      String username, String songFilename, double duration, String eventType,
-      {double foregroundDuration = 0.0,
-      double backgroundDuration = 0.0,
-      required double totalLength}) async {
-    final payload = {
-      'session_id': _sessionId,
-      'song_filename': songFilename,
-      'duration_played': duration,
-      'event_type': eventType,
-      'timestamp': DateTime.now().millisecondsSinceEpoch / 1000.0,
-      'platform': _platform,
-      'foreground_duration': foregroundDuration,
-      'background_duration': backgroundDuration,
-      'total_length': totalLength,
-      'play_ratio': totalLength > 0 ? duration / totalLength : 0.0,
-    };
-
-    // 1. Save locally to mirrored DB
-    await DatabaseService.instance.insertPlayEvent(payload);
-
-    // 2. Try to send to server (Legacy / Immediate)
-    if (ApiService.baseUrl.isEmpty) return;
-    if (await StorageService().getIsLocalMode()) return;
-
-    try {
-      final response = await _client
-          .post(
-            Uri.parse('${ApiService.baseUrl}/stats/track'),
-            headers: {
-              'Content-Type': 'application/json',
-              'x-username': username,
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode != 200) {
-        throw Exception('Server returned ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Legacy stats tracking failed: $e');
-    }
-  }
-
-  Future<void> _syncDbs() async {
-    if (_isSyncing) return;
-    if (ApiService.baseUrl.isEmpty) return;
-    if (await StorageService().getIsLocalMode()) return;
-
-    _isSyncing = true;
+  Future<void> trackStats(Map<String, dynamic> stats) async {
+    // Local-only - just store in database
     try {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString('last_username');
-      if (username != null) {
-        await DatabaseService.instance.syncBack(username);
-      }
+      final username = prefs.getString('username');
+      if (username == null) return;
+
+      await DatabaseService.instance.initForUser(username);
+      
+      // Add platform info
+      stats['platform'] = _platform;
+      stats['session_id'] = _sessionId;
+      
+      // Store in local database
+      await DatabaseService.instance.addPlayEvent(stats);
     } catch (e) {
-      debugPrint('DB Sync error: $e');
-    } finally {
-      _isSyncing = false;
+      debugPrint('Error tracking stats: $e');
     }
   }
 
-  Future<Map<String, dynamic>?> getStatsSummary(String username) async {
-    // Mirroring final_stats.json locally
+  Future<void> syncBack() async {
+    // Local-only - no sync needed
+  }
+
+  Future<void> flush() async {
+    // Local-only - data is already in database
+  }
+
+  Future<Map<String, dynamic>> getFunStats() async {
+    // Get stats from local database
     try {
-      final docDir = await getApplicationDocumentsDirectory();
-      final file = File('${docDir.path}/${username}_final_stats.json');
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        return jsonDecode(content);
-      }
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('username');
+      if (username == null) return {};
+
+      await DatabaseService.instance.initForUser(username);
+      return await DatabaseService.instance.getFunStats();
     } catch (e) {
-      debugPrint('Error reading local stats summary: $e');
+      debugPrint('Error getting fun stats: $e');
+      return {};
     }
-
-    // Server-side fallback removed - shuffling is local now
-    return null;
-  }
-
-  Future<void> updateShuffleState(
-      String username, Map<String, dynamic> state) async {
-    // Strictly local now
-    return;
-  }
-
-  void dispose() {
-    _syncTimer?.cancel();
   }
 }

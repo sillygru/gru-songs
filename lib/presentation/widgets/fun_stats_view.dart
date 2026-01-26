@@ -7,10 +7,10 @@ class FunStatsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final apiService = ref.watch(apiServiceProvider);
+    final statsService = ref.watch(statsServiceProvider);
 
     return FutureBuilder<Map<String, dynamic>>(
-      future: apiService.getFunStats(),
+      future: statsService.getFunStats(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

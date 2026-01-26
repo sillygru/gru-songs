@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -7,7 +6,6 @@ import 'package:metadata_god/metadata_god.dart';
 import 'presentation/screens/main_screen.dart';
 import 'providers/auth_provider.dart';
 import 'services/cache_service.dart';
-import 'services/api_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,15 +14,6 @@ import 'providers/setup_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/app_theme.dart';
 import 'dart:async';
-
-class MyHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
-  }
-}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,22 +35,11 @@ Future<void> main() async {
   PaintingBinding.instance.imageCache.maximumSizeBytes =
       30 * 1024 * 1024; // Reduced from 50MB
 
-  HttpOverrides.global = MyHttpOverrides();
-
-  // Check setup status and migration
+  // Check setup status
   final storage = StorageService();
   bool isSetupComplete = await storage.getIsSetupComplete();
-  final oldUrl = await storage.getServerUrl();
 
-  // Migration: If not setup V2 but has old URL, force logout
-  if (!isSetupComplete && oldUrl != null) {
-    debugPrint("Legacy user detected, forcing setup...");
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('username');
-    // We treat them as new user for the setup flow
-  }
-
-  // Initialize API/State based on findings
+  // Initialize local-only state
   final prefs = await SharedPreferences.getInstance();
   final username = prefs.getString('username');
 
@@ -71,17 +49,9 @@ Future<void> main() async {
     await storage.setSetupComplete(false);
   }
 
+  // Set local mode by default
   if (isSetupComplete) {
-    final isLocal = await storage.getIsLocalMode();
-    if (!isLocal) {
-      final savedUrl = await storage.getServerUrl();
-      if (savedUrl != null && savedUrl.isNotEmpty) {
-        ApiService.setBaseUrl(savedUrl);
-      }
-    } else {
-      // If in local mode, ensure the API URL is cleared to prevent any accidental syncs
-      ApiService.setBaseUrl("");
-    }
+    await storage.setIsLocalMode(true);
   }
 
   if (isSetupComplete && username != null) {

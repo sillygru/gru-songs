@@ -10,12 +10,10 @@ class StorageService {
   static const String _musicFolderTreeUriKey = 'music_folder_tree_uri';
   static const String _lyricsFolderKey = 'lyrics_folder_path';
   static const String _lyricsFolderTreeUriKey = 'lyrics_folder_tree_uri';
-  static const String _serverUrlKey = 'server_base_url';
   static const String _isSetupCompleteKey = 'is_setup_complete_v2';
   static const String _isLocalModeKey = 'is_local_mode';
   static const String _localUsernameKey = 'local_username';
   static const String _pullToRefreshEnabledKey = 'pull_to_refresh_enabled';
-  static const String _serverRefreshModeKey = 'server_refresh_mode';
 
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -107,16 +105,6 @@ class StorageService {
     await prefs.setString(_lyricsFolderTreeUriKey, uri);
   }
 
-  Future<String?> getServerUrl() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_serverUrlKey);
-  }
-
-  Future<void> setServerUrl(String url) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_serverUrlKey, url);
-  }
-
   Future<bool> getIsSetupComplete() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_isSetupCompleteKey) ?? false;
@@ -155,16 +143,6 @@ class StorageService {
   Future<void> setPullToRefreshEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_pullToRefreshEnabledKey, value);
-  }
-
-  Future<String> getServerRefreshMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_serverRefreshModeKey) ?? 'sync_only';
-  }
-
-  Future<void> setServerRefreshMode(String mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_serverRefreshModeKey, mode);
   }
 
   Future<void> saveSongs(String? username, List<Song> songs) async {

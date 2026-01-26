@@ -14,6 +14,6 @@ void main() {
 
     // Verify that we are on the SetupScreen
     expect(find.text('Gru Songs'), findsOneWidget);
-    expect(find.text('Local Experience'), findsOneWidget);
+    expect(find.text('Your personal music library'), findsOneWidget);
   });
 }

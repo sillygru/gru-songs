@@ -127,9 +127,6 @@ class _PlaylistSelectorDialogState
               }
             }
 
-            // Perform a single sync at the end
-            await notifier.syncWithServer();
-
             if (context.mounted) {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
