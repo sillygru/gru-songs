@@ -739,9 +739,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final result = <QueueItem>[];
     final remaining = List<QueueItem>.from(items);
     QueueItem? prev = lastItem;
+
+    // Calculate max play count for adaptive consistent mode
+    int maxPlayCount = 0;
+    if (playCounts.isNotEmpty) {
+      maxPlayCount = playCounts.values.fold(0, max);
+    }
+
     while (remaining.isNotEmpty) {
       final weights = remaining
-          .map((item) => _calculateWeight(item, prev, playCounts, skipStats))
+          .map((item) =>
+              _calculateWeight(item, prev, playCounts, skipStats, maxPlayCount))
           .toList();
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
       if (totalWeight <= 0) {
@@ -771,34 +779,46 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       QueueItem item,
       QueueItem? prev,
       Map<String, int> playCounts,
-      Map<String, ({int count, double avgRatio})> skipStats) {
+      Map<String, ({int count, double avgRatio})> skipStats,
+      int maxPlayCount) {
     double weight = 1.0;
     final song = item.song;
     final config = _shuffleState.config;
     final count = playCounts[song.filename] ?? 0;
 
-    // --- Personality: DEFAULT ---
-    if (config.personality == ShufflePersonality.defaultMode) {
-      // 1. Favorites & Suggest Less
-      if (_isFavorite(song.filename)) {
-        weight *= config.favoriteMultiplier;
+    // 1. User Preferences
+    if (_isFavorite(song.filename)) {
+      if (config.personality == ShufflePersonality.consistent) {
+        weight *= 1.4; // +40% for consistent
+      } else if (config.personality == ShufflePersonality.explorer) {
+        weight *= 1.12; // +12% for explorer
+      } else {
+        weight *= config.favoriteMultiplier; // +20% default (1.2)
       }
-      if (_isSuggestLess(song.filename)) {
-        weight *= config.suggestLessMultiplier;
+    }
+    if (_isSuggestLess(song.filename)) {
+      weight *= 0.2; // 80% penalty globally
+    }
+
+    // 2. Personality Weights
+    if (config.personality == ShufflePersonality.explorer) {
+      if (count == 0) {
+        weight *= 1.2; // 20% reward for never played
+      }
+    } else if (config.personality == ShufflePersonality.consistent) {
+      // Adaptive Threshold for new users
+      int threshold = 10;
+      if (maxPlayCount < 10) {
+        threshold = max(1, (maxPlayCount * 0.7).floor());
+      } else if (maxPlayCount < 20) {
+        threshold = 5;
       }
 
-      // 2. Anti-repeat (History)
-      if (config.antiRepeatEnabled && _shuffleState.history.isNotEmpty) {
-        int historyIndex = _shuffleState.history
-            .indexWhere((e) => e.filename == song.filename);
-        if (historyIndex != -1) {
-          double reduction =
-              0.95 * (1.0 - (historyIndex / config.historyLimit));
-          weight *= (1.0 - max(0.0, reduction));
-        }
+      if (count >= threshold && count > 0) {
+        weight *= 1.3; // 30% reward for often played
       }
-
-      // 3. Streak Breaker
+    } else if (config.personality == ShufflePersonality.defaultMode) {
+      // Default uses streak breaker
       if (config.streakBreakerEnabled && prev != null) {
         final prevSong = prev.song;
         if (song.artist != 'Unknown Artist' &&
@@ -813,68 +833,27 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
       }
     }
-    // --- Personality: EXPLORER ---
-    else if (config.personality == ShufflePersonality.explorer) {
-      if (count == 0) {
-        weight *= 50.0;
-      } else if (count < 5) {
-        weight *= 5.0;
-      } else if (count > 50) {
-        weight *= 0.01;
-      } else if (count > 15) {
-        weight *= 0.1;
-      }
 
-      if (_isFavorite(song.filename)) weight *= 1.1;
-      if (_isSuggestLess(song.filename)) weight *= 0.001;
-
-      // Anti-repeat (Strong)
-      if (_shuffleState.history.isNotEmpty) {
-        int historyIndex = _shuffleState.history
-            .indexWhere((e) => e.filename == song.filename);
-        if (historyIndex != -1) {
-          double reduction =
-              0.95 * (1.0 - (historyIndex / config.historyLimit));
-          weight *= (1.0 - max(0.0, reduction));
-        }
-      }
-    }
-    // --- Personality: CONSISTENT ---
-    else if (config.personality == ShufflePersonality.consistent) {
-      // 1. Favorites: Strong boost
-      if (_isFavorite(song.filename)) weight *= 3.0;
-
-      // 2. Most played boost
-      if (count > 10) weight *= 1.5;
-      if (count > 50) weight *= 2.0;
-
-      // 3. Anti-repeat: Relaxed
-      if (_shuffleState.history.isNotEmpty) {
-        int historyIndex = _shuffleState.history
-            .indexWhere((e) => e.filename == song.filename);
-        if (historyIndex != -1) {
-          if (historyIndex < 10) {
-            weight *= 0.05; // Don't play immediate repeats
-          }
+    // 3. Global Recency Penalty (Last 100 events)
+    if (_shuffleState.history.isNotEmpty) {
+      int historyIndex =
+          _shuffleState.history.indexWhere((e) => e.filename == song.filename);
+      if (historyIndex != -1 && historyIndex < 100) {
+        int n = historyIndex + 1;
+        // n=1 (most recent) -> 100% penalty
+        // n=2 -> 98% penalty
+        // n=99 -> 1% penalty
+        int penaltyPercent = (n == 1) ? 100 : (100 - n);
+        if (penaltyPercent > 0) {
+          weight *= (1.0 - (penaltyPercent / 100.0));
         }
       }
     }
 
-    // --- Global Penalties ---
-    // Multi-tier skip penalty logic
+    // 4. Global Skip Penalty
     final stats = skipStats[song.filename];
-    if (stats != null) {
-      if (stats.count >= 4) {
-        if (stats.avgRatio < 0.10) {
-          weight *= 0.05; // 95% penalty
-        }
-      } else if (stats.count == 3) {
-        weight *= 0.30; // 70% penalty
-      } else if (stats.count == 2) {
-        weight *= 0.60; // 40% penalty
-      } else if (stats.count == 1) {
-        weight *= 0.85; // 15% penalty
-      }
+    if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.15) {
+      weight *= 0.05; // 95% penalty
     }
 
     return max(0.0001, weight);

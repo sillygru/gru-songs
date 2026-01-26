@@ -511,6 +511,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         .read(storageServiceProvider)
                         .setPullToRefreshEnabled(val);
 
+                    await TelemetryService.instance.trackEvent(
+                        'setting_changed',
+                        {
+                          'setting': 'pull_to_refresh_enabled',
+                          'value': val,
+                        },
+                        requiredLevel: 2);
+
                     setState(() {});
                   },
                 );

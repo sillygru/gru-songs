@@ -16,16 +16,37 @@ double calculateWeight(
   final song = item.song;
   final config = shuffleState.config;
 
-  if (config.antiRepeatEnabled && shuffleState.history.isNotEmpty) {
+  // 1. User Preferences
+  if (favorites.contains(song.filename)) {
+    if (config.personality == ShufflePersonality.consistent) {
+      weight *= 1.4;
+    } else if (config.personality == ShufflePersonality.explorer) {
+      weight *= 1.12;
+    } else {
+      weight *= config.favoriteMultiplier; // 1.2 default
+    }
+  }
+  if (suggestLess.contains(song.filename)) {
+    weight *= 0.2; // 80% penalty
+  }
+
+  // 2. Global Recency Penalty
+  if (shuffleState.history.isNotEmpty) {
     int historyIndex =
         shuffleState.history.indexWhere((e) => e.filename == song.filename);
-    if (historyIndex != -1) {
-      double reduction = 0.95 * (1.0 - (historyIndex / config.historyLimit));
-      weight *= (1.0 - max(0.0, reduction));
+    if (historyIndex != -1 && historyIndex < 100) {
+      int n = historyIndex + 1;
+      int penaltyPercent = (n == 1) ? 100 : (100 - n);
+      if (penaltyPercent > 0) {
+        weight *= (1.0 - (penaltyPercent / 100.0));
+      }
     }
   }
 
-  if (config.streakBreakerEnabled && prev != null) {
+  // 3. Streak Breaker (only for default mode)
+  if (config.personality == ShufflePersonality.defaultMode &&
+      config.streakBreakerEnabled &&
+      prev != null) {
     final prevSong = prev.song;
     if (song.artist != 'Unknown Artist' &&
         prevSong.artist != 'Unknown Artist') {
@@ -36,14 +57,7 @@ double calculateWeight(
     }
   }
 
-  if (favorites.contains(song.filename)) {
-    weight *= config.favoriteMultiplier;
-  }
-  if (suggestLess.contains(song.filename)) {
-    weight *= config.suggestLessMultiplier;
-  }
-
-  return max(0.001, weight);
+  return max(0.0001, weight);
 }
 
 List<QueueItem> weightedShuffle(List<QueueItem> items, ShuffleState state,

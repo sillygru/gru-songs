@@ -6,6 +6,7 @@ import '../../providers/providers.dart';
 import '../../models/shuffle_config.dart';
 import '../widgets/fun_stats_view.dart';
 import '../widgets/scanning_progress_bar.dart';
+import '../../services/telemetry_service.dart';
 import 'settings_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -138,6 +139,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
+          await TelemetryService.instance.trackEvent(
+              'library_action',
+              {
+                'action': 'pull_to_refresh',
+                'screen': 'profile',
+              },
+              requiredLevel: 2);
+
           await ref.read(userDataProvider.notifier).refresh();
         },
         child: CustomScrollView(
@@ -315,7 +324,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v3.7.0",
+                      "Gru Songs v3.7.1",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,

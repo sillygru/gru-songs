@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
+import '../services/telemetry_service.dart';
 
 class ThemeState {
   final GruThemeMode mode;
@@ -40,6 +41,14 @@ class ThemeNotifier extends Notifier<ThemeState> {
     state = state.copyWith(mode: mode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('theme_mode', mode.toString());
+
+    await TelemetryService.instance.trackEvent(
+        'setting_changed',
+        {
+          'setting': 'theme_mode',
+          'value': mode.toString(),
+        },
+        requiredLevel: 2);
   }
 }
 

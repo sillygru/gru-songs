@@ -15,9 +15,9 @@ class ShuffleConfig extends Equatable {
     this.enabled = false,
     this.antiRepeatEnabled = true,
     this.streakBreakerEnabled = true,
-    this.favoriteMultiplier = 1.15,
+    this.favoriteMultiplier = 1.2,
     this.suggestLessMultiplier = 0.2,
-    this.historyLimit = 50,
+    this.historyLimit = 100,
     this.personality = ShufflePersonality.defaultMode,
   });
 
@@ -26,10 +26,10 @@ class ShuffleConfig extends Equatable {
       enabled: json['enabled'] ?? false,
       antiRepeatEnabled: json['anti_repeat_enabled'] ?? true,
       streakBreakerEnabled: json['streak_breaker_enabled'] ?? true,
-      favoriteMultiplier: (json['favorite_multiplier'] ?? 1.15).toDouble(),
+      favoriteMultiplier: (json['favorite_multiplier'] ?? 1.2).toDouble(),
       suggestLessMultiplier:
           (json['suggest_less_multiplier'] ?? 0.2).toDouble(),
-      historyLimit: json['history_limit'] ?? 50,
+      historyLimit: json['history_limit'] ?? 100,
       personality: _parsePersonality(json['personality']),
     );
   }

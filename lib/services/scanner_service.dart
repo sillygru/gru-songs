@@ -162,7 +162,12 @@ class ScannerService {
         parentPath, () => _findCoverInFolder(parentPath));
 
     String? lyricsUrl;
-    if (lyricsPath != null) {
+    // 1. Try to find sidecar lyrics in the same folder as the song
+    lyricsUrl = await _findLyricsForSong(
+        p.basenameWithoutExtension(file.path), parentPath);
+
+    // 2. Fallback to the global lyrics folder if provided
+    if (lyricsUrl == null && lyricsPath != null) {
       lyricsUrl = await _findLyricsForSong(
           p.basenameWithoutExtension(file.path), lyricsPath);
     }
