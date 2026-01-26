@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/setup_provider.dart';
 import '../../services/storage_service.dart';
 
 class SetupScreen extends ConsumerStatefulWidget {
@@ -128,6 +129,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
       // Log in as local user
       await ref.read(authProvider.notifier).localLogin(username);
+      
+      // Update setup provider to trigger UI rebuild
+      ref.read(setupProvider.notifier).setComplete(true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
