@@ -9,6 +9,9 @@ import '../../services/android_storage_service.dart';
 import '../../services/telemetry_service.dart';
 
 import 'search_screen.dart';
+import '../widgets/sort_menu.dart';
+import '../../services/library_logic.dart';
+import '../../providers/settings_provider.dart';
 
 import 'package:file_picker/file_picker.dart';
 
@@ -67,6 +70,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       body: songsAsyncValue.when(
         data: (songs) {
+          final sortOrder = ref.watch(settingsProvider).sortOrder;
+          final userData = ref.watch(userDataProvider);
+          final shuffleState =
+              ref.watch(audioPlayerManagerProvider).shuffleStateNotifier.value;
+          final playCounts = ref.watch(playCountsProvider).value ?? {};
+
+          final sortedSongs = LibraryLogic.sortSongs(
+            songs,
+            sortOrder,
+            userData: userData,
+            shuffleConfig: shuffleState.config,
+            playCounts: playCounts,
+          );
+
           if (songs.isEmpty) {
             return Center(
               child: Padding(
@@ -277,15 +294,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'All Songs',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
+                        Row(
+                          children: [
+                            Text(
+                              'All Songs',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                            ),
+                            const SizedBox(width: 8),
+                            const SortMenu(),
+                          ],
                         ),
                         Text(
                           '${songs.length} songs',
@@ -298,16 +322,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final song = songs[index];
+                      final song = sortedSongs[index];
                       return SongListItem(
                         song: song,
                         heroTagPrefix: 'all_songs',
                         onTap: () {
-                          audioManager.playSong(song, contextQueue: songs);
+                          audioManager.playSong(song,
+                              contextQueue: sortedSongs);
                         },
                       );
                     },
-                    childCount: songs.length,
+                    childCount: sortedSongs.length,
                   ),
                 ),
                 const SliverPadding(padding: EdgeInsets.only(bottom: 120)),

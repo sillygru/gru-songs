@@ -1,5 +1,14 @@
 import 'package:equatable/equatable.dart';
 
+enum SongSortOrder {
+  dateAdded,
+  title,
+  artist,
+  album,
+  playCount,
+  recommended,
+}
+
 class Song extends Equatable {
   final String title;
   final String artist;

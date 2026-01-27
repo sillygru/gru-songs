@@ -339,7 +339,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v3.8.2",
+                      "Gru Songs v3.8.3",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,

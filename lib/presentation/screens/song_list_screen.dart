@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../providers/settings_provider.dart';
+import '../../services/library_logic.dart';
 import '../widgets/song_list_item.dart';
+import '../widgets/sort_menu.dart';
 
 class SongListScreen extends ConsumerWidget {
   final String title;
@@ -19,6 +22,18 @@ class SongListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final audioManager = ref.watch(audioPlayerManagerProvider);
+    final sortOrder = ref.watch(settingsProvider).sortOrder;
+    final userData = ref.watch(userDataProvider);
+    final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
+    final playCounts = ref.watch(playCountsProvider).value ?? {};
+
+    final sortedSongs = LibraryLogic.sortSongs(
+      songs,
+      sortOrder,
+      userData: userData,
+      shuffleConfig: shuffleConfig,
+      playCounts: playCounts,
+    );
 
     return Scaffold(
       body: CustomScrollView(
@@ -29,18 +44,20 @@ class SongListScreen extends ConsumerWidget {
             title: Text(title,
                 style: const TextStyle(fontWeight: FontWeight.w900)),
             actions: [
+              const SortMenu(),
               IconButton(
                 icon: const Icon(Icons.shuffle),
                 onPressed: () {
-                  if (songs.isNotEmpty) {
-                    audioManager.shuffleAndPlay(songs, isRestricted: true);
+                  if (sortedSongs.isNotEmpty) {
+                    audioManager.shuffleAndPlay(sortedSongs,
+                        isRestricted: true);
                   }
                 },
                 tooltip: 'Shuffle',
               ),
             ],
           ),
-          if (songs.isEmpty)
+          if (sortedSongs.isEmpty)
             SliverFillRemaining(
               child: Center(
                 child: Column(
@@ -59,18 +76,18 @@ class SongListScreen extends ConsumerWidget {
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final song = songs[index];
+                  final song = sortedSongs[index];
 
                   return SongListItem(
                     song: song,
                     heroTagPrefix: 'song_list_$title',
                     playlistId: playlistId,
                     onTap: () {
-                      audioManager.playSong(song, contextQueue: songs);
+                      audioManager.playSong(song, contextQueue: sortedSongs);
                     },
                   );
                 },
-                childCount: songs.length,
+                childCount: sortedSongs.length,
               ),
             ),
           const SliverPadding(padding: EdgeInsets.only(bottom: 100)),

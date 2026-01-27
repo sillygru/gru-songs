@@ -198,8 +198,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
       final filtered =
           uniqueCached.where((s) => !userData.isHidden(s.filename)).toList();
-      // Return cached immediately, then update in background with debounce
-      _scheduleBackgroundScanUpdate(uniqueCached);
+      // Always trigger background scan on startup to ensure library is up to date
+      _scheduleBackgroundScanUpdate(uniqueCached, showIndicator: true);
       return filtered;
     }
 
@@ -216,15 +216,18 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     return uniqueScanned.where((s) => !userData.isHidden(s.filename)).toList();
   }
 
-  void _scheduleBackgroundScanUpdate(List<Song> existingSongs) {
+  void _scheduleBackgroundScanUpdate(List<Song> existingSongs,
+      {bool showIndicator = false}) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _backgroundScanUpdate(existingSongs);
+      _backgroundScanUpdate(existingSongs, showIndicator: showIndicator);
     });
   }
 
   Future<List<Song>> _performFullScan(
-      {bool isBackground = false, List<Song>? existingSongs}) async {
+      {bool isBackground = false,
+      List<Song>? existingSongs,
+      bool showIndicator = false}) async {
     final storage = ref.read(storageServiceProvider);
     final scanner = ref.read(scannerServiceProvider);
     final auth = ref.read(authProvider);
@@ -234,8 +237,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     if (musicPath == null || musicPath.isEmpty) return [];
 
-    // Only show scanning indicator for non-background scans
-    if (!isBackground) {
+    // Only show scanning indicator for non-background scans or if explicitly requested
+    if (!isBackground || showIndicator) {
       ref.read(isScanningProvider.notifier).state = true;
     }
     ref.read(scanProgressProvider.notifier).state = 0.0;
@@ -263,18 +266,21 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       // Return all songs from scan, build() will filter them
       return uniqueSongs;
     } finally {
-      if (!isBackground) {
+      if (!isBackground || showIndicator) {
         ref.read(isScanningProvider.notifier).state = false;
       }
       ref.read(scanProgressProvider.notifier).state = 0.0;
     }
   }
 
-  Future<void> _backgroundScanUpdate(List<Song> existingSongs) async {
+  Future<void> _backgroundScanUpdate(List<Song> existingSongs,
+      {bool showIndicator = false}) async {
     try {
-      // Background scan doesn't trigger the scanning indicator
+      // Background scan doesn't trigger the scanning indicator by default
       final songs = await _performFullScan(
-          isBackground: true, existingSongs: existingSongs);
+          isBackground: true,
+          existingSongs: existingSongs,
+          showIndicator: showIndicator);
 
       final userData = ref.read(userDataProvider);
       final filteredSongs =
@@ -796,6 +802,12 @@ class RecommendationsNotifier extends Notifier<List<Song>> {
 final recommendationsProvider =
     NotifierProvider<RecommendationsNotifier, List<Song>>(
         RecommendationsNotifier.new);
+
+final playCountsProvider = FutureProvider<Map<String, int>>((ref) async {
+  // Watch userData to refresh when stats might have changed or synced
+  ref.watch(userDataProvider);
+  return DatabaseService.instance.getPlayCounts();
+});
 
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(() {
   return UserDataNotifier();

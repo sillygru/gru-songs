@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/song.dart';
 import '../services/telemetry_service.dart';
 
 class SettingsState {
@@ -7,12 +8,14 @@ class SettingsState {
   final int telemetryLevel;
   final bool autoPauseOnVolumeZero;
   final bool autoResumeOnVolumeRestore;
+  final SongSortOrder sortOrder;
 
   SettingsState({
     this.visualizerEnabled = true,
     this.telemetryLevel = 1,
     this.autoPauseOnVolumeZero = true,
     this.autoResumeOnVolumeRestore = true,
+    this.sortOrder = SongSortOrder.title,
   });
 
   SettingsState copyWith({
@@ -20,6 +23,7 @@ class SettingsState {
     int? telemetryLevel,
     bool? autoPauseOnVolumeZero,
     bool? autoResumeOnVolumeRestore,
+    SongSortOrder? sortOrder,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -28,6 +32,7 @@ class SettingsState {
           autoPauseOnVolumeZero ?? this.autoPauseOnVolumeZero,
       autoResumeOnVolumeRestore:
           autoResumeOnVolumeRestore ?? this.autoResumeOnVolumeRestore,
+      sortOrder: sortOrder ?? this.sortOrder,
     );
   }
 }
@@ -37,6 +42,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyTelemetryLevel = 'telemetry_level';
   static const _keyAutoPauseOnVolumeZero = 'auto_pause_on_volume_zero';
   static const _keyAutoResumeOnVolumeRestore = 'auto_resume_on_volume_restore';
+  static const _keySortOrder = 'sort_order';
 
   @override
   SettingsState build() {
@@ -46,13 +52,31 @@ class SettingsNotifier extends Notifier<SettingsState> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final sortOrderIndex = prefs.getInt(_keySortOrder);
     state = SettingsState(
       visualizerEnabled: prefs.getBool(_keyVisualizerEnabled) ?? true,
       telemetryLevel: prefs.getInt(_keyTelemetryLevel) ?? 1,
       autoPauseOnVolumeZero: prefs.getBool(_keyAutoPauseOnVolumeZero) ?? true,
       autoResumeOnVolumeRestore:
           prefs.getBool(_keyAutoResumeOnVolumeRestore) ?? true,
+      sortOrder: sortOrderIndex != null
+          ? SongSortOrder.values[sortOrderIndex]
+          : SongSortOrder.title,
     );
+  }
+
+  Future<void> setSortOrder(SongSortOrder order) async {
+    state = state.copyWith(sortOrder: order);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keySortOrder, order.index);
+
+    await TelemetryService.instance.trackEvent(
+        'setting_changed',
+        {
+          'setting': 'sort_order',
+          'value': order.name,
+        },
+        requiredLevel: 2);
   }
 
   Future<void> setVisualizerEnabled(bool enabled) async {

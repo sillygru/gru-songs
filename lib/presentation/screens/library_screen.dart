@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../models/song.dart';
+import '../../models/shuffle_config.dart';
 import '../../providers/providers.dart';
+import '../../providers/settings_provider.dart';
 import '../../providers/user_data_provider.dart';
 import '../../services/audio_player_manager.dart';
 import '../../services/library_logic.dart';
 import '../widgets/folder_options_menu.dart';
 import '../widgets/folder_grid_image.dart';
 import '../widgets/song_list_item.dart';
+import '../widgets/sort_menu.dart';
 import 'song_list_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -26,12 +29,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final songsAsyncValue = ref.watch(songsProvider);
     final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
+    final sortOrder = ref.watch(settingsProvider).sortOrder;
+    final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
+    final playCounts = ref.watch(playCountsProvider).value ?? {};
     final isRoot = widget.relativePath == null;
 
     if (!isRoot) {
       return songsAsyncValue.when(
-        data: (allSongs) =>
-            _buildFolderView(context, allSongs, userData, audioManager),
+        data: (allSongs) => _buildFolderView(
+          context,
+          allSongs,
+          userData,
+          audioManager,
+          sortOrder,
+          shuffleConfig,
+          playCounts,
+        ),
         loading: () => Scaffold(
           appBar: AppBar(title: Text(widget.relativePath ?? 'Library')),
           body: const Center(child: CircularProgressIndicator()),
@@ -57,15 +70,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     style: TextStyle(fontWeight: FontWeight.w900)),
                 actions: [
                   songsAsyncValue.when(
-                    data: (songs) => IconButton(
-                      icon: const Icon(Icons.shuffle),
-                      onPressed: () {
-                        if (songs.isNotEmpty) {
-                          audioManager.shuffleAndPlay(songs,
-                              isRestricted: false);
-                        }
-                      },
-                      tooltip: 'Shuffle All',
+                    data: (songs) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SortMenu(),
+                        IconButton(
+                          icon: const Icon(Icons.shuffle),
+                          onPressed: () {
+                            if (songs.isNotEmpty) {
+                              audioManager.shuffleAndPlay(songs,
+                                  isRestricted: false);
+                            }
+                          },
+                          tooltip: 'Shuffle All',
+                        ),
+                      ],
                     ),
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
@@ -84,7 +103,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           body: songsAsyncValue.when(
             data: (allSongs) => TabBarView(
               children: [
-                _buildFolderView(context, allSongs, userData, audioManager),
+                _buildFolderView(
+                  context,
+                  allSongs,
+                  userData,
+                  audioManager,
+                  sortOrder,
+                  shuffleConfig,
+                  playCounts,
+                ),
                 _buildArtistsView(context, allSongs),
                 _buildAlbumsView(context, allSongs),
               ],
@@ -97,8 +124,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
-  Widget _buildFolderView(BuildContext context, List<Song> allSongs,
-      UserDataState userData, AudioPlayerManager audioManager) {
+  Widget _buildFolderView(
+    BuildContext context,
+    List<Song> allSongs,
+    UserDataState userData,
+    AudioPlayerManager audioManager,
+    SongSortOrder sortOrder,
+    ShuffleConfig shuffleConfig,
+    Map<String, int> playCounts,
+  ) {
     return FutureBuilder<String?>(
       future: ref.read(storageServiceProvider).getMusicFolderPath(),
       builder: (context, snapshot) {
@@ -115,6 +149,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         final content = LibraryLogic.getFolderContent(
           allSongs: allSongs,
           currentFullPath: currentFullPath,
+          sortOrder: sortOrder,
+          userData: userData,
+          shuffleConfig: shuffleConfig,
+          playCounts: playCounts,
         );
 
         final sortedSubFolders = content.subFolders;
@@ -303,6 +341,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   snap: true,
                   title: Text(widget.relativePath ?? 'Library'),
                   actions: [
+                    const SortMenu(),
                     if (content.allSongsInFolder.isNotEmpty)
                       IconButton(
                         icon: const Icon(Icons.shuffle),

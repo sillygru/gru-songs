@@ -33,9 +33,12 @@ class SyncIndicator extends ConsumerWidget {
         IconData icon = Icons.sync;
         bool showSpinner = false;
 
-        if (isScanning) {}
-
-        if (metadataState.status == MetadataSaveStatus.saving) {
+        if (isScanning) {
+          showSpinner = true;
+          bgColor = Colors.blue.shade700;
+          text = "Scanning Library...";
+          icon = Icons.search;
+        } else if (metadataState.status == MetadataSaveStatus.saving) {
           showSpinner = true;
           bgColor = Colors.orange.shade800;
           text = metadataState.message;
