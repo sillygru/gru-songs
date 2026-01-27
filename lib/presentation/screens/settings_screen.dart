@@ -166,6 +166,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ref.read(settingsProvider.notifier).setVisualizerEnabled(val);
                 },
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.volume_off_rounded),
+                title: const Text('Auto-Pause on Mute'),
+                subtitle: const Text(
+                    'Automatically pause playback when volume is set to 0'),
+                value: settings.autoPauseOnVolumeZero,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setAutoPauseOnVolumeZero(val);
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.volume_up_rounded),
+                title: const Text('Auto-Resume on Unmute'),
+                subtitle: const Text(
+                    'Automatically resume playback when volume is restored from 0'),
+                value: settings.autoResumeOnVolumeRestore,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setAutoResumeOnVolumeRestore(val);
+                },
+              ),
             ],
           ),
           const SizedBox(height: 16),

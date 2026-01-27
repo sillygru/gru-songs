@@ -60,13 +60,9 @@ class SongListScreen extends ConsumerWidget {
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final song = songs[index];
-                  final isPlaying =
-                      audioManager.currentSongNotifier.value?.filename ==
-                          song.filename;
 
                   return SongListItem(
                     song: song,
-                    isPlaying: isPlaying,
                     heroTagPrefix: 'song_list_$title',
                     playlistId: playlistId,
                     onTap: () {

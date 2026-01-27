@@ -13,9 +13,11 @@ import '../models/shuffle_config.dart';
 import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
+import 'volume_monitor_service.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
+import '../providers/settings_provider.dart';
 
 class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
@@ -48,6 +50,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   DateTime? _playStartTime;
   bool _isCompleting = false;
 
+  // Volume monitoring
+  VolumeMonitorService? _volumeMonitorService;
+
   // New stats counters
   double _foregroundDuration = 0.0;
   double _backgroundDuration = 0.0;
@@ -67,6 +72,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
     _initStatsListeners();
     _initPersistence();
+    _initVolumeMonitoring();
   }
 
   AudioPlayer get player => _player;
@@ -263,6 +269,44 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     // Start periodic sync removed - handled by SongsNotifier.refresh()
     // triggered on startup, resumes, and play events.
+  }
+
+  void _initVolumeMonitoring() {
+    if (_ref != null) {
+      _volumeMonitorService = VolumeMonitorService(
+        onVolumeZero: () {
+          // Read current settings each time to get up-to-date values
+          final currentSettings = _ref!.read(settingsProvider);
+          if (currentSettings.autoPauseOnVolumeZero && _player.playing) {
+            _player.pause();
+          }
+        },
+        onVolumeRestored: () {
+          // Read current settings each time to get up-to-date values
+          final currentSettings = _ref!.read(settingsProvider);
+          // Auto-resume when volume is restored, but only if both settings are enabled
+          // and the volume monitor service detected it was auto-paused
+          if (currentSettings.autoPauseOnVolumeZero &&
+              currentSettings.autoResumeOnVolumeRestore) {
+            _player.play();
+          }
+        },
+      );
+      _volumeMonitorService?.initialize();
+
+      // Listen to settings changes to update volume monitor enabled state
+      _ref!.listen(settingsProvider, (previous, next) {
+        if (previous?.autoPauseOnVolumeZero != next.autoPauseOnVolumeZero) {
+          _volumeMonitorService
+              ?.setAutoPauseEnabled(next.autoPauseOnVolumeZero);
+        }
+      });
+
+      // Set initial enabled state
+      final initialSettings = _ref!.read(settingsProvider);
+      _volumeMonitorService
+          ?.setAutoPauseEnabled(initialSettings.autoPauseOnVolumeZero);
+    }
   }
 
   Future<ShuffleState?> syncShuffleState() async {
@@ -951,6 +995,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void dispose() {
+    _volumeMonitorService?.dispose();
     _player.dispose();
     shuffleNotifier.dispose();
     _syncTimer?.cancel();

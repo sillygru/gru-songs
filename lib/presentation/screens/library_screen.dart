@@ -274,12 +274,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
           final songIndex = folderIndex - sortedSubFolders.length;
           final song = immediateSongs[songIndex];
-          final isPlaying =
-              audioManager.currentSongNotifier.value?.filename == song.filename;
 
           return SongListItem(
             song: song,
-            isPlaying: isPlaying,
             heroTagPrefix: 'library_${widget.relativePath ?? 'root'}',
             onTap: () {
               audioManager.playSong(song, contextQueue: immediateSongs);

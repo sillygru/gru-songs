@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 class AndroidTreeSelection {
   final String treeUri;
@@ -98,5 +99,22 @@ class AndroidStorageService {
       'sourceRelativePath': sourceRelativePath,
       'targetParentRelativePath': targetParentRelativePath,
     });
+  }
+
+  static Future<String?> readFile({
+    required String treeUri,
+    required String relativePath,
+  }) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final result = await _channel.invokeMethod<String>('readFile', {
+        'treeUri': treeUri,
+        'relativePath': relativePath,
+      });
+      return result;
+    } catch (e) {
+      debugPrint('Error reading file via Android storage: $e');
+      return null;
+    }
   }
 }

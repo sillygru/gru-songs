@@ -1,43 +1,6 @@
 # GEMINI.md
 
-This file provides guidance for Gemini when working with code in this repository.
-
-## Essential Commands
-
-### Flutter (Frontend)
-```bash
-# Install dependencies
-flutter pub get
-
-# Run the app (debug mode)
-flutter run
-
-# Run tests
-flutter test
-
-# Analyze code
-flutter analyze
-
-# Check formatting
-dart format --set-exit-if-changed .
-
-# Format code
-dart format .
-
-# Build for release
-flutter build apk --release           # Android
-flutter build ios --release           # iOS
-flutter build macos --release         # macOS
-
-# Run specific test file
-flutter test test/shuffle_logic_test.dart
-```
-
-### Version Management
-```bash
-# Update version across the codebase
-python update_version.py
-```
+This file provides guidance for LLMs when working with code in this repository.
 
 ## Architecture Overview
 

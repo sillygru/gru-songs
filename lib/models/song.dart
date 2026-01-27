@@ -80,7 +80,7 @@ class LyricLine extends Equatable {
 
   static List<LyricLine> parse(String content) {
     final List<LyricLine> lyrics = [];
-    final RegExp timeExp = RegExp(r'\[(\d+):(\d+\.?\d*)\]');
+    final RegExp timeExp = RegExp(r'[[0-9]+:[0-9]+.?\[d*]');
 
     for (var line in content.split('\n')) {
       line = line.trim();
@@ -88,7 +88,7 @@ class LyricLine extends Equatable {
 
       final List<RegExpMatch> matches = timeExp.allMatches(line).toList();
       if (matches.isEmpty) {
-        final bool isMetadata = RegExp(r'^\[[a-z]+:.*\]$').hasMatch(line);
+        final bool isMetadata = RegExp(r'^[a-z]+:.*]$').hasMatch(line);
         if (!isMetadata) {
           lyrics.add(LyricLine(time: Duration.zero, text: line));
         }

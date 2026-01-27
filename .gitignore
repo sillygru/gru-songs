@@ -57,3 +57,4 @@ GruSongs.ipa
 .gradle/
 .kotlin/
 android/build/reports/problems/problems-report.html
+/macos

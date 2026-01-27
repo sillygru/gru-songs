@@ -16,9 +16,14 @@ class MainActivity : AudioServiceActivity() {
     private val channelName = "gru_songs/storage"
     private val requestPickTree = 9001
     private var pendingResult: MethodChannel.Result? = null
+    private lateinit var volumeMonitorPlugin: VolumeMonitorPlugin
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Initialize volume monitor plugin
+        volumeMonitorPlugin = VolumeMonitorPlugin()
+        volumeMonitorPlugin.initialize(flutterEngine, this)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
@@ -30,6 +35,7 @@ class MainActivity : AudioServiceActivity() {
                     "renameFile" -> handleRenameFile(call.arguments as Map<*, *>, result)
                     "deleteFile" -> handleDeleteFile(call.arguments as Map<*, *>, result)
                     "writeFileFromPath" -> handleWriteFileFromPath(call.arguments as Map<*, *>, result)
+                    "readFile" -> handleReadFile(call.arguments as Map<*, *>, result)
                     else -> result.notImplemented()
                 }
             }
@@ -291,6 +297,39 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
+    private fun handleReadFile(args: Map<*, *>, result: MethodChannel.Result) {
+        val treeUri = args["treeUri"] as? String
+        val relativePath = args["relativePath"] as? String
+
+        if (treeUri.isNullOrBlank() || relativePath.isNullOrBlank()) {
+            result.error("invalid_args", "treeUri and relativePath required", null)
+            return
+        }
+
+        val root = DocumentFile.fromTreeUri(this, Uri.parse(treeUri))
+        if (root == null) {
+            result.error("invalid_tree", "Unable to access tree URI", null)
+            return
+        }
+
+        val document = findDocument(root, relativePath)
+        if (document == null || !document.isFile) {
+            result.error("not_found", "File not found", null)
+            return
+        }
+
+        try {
+            contentResolver.openInputStream(document.uri)?.use { input ->
+                val content = input.bufferedReader().use { it.readText() }
+                result.success(content)
+            } ?: run {
+                result.error("read_failed", "Unable to open input stream", null)
+            }
+        } catch (e: Exception) {
+            result.error("read_failed", "Failed to read file: ${e.message}", null)
+        }
+    }
+
     private fun treeUriToPath(uri: Uri): String? {
         val docId = DocumentsContract.getTreeDocumentId(uri)
         val parts = docId.split(":")
@@ -365,5 +404,12 @@ class MainActivity : AudioServiceActivity() {
         val extension = fileName.substringAfterLast('.', "").lowercase()
         val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
         return mimeType ?: "application/octet-stream"
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::volumeMonitorPlugin.isInitialized) {
+            volumeMonitorPlugin.cleanup()
+        }
     }
 }

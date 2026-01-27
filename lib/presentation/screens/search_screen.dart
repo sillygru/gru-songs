@@ -130,13 +130,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   itemCount: filteredSongs.length,
                   itemBuilder: (context, index) {
                     final song = filteredSongs[index];
-                    final isPlaying =
-                        audioManager.currentSongNotifier.value?.filename ==
-                            song.filename;
 
                     return SongListItem(
                       song: song,
-                      isPlaying: isPlaying,
                       heroTagPrefix: 'search',
                       onTap: () {
                         audioManager.playSong(song,

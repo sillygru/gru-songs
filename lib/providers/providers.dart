@@ -318,8 +318,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       final diff = DateTime.now().difference(_lastRefreshTime!);
       if (diff.inSeconds < 30) {
         // Reduced from 60 seconds for better responsiveness
-        debugPrint(
-            'SongsNotifier: Background refresh throttled (last refresh ${diff.inSeconds}s ago)');
         return;
       }
     }
