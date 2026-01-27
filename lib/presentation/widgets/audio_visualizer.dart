@@ -20,20 +20,22 @@ class AudioVisualizer extends StatefulWidget {
 }
 
 class _AudioVisualizerState extends State<AudioVisualizer>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   final List<double> _barHeights = [0.2, 0.5, 0.8, 0.4];
   final List<double> _targetHeights = [0.8, 0.2, 0.5, 0.9];
   final Random _random = Random();
+  bool _isAppActive = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 150),
     )..addListener(() {
-        if (widget.isPlaying) {
+        if (widget.isPlaying && _isAppActive) {
           setState(() {
             for (int i = 0; i < _barHeights.length; i++) {
               // Move current height towards target
@@ -55,10 +57,28 @@ class _AudioVisualizerState extends State<AudioVisualizer>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final isActive = state == AppLifecycleState.resumed;
+    if (_isAppActive != isActive) {
+      _isAppActive = isActive;
+      if (isActive && widget.isPlaying) {
+        if (!_controller.isAnimating) {
+          _controller.repeat();
+        }
+      } else {
+        if (_controller.isAnimating) {
+          _controller.stop();
+        }
+      }
+    }
+  }
+
+  @override
   void didUpdateWidget(AudioVisualizer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isPlaying != oldWidget.isPlaying) {
-      if (widget.isPlaying) {
+      if (widget.isPlaying && _isAppActive) {
         _controller.repeat();
       } else {
         _controller.stop();
@@ -71,6 +91,7 @@ class _AudioVisualizerState extends State<AudioVisualizer>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }

@@ -8,6 +8,8 @@ import 'database_service.dart';
 class StatsService {
   final String _sessionId;
   late final String _platform;
+  final List<Map<String, dynamic>> _pendingStats = [];
+  bool _isBackground = false;
 
   StatsService() : _sessionId = const Uuid().v4() {
     if (kIsWeb) {
@@ -27,27 +29,45 @@ class StatsService {
     }
   }
 
+  void setBackground(bool value) {
+    _isBackground = value;
+    if (!value) {
+      // Immediately flush when coming back to foreground
+      flush();
+    }
+  }
+
   Future<void> trackStats(Map<String, dynamic> stats) async {
-    // Local-only - just store in database with proper coalescing
+    final statsWithMeta = Map<String, dynamic>.from(stats);
+    statsWithMeta['platform'] = _platform;
+    statsWithMeta['session_id'] = _sessionId;
+    statsWithMeta['timestamp'] = DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+    if (_isBackground) {
+      _pendingStats.add(statsWithMeta);
+      // Limit the buffer size to maintain a low memory footprint.
+      if (_pendingStats.length >= 50) {
+        await flush();
+      }
+    } else {
+      // In foreground mode, commit stats immediately to provide real-time updates.
+      if (_pendingStats.isNotEmpty) {
+        await flush();
+      }
+      await _writeSingle(statsWithMeta);
+    }
+  }
+
+  Future<void> _writeSingle(Map<String, dynamic> event) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final username = prefs.getString('username');
       if (username == null) return;
 
       await DatabaseService.instance.initForUser(username);
-
-      // Add platform info and timestamp
-      stats['platform'] = _platform;
-      stats['session_id'] = _sessionId;
-      stats['timestamp'] = DateTime.now().millisecondsSinceEpoch / 1000.0;
-
-      // Store in local database with proper coalescing logic
-      await DatabaseService.instance.insertPlayEvent(stats);
-
-      debugPrint(
-          'Stats tracked successfully for ${stats['song_filename']}: ${stats['event_type']} (${stats['duration_played']}s)');
+      await DatabaseService.instance.insertPlayEvent(event);
     } catch (e) {
-      debugPrint('Error tracking stats: $e');
+      debugPrint('Error writing single stat: $e');
     }
   }
 
@@ -56,7 +76,27 @@ class StatsService {
   }
 
   Future<void> flush() async {
-    // Local-only - data is already in database
+    if (_pendingStats.isEmpty) return;
+
+    final batch = List<Map<String, dynamic>>.from(_pendingStats);
+    _pendingStats.clear();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('username');
+      if (username == null) return;
+
+      await DatabaseService.instance.initForUser(username);
+      await DatabaseService.instance.insertPlayEventsBatch(batch);
+
+      debugPrint('Flushed ${batch.length} batched stats events.');
+    } catch (e) {
+      debugPrint('Error flushing stats batch: $e');
+    }
+  }
+
+  void dispose() {
+    flush(); // Final flush on dispose
   }
 
   Future<Map<String, dynamic>> getFunStats() async {

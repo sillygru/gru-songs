@@ -576,82 +576,98 @@ class DatabaseService {
     if (_statsDatabase == null) return;
 
     await _statsDatabase!.transaction((txn) async {
-      await txn.insert(
-          'playsession',
-          {
-            'id': event['session_id'],
-            'start_time': event['timestamp'],
-            'end_time': event['timestamp'],
-            'platform': event['platform'] ?? 'unknown',
-          },
-          conflictAlgorithm: ConflictAlgorithm.ignore);
+      await _insertPlayEventTxn(txn, event);
+    });
+  }
 
-      await txn.rawUpdate(
-          'UPDATE playsession SET end_time = ? WHERE id = ? AND end_time < ?',
-          [event['timestamp'], event['session_id'], event['timestamp']]);
+  Future<void> insertPlayEventsBatch(List<Map<String, dynamic>> events) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null || events.isEmpty) return;
 
-      // Coalesce logic (Fix for fragmented stats)
-      final lastEvents = await txn.query(
-        'playevent',
-        where: 'session_id = ? AND song_filename = ?',
-        whereArgs: [event['session_id'], event['song_filename']],
-        orderBy: 'timestamp DESC',
-        limit: 1,
-      );
-
-      final totalLength = (event['total_length'] as num).toDouble();
-
-      if (lastEvents.isNotEmpty) {
-        final last = lastEvents.first;
-        final lastId = last['id'] as int;
-
-        final newDuration = (last['duration_played'] as num) +
-            (event['duration_played'] as num);
-        final newFg = ((last['foreground_duration'] as num?) ?? 0) +
-            ((event['foreground_duration'] as num?) ?? 0);
-        final newBg = ((last['background_duration'] as num?) ?? 0) +
-            ((event['background_duration'] as num?) ?? 0);
-        final newRatio = totalLength > 0 ? newDuration / totalLength : 0.0;
-
-        // Retroactively fix "skips" that are actually full plays (within 10s of end)
-        String finalEventType = event['event_type'];
-        if (totalLength > 0 && (totalLength - newDuration) <= 10.0) {
-          finalEventType = 'complete';
-        }
-
-        await txn.update(
-            'playevent',
-            {
-              'duration_played': newDuration,
-              'foreground_duration': newFg,
-              'background_duration': newBg,
-              'event_type': finalEventType,
-              'timestamp': event['timestamp'], // Update to latest timestamp
-              'play_ratio': newRatio,
-            },
-            where: 'id = ?',
-            whereArgs: [lastId]);
-      } else {
-        // First insert for this song/session
-        String finalEventType = event['event_type'];
-        final duration = (event['duration_played'] as num).toDouble();
-        if (totalLength > 0 && (totalLength - duration) <= 10.0) {
-          finalEventType = 'complete';
-        }
-
-        await txn.insert('playevent', {
-          'session_id': event['session_id'],
-          'song_filename': event['song_filename'],
-          'event_type': finalEventType,
-          'timestamp': event['timestamp'],
-          'duration_played': duration,
-          'total_length': totalLength,
-          'play_ratio': totalLength > 0 ? duration / totalLength : 0.0,
-          'foreground_duration': event['foreground_duration'],
-          'background_duration': event['background_duration'],
-        });
+    await _statsDatabase!.transaction((txn) async {
+      for (final event in events) {
+        await _insertPlayEventTxn(txn, event);
       }
     });
+  }
+
+  Future<void> _insertPlayEventTxn(
+      Transaction txn, Map<String, dynamic> event) async {
+    await txn.insert(
+        'playsession',
+        {
+          'id': event['session_id'],
+          'start_time': event['timestamp'],
+          'end_time': event['timestamp'],
+          'platform': event['platform'] ?? 'unknown',
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+
+    await txn.rawUpdate(
+        'UPDATE playsession SET end_time = ? WHERE id = ? AND end_time < ?',
+        [event['timestamp'], event['session_id'], event['timestamp']]);
+
+    // Coalesce logic (Fix for fragmented stats)
+    final lastEvents = await txn.query(
+      'playevent',
+      where: 'session_id = ? AND song_filename = ?',
+      whereArgs: [event['session_id'], event['song_filename']],
+      orderBy: 'timestamp DESC',
+      limit: 1,
+    );
+
+    final totalLength = (event['total_length'] as num).toDouble();
+
+    if (lastEvents.isNotEmpty) {
+      final last = lastEvents.first;
+      final lastId = last['id'] as int;
+
+      final newDuration =
+          (last['duration_played'] as num) + (event['duration_played'] as num);
+      final newFg = ((last['foreground_duration'] as num?) ?? 0) +
+          ((event['foreground_duration'] as num?) ?? 0);
+      final newBg = ((last['background_duration'] as num?) ?? 0) +
+          ((event['background_duration'] as num?) ?? 0);
+      final newRatio = totalLength > 0 ? newDuration / totalLength : 0.0;
+
+      // Retroactively fix "skips" that are actually full plays (within 10s of end)
+      String finalEventType = event['event_type'];
+      if (totalLength > 0 && (totalLength - newDuration) <= 10.0) {
+        finalEventType = 'complete';
+      }
+
+      await txn.update(
+          'playevent',
+          {
+            'duration_played': newDuration,
+            'foreground_duration': newFg,
+            'background_duration': newBg,
+            'event_type': finalEventType,
+            'timestamp': event['timestamp'], // Update to latest timestamp
+            'play_ratio': newRatio,
+          },
+          where: 'id = ?',
+          whereArgs: [lastId]);
+    } else {
+      // First insert for this song/session
+      String finalEventType = event['event_type'];
+      final duration = (event['duration_played'] as num).toDouble();
+      if (totalLength > 0 && (totalLength - duration) <= 10.0) {
+        finalEventType = 'complete';
+      }
+
+      await txn.insert('playevent', {
+        'session_id': event['session_id'],
+        'song_filename': event['song_filename'],
+        'event_type': finalEventType,
+        'timestamp': event['timestamp'],
+        'duration_played': duration,
+        'total_length': totalLength,
+        'play_ratio': totalLength > 0 ? duration / totalLength : 0.0,
+        'foreground_duration': event['foreground_duration'],
+        'background_duration': event['background_duration'],
+      });
+    }
   }
 
   Future<Map<String, dynamic>> getFunStats() async {

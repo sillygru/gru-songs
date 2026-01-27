@@ -60,6 +60,19 @@ class _GruImageState extends State<GruImage> {
         widget.url.startsWith('file://') ||
         widget.url.startsWith('content://');
 
+    // Optimization: Calculate automatic memCacheWidth if not provided
+    // This significantly reduces RAM usage for thumbnails and lists
+    int? effectiveMemCacheWidth = widget.memCacheWidth;
+    int? effectiveMemCacheHeight = widget.memCacheHeight;
+
+    if (effectiveMemCacheWidth == null && effectiveMemCacheHeight == null) {
+      if (widget.width != null && widget.width! < 400) {
+        effectiveMemCacheWidth = (widget.width! * 2.5).toInt();
+      } else if (widget.height != null && widget.height! < 400) {
+        effectiveMemCacheHeight = (widget.height! * 2.5).toInt();
+      }
+    }
+
     Widget content;
 
     if (isLocal) {
@@ -80,8 +93,8 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: widget.memCacheWidth ?? widget.cacheWidth,
-        cacheHeight: widget.memCacheHeight ?? widget.cacheHeight,
+        cacheWidth: effectiveMemCacheWidth ?? widget.cacheWidth,
+        cacheHeight: effectiveMemCacheHeight ?? widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
@@ -102,8 +115,8 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: widget.memCacheWidth ?? widget.cacheWidth,
-        cacheHeight: widget.memCacheHeight ?? widget.cacheHeight,
+        cacheWidth: effectiveMemCacheWidth ?? widget.cacheWidth,
+        cacheHeight: effectiveMemCacheHeight ?? widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(

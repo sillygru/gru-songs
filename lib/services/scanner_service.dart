@@ -1,13 +1,33 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:audio_metadata_reader/audio_metadata_reader.dart' as amr;
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
-import 'package:permission_handler/permission_handler.dart'; // Import permission_handler
+import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
 import 'database_service.dart';
+
+class _ScanParams {
+  final String path;
+  final List<Song>? existingSongs;
+  final String coversDirPath;
+  final String? lyricsPath;
+  final Map<String, int> playCounts;
+  final SendPort sendPort;
+
+  _ScanParams({
+    required this.path,
+    this.existingSongs,
+    required this.coversDirPath,
+    this.lyricsPath,
+    required this.playCounts,
+    required this.sendPort,
+  });
+}
 
 class ScannerService {
   static final List<String> _supportedExtensions = [
@@ -25,15 +45,12 @@ class ScannerService {
       void Function(double progress)? onProgress}) async {
     // Request permissions before accessing storage
     if (Platform.isAndroid) {
-      // Request all relevant storage permissions
-      // For Android 13+ (API 33), we need READ_MEDIA_AUDIO and READ_MEDIA_IMAGES
-      // For older versions, we need READ_EXTERNAL_STORAGE
       var statusStorage = await Permission.storage.request();
       var statusAudio = await Permission.audio.request();
 
       if (!statusStorage.isGranted && !statusAudio.isGranted) {
         debugPrint('Storage permissions not granted. Cannot scan directory.');
-        return []; // Return empty if permissions are not granted
+        return [];
       }
     }
 
@@ -49,14 +66,58 @@ class ScannerService {
       await coversDir.create(recursive: true);
     }
 
-    // Create a lookup map for existing songs to speed up scanning
-    final Map<String, Song> existingSongsMap =
-        existingSongs != null ? {for (var s in existingSongs) s.url: s} : {};
+    final receivePort = ReceivePort();
+    final params = _ScanParams(
+      path: path,
+      existingSongs: existingSongs,
+      coversDirPath: coversDir.path,
+      lyricsPath: lyricsPath,
+      playCounts: effectivePlayCounts,
+      sendPort: receivePort.sendPort,
+    );
+
+    await Isolate.spawn(_isolateScan, params);
+
+    final completer = Completer<List<Song>>();
+
+    receivePort.listen((message) {
+      if (message is double) {
+        onProgress?.call(message);
+      } else if (message is List<Song>) {
+        completer.complete(message);
+        receivePort.close();
+      } else if (message is List) {
+        // Handle explicit typing issue if passed as dynamic list
+        try {
+          completer.complete(message.cast<Song>());
+        } catch (e) {
+          completer.completeError("Failed to cast result to List<Song>");
+        }
+        receivePort.close();
+      } else {
+        receivePort.close();
+        completer.completeError("Unknown message from isolate: $message");
+      }
+    }, onError: (e) {
+      receivePort.close();
+      completer.completeError(e);
+    });
+
+    return completer.future;
+  }
+
+  static Future<void> _isolateScan(_ScanParams params) async {
+    final dir = Directory(params.path);
+    final coversDir = Directory(params.coversDirPath);
+
+    // Create a lookup map for existing songs
+    final Map<String, Song> existingSongsMap = params.existingSongs != null
+        ? {for (var s in params.existingSongs!) s.url: s}
+        : {};
 
     try {
-      // 1. Get all entities first (asynchronously)
       final List<FileSystemEntity> entities =
-          await dir.list(recursive: true, followLinks: false).toList();
+          dir.listSync(recursive: true, followLinks: false);
       final List<File> audioFiles = entities
           .whereType<File>()
           .where((f) =>
@@ -64,13 +125,11 @@ class ScannerService {
           .toList();
 
       final Map<String, String?> folderCoverCache = {};
-
-      // 2. Process in chunks or parallel to speed up (using Future.wait for I/O bound parts)
       final List<Song> songs = [];
 
       for (int i = 0; i < audioFiles.length; i++) {
         final file = audioFiles[i];
-        final fileStat = await file.stat();
+        final fileStat = file.statSync();
         final currentMtime = fileStat.modified.millisecondsSinceEpoch / 1000.0;
 
         // Check if we can reuse existing song data
@@ -78,7 +137,6 @@ class ScannerService {
         if (existingSong != null &&
             existingSong.mtime != null &&
             (existingSong.mtime! - currentMtime).abs() < 0.1) {
-          // Song hasn't changed, reuse it but update play count if needed
           songs.add(Song(
             title: existingSong.title,
             artist: existingSong.artist,
@@ -87,33 +145,31 @@ class ScannerService {
             url: existingSong.url,
             coverUrl: existingSong.coverUrl,
             lyricsUrl: existingSong.lyricsUrl,
-            playCount: effectivePlayCounts[existingSong.filename] ??
+            playCount: params.playCounts[existingSong.filename] ??
                 existingSong.playCount,
             duration: existingSong.duration,
             mtime: currentMtime,
           ));
         } else {
-          // New or changed song, process it
           final song = await _processSingleFile(file, coversDir,
-              folderCoverCache, lyricsPath, effectivePlayCounts,
+              folderCoverCache, params.lyricsPath, params.playCounts,
               mtime: currentMtime);
           songs.add(song);
         }
 
-        if (onProgress != null) {
-          onProgress((i + 1) / audioFiles.length);
+        if (i % 10 == 0) {
+          params.sendPort.send((i + 1) / audioFiles.length);
         }
       }
 
-      return songs;
+      params.sendPort.send(songs);
     } catch (e) {
-      debugPrint('Error scanning directory: $e');
+      debugPrint('Error in scanner isolate: $e');
+      params.sendPort.send(<Song>[]);
     }
-
-    return [];
   }
 
-  Future<Song> _processSingleFile(
+  static Future<Song> _processSingleFile(
       File file,
       Directory coversDir,
       Map<String, String?> folderCoverCache,
@@ -131,7 +187,6 @@ class ScannerService {
     String? coverUrl;
 
     try {
-      // Use compute-like behavior or just try-catch block
       final metadata = amr.readMetadata(file);
       if (metadata.title?.isNotEmpty == true) title = metadata.title!;
       if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
@@ -144,7 +199,6 @@ class ScannerService {
         final coverExt = _getExtFromMime(picture.mimetype);
         final coverFile = File(p.join(coversDir.path, '$hash$coverExt'));
 
-        // Only write if doesn't exist to save time
         if (!coverFile.existsSync()) {
           await coverFile.writeAsBytes(picture.bytes);
         }
@@ -154,19 +208,15 @@ class ScannerService {
       // Silently fail primary and move to manual
     }
 
-    // Manual Fallback for covers
     coverUrl ??= await _tryManualCoverExtraction(file, coversDir);
 
-    // Folder-sidecar fallback
     coverUrl ??= folderCoverCache.putIfAbsent(
         parentPath, () => _findCoverInFolder(parentPath));
 
     String? lyricsUrl;
-    // 1. Try to find sidecar lyrics in the same folder as the song
     lyricsUrl = await _findLyricsForSong(
         p.basenameWithoutExtension(file.path), parentPath);
 
-    // 2. Fallback to the global lyrics folder if provided
     if (lyricsUrl == null && lyricsPath != null) {
       lyricsUrl = await _findLyricsForSong(
           p.basenameWithoutExtension(file.path), lyricsPath);
@@ -187,7 +237,7 @@ class ScannerService {
     );
   }
 
-  Future<String?> _tryManualCoverExtraction(
+  static Future<String?> _tryManualCoverExtraction(
       File file, Directory coversDir) async {
     RandomAccessFile? raf;
     try {
@@ -234,7 +284,7 @@ class ScannerService {
     }
   }
 
-  Future<String?> _scanForAPIC(List<int> bytes, RandomAccessFile raf,
+  static Future<String?> _scanForAPIC(List<int> bytes, RandomAccessFile raf,
       int offset, Directory coversDir, String hash) async {
     for (int i = 0; i < bytes.length - 20; i++) {
       if (bytes[i] == 0x41 &&
@@ -256,7 +306,7 @@ class ScannerService {
     return null;
   }
 
-  Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf,
+  static Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf,
       int offset, Directory coversDir, String hash) async {
     for (int i = 0; i < bytes.length - 24; i++) {
       if (bytes[i] == 0x63 &&
@@ -297,7 +347,7 @@ class ScannerService {
     return null;
   }
 
-  Future<String?> _scanBufferForSignatures(
+  static Future<String?> _scanBufferForSignatures(
       List<int> bytes,
       RandomAccessFile raf,
       int offset,
@@ -335,8 +385,8 @@ class ScannerService {
     return null;
   }
 
-  Future<String?> _extractImageAt(RandomAccessFile raf, int pos, String type,
-      Directory coversDir, String hash) async {
+  static Future<String?> _extractImageAt(RandomAccessFile raf, int pos,
+      String type, Directory coversDir, String hash) async {
     await raf.setPosition(pos);
     final data = await raf.read(15 * 1024 * 1024);
 
@@ -381,7 +431,7 @@ class ScannerService {
     return null;
   }
 
-  String _getExtFromMime(String? mimeType) {
+  static String _getExtFromMime(String? mimeType) {
     if (mimeType == null) return '.jpg';
     final mime = mimeType.toLowerCase();
     if (mime.contains('png')) return '.png';
@@ -390,7 +440,7 @@ class ScannerService {
     return '.jpg';
   }
 
-  String? _findCoverInFolder(String folderPath) {
+  static String? _findCoverInFolder(String folderPath) {
     final possibleNames = [
       'cover.jpg',
       'cover.png',
@@ -406,7 +456,8 @@ class ScannerService {
     return null;
   }
 
-  Future<String?> _findLyricsForSong(String title, String lyricsPath) async {
+  static Future<String?> _findLyricsForSong(
+      String title, String lyricsPath) async {
     final possibleNames = ['$title.lrc', '$title.txt'];
     for (final name in possibleNames) {
       final file = File(p.join(lyricsPath, name));

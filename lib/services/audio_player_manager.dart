@@ -183,6 +183,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       } else if (_playStartTime != null) {
         _updateDurations();
         _playStartTime = null;
+        // Commit a progress slice when playback is paused to ensure data persistence.
+        _flushStats(eventType: 'listen');
       }
       if (state.processingState == ProcessingState.completed) {
         _isCompleting = true;
@@ -417,13 +419,25 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _updateDurations();
       _playStartTime = DateTime.now();
     }
+
+    // 1. Process session finalization events before the app is suspended.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _flushStats(eventType: 'listen');
       _savePlaybackState();
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
+
+      // Ensure that the final 'listen' event is committed to the database 
+      // before the process is terminated or suspended.
+      _statsService.flush();
     }
+
+    // 2. Adjust stats tracking mode based on lifecycle state.
+    // Background mode enables batching to reduce CPU wake-ups.
+    final isBackground = state != AppLifecycleState.resumed;
+    _statsService.setBackground(isBackground);
+
     _appLifecycleState = state;
   }
 
@@ -992,6 +1006,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _player.removeAudioSourceAt(index);
     _updateQueueNotifier();
     _savePlaybackState();
+  }
+
+  void forceFlushCurrentStats() {
+    _flushStats(eventType: 'listen');
+    _statsService.flush();
   }
 
   void dispose() {
