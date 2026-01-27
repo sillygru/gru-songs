@@ -43,13 +43,10 @@ class FolderGridImage extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: GruImage(
           url: covers[0],
+          filename: covers[0],
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorWidget: Container(
-            color: Colors.amber.withValues(alpha: 0.2),
-            child: const Icon(Icons.folder, color: Colors.amber),
-          ),
         ),
       );
     }
@@ -76,6 +73,7 @@ class FolderGridImage extends StatelessWidget {
             final url = covers[index % displayCount];
             return GruImage(
               url: url,
+              filename: url,
               width: size / 2,
               height: size / 2,
               fit: BoxFit.cover,

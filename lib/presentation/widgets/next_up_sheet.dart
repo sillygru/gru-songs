@@ -112,7 +112,8 @@ class NextUpSheet extends ConsumerWidget {
                                 leading: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
                                   child: GruImage(
-                                    url: song.coverUrl ?? '',
+                                    url: item.song.coverUrl ?? '',
+                                    filename: item.song.filename,
                                     width: 48,
                                     height: 48,
                                     fit: BoxFit.cover,

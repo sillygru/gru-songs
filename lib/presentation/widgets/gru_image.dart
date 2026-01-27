@@ -37,19 +37,6 @@ class GruImage extends StatefulWidget {
 
 class _GruImageState extends State<GruImage> {
   @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void didUpdateWidget(GruImage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url) {
-      setState(() {});
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     if (widget.url.isEmpty) {
       return _buildError();
@@ -60,8 +47,6 @@ class _GruImageState extends State<GruImage> {
         widget.url.startsWith('file://') ||
         widget.url.startsWith('content://');
 
-    // Optimization: Calculate automatic memCacheWidth if not provided
-    // This significantly reduces RAM usage for thumbnails and lists
     int? effectiveMemCacheWidth = widget.memCacheWidth;
     int? effectiveMemCacheHeight = widget.memCacheHeight;
 
@@ -72,6 +57,11 @@ class _GruImageState extends State<GruImage> {
         effectiveMemCacheHeight = (widget.height! * 2.5).toInt();
       }
     }
+
+    final filterQuality =
+        (effectiveMemCacheWidth != null && effectiveMemCacheWidth < 500)
+            ? FilterQuality.low
+            : FilterQuality.medium;
 
     Widget content;
 
@@ -93,14 +83,14 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
+        filterQuality: filterQuality,
         cacheWidth: effectiveMemCacheWidth ?? widget.cacheWidth,
         cacheHeight: effectiveMemCacheHeight ?? widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
-            duration:
-                const Duration(milliseconds: 300), // Reduced animation duration
+            duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
             child: child,
           );
@@ -115,14 +105,14 @@ class _GruImageState extends State<GruImage> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
+        filterQuality: filterQuality,
         cacheWidth: effectiveMemCacheWidth ?? widget.cacheWidth,
         cacheHeight: effectiveMemCacheHeight ?? widget.cacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
-            duration:
-                const Duration(milliseconds: 300), // Reduced animation duration
+            duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
             child: child,
           );
@@ -152,13 +142,6 @@ class _GruImageState extends State<GruImage> {
       width: widget.width,
       height: widget.height,
       color: const Color(0xFF1E1E1E),
-      child: const Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ),
     );
   }
 
@@ -168,7 +151,7 @@ class _GruImageState extends State<GruImage> {
       height: widget.height,
       color: const Color(0xFF1E1E1E),
       child: const Center(
-        child: Icon(Icons.music_note, color: Colors.grey),
+        child: Icon(Icons.music_note, color: Colors.white24),
       ),
     );
   }

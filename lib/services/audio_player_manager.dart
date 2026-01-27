@@ -428,7 +428,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
 
-      // Ensure that the final 'listen' event is committed to the database 
+      // Ensure that the final 'listen' event is committed to the database
       // before the process is terminated or suspended.
       _statsService.flush();
     }

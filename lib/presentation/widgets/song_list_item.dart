@@ -85,15 +85,10 @@ class SongListItem extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(8),
                             child: GruImage(
                               url: song.coverUrl ?? '',
+                              filename: song.filename,
                               width: 56,
                               height: 56,
                               fit: BoxFit.cover,
-                              errorWidget: Container(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .surfaceContainerHighest,
-                                child: const Icon(Icons.music_note),
-                              ),
                               memCacheWidth: 112,
                               memCacheHeight: 112,
                             ),

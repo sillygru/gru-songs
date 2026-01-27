@@ -94,11 +94,10 @@ class NowPlayingBar extends ConsumerWidget {
                                         key: ValueKey(
                                             'now_playing_art_${metadata.id}'),
                                         url: metadata.artUri?.toString() ?? '',
+                                        filename: metadata.id,
                                         width: 44,
                                         height: 44,
                                         fit: BoxFit.cover,
-                                        errorWidget:
-                                            const Icon(Icons.music_note),
                                       ),
                                       StreamBuilder<PlayerState>(
                                         stream: player.playerStateStream,

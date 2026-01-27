@@ -224,20 +224,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                               BorderRadius.circular(16),
                                           child: GruImage(
                                             url: song.coverUrl ?? '',
+                                            filename: song.filename,
                                             fit: BoxFit.cover,
                                             // Enable memory-efficient caching for album art
                                             memCacheWidth:
                                                 320, // 2x display width
                                             memCacheHeight: 320,
-                                            errorWidget: Container(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .surfaceContainerHighest,
-                                              child: const Center(
-                                                  child: Icon(
-                                                      Icons.broken_image,
-                                                      color: Colors.grey)),
-                                            ),
                                           ),
                                         ),
                                       ),

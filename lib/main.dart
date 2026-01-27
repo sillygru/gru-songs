@@ -31,9 +31,10 @@ Future<void> main() async {
   ], eagerError: false);
 
   // Limit image cache to save RAM
-  PaintingBinding.instance.imageCache.maximumSize = 100; // Reduced from 200
+  PaintingBinding.instance.imageCache.maximumSize =
+      250; // Increased count for thumbnails
   PaintingBinding.instance.imageCache.maximumSizeBytes =
-      30 * 1024 * 1024; // Reduced from 50MB
+      40 * 1024 * 1024; // Balanced 40MB limit
 
   // Check setup status
   final storage = StorageService();

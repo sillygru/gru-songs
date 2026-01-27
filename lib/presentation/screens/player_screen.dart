@@ -360,6 +360,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       opacity: 0.15,
                       child: GruImage(
                         url: metadata.artUri?.toString() ?? '',
+                        filename: metadata.id,
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -444,13 +445,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                                   url: metadata.artUri
                                                           ?.toString() ??
                                                       '',
+                                                  filename: metadata.id,
                                                   width: constraints.maxWidth,
                                                   height: constraints.maxWidth,
                                                   cacheWidth: 800,
                                                   fit: BoxFit.cover,
-                                                  errorWidget: const Icon(
-                                                      Icons.music_note,
-                                                      size: 100),
                                                 ),
                                               ),
                                             ),
@@ -469,6 +468,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                                   url: metadata.artUri
                                                           ?.toString() ??
                                                       '',
+                                                  filename: metadata.id,
                                                   fit: BoxFit.cover,
                                                   cacheWidth: 600,
                                                 ),
