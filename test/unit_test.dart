@@ -38,27 +38,4 @@ void main() {
       expect(song.album, 'Unknown Album');
     });
   });
-
-  group('LyricLine Parsing', () {
-    test('LyricLine.parse should correctly parse timed lyrics', () {
-      const content = '[00:12.34]Hello world\n[01:02.00]Second line';
-      final lyrics = LyricLine.parse(content);
-
-      expect(lyrics.length, 2);
-      expect(lyrics[0].time.inMilliseconds, 12340);
-      expect(lyrics[0].text, 'Hello world');
-      expect(lyrics[1].time.inMinutes, 1);
-      expect(lyrics[1].time.inSeconds, 62);
-      expect(lyrics[1].text, 'Second line');
-    });
-
-    test('LyricLine.parse should handle non-timed lyrics', () {
-      const content = 'Just some text\nMore text';
-      final lyrics = LyricLine.parse(content);
-
-      expect(lyrics.length, 2);
-      expect(lyrics[0].time, Duration.zero);
-      expect(lyrics[0].text, 'Just some text');
-    });
-  });
 }

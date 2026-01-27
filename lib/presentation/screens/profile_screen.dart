@@ -8,6 +8,7 @@ import '../widgets/fun_stats_view.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../services/telemetry_service.dart';
 import 'settings_screen.dart';
+import 'backup_management_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -295,6 +296,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       onTap: _showChangePasswordDialog,
                     ),
                     const SizedBox(height: 24),
+                    _buildSectionTitle('Data Management'),
+                    _buildListTile(
+                      icon: Icons.backup_rounded,
+                      title: 'Manage Backups',
+                      subtitle: 'Create, restore, and manage app backups',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const BackupManagementScreen()),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 24),
                     _buildSectionTitle('App'),
                     _buildListTile(
                       icon: Icons.settings,
@@ -324,7 +339,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v3.7.3",
+                      "Gru Songs v3.8.0",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,
