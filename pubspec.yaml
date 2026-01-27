@@ -1,7 +1,7 @@
 name: gru_songs
 description: "A feature packed local music player."
 publish_to: 'none'
-version: 3.7.1+1
+version: 3.7.2+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -41,6 +41,9 @@ dev_dependencies:
   plugin_platform_interface: ^2.1.8
   mockito: ^5.4.5
   build_runner: ^2.4.9
+  shared_preferences_platform_interface: ^2.3.2
+  matcher: ^0.12.17
+  sqflite_common_ffi: ^2.3.0
 
 flutter:
   uses-material-design: true

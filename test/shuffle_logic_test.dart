@@ -72,27 +72,13 @@ double calculateWeight(QueueItem item, QueueItem? prev,
 void main() {
   group('Shuffle Logic Tests', () {
     final song1 = Song(
-        title: 'Song 1',
-        artist: 'Artist A',
-        album: 'Album X',
+        title: 'Test Song 1',
+        artist: 'Test Artist',
+        album: 'Test Album',
         filename: 's1.mp3',
-        url: '');
-    final song2 = Song(
-        title: 'Song 2',
-        artist: 'Artist A',
-        album: 'Album X',
-        filename: 's2.mp3',
-        url: '');
-    final songNull = Song(
-        title: 'Unknown',
-        artist: 'Unknown Artist',
-        album: 'Unknown Album',
-        filename: 'null.mp3',
         url: '');
 
     final item1 = QueueItem(song: song1);
-    final item2 = QueueItem(song: song2);
-    final itemNull = QueueItem(song: songNull);
 
     test('Recency penalty gives 100% penalty for most recent song', () {
       final state = ShuffleState(

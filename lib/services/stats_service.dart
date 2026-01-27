@@ -28,7 +28,7 @@ class StatsService {
   }
 
   Future<void> trackStats(Map<String, dynamic> stats) async {
-    // Local-only - just store in database
+    // Local-only - just store in database with proper coalescing
     try {
       final prefs = await SharedPreferences.getInstance();
       final username = prefs.getString('username');
@@ -36,12 +36,16 @@ class StatsService {
 
       await DatabaseService.instance.initForUser(username);
 
-      // Add platform info
+      // Add platform info and timestamp
       stats['platform'] = _platform;
       stats['session_id'] = _sessionId;
+      stats['timestamp'] = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
-      // Store in local database
-      await DatabaseService.instance.addPlayEvent(stats);
+      // Store in local database with proper coalescing logic
+      await DatabaseService.instance.insertPlayEvent(stats);
+
+      debugPrint(
+          'Stats tracked successfully for ${stats['song_filename']}: ${stats['event_type']} (${stats['duration_played']}s)');
     } catch (e) {
       debugPrint('Error tracking stats: $e');
     }

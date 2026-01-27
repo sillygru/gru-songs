@@ -19,7 +19,6 @@ class DatabaseService {
   Database? _userDataDatabase;
   String? _currentUsername;
   Completer<void>? _initCompleter;
-  Timer? _coalesceTimer;
 
   DatabaseService._init();
 
@@ -45,9 +44,6 @@ class DatabaseService {
 
       // --- AUTO-MIGRATION: Ensure tables and columns exist ---
       await _ensureTablesAndColumns(_userDataDatabase!);
-
-      // Start background coalescing timer (3 minutes after init, then every 3 minutes)
-      _startCoalesceTimer();
 
       _initCompleter!.complete();
     } catch (e) {
@@ -1029,110 +1025,6 @@ class DatabaseService {
     );
   ''';
 
-  void _startCoalesceTimer() {
-    _coalesceTimer?.cancel();
-    _coalesceTimer = Timer.periodic(const Duration(minutes: 3), (_) {
-      _lazyCoalesceEvents();
-    });
-  }
-
-  Future<void> _lazyCoalesceEvents() async {
-    if (_statsDatabase == null || _currentUsername == null) return;
-
-    try {
-      // Use compute to run in background isolate for performance
-      await compute(_coalesceEventsInIsolate, {
-        'dbPath': await _getDatabasePath('${_currentUsername}_stats.db'),
-      });
-    } catch (e) {
-      debugPrint('Background coalescing failed: $e');
-    }
-  }
-
-  static Future<void> _coalesceEventsInIsolate(
-      Map<String, String> params) async {
-    final dbPath = params['dbPath']!;
-    final db = await openDatabase(dbPath);
-
-    try {
-      // Get all events ordered by session and timestamp
-      final events =
-          await db.query('playevent', orderBy: 'session_id, timestamp');
-
-      if (events.isEmpty) return;
-
-      final coalesced = <Map<String, dynamic>>[];
-      Map<String, dynamic>? current;
-
-      for (final event in events) {
-        if (current == null) {
-          current = Map<String, dynamic>.from(event);
-          continue;
-        }
-
-        // Check if we should merge (same session, same song)
-        if (event['session_id'] == current['session_id'] &&
-            event['song_filename'] == current['song_filename']) {
-          // Merge durations
-          current['duration_played'] = (current['duration_played'] as num) +
-              (event['duration_played'] as num);
-          current['foreground_duration'] =
-              ((current['foreground_duration'] as num?) ?? 0) +
-                  ((event['foreground_duration'] as num?) ?? 0);
-          current['background_duration'] =
-              ((current['background_duration'] as num?) ?? 0) +
-                  ((event['background_duration'] as num?) ?? 0);
-
-          // Update with latest metadata
-          current['event_type'] = event['event_type'];
-          current['timestamp'] = event['timestamp'];
-        } else {
-          // Finalize current event
-          _finalizeEvent(current);
-          coalesced.add(current);
-          current = Map<String, dynamic>.from(event);
-        }
-      }
-
-      // Add final event
-      if (current != null) {
-        _finalizeEvent(current);
-        coalesced.add(current);
-      }
-
-      // Replace in database (only if we actually reduced events)
-      if (coalesced.length < events.length) {
-        await db.transaction((txn) async {
-          await txn.delete('playevent');
-          for (final event in coalesced) {
-            await txn.insert('playevent', event);
-          }
-        });
-        debugPrint('Coalesced ${events.length} → ${coalesced.length} events');
-      }
-    } finally {
-      await db.close();
-    }
-  }
-
-  static void _finalizeEvent(Map<String, dynamic> event) {
-    final totalLength = (event['total_length'] as num?)?.toDouble() ?? 0.0;
-    final duration = (event['duration_played'] as num).toDouble();
-
-    // Recalculate ratio
-    event['play_ratio'] = totalLength > 0 ? duration / totalLength : 0.0;
-
-    // Fix skips to complete if within 10 seconds
-    if (totalLength > 0 && (totalLength - duration) <= 10.0) {
-      event['event_type'] = 'complete';
-    }
-  }
-
-  Future<String> _getDatabasePath(String dbName) async {
-    final docDir = await getApplicationDocumentsDirectory();
-    return join(docDir.path, dbName);
-  }
-
   Future<void> importData({
     required String statsDbPath,
     required String dataDbPath,
@@ -1233,7 +1125,6 @@ class DatabaseService {
   }
 
   void dispose() {
-    _coalesceTimer?.cancel();
     _statsDatabase?.close();
     _userDataDatabase?.close();
   }

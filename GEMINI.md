@@ -154,11 +154,4 @@ Changes to shuffle must be coordinated between:
 - `ios/Runner/Info.plist`: iOS permissions and ATS configuration
 - `macos/Runner/Info.plist`: macOS permissions
 
-
-### Key Endpoints
-- **Auth**: `/auth/signup`, `/auth/login`, `/auth/update-password`, `/auth/update-username`
-- **User Data**: `/user/favorites`, `/user/suggest-less`, `/user/shuffle` (bidirectional sync)
-- **Stats**: `/stats/track`, `/stats/summary`, `/stats/fun`
-- **Database**: `/user/db/{db_type}` (GET/POST for `stats`, `data`, `final_stats` SQLite files)
-
 All user-specific requests require `x-username` header.
