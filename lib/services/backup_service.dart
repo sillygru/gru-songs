@@ -276,7 +276,8 @@ class BackupService {
         final storage = StorageService();
 
         // Helper function to find and restore JSON files
-        Future<void> restoreJsonFile(String filename, Future<void> Function(dynamic) restoreFunc) async {
+        Future<void> restoreJsonFile(
+            String filename, Future<void> Function(dynamic) restoreFunc) async {
           final directFile = File(p.join(tempDir.path, filename));
           final subDirFile =
               File(p.join(tempDir.path, '${username}_data', filename));

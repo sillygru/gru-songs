@@ -3,15 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../providers/providers.dart';
-import '../../providers/theme_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../theme/app_theme.dart';
 import 'cache_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../services/android_storage_service.dart';
 import '../../services/data_export_service.dart';
 import '../../services/telemetry_service.dart';
+import 'theme_selection_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -92,46 +91,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  void _showThemeSelector(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Consumer(builder: (context, ref, child) {
-          final currentTheme = ref.watch(themeProvider);
-          return AlertDialog(
-            title: const Text("Select Theme"),
-            content: RadioGroup<GruThemeMode>(
-              groupValue: currentTheme.mode,
-              onChanged: (val) {
-                if (val != null) {
-                  ref.read(themeProvider.notifier).setTheme(val);
-                  Navigator.pop(context);
-                }
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var theme in GruThemeMode.values)
-                    RadioListTile<GruThemeMode>(
-                      title:
-                          Text(theme.toString().split('.').last.toUpperCase()),
-                      value: theme,
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Close"),
-              ),
-            ],
-          );
-        });
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (ref.watch(isScanningProvider)) {
@@ -155,7 +114,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: Icons.palette_outlined,
                 title: 'App Theme',
                 subtitle: 'Choose your visual style',
-                onTap: () => _showThemeSelector(context),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const ThemeSelectionScreen()),
+                  );
+                },
               ),
               SwitchListTile(
                 secondary: const Icon(Icons.waves_rounded),
