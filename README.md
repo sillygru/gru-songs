@@ -3,14 +3,22 @@
 ## What is Gru Songs?
 Gru Songs is a simple local music player app built with Flutter.
 
-[Features](#features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
+[Features](#features) | [Additional Features](#additional-features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
 
 ## Features
-- **Smart Shuffle:** Intelligent shuffle algorithm that learns from your listening habits.
+- **Shuffle personalities:** Multiple shuffle personalities, default, explorer and consistent
 - **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists.
-- **Metadata:** Automatic extraction of album art, titles, and artist info.
+- **Metadata Editing:** Built-in editor for modifying song metadata (title, artist, album, filename, lyrics)
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
 - **Merged Songs:** Combine multiple versions of a track (remixes, live, etc.) into a single group for shuffle, keeping individual favorites and settings.
+
+## Additional Features
+- **Backups:** Backup management system
+- **Data Export:** Export user data and databases for backup and migration purposes
+- **Volume Monitoring:** Auto-pause playback when volume is muted and resume when restored
+- **Theme Selection:** Multiple theme options
+- **Statistics Tracking:** Collects stats (real)
+- **User Profiles:** Multi-user support with individual profiles and settings (who tf woud use this)
 
 ## Getting Started
 
@@ -18,7 +26,7 @@ Simply install the app from the releases page.
 
 ## Good to know
 
-User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file—like play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
+User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file such as play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
 
 ## Screenshots
 
