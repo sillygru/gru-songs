@@ -10,6 +10,7 @@ Gru Songs is a simple local music player app built with Flutter.
 - **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists.
 - **Metadata:** Automatic extraction of album art, titles, and artist info.
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
+- **Merged Songs:** Combine multiple versions of a track (remixes, live, etc.) into a single group for shuffle, keeping individual favorites and settings.
 
 ## Getting Started
 
@@ -29,8 +30,8 @@ User data in Gru Songs is tied to the music file's name. If you rename a file ou
 </p>
 
 ## Others
-### "*Don't mind half broken features*"
-This is a vibe coded project, if features are half-baked, that is normal.
+### *"Don't mind half broken features"*
+This is a vibe coded project, if features are half-broken, that is... unfortunate.
 This was originally a personal side project, so there might be leftovers of pre-configured stuff of when this was only meant for my personal use.
 
 ## For developers
@@ -44,15 +45,6 @@ This was originally a personal side project, so there might be leftovers of pre-
   - `flutter build apk --release --target-platform=android-arm64`
 - **ARMv7:**
   - `flutter build apk --release --target-platform=android-arm`
-
-
-## Random stuff i dont know where to put
-### Versioning rules:
-- This project uses major.minor.patch versioning format.
-   - Version numbering is based on update impact
-   - Small feature updates are considered minor
-- The app is android only, I know it works on other platforms, but I prefer to focus on android
-  - I personally test the app on macos :#
 
 ## License
 
