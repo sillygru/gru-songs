@@ -131,7 +131,7 @@ class MainActivity : AudioServiceActivity() {
         val targetRelativeDir = args["targetRelativeDir"] as? String
         val targetFileName = args["targetFileName"] as? String
 
-        if (treeUri.isNullOrBlank() || sourceRelativePath.isNullOrBlank() || targetRelativeDir.isNullOrBlank()) {
+        if (treeUri.isNullOrBlank() || sourceRelativePath.isNullOrBlank() || targetRelativeDir == null) {
             result.error("invalid_args", "treeUri/sourceRelativePath/targetRelativeDir required", null)
             return
         }
@@ -148,7 +148,7 @@ class MainActivity : AudioServiceActivity() {
             return
         }
 
-        val targetDir = findOrCreateDirectory(root, targetRelativeDir)
+        val targetDir = if (targetRelativeDir.isBlank()) root else findOrCreateDirectory(root, targetRelativeDir)
         if (targetDir == null) {
             result.error("target_missing", "Target directory not found", null)
             return

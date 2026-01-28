@@ -204,9 +204,15 @@ class BackupService {
               .writeAsString(encodeJson(playbackState));
         }
 
-        // Save merged song groups
+        // Save merged song groups - convert Record objects to JSON-serializable format
+        final mergedGroupsJson = mergedGroups.map((groupId, groupData) {
+          return MapEntry(groupId, {
+            'filenames': groupData.filenames,
+            'priorityFilename': groupData.priorityFilename,
+          });
+        });
         await File(p.join(usernameDataDir.path, 'merged_groups.json'))
-            .writeAsString(encodeJson(mergedGroups));
+            .writeAsString(encodeJson(mergedGroupsJson));
 
         await File(p.join(usernameDataDir.path, '${username}_final_stats.json'))
             .writeAsString(encodeJson(funStats));

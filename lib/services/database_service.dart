@@ -95,8 +95,7 @@ class DatabaseService {
     ''');
 
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
-    // Example: If we added 'description' to playlist table
-    // await _addColumnIfNotExists(db, 'playlist', 'description', 'TEXT');
+    await _addColumnIfNotExists(db, 'merged_song_group', 'priority_filename', 'TEXT');
   }
 
   // ignore: unused_element
@@ -467,6 +466,10 @@ class DatabaseService {
       // Update Merged Songs - if old filename is in a merge group, update it
       await txn.update('merged_song', {'filename': newFilename},
           where: 'filename = ?', whereArgs: [oldFilename]);
+
+      // Update merged_song_group priority_filename if it matches old filename
+      await txn.update('merged_song_group', {'priority_filename': newFilename},
+          where: 'priority_filename = ?', whereArgs: [oldFilename]);
 
       // Update Playlist Songs
       // Get all playlist entries for old filename
