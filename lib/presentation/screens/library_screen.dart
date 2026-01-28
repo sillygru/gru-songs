@@ -226,7 +226,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   icon: const Icon(Icons.add),
                   tooltip: 'Create new merge group',
                   onPressed: () async {
-                          final result = await Navigator.push<Map<String, dynamic>>(
+                    final result = await Navigator.push<Map<String, dynamic>>(
                       context,
                       MaterialPageRoute(
                         builder: (_) => SelectSongsScreen(

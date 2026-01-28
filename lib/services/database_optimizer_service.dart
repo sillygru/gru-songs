@@ -22,14 +22,15 @@ class OptimizationResult {
 }
 
 /// Service for optimizing and repairing database files
-/// 
+///
 /// This service handles database maintenance tasks:
 /// - Vacuum databases to reclaim space
 /// - Fix orphaned records
 /// - Remove duplicate entries
 /// - Ensure table schemas are up to date (without data loss)
 class DatabaseOptimizerService {
-  static final DatabaseOptimizerService _instance = DatabaseOptimizerService._internal();
+  static final DatabaseOptimizerService _instance =
+      DatabaseOptimizerService._internal();
   factory DatabaseOptimizerService() => _instance;
   DatabaseOptimizerService._internal();
 
@@ -103,7 +104,8 @@ class DatabaseOptimizerService {
       if (!isOk) {
         issues.add('Stats database integrity check failed');
         // For stats, we just report it - don't try to fix as it might lose data
-        fixes.add('Stats database integrity issues detected (manual intervention may be needed)');
+        fixes.add(
+            'Stats database integrity issues detected (manual intervention may be needed)');
       }
 
       // Vacuum to reclaim space
@@ -186,7 +188,8 @@ class DatabaseOptimizerService {
       final duplicateResult = await _fixDuplicates(db);
       if (duplicateResult['issuesFound'] > 0) {
         issues.add('Found ${duplicateResult['issuesFound']} duplicate entries');
-        fixes.add('Removed ${duplicateResult['issuesFixed']} duplicate entries');
+        fixes
+            .add('Removed ${duplicateResult['issuesFixed']} duplicate entries');
       }
       details['duplicates'] = duplicateResult;
 
@@ -399,7 +402,8 @@ class DatabaseOptimizerService {
 
       // Get existing columns
       final existingCols = await db.rawQuery('PRAGMA table_info($tableName)');
-      final existingNames = existingCols.map((c) => c['name'] as String).toSet();
+      final existingNames =
+          existingCols.map((c) => c['name'] as String).toSet();
 
       for (final col in columns) {
         final colName = col['name'] as String;
@@ -407,7 +411,8 @@ class DatabaseOptimizerService {
           issues.add('Table $tableName is missing column $colName');
           try {
             final colType = col['type'] as String;
-            await db.execute('ALTER TABLE $tableName ADD COLUMN $colName $colType');
+            await db
+                .execute('ALTER TABLE $tableName ADD COLUMN $colName $colType');
             fixes.add('Added column $colName to $tableName');
           } catch (e) {
             issues.add('Failed to add column $colName to $tableName: $e');
@@ -433,8 +438,10 @@ class DatabaseOptimizerService {
 
     // Define expected indexes - only for tables in user_data.db
     final expectedIndexes = <String, String>{
-      'idx_merged_song_group_id': 'CREATE INDEX idx_merged_song_group_id ON merged_song(group_id)',
-      'idx_playlist_song_playlist_id': 'CREATE INDEX idx_playlist_song_playlist_id ON playlist_song(playlist_id)',
+      'idx_merged_song_group_id':
+          'CREATE INDEX idx_merged_song_group_id ON merged_song(group_id)',
+      'idx_playlist_song_playlist_id':
+          'CREATE INDEX idx_playlist_song_playlist_id ON playlist_song(playlist_id)',
     };
 
     for (final entry in expectedIndexes.entries) {
@@ -492,7 +499,8 @@ class DatabaseOptimizerService {
         issuesFound += orphanedMerged.length;
         for (final row in orphanedMerged) {
           final filename = row['filename'] as String;
-          await db.delete('merged_song', where: 'filename = ?', whereArgs: [filename]);
+          await db.delete('merged_song',
+              where: 'filename = ?', whereArgs: [filename]);
         }
         issuesFixed += orphanedMerged.length;
       }
@@ -523,14 +531,14 @@ class DatabaseOptimizerService {
       for (final dup in dupFavorites) {
         final filename = dup['filename'] as String;
         final maxTime = dup['max_time'] as double?;
-        
+
         if (maxTime != null) {
           final deleted = await db.delete(
             'favorite',
             where: 'filename = ? AND added_at < ?',
             whereArgs: [filename, maxTime],
           );
-          
+
           issuesFound += (dup['cnt'] as int) - 1;
           issuesFixed += deleted;
         }
@@ -547,14 +555,14 @@ class DatabaseOptimizerService {
       for (final dup in dupSuggestless) {
         final filename = dup['filename'] as String;
         final maxTime = dup['max_time'] as double?;
-        
+
         if (maxTime != null) {
           final deleted = await db.delete(
             'suggestless',
             where: 'filename = ? AND added_at < ?',
             whereArgs: [filename, maxTime],
           );
-          
+
           issuesFound += (dup['cnt'] as int) - 1;
           issuesFixed += deleted;
         }
@@ -572,7 +580,8 @@ class DatabaseOptimizerService {
   /// Recovers a corrupted user data database by backing it up and creating a new one
   Future<void> _recoverCorruptedUserDataDatabase(String dbPath) async {
     // Backup the corrupted file
-    final backupPath = '$dbPath.corrupted.${DateTime.now().millisecondsSinceEpoch}';
+    final backupPath =
+        '$dbPath.corrupted.${DateTime.now().millisecondsSinceEpoch}';
     await File(dbPath).rename(backupPath);
 
     // Create new database with proper schema
@@ -580,6 +589,7 @@ class DatabaseOptimizerService {
     await _createUserDataSchema(db);
     await db.close();
 
-    debugPrint('Recovered user data database. Corrupted file backed up to $backupPath');
+    debugPrint(
+        'Recovered user data database. Corrupted file backed up to $backupPath');
   }
 }

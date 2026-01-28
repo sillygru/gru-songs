@@ -878,8 +878,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return [];
   }
 
-
-
   double _calculateWeight(
       QueueItem item,
       QueueItem? prev,

@@ -596,7 +596,8 @@ class DatabaseService {
       }
 
       // Combine into result format
-      final result = <String, ({List<String> filenames, String? priorityFilename})>{};
+      final result =
+          <String, ({List<String> filenames, String? priorityFilename})>{};
       for (final entry in groups.entries) {
         result[entry.key] = (
           filenames: entry.value,

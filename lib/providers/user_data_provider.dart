@@ -404,12 +404,13 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
 
     // Create in database
-    final groupId = await DatabaseService.instance.createMergedGroup(filenames,
-        priorityFilename: priorityFilename);
+    final groupId = await DatabaseService.instance
+        .createMergedGroup(filenames, priorityFilename: priorityFilename);
 
     // Update state
     final newGroups = Map<String, List<String>>.from(state.mergedGroups);
-    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    final newPriorities =
+        Map<String, String?>.from(state.mergedGroupPriorities);
     newGroups[groupId] = filenames;
     newPriorities[groupId] = priorityFilename;
     state = state.copyWith(
@@ -424,11 +425,12 @@ class UserDataNotifier extends Notifier<UserDataState> {
       String groupId, String? priorityFilename) async {
     if (_username == null) return;
 
-    await DatabaseService.instance.setMergedGroupPriority(
-        groupId, priorityFilename);
+    await DatabaseService.instance
+        .setMergedGroupPriority(groupId, priorityFilename);
 
     // Update state
-    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    final newPriorities =
+        Map<String, String?>.from(state.mergedGroupPriorities);
     newPriorities[groupId] = priorityFilename;
     state = state.copyWith(mergedGroupPriorities: newPriorities);
     _updateManager();
@@ -464,7 +466,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     // Update state
     final newGroups = Map<String, List<String>>.from(state.mergedGroups);
-    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    final newPriorities =
+        Map<String, String?>.from(state.mergedGroupPriorities);
     String? groupToRemove;
     for (final entry in newGroups.entries) {
       if (entry.value.contains(filename)) {
@@ -498,7 +501,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     // Update state
     final newGroups = Map<String, List<String>>.from(state.mergedGroups);
-    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    final newPriorities =
+        Map<String, String?>.from(state.mergedGroupPriorities);
     newGroups.remove(groupId);
     newPriorities.remove(groupId);
     state = state.copyWith(

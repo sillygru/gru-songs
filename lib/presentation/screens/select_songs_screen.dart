@@ -112,7 +112,8 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 4),
-                _buildInfoBullet(context, 'Like remixes, live versions, or different quality versions'),
+                _buildInfoBullet(context,
+                    'Like remixes, live versions, or different quality versions'),
                 _buildInfoBullet(context,
                     'Favorites and "suggest less" are independent per song'),
                 _buildInfoBullet(

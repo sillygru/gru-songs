@@ -437,7 +437,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 48),
+        icon: const Icon(Icons.warning_amber_rounded,
+            color: Colors.orange, size: 48),
         title: const Text('Backup Recommended'),
         content: const Text(
           'Database optimization will check for and fix missing tables, corrupted data, orphaned records, and duplicates.\n\n'
@@ -490,7 +491,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               color: result.success ? Colors.green : Colors.red,
               size: 48,
             ),
-            title: Text(result.success ? 'Optimization Complete' : 'Optimization Issues'),
+            title: Text(result.success
+                ? 'Optimization Complete'
+                : 'Optimization Issues'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -531,7 +534,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.check, size: 16, color: Colors.green),
+                              const Icon(Icons.check,
+                                  size: 16, color: Colors.green),
                               const SizedBox(width: 4),
                               Expanded(child: Text(fix)),
                             ],
@@ -553,7 +557,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         // Refresh providers if fixes were applied
         if (result.fixesApplied.isNotEmpty) {
           ref.invalidate(userDataProvider);
-          
+
           // Show restart dialog after a brief delay
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) {

@@ -337,19 +337,23 @@ class BackupService {
 
         // Restore merged song groups
         await restoreJsonFile('merged_groups.json', (data) async {
-          final groups = <String, ({List<String> filenames, String? priorityFilename})>{};
+          final groups =
+              <String, ({List<String> filenames, String? priorityFilename})>{};
           if (data is Map) {
             for (final entry in data.entries) {
               final key = entry.key as String;
               final value = entry.value;
               if (value is Map) {
                 // New format with priority
-                final filenames = (value['filenames'] as List?)?.cast<String>() ?? [];
+                final filenames =
+                    (value['filenames'] as List?)?.cast<String>() ?? [];
                 final priority = value['priorityFilename'] as String?;
-                groups[key] = (filenames: filenames, priorityFilename: priority);
+                groups[key] =
+                    (filenames: filenames, priorityFilename: priority);
               } else if (value is List) {
                 // Legacy format without priority
-                groups[key] = (filenames: value.cast<String>(), priorityFilename: null);
+                groups[key] =
+                    (filenames: value.cast<String>(), priorityFilename: null);
               }
             }
           }
