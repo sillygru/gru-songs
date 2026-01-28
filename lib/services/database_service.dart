@@ -95,7 +95,8 @@ class DatabaseService {
     ''');
 
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
-    await _addColumnIfNotExists(db, 'merged_song_group', 'priority_filename', 'TEXT');
+    await _addColumnIfNotExists(
+        db, 'merged_song_group', 'priority_filename', 'TEXT');
   }
 
   // ignore: unused_element
