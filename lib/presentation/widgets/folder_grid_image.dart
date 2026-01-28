@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/song.dart';
-import 'gru_image.dart';
+import 'album_art_image.dart';
 
 class FolderGridImage extends StatelessWidget {
   final List<Song> songs;
@@ -41,7 +41,7 @@ class FolderGridImage extends StatelessWidget {
     if (covers.length == 1) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: GruImage(
+        child: AlbumArtImage(
           url: covers[0],
           filename: covers[0],
           width: size,
@@ -71,7 +71,7 @@ class FolderGridImage extends StatelessWidget {
           itemBuilder: (context, index) {
             // If we have fewer than 4, we cycle through them to fill the grid
             final url = covers[index % displayCount];
-            return GruImage(
+            return AlbumArtImage(
               url: url,
               filename: url,
               width: size / 2,

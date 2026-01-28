@@ -111,7 +111,7 @@ class GruSongsApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Gru Songs',
       debugShowCheckedModeBanner: false,
-      theme: GruTheme.getTheme(themeState.mode),
+      theme: AppTheme.getTheme(themeState.mode),
       home: (!isSetupComplete || !authState.isAuthenticated)
           ? const SetupScreen()
           : const MainScreen(),

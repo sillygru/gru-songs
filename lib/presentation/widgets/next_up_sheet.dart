@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../models/queue_item.dart';
-import 'gru_image.dart';
+import 'album_art_image.dart';
 
 class NextUpSheet extends ConsumerWidget {
   const NextUpSheet({super.key});
@@ -111,7 +111,7 @@ class NextUpSheet extends ConsumerWidget {
                                     horizontal: 12, vertical: 4),
                                 leading: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  child: GruImage(
+                                  child: AlbumArtImage(
                                     url: item.song.coverUrl ?? '',
                                     filename: item.song.filename,
                                     width: 48,

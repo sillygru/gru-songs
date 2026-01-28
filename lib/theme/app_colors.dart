@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-class GruPalette {
+class AppPalette {
   // Brand Colors
-  static const Color gruRed = Color(0xFFE53935);
-  static const Color gruRedDark = Color(0xFFB71C1C);
+  static const Color primaryRed = Color(0xFFE53935);
+  static const Color primaryRedDark = Color(0xFFB71C1C);
 
   // Backgrounds
   static const Color backgroundDark = Color(0xFF121212); // Material 2 Dark

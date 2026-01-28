@@ -4,7 +4,7 @@ import 'package:just_audio/just_audio.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
-import 'gru_image.dart';
+import 'album_art_image.dart';
 import 'song_options_menu.dart';
 import 'heart_context_menu.dart';
 import 'audio_visualizer.dart';
@@ -83,7 +83,7 @@ class SongListItem extends ConsumerWidget {
                           tag: heroTag,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: GruImage(
+                            child: AlbumArtImage(
                               url: song.coverUrl ?? '',
                               filename: song.filename,
                               width: 56,

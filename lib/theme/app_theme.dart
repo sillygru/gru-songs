@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
-enum GruThemeMode { classic, oled, ocean, sunset }
+enum AppThemeMode { classic, oled, ocean, sunset }
 
-class GruTheme {
-  static ThemeData getTheme(GruThemeMode mode) {
+class AppTheme {
+  static ThemeData getTheme(AppThemeMode mode) {
     switch (mode) {
-      case GruThemeMode.classic:
+      case AppThemeMode.classic:
         return _classicTheme;
-      case GruThemeMode.oled:
+      case AppThemeMode.oled:
         return _oledTheme;
-      case GruThemeMode.ocean:
+      case AppThemeMode.ocean:
         return _oceanTheme;
-      case GruThemeMode.sunset:
+      case AppThemeMode.sunset:
         return _sunsetTheme;
     }
   }
@@ -20,17 +20,17 @@ class GruTheme {
   static final ThemeData _classicTheme = ThemeData(
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: GruPalette.gruRed,
+      seedColor: AppPalette.primaryRed,
       brightness: Brightness.dark,
-      surface: GruPalette.backgroundDark,
+      surface: AppPalette.backgroundDark,
     ),
-    scaffoldBackgroundColor: GruPalette.backgroundDark,
+    scaffoldBackgroundColor: AppPalette.backgroundDark,
     appBarTheme: const AppBarTheme(
-      backgroundColor: GruPalette.backgroundDark,
+      backgroundColor: AppPalette.backgroundDark,
       scrolledUnderElevation: 0,
     ),
     cardTheme: CardThemeData(
-      color: GruPalette.surfaceDark,
+      color: AppPalette.surfaceDark,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -38,8 +38,8 @@ class GruTheme {
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: GruPalette.backgroundDark,
-      indicatorColor: GruPalette.gruRed.withValues(alpha: 0.2),
+      backgroundColor: AppPalette.backgroundDark,
+      indicatorColor: AppPalette.primaryRed.withValues(alpha: 0.2),
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
     ),
   );
@@ -79,23 +79,23 @@ class GruTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: Colors.cyan,
       brightness: Brightness.dark,
-      surface: GruPalette.backgroundOcean,
+      surface: AppPalette.backgroundOcean,
       primary: Colors.cyanAccent,
     ),
-    scaffoldBackgroundColor: GruPalette.backgroundOcean,
+    scaffoldBackgroundColor: AppPalette.backgroundOcean,
     appBarTheme: const AppBarTheme(
-      backgroundColor: GruPalette.backgroundOcean,
+      backgroundColor: AppPalette.backgroundOcean,
       scrolledUnderElevation: 0,
     ),
     cardTheme: CardThemeData(
-      color: GruPalette.surfaceOcean,
+      color: AppPalette.surfaceOcean,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: GruPalette.backgroundOcean,
+      backgroundColor: AppPalette.backgroundOcean,
       indicatorColor: Colors.cyan.withValues(alpha: 0.2),
     ),
   );

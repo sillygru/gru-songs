@@ -4,11 +4,11 @@ import '../theme/app_theme.dart';
 import '../services/telemetry_service.dart';
 
 class ThemeState {
-  final GruThemeMode mode;
+  final AppThemeMode mode;
 
   ThemeState({required this.mode});
 
-  ThemeState copyWith({GruThemeMode? mode}) {
+  ThemeState copyWith({AppThemeMode? mode}) {
     return ThemeState(
       mode: mode ?? this.mode,
     );
@@ -19,25 +19,25 @@ class ThemeNotifier extends Notifier<ThemeState> {
   @override
   ThemeState build() {
     _loadSettings();
-    return ThemeState(mode: GruThemeMode.classic);
+    return ThemeState(mode: AppThemeMode.classic);
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final themeName = prefs.getString('theme_mode');
 
-    GruThemeMode mode = GruThemeMode.classic;
+    AppThemeMode mode = AppThemeMode.classic;
     if (themeName != null) {
-      mode = GruThemeMode.values.firstWhere(
+      mode = AppThemeMode.values.firstWhere(
         (e) => e.toString() == themeName,
-        orElse: () => GruThemeMode.classic,
+        orElse: () => AppThemeMode.classic,
       );
     }
 
     state = ThemeState(mode: mode);
   }
 
-  Future<void> setTheme(GruThemeMode mode) async {
+  Future<void> setTheme(AppThemeMode mode) async {
     state = state.copyWith(mode: mode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('theme_mode', mode.toString());

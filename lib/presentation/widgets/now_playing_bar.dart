@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'gru_image.dart';
+import 'album_art_image.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../screens/player_screen.dart';
@@ -90,7 +90,7 @@ class NowPlayingBar extends ConsumerWidget {
                                   borderRadius: BorderRadius.circular(8),
                                   child: Stack(
                                     children: [
-                                      GruImage(
+                                      AlbumArtImage(
                                         key: ValueKey(
                                             'now_playing_art_${metadata.id}'),
                                         url: metadata.artUri?.toString() ?? '',

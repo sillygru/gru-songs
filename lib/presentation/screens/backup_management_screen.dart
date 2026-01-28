@@ -243,6 +243,130 @@ class _BackupManagementScreenState
     }
   }
 
+  Future<void> _compareBackup(BackupInfo backupInfo) async {
+    final authState = ref.read(authProvider);
+    final username = authState.username;
+    if (username == null) return;
+
+    // Find previous backup (older)
+    // _backups is sorted by number descending.
+    final index = _backups.indexOf(backupInfo);
+    if (index == -1 || index == _backups.length - 1) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No older backup to compare with.')),
+        );
+      }
+      return;
+    }
+
+    final oldBackup = _backups[index + 1];
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Comparing backups...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    try {
+      final diff = await BackupService.instance.compareBackups(
+        username,
+        oldBackup,
+        backupInfo,
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Pop loading dialog
+
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Comparison with #${oldBackup.number}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildDiffRow('Songs', diff.songCountDiff),
+                const Divider(),
+                _buildDiffRow('Stats Rows', diff.statsRowsDiff),
+                const Divider(),
+                _buildDiffRow('Size', diff.sizeBytesDiff, isBytes: true),
+                if (diff.sizeBytesDiff > 0) ...[
+                  const Divider(),
+                  ListTile(
+                    title: const Text('Data Added'),
+                    trailing: Text(
+                      _formatBytes(diff.sizeBytesDiff),
+                      style: const TextStyle(
+                          color: Colors.green, fontWeight: FontWeight.bold),
+                    ),
+                  )
+                ]
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CLOSE'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Pop loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error comparing backups: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildDiffRow(String label, int diff, {bool isBytes = false}) {
+    String diffText;
+    Color color;
+
+    if (diff > 0) {
+      diffText = '+${isBytes ? _formatBytes(diff) : diff}';
+      color = Colors.green;
+    } else if (diff < 0) {
+      diffText = '${isBytes ? _formatBytes(diff) : diff}';
+      color = Colors.red;
+    } else {
+      diffText = 'No change';
+      color = Colors.grey;
+    }
+
+    return ListTile(
+      title: Text(label),
+      trailing: Text(
+        diffText,
+        style: TextStyle(color: color, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    final absBytes = bytes.abs();
+    if (absBytes < 1024) {
+      return '$bytes B';
+    }
+    if (absBytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -358,6 +482,9 @@ class _BackupManagementScreenState
               case 'export':
                 _exportBackup(backup);
                 break;
+              case 'compare':
+                _compareBackup(backup);
+                break;
               case 'delete':
                 _deleteBackup(backup);
                 break;
@@ -381,6 +508,16 @@ class _BackupManagementScreenState
                   Icon(Icons.file_upload_rounded),
                   SizedBox(width: 8),
                   Text('Export'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'compare',
+              child: Row(
+                children: [
+                  Icon(Icons.compare_arrows_rounded),
+                  SizedBox(width: 8),
+                  Text('Compare'),
                 ],
               ),
             ),

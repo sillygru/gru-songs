@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../widgets/gru_image.dart';
+import '../widgets/album_art_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../providers/providers.dart';
@@ -239,7 +239,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                         child: ClipRRect(
                                           borderRadius:
                                               BorderRadius.circular(16),
-                                          child: GruImage(
+                                          child: AlbumArtImage(
                                             url: song.coverUrl ?? '',
                                             filename: song.filename,
                                             fit: BoxFit.cover,

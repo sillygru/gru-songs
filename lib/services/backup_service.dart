@@ -4,9 +4,22 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
 import '../models/song.dart';
+
+class BackupDiff {
+  final int songCountDiff;
+  final int statsRowsDiff;
+  final int sizeBytesDiff;
+
+  BackupDiff({
+    required this.songCountDiff,
+    required this.statsRowsDiff,
+    required this.sizeBytesDiff,
+  });
+}
 
 class BackupInfo {
   final int number;
@@ -337,6 +350,75 @@ class BackupService {
     } catch (e) {
       debugPrint('Error deleting backup: $e');
       rethrow;
+    }
+  }
+
+  Future<BackupDiff> compareBackups(
+      String username, BackupInfo oldBackup, BackupInfo newBackup) async {
+    final tempDir = await Directory.systemTemp.createTemp('gru_compare_');
+    try {
+      // Helper to get stats from a backup
+      Future<({int songCount, int statsRows})> getBackupStats(
+          BackupInfo info) async {
+        final bytes = await info.file.readAsBytes();
+        final archive = ZipDecoder().decodeBytes(bytes);
+
+        int songCount = 0;
+        int statsRows = 0;
+
+        // Find and extract songs.json
+        final songsFile = archive.findFile('songs.json') ??
+            archive.findFile('${username}_data/songs.json');
+
+        if (songsFile != null) {
+          final content = utf8.decode(songsFile.content as List<int>);
+          final List data = jsonDecode(content);
+          songCount = data.length;
+        }
+
+        // Find and extract stats db
+        final statsFile = archive.findFile('${username}_stats.db') ??
+            archive.findFile('${username}_data/${username}_stats.db');
+
+        if (statsFile != null) {
+          final dbPath = p.join(tempDir.path, '${info.filename}_stats.db');
+          await File(dbPath).writeAsBytes(statsFile.content as List<int>);
+
+          try {
+            final db = await openDatabase(dbPath, readOnly: true);
+            try {
+              // Check if table exists first
+              final tables = await db.rawQuery(
+                  "SELECT name FROM sqlite_master WHERE type='table' AND name='playevent'");
+              if (tables.isNotEmpty) {
+                final result = await db
+                    .rawQuery('SELECT COUNT(*) as count FROM playevent');
+                statsRows = Sqflite.firstIntValue(result) ?? 0;
+              }
+            } finally {
+              await db.close();
+            }
+          } catch (e) {
+            debugPrint(
+                'Error reading stats db from backup ${info.filename}: $e');
+          }
+        }
+
+        return (songCount: songCount, statsRows: statsRows);
+      }
+
+      final oldStats = await getBackupStats(oldBackup);
+      final newStats = await getBackupStats(newBackup);
+
+      return BackupDiff(
+        songCountDiff: newStats.songCount - oldStats.songCount,
+        statsRowsDiff: newStats.statsRows - oldStats.statsRows,
+        sizeBytesDiff: newBackup.sizeBytes - oldBackup.sizeBytes,
+      );
+    } finally {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
     }
   }
 

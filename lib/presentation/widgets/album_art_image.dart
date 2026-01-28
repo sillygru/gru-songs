@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 
-class GruImage extends StatefulWidget {
+class AlbumArtImage extends StatefulWidget {
   final String url;
   final String? filename;
   final double? width;
@@ -15,7 +15,7 @@ class GruImage extends StatefulWidget {
   final int? memCacheWidth;
   final int? memCacheHeight;
 
-  const GruImage({
+  const AlbumArtImage({
     super.key,
     required this.url,
     this.filename,
@@ -32,10 +32,10 @@ class GruImage extends StatefulWidget {
   });
 
   @override
-  State<GruImage> createState() => _GruImageState();
+  State<AlbumArtImage> createState() => _AlbumArtImageState();
 }
 
-class _GruImageState extends State<GruImage> {
+class _AlbumArtImageState extends State<AlbumArtImage> {
   @override
   Widget build(BuildContext context) {
     if (widget.url.isEmpty) {

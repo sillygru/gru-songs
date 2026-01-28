@@ -19,7 +19,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
   void initState() {
     super.initState();
     final currentTheme = ref.read(themeProvider).mode;
-    _currentIndex = GruThemeMode.values.indexOf(currentTheme);
+    _currentIndex = AppThemeMode.values.indexOf(currentTheme);
     _pageController = PageController(
       viewportFraction: 0.7,
       initialPage: _currentIndex,
@@ -33,7 +33,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
   }
 
   void _applyTheme() {
-    final selectedMode = GruThemeMode.values[_currentIndex];
+    final selectedMode = AppThemeMode.values[_currentIndex];
     ref.read(themeProvider.notifier).setTheme(selectedMode);
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -58,14 +58,14 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
           Expanded(
             child: PageView.builder(
               controller: _pageController,
-              itemCount: GruThemeMode.values.length,
+              itemCount: AppThemeMode.values.length,
               onPageChanged: (index) {
                 setState(() {
                   _currentIndex = index;
                 });
               },
               itemBuilder: (context, index) {
-                final mode = GruThemeMode.values[index];
+                final mode = AppThemeMode.values[index];
                 final isApplied = mode == currentThemeMode;
                 final isFocused = index == _currentIndex;
 
@@ -116,7 +116,14 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                             // Optimize with RepaintBoundary and IgnorePointer
                             RepaintBoundary(
                               child: IgnorePointer(
-                                child: ThemePreviewWidget(mode: mode),
+                                child: FittedBox(
+                                  fit: BoxFit.contain,
+                                  child: SizedBox(
+                                    width: 420,
+                                    height: 840,
+                                    child: ThemePreviewWidget(mode: mode),
+                                  ),
+                                ),
                               ),
                             ),
                             if (isApplied)
@@ -165,7 +172,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    GruThemeMode.values[_currentIndex]
+                    AppThemeMode.values[_currentIndex]
                         .toString()
                         .split('.')
                         .last
@@ -188,7 +195,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                     height: 56,
                     child: FilledButton(
                       onPressed:
-                          currentThemeMode == GruThemeMode.values[_currentIndex]
+                          currentThemeMode == AppThemeMode.values[_currentIndex]
                               ? null // Disable if already selected
                               : _applyTheme,
                       style: FilledButton.styleFrom(
@@ -197,7 +204,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                         ),
                       ),
                       child: Text(
-                        currentThemeMode == GruThemeMode.values[_currentIndex]
+                        currentThemeMode == AppThemeMode.values[_currentIndex]
                             ? "Active Theme"
                             : "Apply Theme",
                         style: const TextStyle(
@@ -218,160 +225,171 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
 }
 
 class ThemePreviewWidget extends StatelessWidget {
-  final GruThemeMode mode;
+  final AppThemeMode mode;
 
   const ThemePreviewWidget({super.key, required this.mode});
 
   @override
   Widget build(BuildContext context) {
-    final themeData = GruTheme.getTheme(mode);
+    final themeData = AppTheme.getTheme(mode);
 
-    return Theme(
-      data: themeData,
-      child: Builder(builder: (context) {
-        return Scaffold(
-          backgroundColor: themeData.scaffoldBackgroundColor,
-          // Removed AppBar/ScrollViews for absolute static performance
-          body: Column(
-            children: [
-              // Mock AppBar
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      const Text('Gru Songs',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900, fontSize: 18)),
-                      const Spacer(),
-                      const Icon(Icons.shuffle, size: 20),
-                      const SizedBox(width: 16),
-                      const Icon(Icons.search, size: 20),
-                    ],
+    return MediaQuery(
+      data: const MediaQueryData(
+        size: Size(420, 840),
+        padding: EdgeInsets.only(top: 32, bottom: 8),
+        devicePixelRatio: 1.0,
+      ),
+      child: Theme(
+        data: themeData,
+        child: Builder(builder: (context) {
+          return Scaffold(
+            backgroundColor: themeData.scaffoldBackgroundColor,
+            // Removed AppBar/ScrollViews for absolute static performance
+            body: Column(
+              children: [
+                // Mock AppBar
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Text('Gru Songs',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w900, fontSize: 18)),
+                        const Spacer(),
+                        const Icon(Icons.shuffle, size: 20),
+                        const SizedBox(width: 16),
+                        const Icon(Icons.search, size: 20),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                        child: Text(
-                          'Recommended',
-                          style: themeData.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: themeData.colorScheme.primary,
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                          child: Text(
+                            'Recommended',
+                            style: themeData.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: themeData.colorScheme.primary,
+                            ),
                           ),
                         ),
-                      ),
-                      SizedBox(
-                        height: 140,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          physics: const NeverScrollableScrollPhysics(),
-                          children: [
-                            _buildMockAlbumCard(context, Colors.purple,
-                                "Chill Mix", "Various Artists"),
-                            _buildMockAlbumCard(context, Colors.blue,
-                                "Top Hits", "Gru's Picks"),
-                            _buildMockAlbumCard(
-                                context, Colors.orange, "Energy", "Workout"),
-                          ],
+                        SizedBox(
+                          height: 140,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: [
+                              _buildMockAlbumCard(context, Colors.purple,
+                                  "Chill Mix", "Various Artists"),
+                              _buildMockAlbumCard(context, Colors.blue,
+                                  "Top Hits", "Gru's Picks"),
+                              _buildMockAlbumCard(
+                                  context, Colors.orange, "Energy", "Workout"),
+                            ],
+                          ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'All Songs',
-                              style: themeData.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: themeData.colorScheme.primary,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'All Songs',
+                                style:
+                                    themeData.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: themeData.colorScheme.primary,
+                                ),
                               ),
-                            ),
+                            ],
+                          ),
+                        ),
+                        _buildMockSongTile(
+                            context, "Despicable Me", "Pharrell Williams"),
+                        _buildMockSongTile(
+                            context, "Happy", "Pharrell Williams"),
+                        _buildMockSongTile(
+                            context, "Double Life", "Pharrell Williams"),
+                        _buildMockSongTile(context, "YMCA", "Minions"),
+                        _buildMockSongTile(context, "Banana Song", "Minions"),
+                      ],
+                    ),
+                  ),
+                ),
+                // Mock Now Playing Bar
+                Container(
+                  margin: const EdgeInsets.all(8),
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color:
+                        themeData.colorScheme.surface.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[800],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.music_note,
+                            color: Colors.white70, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Double Life",
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 12)),
+                            Text("Pharrell Williams",
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 10)),
                           ],
                         ),
                       ),
-                      _buildMockSongTile(
-                          context, "Despicable Me", "Pharrell Williams"),
-                      _buildMockSongTile(context, "Happy", "Pharrell Williams"),
-                      _buildMockSongTile(
-                          context, "Double Life", "Pharrell Williams"),
-                      _buildMockSongTile(context, "YMCA", "Minions"),
-                      _buildMockSongTile(context, "Banana Song", "Minions"),
+                      const Icon(Icons.play_arrow, size: 28),
+                      const SizedBox(width: 16),
                     ],
                   ),
                 ),
-              ),
-              // Mock Now Playing Bar
-              Container(
-                margin: const EdgeInsets.all(8),
-                height: 60,
-                decoration: BoxDecoration(
-                  color: themeData.colorScheme.surface.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    width: 0.5,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 8),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[800],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.music_note,
-                          color: Colors.white70, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Double Life",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 12)),
-                          Text("Pharrell Williams",
-                              style:
-                                  TextStyle(color: Colors.grey, fontSize: 10)),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.play_arrow, size: 28),
-                    const SizedBox(width: 16),
+                // Mock Nav Bar
+                NavigationBar(
+                  selectedIndex: 0,
+                  height: 60,
+                  destinations: const [
+                    NavigationDestination(
+                        icon: Icon(Icons.home), label: 'Home'),
+                    NavigationDestination(
+                        icon: Icon(Icons.library_music), label: 'Library'),
+                    NavigationDestination(
+                        icon: Icon(Icons.person), label: 'Profile'),
                   ],
                 ),
-              ),
-              // Mock Nav Bar
-              NavigationBar(
-                selectedIndex: 0,
-                height: 60,
-                destinations: const [
-                  NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                  NavigationDestination(
-                      icon: Icon(Icons.library_music), label: 'Library'),
-                  NavigationDestination(
-                      icon: Icon(Icons.person), label: 'Profile'),
-                ],
-              ),
-            ],
-          ),
-        );
-      }),
+              ],
+            ),
+          );
+        }),
+      ),
     );
   }
 
