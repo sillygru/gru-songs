@@ -14,6 +14,7 @@ import com.ryanheise.audioservice.AudioServiceActivity
 
 class MainActivity : AudioServiceActivity() {
     private val channelName = "gru_songs/storage"
+    private val appChannelName = "gru_songs/app"
     private val requestPickTree = 9001
     private var pendingResult: MethodChannel.Result? = null
     private lateinit var volumeMonitorPlugin: VolumeMonitorPlugin
@@ -39,6 +40,32 @@ class MainActivity : AudioServiceActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // App control channel (restart, etc.)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, appChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "restartApp" -> handleRestartApp(result)
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun handleRestartApp(result: MethodChannel.Result) {
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                finishAffinity()
+                Runtime.getRuntime().exit(0)
+                result.success(true)
+            } else {
+                result.error("no_intent", "Could not get launch intent", null)
+            }
+        } catch (e: Exception) {
+            result.error("restart_failed", e.message, null)
+        }
     }
 
     private fun handlePickTree(result: MethodChannel.Result) {

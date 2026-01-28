@@ -181,6 +181,9 @@ class BackupService {
         await database.initForUser(username);
         final funStats = await database.getFunStats();
 
+        // Get merged song groups
+        final mergedGroups = await database.getMergedSongGroups();
+
         // Save JSON files
         final songsJson = songs.map((s) => s.toJson()).toList();
         await File(p.join(usernameDataDir.path, 'songs.json'))
@@ -200,6 +203,10 @@ class BackupService {
           await File(p.join(usernameDataDir.path, 'playback_state.json'))
               .writeAsString(encodeJson(playbackState));
         }
+
+        // Save merged song groups
+        await File(p.join(usernameDataDir.path, 'merged_groups.json'))
+            .writeAsString(encodeJson(mergedGroups));
 
         await File(p.join(usernameDataDir.path, '${username}_final_stats.json'))
             .writeAsString(encodeJson(funStats));
@@ -326,6 +333,29 @@ class BackupService {
         // Restore playback state
         await restoreJsonFile('playback_state.json', (data) async {
           await storage.savePlaybackState(username, data);
+        });
+
+        // Restore merged song groups
+        await restoreJsonFile('merged_groups.json', (data) async {
+          final groups = <String, ({List<String> filenames, String? priorityFilename})>{};
+          if (data is Map) {
+            for (final entry in data.entries) {
+              final key = entry.key as String;
+              final value = entry.value;
+              if (value is Map) {
+                // New format with priority
+                final filenames = (value['filenames'] as List?)?.cast<String>() ?? [];
+                final priority = value['priorityFilename'] as String?;
+                groups[key] = (filenames: filenames, priorityFilename: priority);
+              } else if (value is List) {
+                // Legacy format without priority
+                groups[key] = (filenames: value.cast<String>(), priorityFilename: null);
+              }
+            }
+          }
+          // Reinitialize database service first to ensure it's open
+          await DatabaseService.instance.initForUser(username);
+          await DatabaseService.instance.setMergedGroups(groups);
         });
 
         // Reinitialize database service to pick up new data

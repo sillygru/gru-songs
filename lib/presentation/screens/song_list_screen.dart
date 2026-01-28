@@ -6,6 +6,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/library_logic.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/sort_menu.dart';
+import 'select_songs_screen.dart';
 
 class SongListScreen extends ConsumerWidget {
   final String title;
@@ -45,6 +46,48 @@ class SongListScreen extends ConsumerWidget {
                 style: const TextStyle(fontWeight: FontWeight.w900)),
             actions: [
               const SortMenu(),
+              // Merge button - only show for non-playlist views
+              if (playlistId == null && sortedSongs.length >= 2)
+                IconButton(
+                  icon: const Icon(Icons.merge_type),
+                  onPressed: () async {
+                    final result = await Navigator.push<Map<String, dynamic>>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SelectSongsScreen(
+                          songs: sortedSongs,
+                          title: 'Select Songs to Merge',
+                        ),
+                      ),
+                    );
+                    if (result != null && context.mounted) {
+                      final selected = result['filenames'] as List<String>;
+                      final priority = result['priority'] as String?;
+                      if (selected.length >= 2) {
+                        try {
+                          await ref
+                              .read(userDataProvider.notifier)
+                              .createMergedGroup(selected,
+                                  priorityFilename: priority);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content:
+                                      Text('Merged ${selected.length} songs')),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
+                          }
+                        }
+                      }
+                    }
+                  },
+                  tooltip: 'Merge Songs',
+                ),
               IconButton(
                 icon: const Icon(Icons.shuffle),
                 onPressed: () {

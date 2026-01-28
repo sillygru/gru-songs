@@ -13,6 +13,8 @@ import '../widgets/folder_grid_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/sort_menu.dart';
 import 'song_list_screen.dart';
+import 'merged_songs_screen.dart';
+import 'select_songs_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   final String? relativePath;
@@ -199,7 +201,80 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             }
             offset = 1;
 
-            // 2. Playlists (at root only)
+            // 2. Merged Songs Folder (at root only)
+            if (index == 1) {
+              final mergedCount = userData.mergedGroups.length;
+
+              return ListTile(
+                leading: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.merge_type,
+                      color: Theme.of(context).colorScheme.primary),
+                ),
+                title: const Text('Merged Songs',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('$mergedCount groups'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Create new merge group',
+                  onPressed: () async {
+                          final result = await Navigator.push<Map<String, dynamic>>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SelectSongsScreen(
+                          songs: allSongs,
+                          title: 'Select Songs to Merge',
+                        ),
+                      ),
+                    );
+                    if (result != null && context.mounted) {
+                      final selected = result['filenames'] as List<String>;
+                      final priority = result['priority'] as String?;
+                      if (selected.length >= 2) {
+                        try {
+                          await ref
+                              .read(userDataProvider.notifier)
+                              .createMergedGroup(selected,
+                                  priorityFilename: priority);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content:
+                                      Text('Merged ${selected.length} songs')),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
+                          }
+                        }
+                      }
+                    }
+                  },
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MergedSongsScreen(),
+                    ),
+                  );
+                },
+              );
+            }
+            offset = 2;
+
+            // 3. Playlists (at root only)
             if (index - offset < playlists.length) {
               final playlist = playlists[index - offset];
               final playlistSongs = allSongs
@@ -322,7 +397,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           );
         }
 
-        final itemCount = (isRoot ? (1 + playlists.length) : 0) +
+        final itemCount = (isRoot ? (2 + playlists.length) : 0) +
             sortedSubFolders.length +
             immediateSongs.length;
 

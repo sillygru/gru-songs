@@ -78,6 +78,21 @@ class DatabaseService {
           FOREIGN KEY (playlist_id) REFERENCES playlist (id)
         )
     ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS merged_song_group (
+          id TEXT PRIMARY KEY,
+          priority_filename TEXT,
+          created_at REAL
+        )
+    ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS merged_song (
+          filename TEXT PRIMARY KEY,
+          group_id TEXT,
+          added_at REAL,
+          FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
+        )
+    ''');
 
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
     // Example: If we added 'description' to playlist table
@@ -411,7 +426,7 @@ class DatabaseService {
     await _ensureInitialized();
     if (_statsDatabase == null || _userDataDatabase == null) return;
 
-    // 1. Update User Data DB (Favorites, SuggestLess, Hidden)
+    // 1. Update User Data DB (Favorites, SuggestLess, Hidden, Merged Songs)
     await _userDataDatabase!.transaction((txn) async {
       // For favorites/suggestless/hidden, if target exists, we just delete the old one
       // (effectively "merging" the fact that it is a favorite/suggestless/hidden)
@@ -449,6 +464,10 @@ class DatabaseService {
             where: 'filename = ?', whereArgs: [oldFilename]);
       }
 
+      // Update Merged Songs - if old filename is in a merge group, update it
+      await txn.update('merged_song', {'filename': newFilename},
+          where: 'filename = ?', whereArgs: [oldFilename]);
+
       // Update Playlist Songs
       // Get all playlist entries for old filename
       final plSongs = await txn.query('playlist_song',
@@ -484,13 +503,13 @@ class DatabaseService {
   }
 
   /// Deletes a file from user data tables only.
-  /// Removes the file from favorites, suggestless, hidden, and playlists.
+  /// Removes the file from favorites, suggestless, hidden, merged songs, and playlists.
   /// Preserves play events to maintain statistics.
   Future<void> deleteFile(String filename) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
 
-    // Update User Data DB (Favorites, SuggestLess, Hidden, Playlists)
+    // Update User Data DB (Favorites, SuggestLess, Hidden, Merged Songs, Playlists)
     await _userDataDatabase!.transaction((txn) async {
       // Remove from favorites
       await txn
@@ -502,6 +521,15 @@ class DatabaseService {
 
       // Remove from hidden
       await txn.delete('hidden', where: 'filename = ?', whereArgs: [filename]);
+
+      // Remove from merged songs (this will auto-delete the group if empty due to ON DELETE CASCADE)
+      await txn
+          .delete('merged_song', where: 'filename = ?', whereArgs: [filename]);
+
+      // Clean up empty merge groups
+      await txn.delete('merged_song_group',
+          where:
+              'id NOT IN (SELECT DISTINCT group_id FROM merged_song WHERE group_id IS NOT NULL)');
 
       // Remove from all playlists
       await txn.delete('playlist_song',
@@ -530,6 +558,289 @@ class DatabaseService {
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
+  }
+
+  // ==========================================================================
+  // MERGED SONGS QUERIES
+  // ==========================================================================
+
+  /// Gets all merged song groups with their filenames and priority info
+  /// Returns a map of groupId -> {filenames: [...], priorityFilename: ...}
+  Future<Map<String, ({List<String> filenames, String? priorityFilename})>>
+      getMergedSongGroups() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return {};
+
+    try {
+      // Get groups with priority
+      final groupResults = await _userDataDatabase!.query('merged_song_group');
+      final groupPriorities = <String, String?>{};
+      for (final row in groupResults) {
+        groupPriorities[row['id'] as String] =
+            row['priority_filename'] as String?;
+      }
+
+      // Get all songs
+      final results = await _userDataDatabase!.rawQuery('''
+        SELECT g.id as group_id, m.filename
+        FROM merged_song_group g
+        JOIN merged_song m ON g.id = m.group_id
+        ORDER BY g.id, m.added_at
+      ''');
+
+      final groups = <String, List<String>>{};
+      for (final row in results) {
+        final groupId = row['group_id'] as String;
+        final filename = row['filename'] as String;
+        groups.putIfAbsent(groupId, () => []).add(filename);
+      }
+
+      // Combine into result format
+      final result = <String, ({List<String> filenames, String? priorityFilename})>{};
+      for (final entry in groups.entries) {
+        result[entry.key] = (
+          filenames: entry.value,
+          priorityFilename: groupPriorities[entry.key],
+        );
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Error fetching merged song groups: $e');
+      return {};
+    }
+  }
+
+  /// Gets the priority filename for a merge group
+  Future<String?> getMergedGroupPriority(String groupId) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return null;
+
+    try {
+      final results = await _userDataDatabase!.query(
+        'merged_song_group',
+        where: 'id = ?',
+        whereArgs: [groupId],
+        limit: 1,
+      );
+      if (results.isNotEmpty) {
+        return results.first['priority_filename'] as String?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching merged group priority: $e');
+      return null;
+    }
+  }
+
+  /// Sets the priority filename for a merge group
+  Future<void> setMergedGroupPriority(
+      String groupId, String? priorityFilename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    try {
+      await _userDataDatabase!.update(
+        'merged_song_group',
+        {'priority_filename': priorityFilename},
+        where: 'id = ?',
+        whereArgs: [groupId],
+      );
+      debugPrint('Set priority for group $groupId to $priorityFilename');
+    } catch (e) {
+      debugPrint('Error setting merged group priority: $e');
+    }
+  }
+
+  /// Gets the group ID for a specific filename if it's part of a merge group
+  Future<String?> getMergedGroupId(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return null;
+
+    try {
+      final results = await _userDataDatabase!.query(
+        'merged_song',
+        where: 'filename = ?',
+        whereArgs: [filename],
+        limit: 1,
+      );
+      if (results.isNotEmpty) {
+        return results.first['group_id'] as String?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching merged group id: $e');
+      return null;
+    }
+  }
+
+  /// Gets all filenames in the same merge group as the given filename
+  Future<List<String>> getMergedSiblings(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+
+    try {
+      final groupId = await getMergedGroupId(filename);
+      if (groupId == null) return [];
+
+      final results = await _userDataDatabase!.query(
+        'merged_song',
+        where: 'group_id = ? AND filename != ?',
+        whereArgs: [groupId, filename],
+      );
+      return results.map((r) => r['filename'] as String).toList();
+    } catch (e) {
+      debugPrint('Error fetching merged siblings: $e');
+      return [];
+    }
+  }
+
+  /// Creates a new merge group with the given filenames
+  /// [priorityFilename] is the song that should be prioritized during shuffle
+  Future<String> createMergedGroup(List<String> filenames,
+      {String? priorityFilename}) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) {
+      throw Exception('Database not initialized');
+    }
+
+    if (filenames.length < 2) {
+      throw Exception('Need at least 2 songs to merge');
+    }
+
+    // Validate priority filename is in the list
+    final effectivePriority =
+        priorityFilename != null && filenames.contains(priorityFilename)
+            ? priorityFilename
+            : null;
+
+    final groupId = DateTime.now().millisecondsSinceEpoch.toString();
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+    await _userDataDatabase!.transaction((txn) async {
+      // Create the group with priority
+      await txn.insert('merged_song_group', {
+        'id': groupId,
+        'priority_filename': effectivePriority,
+        'created_at': now,
+      });
+
+      // Add all songs to the group
+      for (final filename in filenames) {
+        await txn.insert(
+            'merged_song',
+            {
+              'filename': filename,
+              'group_id': groupId,
+              'added_at': now,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
+    debugPrint(
+        'Created merged group $groupId with ${filenames.length} songs, priority: $effectivePriority');
+    return groupId;
+  }
+
+  /// Adds songs to an existing merge group
+  Future<void> addSongsToMergedGroup(
+      String groupId, List<String> filenames) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+    await _userDataDatabase!.transaction((txn) async {
+      for (final filename in filenames) {
+        await txn.insert(
+            'merged_song',
+            {
+              'filename': filename,
+              'group_id': groupId,
+              'added_at': now,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
+    debugPrint('Added ${filenames.length} songs to merged group $groupId');
+  }
+
+  /// Removes a song from its merge group
+  Future<void> removeSongFromMergedGroup(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn
+          .delete('merged_song', where: 'filename = ?', whereArgs: [filename]);
+
+      // Clean up empty groups
+      await txn.delete('merged_song_group',
+          where:
+              'id NOT IN (SELECT DISTINCT group_id FROM merged_song WHERE group_id IS NOT NULL)');
+    });
+
+    debugPrint('Removed $filename from merged group');
+  }
+
+  /// Deletes an entire merge group
+  Future<void> deleteMergedGroup(String groupId) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      // Delete all songs in the group (cascade will handle the group)
+      await txn
+          .delete('merged_song', where: 'group_id = ?', whereArgs: [groupId]);
+      // Delete the group itself
+      await txn
+          .delete('merged_song_group', where: 'id = ?', whereArgs: [groupId]);
+    });
+
+    debugPrint('Deleted merged group $groupId');
+  }
+
+  /// Replaces all merged groups with the given data (used for import/restore)
+  /// Each entry should be: groupId -> (filenames: [...], priorityFilename: ...)
+  Future<void> setMergedGroups(
+      Map<String, ({List<String> filenames, String? priorityFilename})>
+          groups) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+    await _userDataDatabase!.transaction((txn) async {
+      // Clear existing
+      await txn.delete('merged_song');
+      await txn.delete('merged_song_group');
+
+      // Insert new groups
+      for (final entry in groups.entries) {
+        final groupId = entry.key;
+        final filenames = entry.value.filenames;
+        final priorityFilename = entry.value.priorityFilename;
+
+        if (filenames.length < 2) continue;
+
+        await txn.insert('merged_song_group', {
+          'id': groupId,
+          'priority_filename': priorityFilename,
+          'created_at': now,
+        });
+
+        for (final filename in filenames) {
+          await txn.insert('merged_song', {
+            'filename': filename,
+            'group_id': groupId,
+            'added_at': now,
+          });
+        }
+      }
+    });
+
+    debugPrint('Set ${groups.length} merged groups');
   }
 
   // ==========================================================================
@@ -1038,6 +1349,17 @@ class DatabaseService {
       song_filename TEXT,
       added_at REAL,
       FOREIGN KEY (playlist_id) REFERENCES playlist (id)
+    );
+    CREATE TABLE IF NOT EXISTS merged_song_group (
+      id TEXT PRIMARY KEY,
+      priority_filename TEXT,
+      created_at REAL
+    );
+    CREATE TABLE IF NOT EXISTS merged_song (
+      filename TEXT PRIMARY KEY,
+      group_id TEXT,
+      added_at REAL,
+      FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
     );
   ''';
 

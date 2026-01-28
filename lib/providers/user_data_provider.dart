@@ -12,6 +12,8 @@ class UserDataState {
   final List<String> suggestLess;
   final List<String> hidden;
   final List<Playlist> playlists;
+  final Map<String, List<String>> mergedGroups;
+  final Map<String, String?> mergedGroupPriorities;
   final bool isLoading;
 
   UserDataState({
@@ -19,6 +21,8 @@ class UserDataState {
     this.suggestLess = const [],
     this.hidden = const [],
     this.playlists = const [],
+    this.mergedGroups = const {},
+    this.mergedGroupPriorities = const {},
     this.isLoading = false,
   });
 
@@ -49,11 +53,52 @@ class UserDataState {
     return false;
   }
 
+  /// Checks if a song is part of a merged group
+  bool isMerged(String filename) {
+    for (final group in mergedGroups.values) {
+      if (group.contains(filename)) return true;
+    }
+    return false;
+  }
+
+  /// Gets the merge group ID for a song
+  String? getMergedGroupId(String filename) {
+    for (final entry in mergedGroups.entries) {
+      if (entry.value.contains(filename)) return entry.key;
+    }
+    return null;
+  }
+
+  /// Gets all songs in the same merge group as the given song
+  List<String> getMergedSiblings(String filename) {
+    for (final group in mergedGroups.values) {
+      if (group.contains(filename)) {
+        return group.where((f) => f != filename).toList();
+      }
+    }
+    return [];
+  }
+
+  /// Gets the priority filename for a merge group
+  String? getMergedGroupPriority(String groupId) {
+    return mergedGroupPriorities[groupId];
+  }
+
+  /// Checks if a song is the priority song in its merge group
+  bool isPriorityInMergeGroup(String filename) {
+    final groupId = getMergedGroupId(filename);
+    if (groupId == null) return false;
+    final priority = mergedGroupPriorities[groupId];
+    return priority == filename;
+  }
+
   UserDataState copyWith({
     List<String>? favorites,
     List<String>? suggestLess,
     List<String>? hidden,
     List<Playlist>? playlists,
+    Map<String, List<String>>? mergedGroups,
+    Map<String, String?>? mergedGroupPriorities,
     bool? isLoading,
   }) {
     return UserDataState(
@@ -61,6 +106,9 @@ class UserDataState {
       suggestLess: suggestLess ?? this.suggestLess,
       hidden: hidden ?? this.hidden,
       playlists: playlists ?? this.playlists,
+      mergedGroups: mergedGroups ?? this.mergedGroups,
+      mergedGroupPriorities:
+          mergedGroupPriorities ?? this.mergedGroupPriorities,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -103,12 +151,24 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final localSL = await DatabaseService.instance.getSuggestLess();
       final localHidden = await DatabaseService.instance.getHidden();
       final localPlaylists = await DatabaseService.instance.getPlaylists();
+      final localMergedGroups =
+          await DatabaseService.instance.getMergedSongGroups();
+
+      // Extract groups and priorities from the new format
+      final groups = <String, List<String>>{};
+      final priorities = <String, String?>{};
+      for (final entry in localMergedGroups.entries) {
+        groups[entry.key] = entry.value.filenames;
+        priorities[entry.key] = entry.value.priorityFilename;
+      }
 
       state = state.copyWith(
         favorites: localFavs,
         suggestLess: localSL,
         hidden: localHidden,
         playlists: localPlaylists,
+        mergedGroups: groups,
+        mergedGroupPriorities: priorities,
         isLoading: false,
       );
       _updateManager();
@@ -122,6 +182,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
           favorites: state.favorites,
           suggestLess: state.suggestLess,
           hidden: state.hidden,
+          mergedGroups: state.mergedGroups,
+          mergedGroupPriorities: state.mergedGroupPriorities,
         );
   }
 
@@ -328,5 +390,119 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final newPlaylists =
         state.playlists.where((p) => p.id != playlistId).toList();
     state = state.copyWith(playlists: newPlaylists);
+  }
+
+  // --- Merged Songs Management ---
+
+  /// Creates a new merge group with the given song filenames
+  /// [priorityFilename] is the song to prioritize during shuffle
+  Future<String> createMergedGroup(List<String> filenames,
+      {String? priorityFilename}) async {
+    if (_username == null) throw Exception('Not logged in');
+    if (filenames.length < 2) {
+      throw Exception('Need at least 2 songs to merge');
+    }
+
+    // Create in database
+    final groupId = await DatabaseService.instance.createMergedGroup(filenames,
+        priorityFilename: priorityFilename);
+
+    // Update state
+    final newGroups = Map<String, List<String>>.from(state.mergedGroups);
+    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    newGroups[groupId] = filenames;
+    newPriorities[groupId] = priorityFilename;
+    state = state.copyWith(
+        mergedGroups: newGroups, mergedGroupPriorities: newPriorities);
+    _updateManager();
+
+    return groupId;
+  }
+
+  /// Sets the priority song for a merge group
+  Future<void> setMergedGroupPriority(
+      String groupId, String? priorityFilename) async {
+    if (_username == null) return;
+
+    await DatabaseService.instance.setMergedGroupPriority(
+        groupId, priorityFilename);
+
+    // Update state
+    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    newPriorities[groupId] = priorityFilename;
+    state = state.copyWith(mergedGroupPriorities: newPriorities);
+    _updateManager();
+  }
+
+  /// Adds songs to an existing merge group
+  Future<void> addSongsToMergedGroup(
+      String groupId, List<String> filenames) async {
+    if (_username == null) return;
+
+    await DatabaseService.instance.addSongsToMergedGroup(groupId, filenames);
+
+    // Update state
+    final newGroups = Map<String, List<String>>.from(state.mergedGroups);
+    final existing = newGroups[groupId] ?? [];
+    newGroups[groupId] = [...existing, ...filenames];
+    state = state.copyWith(mergedGroups: newGroups);
+    _updateManager();
+  }
+
+  /// Removes a song from its merge group
+  Future<void> unmergeSong(String filename) async {
+    if (_username == null) return;
+
+    // Find the group and check if we're removing the priority song
+    for (final entry in state.mergedGroups.entries) {
+      if (entry.value.contains(filename)) {
+        break;
+      }
+    }
+
+    await DatabaseService.instance.removeSongFromMergedGroup(filename);
+
+    // Update state
+    final newGroups = Map<String, List<String>>.from(state.mergedGroups);
+    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    String? groupToRemove;
+    for (final entry in newGroups.entries) {
+      if (entry.value.contains(filename)) {
+        final updatedList = entry.value.where((f) => f != filename).toList();
+        if (updatedList.length < 2) {
+          groupToRemove = entry.key;
+        } else {
+          newGroups[entry.key] = updatedList;
+          // If we removed the priority song, clear the priority
+          if (newPriorities[entry.key] == filename) {
+            newPriorities[entry.key] = null;
+          }
+        }
+        break;
+      }
+    }
+    if (groupToRemove != null) {
+      newGroups.remove(groupToRemove);
+      newPriorities.remove(groupToRemove);
+    }
+    state = state.copyWith(
+        mergedGroups: newGroups, mergedGroupPriorities: newPriorities);
+    _updateManager();
+  }
+
+  /// Deletes an entire merge group
+  Future<void> deleteMergedGroup(String groupId) async {
+    if (_username == null) return;
+
+    await DatabaseService.instance.deleteMergedGroup(groupId);
+
+    // Update state
+    final newGroups = Map<String, List<String>>.from(state.mergedGroups);
+    final newPriorities = Map<String, String?>.from(state.mergedGroupPriorities);
+    newGroups.remove(groupId);
+    newPriorities.remove(groupId);
+    state = state.copyWith(
+        mergedGroups: newGroups, mergedGroupPriorities: newPriorities);
+    _updateManager();
   }
 }

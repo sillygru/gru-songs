@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../providers/providers.dart';
@@ -10,6 +12,7 @@ import '../widgets/scanning_progress_bar.dart';
 import '../../services/android_storage_service.dart';
 import '../../services/data_export_service.dart';
 import '../../services/telemetry_service.dart';
+import '../../services/database_optimizer_service.dart';
 import 'theme_selection_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -264,6 +267,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           subtitle: 'Restore or merge data from a backup .zip',
           onTap: () => _handleImport(),
         ),
+        _buildListTile(
+          icon: Icons.build_rounded,
+          title: 'Optimize Database',
+          subtitle: 'Check and fix database issues',
+          onTap: () => _showOptimizeDatabaseDialog(),
+        ),
       ],
     );
   }
@@ -367,6 +376,208 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (Navigator.canPop(context)) Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Import failed: $e")),
+        );
+      }
+    }
+  }
+
+  Future<void> _showRestartDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.restart_alt, color: Colors.blue, size: 48),
+        title: const Text('Restart Required'),
+        content: const Text(
+          'Database optimization has been completed successfully.\n\n'
+          'The app needs to restart to apply all changes properly.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _restartApp();
+            },
+            child: const Text('Restart Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restartApp() async {
+    // For Android, we can use a platform channel to restart the app
+    // For other platforms, we just exit and let the user relaunch
+    if (Platform.isAndroid) {
+      try {
+        const platform = MethodChannel('gru_songs/app');
+        await platform.invokeMethod('restartApp');
+      } catch (e) {
+        // If platform method fails, just exit
+        exit(0);
+      }
+    } else {
+      // On other platforms, just exit
+      exit(0);
+    }
+  }
+
+  Future<void> _showOptimizeDatabaseDialog() async {
+    final authState = ref.read(authProvider);
+    final username = authState.username;
+    if (username == null) return;
+
+    // Show backup warning first
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 48),
+        title: const Text('Backup Recommended'),
+        content: const Text(
+          'Database optimization will check for and fix missing tables, corrupted data, orphaned records, and duplicates.\n\n'
+          'While this process is generally safe, it is recommended to create a backup first.\n\n'
+          'Would you like to proceed?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Proceed'),
+          ),
+        ],
+      ),
+    );
+
+    if (proceed != true || !mounted) return;
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Optimizing database...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final optimizer = DatabaseOptimizerService();
+      final result = await optimizer.optimizeDatabases(username);
+
+      if (mounted) {
+        Navigator.pop(context); // Pop loading
+
+        // Show results
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: Icon(
+              result.success ? Icons.check_circle : Icons.error,
+              color: result.success ? Colors.green : Colors.red,
+              size: 48,
+            ),
+            title: Text(result.success ? 'Optimization Complete' : 'Optimization Issues'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(result.message),
+                  if (result.issuesFound.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Issues Found:',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...result.issuesFound.map((issue) => Padding(
+                          padding: const EdgeInsets.only(left: 8, bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('• '),
+                              Expanded(child: Text(issue)),
+                            ],
+                          ),
+                        )),
+                  ],
+                  if (result.fixesApplied.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Fixes Applied:',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...result.fixesApplied.map((fix) => Padding(
+                          padding: const EdgeInsets.only(left: 8, bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.check, size: 16, color: Colors.green),
+                              const SizedBox(width: 4),
+                              Expanded(child: Text(fix)),
+                            ],
+                          ),
+                        )),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+
+        // Refresh providers if fixes were applied
+        if (result.fixesApplied.isNotEmpty) {
+          ref.invalidate(userDataProvider);
+          
+          // Show restart dialog after a brief delay
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _showRestartDialog();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Pop loading
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: const Icon(Icons.error, color: Colors.red, size: 48),
+            title: const Text('Optimization Failed'),
+            content: Text('An error occurred during optimization: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
         );
       }
     }

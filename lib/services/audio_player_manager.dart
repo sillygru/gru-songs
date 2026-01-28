@@ -42,6 +42,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   List<String> _suggestLess = [];
   List<String> _hidden = [];
 
+  // Merged song groups for shuffle weighting
+  Map<String, List<String>> _mergedGroups = {};
+
+  // Priority songs for each merge group (filename -> groupId for quick lookup)
+  Map<String, String> _mergedGroupPriorities = {};
+
   // Shuffle state
   ShuffleState _shuffleState = const ShuffleState();
 
@@ -107,10 +113,21 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void setUserData(
       {List<String>? favorites,
       List<String>? suggestLess,
-      List<String>? hidden}) {
+      List<String>? hidden,
+      Map<String, List<String>>? mergedGroups,
+      Map<String, String?>? mergedGroupPriorities}) {
     if (favorites != null) _favorites = favorites;
     if (suggestLess != null) _suggestLess = suggestLess;
     if (hidden != null) _hidden = hidden;
+    if (mergedGroups != null) _mergedGroups = mergedGroups;
+    if (mergedGroupPriorities != null) {
+      _mergedGroupPriorities = {};
+      for (final entry in mergedGroupPriorities.entries) {
+        if (entry.value != null) {
+          _mergedGroupPriorities[entry.value!] = entry.key;
+        }
+      }
+    }
   }
 
   Future<void> updateShuffleConfig(ShuffleConfig config) async {
@@ -401,7 +418,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         filename: filename,
         timestamp: DateTime.now().millisecondsSinceEpoch / 1000.0);
 
-    history.removeWhere((e) => e.filename == filename);
+    // Remove this song and any songs in the same merge group from history
+    // This ensures merged songs are treated as "the same song" for anti-repeat
+    final filenamesToRemove = <String>{filename};
+    final groupFilenames = _getMergedGroupFilenames(filename);
+    filenamesToRemove.addAll(groupFilenames);
+
+    history.removeWhere((e) => filenamesToRemove.contains(e.filename));
     history.insert(0, newEntry);
 
     if (history.length > _shuffleState.config.historyLimit) {
@@ -833,6 +856,30 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return result;
   }
 
+  /// Checks if a song is in the same merge group as the previous song
+  bool _isInSameMergeGroup(String filename1, String filename2) {
+    for (final group in _mergedGroups.values) {
+      final contains1 = group.contains(filename1);
+      final contains2 = group.contains(filename2);
+      if (contains1 && contains2) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Gets all filenames in the same merge group as the given filename
+  List<String> _getMergedGroupFilenames(String filename) {
+    for (final group in _mergedGroups.values) {
+      if (group.contains(filename)) {
+        return group;
+      }
+    }
+    return [];
+  }
+
+
+
   double _calculateWeight(
       QueueItem item,
       QueueItem? prev,
@@ -845,7 +892,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final count = playCounts[song.filename] ?? 0;
 
     // 1. User Preferences
-    if (_isFavorite(song.filename)) {
+    // Favorites and suggest-less are per-song only (not shared across merge groups)
+    final isFavorite = _isFavorite(song.filename);
+    if (isFavorite) {
       if (config.personality == ShufflePersonality.consistent) {
         weight *= 1.4; // +40% for consistent
       } else if (config.personality == ShufflePersonality.explorer) {
@@ -854,7 +903,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         weight *= config.favoriteMultiplier; // +20% default (1.2)
       }
     }
-    if (_isSuggestLess(song.filename)) {
+    // Suggest-less is per-song only (not shared across merge groups)
+    final isSuggestLess = _isSuggestLess(song.filename);
+    if (isSuggestLess) {
       weight *= 0.2; // 80% penalty globally
     }
 
@@ -879,23 +930,42 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       // Default uses streak breaker
       if (config.streakBreakerEnabled && prev != null) {
         final prevSong = prev.song;
-        if (song.artist != 'Unknown Artist' &&
-            prevSong.artist != 'Unknown Artist' &&
-            song.artist == prevSong.artist) {
-          weight *= 0.5;
-        }
-        if (song.album != 'Unknown Album' &&
-            prevSong.album != 'Unknown Album' &&
-            song.album == prevSong.album) {
-          weight *= 0.7;
+
+        // Check if songs are in the same merge group (treat as same song for streak breaking)
+        if (_isInSameMergeGroup(song.filename, prevSong.filename)) {
+          weight *= 0.05; // 95% penalty for merged songs played back-to-back
+        } else {
+          if (song.artist != 'Unknown Artist' &&
+              prevSong.artist != 'Unknown Artist' &&
+              song.artist == prevSong.artist) {
+            weight *= 0.5;
+          }
+          if (song.album != 'Unknown Album' &&
+              prevSong.album != 'Unknown Album' &&
+              song.album == prevSong.album) {
+            weight *= 0.7;
+          }
         }
       }
     }
 
     // 3. Global Recency Penalty (Last 100 events)
+    // Check both the song itself and its merge group
     if (_shuffleState.history.isNotEmpty) {
       int historyIndex =
           _shuffleState.history.indexWhere((e) => e.filename == song.filename);
+
+      // Also check if any song in the merge group is in history
+      if (historyIndex == -1 && _mergedGroups.isNotEmpty) {
+        final groupFilenames = _getMergedGroupFilenames(song.filename);
+        for (int i = 0; i < _shuffleState.history.length && i < 100; i++) {
+          if (groupFilenames.contains(_shuffleState.history[i].filename)) {
+            historyIndex = i;
+            break;
+          }
+        }
+      }
+
       if (historyIndex != -1 && historyIndex < 100) {
         int n = historyIndex + 1;
         // n=1 (most recent) -> 100% penalty
@@ -912,6 +982,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final stats = skipStats[song.filename];
     if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.15) {
       weight *= 0.05; // 95% penalty
+    }
+
+    // 5. Priority boost for merged groups
+    // If this song is the priority song in its merge group, give it a boost
+    if (_mergedGroupPriorities.containsKey(song.filename)) {
+      weight *= 1.5; // 50% boost for priority song
     }
 
     return max(0.0001, weight);
