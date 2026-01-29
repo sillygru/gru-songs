@@ -3,6 +3,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import '../domain/services/search_service.dart';
+import '../services/storage_service.dart';
 
 /// Result of a database optimization operation
 class OptimizationResult {
@@ -56,6 +58,12 @@ class DatabaseOptimizerService {
       issuesFound.addAll(userDataResult['issues'] as List<String>);
       fixesApplied.addAll(userDataResult['fixes'] as List<String>);
       details['user_data_db'] = userDataResult['details'];
+
+      // Optimize/rebuild search index
+      final searchIndexResult = await _optimizeSearchIndex(username);
+      issuesFound.addAll(searchIndexResult['issues'] as List<String>);
+      fixesApplied.addAll(searchIndexResult['fixes'] as List<String>);
+      details['search_index'] = searchIndexResult['details'];
 
       final success = issuesFound.isEmpty || fixesApplied.isNotEmpty;
       final message = success
@@ -591,5 +599,50 @@ class DatabaseOptimizerService {
 
     debugPrint(
         'Recovered user data database. Corrupted file backed up to $backupPath');
+  }
+
+  /// Optimizes the search index by rebuilding it from cached songs
+  Future<Map<String, dynamic>> _optimizeSearchIndex(String username) async {
+    final issues = <String>[];
+    final fixes = <String>[];
+    final details = <String, dynamic>{};
+
+    try {
+      // Load cached songs
+      final storage = StorageService();
+      final songs = await storage.loadSongs(username);
+
+      if (songs.isEmpty) {
+        issues.add('No songs found to build search index');
+        details['songs_count'] = 0;
+        return {'issues': issues, 'fixes': fixes, 'details': details};
+      }
+
+      details['songs_count'] = songs.length;
+
+      // Initialize and rebuild search index
+      final searchService = SearchService();
+      await searchService.initForUser(username);
+
+      final startTime = DateTime.now();
+      await searchService.rebuildIndex(songs);
+      final duration = DateTime.now().difference(startTime);
+
+      // Get stats after rebuild
+      final stats = await searchService.getIndexStats();
+
+      fixes.add(
+          'Rebuilt search index with ${songs.length} songs in ${duration.inMilliseconds}ms');
+      details['index_entries'] = stats.totalEntries;
+      details['entries_with_lyrics'] = stats.entriesWithLyrics;
+      details['rebuild_duration_ms'] = duration.inMilliseconds;
+
+      await searchService.dispose();
+    } catch (e) {
+      issues.add('Error optimizing search index: $e');
+      debugPrint('Error optimizing search index: $e');
+    }
+
+    return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 }

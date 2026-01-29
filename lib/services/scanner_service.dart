@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
 import 'database_service.dart';
+import '../domain/services/search_service.dart';
 
 class _ScanParams {
   final String path;
@@ -38,11 +39,15 @@ class ScannerService {
     '.ogg'
   ];
 
-  Future<List<Song>> scanDirectory(String path,
-      {List<Song>? existingSongs,
-      String? lyricsPath,
-      Map<String, int>? playCounts,
-      void Function(double progress)? onProgress}) async {
+  Future<List<Song>> scanDirectory(
+    String path, {
+    List<Song>? existingSongs,
+    String? lyricsPath,
+    Map<String, int>? playCounts,
+    void Function(double progress)? onProgress,
+    String? username,
+    void Function(List<Song>)? onComplete,
+  }) async {
     // Request permissions before accessing storage
     if (Platform.isAndroid) {
       var statusStorage = await Permission.storage.request();
@@ -80,16 +85,41 @@ class ScannerService {
 
     final completer = Completer<List<Song>>();
 
-    receivePort.listen((message) {
+    receivePort.listen((message) async {
       if (message is double) {
         onProgress?.call(message);
       } else if (message is List<Song>) {
+        // Rebuild search index after scanning
+        if (username != null) {
+          try {
+            final searchService = SearchService();
+            await searchService.initForUser(username);
+            await searchService.rebuildIndex(message);
+            debugPrint('Search index rebuilt with ${message.length} songs');
+          } catch (e) {
+            debugPrint('Error rebuilding search index: $e');
+          }
+        }
+        onComplete?.call(message);
         completer.complete(message);
         receivePort.close();
       } else if (message is List) {
         // Handle explicit typing issue if passed as dynamic list
         try {
-          completer.complete(message.cast<Song>());
+          final songs = message.cast<Song>();
+          // Rebuild search index after scanning
+          if (username != null) {
+            try {
+              final searchService = SearchService();
+              await searchService.initForUser(username);
+              await searchService.rebuildIndex(songs);
+              debugPrint('Search index rebuilt with ${songs.length} songs');
+            } catch (e) {
+              debugPrint('Error rebuilding search index: $e');
+            }
+          }
+          onComplete?.call(songs);
+          completer.complete(songs);
         } catch (e) {
           completer.completeError("Failed to cast result to List<Song>");
         }

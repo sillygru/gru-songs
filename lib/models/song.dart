@@ -87,9 +87,12 @@ class LyricLine extends Equatable {
 
   const LyricLine({required this.time, required this.text});
 
+  /// Parses LRC format lyrics content
+  /// Format: [mm:ss.xx]Lyric text
   static List<LyricLine> parse(String content) {
     final List<LyricLine> lyrics = [];
-    final RegExp timeExp = RegExp(r'[[0-9]+:[0-9]+.?\[d*]');
+    // Match timestamp format [mm:ss.xx] or [mm:ss.xxx] or [mm:ss]
+    final RegExp timeExp = RegExp(r'\[([0-9]+):([0-9]+\.?[0-9]*)\]');
 
     for (var line in content.split('\n')) {
       line = line.trim();
@@ -97,7 +100,8 @@ class LyricLine extends Equatable {
 
       final List<RegExpMatch> matches = timeExp.allMatches(line).toList();
       if (matches.isEmpty) {
-        final bool isMetadata = RegExp(r'^[a-z]+:.*]$').hasMatch(line);
+        // Check if it's metadata like [ar:Artist] or [ti:Title]
+        final bool isMetadata = RegExp(r'^\[[a-z]+:.+\]$').hasMatch(line);
         if (!isMetadata) {
           lyrics.add(LyricLine(time: Duration.zero, text: line));
         }
@@ -143,6 +147,32 @@ class LyricLine extends Equatable {
 
     lyrics.sort((a, b) => a.time.compareTo(b.time));
     return lyrics;
+  }
+
+  /// Extracts plain text content from LRC format (removes all timestamps)
+  /// This is used for search indexing to avoid indexing timestamps
+  static String extractPlainText(String content) {
+    final RegExp timeExp = RegExp(r'\[([0-9]+):([0-9]+\.?[0-9]*)\]');
+    final lines = content.split('\n');
+    final List<String> plainLines = [];
+
+    for (var line in lines) {
+      line = line.trim();
+      if (line.isEmpty) continue;
+
+      // Skip metadata lines like [ar:Artist], [ti:Title], etc.
+      if (RegExp(r'^\[[a-z]+:.+\]$').hasMatch(line)) {
+        continue;
+      }
+
+      // Remove all timestamps from the line
+      String plainText = line.replaceAll(timeExp, '').trim();
+      if (plainText.isNotEmpty) {
+        plainLines.add(plainText);
+      }
+    }
+
+    return plainLines.join('\n');
   }
 
   @override

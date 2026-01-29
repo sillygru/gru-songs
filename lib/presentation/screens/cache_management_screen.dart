@@ -83,12 +83,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                         Text(_v3CacheSize,
                             style: const TextStyle(
                                 fontSize: 32, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        const Text(
-                          "Stores temporary sync data and app settings. Media is no longer cached.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
                       ],
                     ),
                   ),

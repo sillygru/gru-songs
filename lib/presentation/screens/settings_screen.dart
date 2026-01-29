@@ -7,7 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
-import 'cache_management_screen.dart';
+import 'storage_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../services/android_storage_service.dart';
 import '../../services/data_export_service.dart';
@@ -187,13 +187,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   }),
               _buildListTile(
                 icon: Icons.storage_outlined,
-                title: 'Manage Cache',
-                subtitle: 'Internal app cache management',
+                title: 'Manage Storage',
+                subtitle: 'Disk usage and data management',
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => const CacheManagementScreen()),
+                        builder: (_) => const StorageManagementScreen()),
                   );
                 },
               ),
@@ -393,12 +393,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'The app needs to restart to apply all changes properly.',
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Later'),
-          ),
           FilledButton(
             onPressed: () {
               Navigator.pop(context);

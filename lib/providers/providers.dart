@@ -198,8 +198,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
       final filtered =
           uniqueCached.where((s) => !userData.isHidden(s.filename)).toList();
-      // Always trigger background scan on startup to ensure library is up to date
-      _scheduleBackgroundScanUpdate(uniqueCached, showIndicator: true);
+      // Trigger background scan on startup to ensure library is up to date
+      // Don't show indicator for background scan to avoid UI flicker
+      _scheduleBackgroundScanUpdate(uniqueCached, showIndicator: false);
       return filtered;
     }
 

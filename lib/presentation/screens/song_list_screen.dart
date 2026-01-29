@@ -6,6 +6,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/library_logic.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/sort_menu.dart';
+import '../widgets/duration_display.dart';
 import 'select_songs_screen.dart';
 
 class SongListScreen extends ConsumerWidget {
@@ -100,6 +101,32 @@ class SongListScreen extends ConsumerWidget {
               ),
             ],
           ),
+          // Total duration header
+          if (sortedSongs.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.schedule,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    CollectionDurationDisplay(
+                      songs: sortedSongs,
+                      showSongCount: true,
+                      compact: false,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (sortedSongs.isEmpty)
             SliverFillRemaining(
               child: Center(

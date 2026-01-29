@@ -5,11 +5,13 @@ import 'album_art_image.dart';
 class FolderGridImage extends StatelessWidget {
   final List<Song> songs;
   final double size;
+  final bool isGridItem;
 
   const FolderGridImage({
     super.key,
     required this.songs,
     this.size = 48,
+    this.isGridItem = false,
   });
 
   @override
@@ -47,6 +49,9 @@ class FolderGridImage extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
+          // Use higher resolution for grid items
+          memCacheWidth: isGridItem ? (size * 4).toInt() : null,
+          memCacheHeight: isGridItem ? (size * 4).toInt() : null,
         ),
       );
     }
@@ -77,6 +82,9 @@ class FolderGridImage extends StatelessWidget {
               width: size / 2,
               height: size / 2,
               fit: BoxFit.cover,
+              // Use higher resolution for grid items
+              memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+              memCacheHeight: isGridItem ? (size * 2).toInt() : null,
             );
           },
         ),

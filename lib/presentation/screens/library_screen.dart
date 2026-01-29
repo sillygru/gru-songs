@@ -12,6 +12,7 @@ import '../widgets/folder_options_menu.dart';
 import '../widgets/folder_grid_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/sort_menu.dart';
+import '../widgets/duration_display.dart';
 import 'song_list_screen.dart';
 import 'merged_songs_screen.dart';
 import 'select_songs_screen.dart';
@@ -184,8 +185,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
                 title: const Text('Favorites',
                     style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(
-                    '${userData.favorites.length} songs (found in library: ${favSongs.length})'),
+                subtitle: CollectionDurationDisplay(
+                  songs: favSongs,
+                  showSongCount: true,
+                  compact: true,
+                ),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -221,7 +225,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
                 title: const Text('Merged Songs',
                     style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('$mergedCount groups'),
+                subtitle:
+                    Text('$mergedCount group${mergedCount != 1 ? 's' : ''}'),
                 trailing: IconButton(
                   icon: const Icon(Icons.add),
                   tooltip: 'Create new merge group',
@@ -302,8 +307,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
                 title: Text(playlist.name,
                     style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(
-                    '${playlist.songs.length} songs (${playlistSongs.length} found in library)'),
+                subtitle: CollectionDurationDisplay(
+                  songs: playlistSongs,
+                  showSongCount: true,
+                  compact: true,
+                ),
                 trailing: IconButton(
                   icon: const Icon(Icons.more_vert),
                   onPressed: () {
@@ -365,7 +373,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
               title: Text(folderName,
                   style: const TextStyle(fontWeight: FontWeight.w500)),
-              subtitle: Text('${folderSongs.length} items'),
+              subtitle: CollectionDurationDisplay(
+                songs: folderSongs,
+                showSongCount: true,
+                compact: true,
+              ),
               trailing: IconButton(
                 icon: const Icon(Icons.more_vert),
                 onPressed: () {
@@ -483,7 +495,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
                   clipBehavior: Clip.antiAlias,
-                  child: FolderGridImage(songs: artistSongs),
+                  child: FolderGridImage(
+                    songs: artistSongs,
+                    isGridItem: true,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -494,9 +509,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              Text(
-                '${artistSongs.length} songs',
-                textAlign: TextAlign.center,
+              CollectionDurationDisplay(
+                songs: artistSongs,
+                showSongCount: true,
+                compact: true,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -550,7 +566,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
                   clipBehavior: Clip.antiAlias,
-                  child: FolderGridImage(songs: albumSongs),
+                  child: FolderGridImage(
+                    songs: albumSongs,
+                    isGridItem: true,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -563,11 +582,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
               Text(
                 artist,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              CollectionDurationDisplay(
+                songs: albumSongs,
+                showSongCount: true,
+                compact: true,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withValues(alpha: 0.7),
                     ),
               ),
             ],

@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
 import '../models/song.dart';
+import '../data/repositories/search_index_repository.dart';
 
 class BackupDiff {
   final int songCountDiff;
@@ -222,8 +223,17 @@ class BackupService {
         final archive = Archive();
 
         // Add all files from the temp directory to the archive
+        // NOTE: Search index database is explicitly excluded from backups
+        // as it will be rebuilt when the library is scanned
         await for (final entity in usernameDataDir.list(recursive: true)) {
           if (entity is File) {
+            // Skip search index database files
+            final filename = p.basename(entity.path);
+            if (filename.contains('_search_index.db')) {
+              debugPrint('Excluding search index from backup: $filename');
+              continue;
+            }
+
             final relativePath =
                 p.relative(entity.path, from: usernameDataDir.path);
             final bytes = await entity.readAsBytes();
@@ -370,6 +380,16 @@ class BackupService {
 
         // Reinitialize database service to pick up new data
         await DatabaseService.instance.initForUser(username);
+
+        // Delete any existing search index (it will be rebuilt on next scan)
+        try {
+          final searchIndexRepo = SearchIndexRepository();
+          await searchIndexRepo.deleteDatabaseFile(username);
+          debugPrint(
+              'Deleted old search index after restore - will be rebuilt on next scan');
+        } catch (e) {
+          debugPrint('Note: Could not delete search index: $e');
+        }
       } finally {
         // Clean up temp directory
         if (await tempDir.exists()) {

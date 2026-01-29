@@ -18,8 +18,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final _oldPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
   final _newUsernameController = TextEditingController();
 
   void _showChangeUsernameDialog() {
@@ -50,69 +48,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text("Username updated")));
                   _newUsernameController.clear();
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text(e.toString())));
-                }
-              }
-            },
-            child: const Text('Update'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showChangePasswordDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _oldPasswordController,
-              decoration: const InputDecoration(
-                labelText: 'Old Password',
-                border: OutlineInputBorder(),
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _newPasswordController,
-              decoration: const InputDecoration(
-                labelText: 'New Password',
-                border: OutlineInputBorder(),
-              ),
-              obscureText: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () async {
-              if (_oldPasswordController.text.isEmpty ||
-                  _newPasswordController.text.isEmpty) {
-                return;
-              }
-              try {
-                await ref.read(authProvider.notifier).updatePassword(
-                      _oldPasswordController.text.trim(),
-                      _newPasswordController.text.trim(),
-                    );
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Password updated")));
-                  _oldPasswordController.clear();
-                  _newPasswordController.clear();
                 }
               } catch (e) {
                 if (context.mounted) {
@@ -290,11 +225,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       subtitle: 'Current: ${authState.username}',
                       onTap: _showChangeUsernameDialog,
                     ),
-                    _buildListTile(
-                      icon: Icons.lock_outline,
-                      title: 'Change Password',
-                      onTap: _showChangePasswordDialog,
-                    ),
                     const SizedBox(height: 24),
                     _buildSectionTitle('Data Management'),
                     _buildListTile(
@@ -314,7 +244,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     _buildListTile(
                       icon: Icons.settings,
                       title: 'Settings',
-                      subtitle: 'Theme, Storage, Cache & Sync',
+                      subtitle: 'Theme & Storage',
                       onTap: () {
                         Navigator.push(
                           context,
@@ -339,7 +269,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      "Gru Songs v3.9.0",
+                      "Gru Songs v3.10.0",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,

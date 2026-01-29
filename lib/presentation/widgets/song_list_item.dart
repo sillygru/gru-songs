@@ -8,6 +8,7 @@ import 'album_art_image.dart';
 import 'song_options_menu.dart';
 import 'heart_context_menu.dart';
 import 'audio_visualizer.dart';
+import 'duration_display.dart';
 
 class SongListItem extends ConsumerWidget {
   final Song song;
@@ -171,6 +172,10 @@ class SongListItem extends ConsumerWidget {
                       ),
                     ),
                     if (showMenu) ...[
+                      const SizedBox(width: 8),
+                      // Duration display
+                      if (song.duration != null && song.duration!.inSeconds > 0)
+                        DurationBadge(duration: song.duration),
                       const SizedBox(width: 8),
                       if (song.playCount > 0)
                         Container(
