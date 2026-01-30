@@ -260,10 +260,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 16),
+                                          fontSize: 16,
+                                          height: 1.2),
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 8),
                                   Flexible(
                                     child: Text(
                                       song.artist,
@@ -276,6 +277,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .onSurfaceVariant,
+                                            height: 1.2,
                                           ),
                                     ),
                                   ),

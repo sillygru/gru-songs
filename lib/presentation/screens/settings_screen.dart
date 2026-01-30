@@ -126,6 +126,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               SwitchListTile(
+                secondary: const Icon(Icons.timer_outlined),
+                title: const Text('Show Song Duration'),
+                subtitle: const Text('Display duration in song lists'),
+                value: settings.showSongDuration,
+                onChanged: (val) {
+                  ref.read(settingsProvider.notifier).setShowSongDuration(val);
+                },
+              ),
+              SwitchListTile(
                 secondary: const Icon(Icons.waves_rounded),
                 title: const Text('Audio Visualizer'),
                 subtitle: const Text('Show animated wave while playing'),

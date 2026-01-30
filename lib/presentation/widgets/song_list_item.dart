@@ -156,26 +156,40 @@ class SongListItem extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            song.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant
-                                  .withValues(alpha: isSuggestLess ? 0.5 : 1.0),
-                            ),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  song.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant
+                                        .withValues(
+                                            alpha: isSuggestLess ? 0.5 : 1.0),
+                                  ),
+                                ),
+                              ),
+                              if (settings.showSongDuration &&
+                                  song.duration != null &&
+                                  song.duration!.inSeconds > 0) ...[
+                                const SizedBox(width: 8),
+                                DurationBadge(
+                                  duration: song.duration,
+                                  isSubtle: true,
+                                  showIcon: true,
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
                     ),
                     if (showMenu) ...[
                       const SizedBox(width: 8),
-                      // Duration display
-                      if (song.duration != null && song.duration!.inSeconds > 0)
-                        DurationBadge(duration: song.duration),
                       const SizedBox(width: 8),
                       if (song.playCount > 0)
                         Container(

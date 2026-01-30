@@ -9,6 +9,7 @@ class SettingsState {
   final bool autoPauseOnVolumeZero;
   final bool autoResumeOnVolumeRestore;
   final SongSortOrder sortOrder;
+  final bool showSongDuration;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -16,6 +17,7 @@ class SettingsState {
     this.autoPauseOnVolumeZero = true,
     this.autoResumeOnVolumeRestore = true,
     this.sortOrder = SongSortOrder.title,
+    this.showSongDuration = false,
   });
 
   SettingsState copyWith({
@@ -24,6 +26,7 @@ class SettingsState {
     bool? autoPauseOnVolumeZero,
     bool? autoResumeOnVolumeRestore,
     SongSortOrder? sortOrder,
+    bool? showSongDuration,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -33,6 +36,7 @@ class SettingsState {
       autoResumeOnVolumeRestore:
           autoResumeOnVolumeRestore ?? this.autoResumeOnVolumeRestore,
       sortOrder: sortOrder ?? this.sortOrder,
+      showSongDuration: showSongDuration ?? this.showSongDuration,
     );
   }
 }
@@ -43,6 +47,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyAutoPauseOnVolumeZero = 'auto_pause_on_volume_zero';
   static const _keyAutoResumeOnVolumeRestore = 'auto_resume_on_volume_restore';
   static const _keySortOrder = 'sort_order';
+  static const _keyShowSongDuration = 'show_song_duration';
 
   @override
   SettingsState build() {
@@ -62,7 +67,22 @@ class SettingsNotifier extends Notifier<SettingsState> {
       sortOrder: sortOrderIndex != null
           ? SongSortOrder.values[sortOrderIndex]
           : SongSortOrder.title,
+      showSongDuration: prefs.getBool(_keyShowSongDuration) ?? false,
     );
+  }
+
+  Future<void> setShowSongDuration(bool show) async {
+    state = state.copyWith(showSongDuration: show);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShowSongDuration, show);
+
+    await TelemetryService.instance.trackEvent(
+        'setting_changed',
+        {
+          'setting': 'show_song_duration',
+          'value': show,
+        },
+        requiredLevel: 2);
   }
 
   Future<void> setSortOrder(SongSortOrder order) async {

@@ -151,11 +151,13 @@ class CollectionDurationDisplay extends StatelessWidget {
 class DurationBadge extends StatelessWidget {
   final Duration? duration;
   final bool showIcon;
+  final bool isSubtle;
 
   const DurationBadge({
     super.key,
     this.duration,
     this.showIcon = true,
+    this.isSubtle = false,
   });
 
   @override
@@ -170,8 +172,16 @@ class DurationBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: isSubtle
+            ? Colors.transparent
+            : theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(4),
+        border: isSubtle
+            ? Border.all(
+                color:
+                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                width: 0.5)
+            : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

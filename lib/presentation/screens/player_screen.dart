@@ -408,12 +408,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                 transitionBuilder: (child, animation) {
                                   return FadeTransition(
                                     opacity: animation,
-                                    child: ScaleTransition(
-                                      scale:
-                                          Tween<double>(begin: 0.95, end: 1.0)
-                                              .animate(animation),
-                                      child: child,
-                                    ),
+                                    child: child,
                                   );
                                 },
                                 child: !_showLyrics
@@ -501,133 +496,126 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                                                 fontSize: 18),
                                                           ),
                                                         )
-                                                      : ShaderMask(
-                                                          shaderCallback:
-                                                              (rect) {
-                                                            return const LinearGradient(
-                                                              begin: Alignment
-                                                                  .topCenter,
-                                                              end: Alignment
-                                                                  .bottomCenter,
-                                                              colors: [
-                                                                Colors.black,
-                                                                Colors
-                                                                    .transparent,
-                                                                Colors
-                                                                    .transparent,
-                                                                Colors.black
-                                                              ],
-                                                              stops: [
-                                                                0.0,
-                                                                0.05,
-                                                                0.95,
-                                                                1.0
-                                                              ],
-                                                            ).createShader(
-                                                                rect);
-                                                          },
-                                                          blendMode:
-                                                              BlendMode.dstOut,
-                                                          child: NotificationListener<
-                                                              ScrollNotification>(
-                                                            onNotification:
-                                                                (notification) {
+                                                      : NotificationListener<
+                                                          ScrollNotification>(
+                                                          onNotification:
+                                                              (notification) {
+                                                            if (notification
+                                                                is UserScrollNotification) {
                                                               if (notification
-                                                                  is UserScrollNotification) {
-                                                                if (notification
-                                                                        .direction !=
-                                                                    ScrollDirection
-                                                                        .idle) {
-                                                                  if (_autoScrollEnabled) {
-                                                                    setState(() =>
-                                                                        _autoScrollEnabled =
-                                                                            false);
-                                                                  }
+                                                                      .direction !=
+                                                                  ScrollDirection
+                                                                      .idle) {
+                                                                if (_autoScrollEnabled) {
+                                                                  setState(() =>
+                                                                      _autoScrollEnabled =
+                                                                          false);
                                                                 }
-                                                              } else if (notification
-                                                                  is ScrollEndNotification) {
-                                                                _checkAndReenableAutoScroll();
                                                               }
-                                                              return false;
-                                                            },
-                                                            child:
-                                                                SingleChildScrollView(
-                                                              controller:
-                                                                  _lyricsScrollController,
-                                                              padding:
-                                                                  const EdgeInsets
-                                                                      .symmetric(
-                                                                      vertical:
-                                                                          80),
-                                                              child: Column(
-                                                                children: List
-                                                                    .generate(
-                                                                        _lyrics!
-                                                                            .length,
-                                                                        (index) {
-                                                                  final isCurrent =
-                                                                      index ==
-                                                                          _currentLyricIndex;
-                                                                  final hasTime = _lyrics![
-                                                                              index]
-                                                                          .time !=
-                                                                      Duration
-                                                                          .zero;
-                                                                  return InkWell(
-                                                                    key: _lyricKeys?[
-                                                                        index],
-                                                                    onTap: hasTime
-                                                                        ? () {
-                                                                            player.seek(_lyrics![index].time);
-                                                                            setState(() =>
-                                                                                _autoScrollEnabled = true);
-                                                                          }
-                                                                        : null,
+                                                            } else if (notification
+                                                                is ScrollEndNotification) {
+                                                              _checkAndReenableAutoScroll();
+                                                            }
+                                                            return false;
+                                                          },
+                                                          child:
+                                                              SingleChildScrollView(
+                                                            controller:
+                                                                _lyricsScrollController,
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                                    vertical:
+                                                                        80),
+                                                            child: Column(
+                                                              children:
+                                                                  List.generate(
+                                                                      _lyrics!
+                                                                          .length,
+                                                                      (index) {
+                                                                final isCurrent =
+                                                                    index ==
+                                                                        _currentLyricIndex;
+                                                                final hasTime =
+                                                                    _lyrics![index]
+                                                                            .time !=
+                                                                        Duration
+                                                                            .zero;
+                                                                return InkWell(
+                                                                  key: _lyricKeys?[
+                                                                      index],
+                                                                  onTap: hasTime
+                                                                      ? () {
+                                                                          player
+                                                                              .seek(_lyrics![index].time);
+                                                                          setState(() =>
+                                                                              _autoScrollEnabled = true);
+                                                                        }
+                                                                      : null,
+                                                                  child:
+                                                                      AnimatedContainer(
+                                                                    duration: const Duration(
+                                                                        milliseconds:
+                                                                            500),
+                                                                    curve: Curves
+                                                                        .easeOutCubic,
+                                                                    width: double
+                                                                        .infinity,
+                                                                    margin: const EdgeInsets
+                                                                        .symmetric(
+                                                                        horizontal:
+                                                                            16,
+                                                                        vertical:
+                                                                            4),
+                                                                    padding: const EdgeInsets
+                                                                        .symmetric(
+                                                                        horizontal:
+                                                                            24,
+                                                                        vertical:
+                                                                            16),
+                                                                    decoration:
+                                                                        BoxDecoration(
+                                                                      color: isCurrent
+                                                                          ? Colors
+                                                                              .white
+                                                                              .withValues(alpha: 0.1)
+                                                                          : Colors.transparent,
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              16),
+                                                                    ),
                                                                     child:
-                                                                        AnimatedContainer(
+                                                                        AnimatedDefaultTextStyle(
                                                                       duration: const Duration(
                                                                           milliseconds:
                                                                               500),
                                                                       curve: Curves
                                                                           .easeOutQuart,
-                                                                      width: double
-                                                                          .infinity,
-                                                                      padding: const EdgeInsets
-                                                                          .symmetric(
-                                                                          horizontal:
-                                                                              24,
-                                                                          vertical:
-                                                                              20),
-                                                                      child:
-                                                                          AnimatedDefaultTextStyle(
-                                                                        duration:
-                                                                            const Duration(milliseconds: 500),
-                                                                        curve: Curves
-                                                                            .easeOutQuart,
-                                                                        textAlign:
-                                                                            TextAlign.center,
-                                                                        style:
-                                                                            TextStyle(
-                                                                          fontSize:
-                                                                              26,
-                                                                          fontWeight: isCurrent
-                                                                              ? FontWeight.bold
-                                                                              : FontWeight.w500,
-                                                                          color: isCurrent
-                                                                              ? Colors.white
-                                                                              : Colors.white.withValues(alpha: 0.3),
-                                                                          height:
-                                                                              1.3,
-                                                                          letterSpacing:
-                                                                              -0.3,
-                                                                        ),
-                                                                        child: Text(
-                                                                            _lyrics![index].text),
+                                                                      textAlign:
+                                                                          TextAlign
+                                                                              .center,
+                                                                      style:
+                                                                          TextStyle(
+                                                                        fontSize:
+                                                                            26,
+                                                                        fontWeight: isCurrent
+                                                                            ? FontWeight.bold
+                                                                            : FontWeight.w500,
+                                                                        color: isCurrent
+                                                                            ? Colors.white
+                                                                            : Colors.white.withValues(alpha: 0.3),
+                                                                        height:
+                                                                            1.3,
+                                                                        letterSpacing:
+                                                                            -0.3,
                                                                       ),
+                                                                      child: Text(
+                                                                          _lyrics![index]
+                                                                              .text),
                                                                     ),
-                                                                  );
-                                                                }),
-                                                              ),
+                                                                  ),
+                                                                );
+                                                              }),
                                                             ),
                                                           ),
                                                         ),
