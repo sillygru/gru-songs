@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../services/backup_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/providers.dart';
 
 class BackupManagementScreen extends ConsumerStatefulWidget {
   const BackupManagementScreen({super.key});
@@ -152,6 +153,11 @@ class _BackupManagementScreenState
 
     try {
       await BackupService.instance.restoreFromBackup(username, backupInfo);
+
+      // Refresh data without full scan
+      await ref.read(userDataProvider.notifier).refresh();
+      await ref.read(songsProvider.notifier).refreshPlayCounts();
+      ref.invalidate(audioPlayerManagerProvider);
 
       if (mounted) {
         Navigator.pop(context); // Pop loading dialog

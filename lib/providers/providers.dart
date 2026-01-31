@@ -382,6 +382,38 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     });
   }
 
+  /// Refreshes ONLY the play counts of the current songs from the database
+  Future<void> refreshPlayCounts() async {
+    if (!state.hasValue) return;
+
+    final playCounts = await DatabaseService.instance.getPlayCounts();
+    final auth = ref.read(authProvider);
+    final storage = ref.read(storageServiceProvider);
+
+    final updatedSongs = state.value!.map((s) {
+      final newCount = playCounts[s.filename] ?? 0;
+      if (newCount == s.playCount) return s;
+      return Song(
+        title: s.title,
+        artist: s.artist,
+        album: s.album,
+        filename: s.filename,
+        url: s.url,
+        lyricsUrl: s.lyricsUrl,
+        coverUrl: s.coverUrl,
+        playCount: newCount,
+        duration: s.duration,
+        mtime: s.mtime,
+      );
+    }).toList();
+
+    state = AsyncValue.data(updatedSongs);
+
+    // Update player manager and cache
+    ref.read(audioPlayerManagerProvider).refreshSongs(updatedSongs);
+    await storage.saveSongs(auth.username, updatedSongs);
+  }
+
   Future<void> hideSong(Song song) async {
     await ref.read(userDataProvider.notifier).toggleHidden(song.filename);
     // state will auto-update because build() watches userDataProvider

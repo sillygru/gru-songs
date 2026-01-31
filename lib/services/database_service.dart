@@ -149,6 +149,31 @@ class DatabaseService {
     await _statsDatabase!.insert('playevent', stats);
   }
 
+  Future<List<Map<String, dynamic>>> getAllPlayEvents() async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return [];
+    return await _statsDatabase!.query('playevent');
+  }
+
+  Future<void> deletePlayEvent(String sessionId) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return;
+    await _statsDatabase!
+        .delete('playevent', where: 'session_id = ?', whereArgs: [sessionId]);
+  }
+
+  /// Clears all play events and sessions
+  Future<void> clearStats() async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return;
+
+    await _statsDatabase!.transaction((txn) async {
+      await txn.delete('playevent');
+      await txn.delete('playsession');
+    });
+    debugPrint('Cleared all play stats and sessions');
+  }
+
   // ==========================================================================
   // USER DATA QUERIES
   // ==========================================================================

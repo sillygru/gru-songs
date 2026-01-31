@@ -14,6 +14,7 @@ import '../../services/data_export_service.dart';
 import '../../services/telemetry_service.dart';
 import '../../services/database_optimizer_service.dart';
 import 'theme_selection_screen.dart';
+import 'namida_import_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -275,6 +276,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: 'Import App Data',
           subtitle: 'Restore or merge data from a backup .zip',
           onTap: () => _handleImport(),
+        ),
+        _buildListTile(
+          icon: Icons.download_rounded,
+          title: 'Import from Namida',
+          subtitle: 'Import playlists and favorites from Namida backup',
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NamidaImportScreen()),
+            );
+          },
         ),
         _buildListTile(
           icon: Icons.build_rounded,

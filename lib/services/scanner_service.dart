@@ -167,6 +167,9 @@ class ScannerService {
         if (existingSong != null &&
             existingSong.mtime != null &&
             (existingSong.mtime! - currentMtime).abs() < 0.1) {
+          final updatedPlayCount = params.playCounts[existingSong.filename] ??
+              existingSong.playCount;
+
           songs.add(Song(
             title: existingSong.title,
             artist: existingSong.artist,
@@ -175,8 +178,7 @@ class ScannerService {
             url: existingSong.url,
             coverUrl: existingSong.coverUrl,
             lyricsUrl: existingSong.lyricsUrl,
-            playCount: params.playCounts[existingSong.filename] ??
-                existingSong.playCount,
+            playCount: updatedPlayCount,
             duration: existingSong.duration,
             mtime: currentMtime,
           ));
