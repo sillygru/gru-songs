@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -26,6 +27,8 @@ class OptimizationResult {
 /// Service for optimizing and repairing database files
 ///
 /// This service handles database maintenance tasks:
+/// - Clean up obsolete shuffle state JSON (removes history data now read from database)
+/// - Fix event type categorization based on play ratios and completion rules
 /// - Vacuum databases to reclaim space
 /// - Fix orphaned records
 /// - Remove duplicate entries
@@ -47,7 +50,13 @@ class DatabaseOptimizerService {
       final statsDbPath = join(docDir.path, '${username}_stats.db');
       final userDataDbPath = join(docDir.path, '${username}_data.db');
 
-      // Optimize stats database (just vacuum, don't modify schema)
+      // Clean up shuffle state JSON (remove history data)
+      final shuffleCleanupResult = await _cleanupShuffleStateJson(username);
+      issuesFound.addAll(shuffleCleanupResult['issues'] as List<String>);
+      fixesApplied.addAll(shuffleCleanupResult['fixes'] as List<String>);
+      details['shuffle_state_cleanup'] = shuffleCleanupResult['details'];
+
+      // Optimize stats database (fix event types, vacuum)
       final statsResult = await _optimizeStatsDatabase(statsDbPath);
       issuesFound.addAll(statsResult['issues'] as List<String>);
       fixesApplied.addAll(statsResult['fixes'] as List<String>);
@@ -88,6 +97,49 @@ class DatabaseOptimizerService {
     }
   }
 
+  /// Cleans up shuffle state JSON file by removing obsolete history data
+  /// History is now read directly from the stats database
+  Future<Map<String, dynamic>> _cleanupShuffleStateJson(String username) async {
+    final issues = <String>[];
+    final fixes = <String>[];
+    final details = <String, dynamic>{};
+
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final shuffleStateFile =
+          File(join(docDir.path, 'shuffle_state_$username.json'));
+
+      if (await shuffleStateFile.exists()) {
+        final content = await shuffleStateFile.readAsString();
+        final Map<String, dynamic> data = jsonDecode(content);
+
+        // Check if history exists in the JSON
+        if (data.containsKey('history')) {
+          final historyCount = (data['history'] as List?)?.length ?? 0;
+          details['old_history_entries'] = historyCount;
+
+          // Remove history from JSON
+          data.remove('history');
+
+          // Save cleaned JSON
+          await shuffleStateFile.writeAsString(jsonEncode(data));
+          fixes.add(
+              'Removed $historyCount history entries from shuffle state JSON (now read from database)');
+          details['cleaned'] = true;
+        } else {
+          details['cleaned'] = false;
+          details['reason'] = 'No history data found in shuffle state';
+        }
+      } else {
+        details['exists'] = false;
+      }
+    } catch (e) {
+      issues.add('Error cleaning shuffle state JSON: $e');
+    }
+
+    return {'issues': issues, 'fixes': fixes, 'details': details};
+  }
+
   /// Optimizes the stats database (playevent table)
   /// Only vacuums - doesn't modify schema to avoid data loss
   Future<Map<String, dynamic>> _optimizeStatsDatabase(String dbPath) async {
@@ -111,10 +163,16 @@ class DatabaseOptimizerService {
 
       if (!isOk) {
         issues.add('Stats database integrity check failed');
-        // For stats, we just report it - don't try to fix as it might lose data
         fixes.add(
             'Stats database integrity issues detected (manual intervention may be needed)');
       }
+
+      // Fix Event Types categorization
+      final fixResult = await _fixEventTypes(db);
+      if (fixResult['fixed'] > 0) {
+        fixes.add('Fixed ${fixResult['fixed']} event type categorizations');
+      }
+      details['event_fixes'] = fixResult;
 
       // Vacuum to reclaim space
       await db.execute('VACUUM');
@@ -127,6 +185,82 @@ class DatabaseOptimizerService {
     }
 
     return {'issues': issues, 'fixes': fixes, 'details': details};
+  }
+
+  /// Fixes event type categorization based on new rules with priority hierarchy:
+  ///
+  /// PRIORITY 1 (HIGHEST): Low play ratio → 'skip'
+  ///   - If play_ratio < 0.10 (less than 10% played), force event to 'skip'
+  ///   - Example: Song played for 5 seconds out of 3 minutes (ratio 0.027) → 'skip'
+  ///   - This rule overrides all other categorizations
+  ///
+  /// PRIORITY 2: Near completion → 'complete'
+  ///   - If within 10s of end OR ratio >= 1.0, change 'skip'/'listen' to 'complete'
+  ///   - Example: Song 3:40 long, played 3:35 (remaining 5s) → 'complete'
+  ///   - Excludes events already marked skip by Priority 1
+  ///
+  /// PRIORITY 3: Session context → 'skip'
+  ///   - If 'listen' event has later events in same session, change to 'skip'
+  ///   - 'listen' should only be the absolute last event of a session
+  ///   - Excludes events already marked skip by Priority 1
+  ///
+  /// Returns: Map with 'fixed' count and 'details' breakdown by category
+  Future<Map<String, dynamic>> _fixEventTypes(Database db) async {
+    int fixedCount = 0;
+    final details = <String, dynamic>{};
+
+    try {
+      // Step 1: Fix events with ratio < 0.10 (less than 10% played) to 'skip'
+      // This is the HIGHEST PRIORITY rule
+      final lowRatioToSkip = await db.rawUpdate('''
+        UPDATE playevent
+        SET event_type = 'skip'
+        WHERE event_type IN ('listen', 'complete')
+        AND total_length > 0
+        AND play_ratio < 0.10
+      ''');
+      fixedCount += lowRatioToSkip;
+      details['low_ratio_to_skip'] = lowRatioToSkip;
+
+      // Step 2: Fix 'skip'/'listen' that should be 'complete'
+      // We look for events where (total_length - duration_played <= 10) OR (duration_played >= total_length)
+      // But exclude events with ratio < 0.10 (already marked as skip)
+      final toComplete = await db.rawUpdate('''
+        UPDATE playevent
+        SET event_type = 'complete'
+        WHERE event_type IN ('skip', 'listen')
+        AND total_length > 0
+        AND play_ratio >= 0.10
+        AND (total_length - duration_played <= 10.0 OR duration_played >= total_length)
+      ''');
+      fixedCount += toComplete;
+      details['to_complete'] = toComplete;
+
+      // Step 3: Fix 'listen' that should be 'skip'
+      // A 'listen' event should be 'skip' if there is another event with the same session_id
+      // but a later timestamp. 'listen' is only for the absolute last event of a session.
+      // But exclude events with ratio < 0.10 (already marked as skip)
+      final toSkip = await db.rawUpdate('''
+        UPDATE playevent
+        SET event_type = 'skip'
+        WHERE event_type = 'listen'
+        AND play_ratio >= 0.10
+        AND id IN (
+          SELECT p1.id FROM playevent p1
+          WHERE EXISTS (
+            SELECT 1 FROM playevent p2
+            WHERE p2.session_id = p1.session_id
+            AND p2.timestamp > p1.timestamp
+          )
+        )
+      ''');
+      fixedCount += toSkip;
+      details['listen_to_skip'] = toSkip;
+    } catch (e) {
+      debugPrint('Error fixing event types: $e');
+    }
+
+    return {'fixed': fixedCount, 'details': details};
   }
 
   /// Optimizes the user data database

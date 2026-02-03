@@ -392,6 +392,23 @@ class UserDataNotifier extends Notifier<UserDataState> {
     state = state.copyWith(playlists: newPlaylists);
   }
 
+  Future<void> updatePlaylistName(String playlistId, String newName) async {
+    if (_username == null) return;
+
+    // Update local database
+    await DatabaseService.instance.updatePlaylistName(playlistId, newName);
+
+    // Update state
+    final newPlaylists = state.playlists.map((pl) {
+      if (pl.id == playlistId) {
+        return pl.copyWith(name: newName);
+      }
+      return pl;
+    }).toList();
+
+    state = state.copyWith(playlists: newPlaylists);
+  }
+
   // --- Merged Songs Management ---
 
   /// Creates a new merge group with the given song filenames

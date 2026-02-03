@@ -16,7 +16,7 @@ double calculateWeight(
   final song = item.song;
   final config = shuffleState.config;
 
-  // 1. User Preferences
+  // User Preferences
   if (favorites.contains(song.filename)) {
     if (config.personality == ShufflePersonality.consistent) {
       weight *= 1.4;
@@ -30,20 +30,7 @@ double calculateWeight(
     weight *= 0.2; // 80% penalty
   }
 
-  // 2. Global Recency Penalty
-  if (shuffleState.history.isNotEmpty) {
-    int historyIndex =
-        shuffleState.history.indexWhere((e) => e.filename == song.filename);
-    if (historyIndex != -1 && historyIndex < 100) {
-      int n = historyIndex + 1;
-      int penaltyPercent = (n == 1) ? 100 : (100 - n);
-      if (penaltyPercent > 0) {
-        weight *= (1.0 - (penaltyPercent / 100.0));
-      }
-    }
-  }
-
-  // 3. Streak Breaker (only for default mode)
+  // Streak Breaker (only for default mode)
   if (config.personality == ShufflePersonality.defaultMode &&
       config.streakBreakerEnabled &&
       prev != null) {

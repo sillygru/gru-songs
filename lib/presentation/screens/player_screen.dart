@@ -681,14 +681,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                           final positionData = snapshot.data;
                           return ProgressBar(
                             progress: positionData?.position ?? Duration.zero,
-                            buffered:
-                                positionData?.bufferedPosition ?? Duration.zero,
+                            buffered: Duration.zero,
                             total: positionData?.duration ?? Duration.zero,
                             progressBarColor:
                                 Theme.of(context).colorScheme.primary,
                             baseBarColor: Colors.white.withValues(alpha: 0.1),
-                            bufferedBarColor:
-                                Colors.white.withValues(alpha: 0.2),
                             thumbColor: Theme.of(context).colorScheme.primary,
                             timeLabelTextStyle: TextStyle(
                               color: Theme.of(context)

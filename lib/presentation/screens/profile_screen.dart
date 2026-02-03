@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/providers.dart';
@@ -19,6 +20,20 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _newUsernameController = TextEditingController();
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _getAppVersion();
+  }
+
+  Future<void> _getAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _appVersion = packageInfo.version;
+    });
+  }
 
   void _showChangeUsernameDialog() {
     showDialog(
@@ -268,9 +283,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       },
                     ),
                     const SizedBox(height: 24),
-                    const Text(
-                      "Gru Songs v3.11.0",
-                      style: TextStyle(
+                    Text(
+                      "Gru Songs v$_appVersion",
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.grey,
                       ),

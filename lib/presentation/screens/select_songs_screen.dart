@@ -10,12 +10,18 @@ class SelectSongsScreen extends ConsumerStatefulWidget {
   final List<Song> songs;
   final List<String>? preselectedFilenames;
   final String? title;
+  final bool isMerging;
+  final String? actionLabel;
+  final int minSelection;
 
   const SelectSongsScreen({
     super.key,
     required this.songs,
     this.preselectedFilenames,
     this.title,
+    this.isMerging = true,
+    this.actionLabel,
+    this.minSelection = 2,
   });
 
   @override
@@ -71,58 +77,61 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
       ),
       body: Column(
         children: [
-          // Info card explaining merge functionality
-          Container(
-            margin: const EdgeInsets.all(16.0),
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color:
-                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
+          // Info card explaining merge functionality (only if merging)
+          if (widget.isMerging)
+            Container(
+              margin: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16.0),
+              decoration: BoxDecoration(
                 color: Theme.of(context)
                     .colorScheme
                     .primary
-                    .withValues(alpha: 0.3),
+                    .withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'What is merging?',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Merged songs are different versions of the same song:',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 4),
+                  _buildInfoBullet(context,
+                      'Like remixes, live versions, or different quality versions'),
+                  _buildInfoBullet(context,
+                      'Favorites and "suggest less" are independent per song'),
+                  _buildInfoBullet(
+                      context, 'Your play counts and stats remain unchanged'),
+                  _buildInfoBullet(context,
+                      'Select a priority song (⭐) to prioritize it during shuffle'),
+                ],
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 20,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'What is merging?',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Merged songs are different versions of the same song:',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 4),
-                _buildInfoBullet(context,
-                    'Like remixes, live versions, or different quality versions'),
-                _buildInfoBullet(context,
-                    'Favorites and "suggest less" are independent per song'),
-                _buildInfoBullet(
-                    context, 'Your play counts and stats remain unchanged'),
-                _buildInfoBullet(context,
-                    'Select a priority song (⭐) to prioritize it during shuffle'),
-              ],
-            ),
-          ),
           // Search bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -169,7 +178,7 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                       ),
                 ),
                 const Spacer(),
-                if (_selectedFilenames.length >= 2)
+                if (widget.isMerging && _selectedFilenames.length >= 2)
                   Text(
                     'Ready to merge',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -209,7 +218,9 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                             if (checked == true) {
                               _selectedFilenames.add(song.filename);
                               // Auto-set first selected as priority if none set
-                              _priorityFilename ??= song.filename;
+                              if (widget.isMerging) {
+                                _priorityFilename ??= song.filename;
+                              }
                             } else {
                               _selectedFilenames.remove(song.filename);
                               // Clear priority if priority song is deselected
@@ -222,8 +233,8 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                         secondary: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Priority star button (only show if selected)
-                            if (isSelected)
+                            // Priority star button (only show if selected AND merging)
+                            if (isSelected && widget.isMerging)
                               IconButton(
                                 icon: Icon(
                                   isPriority ? Icons.star : Icons.star_border,
@@ -265,7 +276,7 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (isPriority)
+                            if (isPriority && widget.isMerging)
                               Padding(
                                 padding: const EdgeInsets.only(left: 8.0),
                                 child: Container(
@@ -304,11 +315,11 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_selectedFilenames.length < 2)
+              if (_selectedFilenames.length < widget.minSelection)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: Text(
-                    'Select at least 2 songs to merge',
+                    'Select at least ${widget.minSelection} song${widget.minSelection > 1 ? 's' : ''}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context)
                               .colorScheme
@@ -318,7 +329,7 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                   ),
                 ),
               FilledButton(
-                onPressed: _selectedFilenames.length >= 2
+                onPressed: _selectedFilenames.length >= widget.minSelection
                     ? () {
                         Navigator.pop(
                           context,
@@ -329,7 +340,10 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                         );
                       }
                     : null,
-                child: Text('Merge ${_selectedFilenames.length} Songs'),
+                child: Text(widget.actionLabel ??
+                    (widget.isMerging
+                        ? 'Merge ${_selectedFilenames.length} Songs'
+                        : 'Select ${_selectedFilenames.length} Songs')),
               ),
             ],
           ),

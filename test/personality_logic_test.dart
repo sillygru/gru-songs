@@ -4,7 +4,7 @@ import 'package:gru_songs/models/queue_item.dart';
 import 'package:gru_songs/models/shuffle_config.dart';
 import 'dart:math';
 
-// Direct copy of logic from AudioPlayerManager for verification
+// Mock/Simplified version of the weight calculation logic from AudioPlayerManager for isolated testing
 double calculateWeight(
     QueueItem item,
     QueueItem? prev,
@@ -12,33 +12,63 @@ double calculateWeight(
     List<String> favorites,
     List<String> suggestLess,
     Map<String, int> playCounts,
-    int maxPlayCount) {
+    int maxPlayCount,
+    List<
+            ({
+              String filename,
+              double timestamp,
+              double playRatio,
+              String eventType
+            })>
+        playHistory) {
   double weight = 1.0;
   final song = item.song;
   final config = shuffleState.config;
   final count = playCounts[song.filename] ?? 0;
 
-  // 1. User Preferences
-  if (favorites.contains(song.filename)) {
-    if (config.personality == ShufflePersonality.consistent) {
-      weight *= 1.4;
-    } else if (config.personality == ShufflePersonality.explorer) {
-      weight *= 1.12;
-    } else {
-      weight *= config.favoriteMultiplier; // 1.2 default
+  // HIERARCHY 1: Global Recency Penalty (applied first)
+  if (playHistory.isNotEmpty) {
+    int historyIndex = -1;
+    double playRatioInHistory = 0.0;
+
+    for (int i = 0; i < playHistory.length; i++) {
+      if (playHistory[i].filename == song.filename) {
+        historyIndex = i;
+        playRatioInHistory = playHistory[i].playRatio;
+        break;
+      }
     }
-  }
-  if (suggestLess.contains(song.filename)) {
-    weight *= 0.2;
+
+    if (historyIndex != -1 && historyIndex < 200) {
+      int basePenaltyPercent = 100 - (historyIndex ~/ 2);
+
+      double penaltyMultiplier = 1.0;
+      if (playRatioInHistory < 0.25) {
+        penaltyMultiplier = 0.3;
+      } else if (playRatioInHistory < 0.5) {
+        penaltyMultiplier = 0.5;
+      } else if (playRatioInHistory < 0.8) {
+        penaltyMultiplier = 0.8;
+      }
+
+      int adjustedPenaltyPercent =
+          (basePenaltyPercent * penaltyMultiplier).round();
+      weight *= (1.0 - (adjustedPenaltyPercent / 100.0));
+    }
   }
 
-  // 2. Personality Weights
+  // HIERARCHY 3: Personality Weights
   if (config.personality == ShufflePersonality.explorer) {
-    if (count == 0) {
-      weight *= 1.2; // 20% reward for never played
+    if (maxPlayCount > 0) {
+      final playRatio = count / maxPlayCount;
+      if (playRatio <= 0.4) {
+        double explorerReward = 1.0 + (1.0 - (playRatio / 0.4));
+        weight *= explorerReward;
+      }
+    } else if (count == 0) {
+      weight *= 2.0;
     }
   } else if (config.personality == ShufflePersonality.consistent) {
-    // Adaptive Threshold
     int threshold = 10;
     if (maxPlayCount < 10) {
       threshold = max(1, (maxPlayCount * 0.7).floor());
@@ -47,11 +77,12 @@ double calculateWeight(
     }
 
     if (count >= threshold && count > 0) {
-      weight *= 1.3; // 30% reward for often played
+      weight *= 1.3;
     }
   } else if (config.personality == ShufflePersonality.defaultMode) {
     if (config.streakBreakerEnabled && prev != null) {
       final prevSong = prev.song;
+
       if (song.artist != 'Unknown Artist' &&
           prevSong.artist != 'Unknown Artist' &&
           song.artist == prevSong.artist) {
@@ -65,17 +96,18 @@ double calculateWeight(
     }
   }
 
-  // 3. Global Recency Penalty
-  if (shuffleState.history.isNotEmpty) {
-    int historyIndex =
-        shuffleState.history.indexWhere((e) => e.filename == song.filename);
-    if (historyIndex != -1 && historyIndex < 100) {
-      int n = historyIndex + 1;
-      int penaltyPercent = (n == 1) ? 100 : (100 - n);
-      if (penaltyPercent > 0) {
-        weight *= (1.0 - (penaltyPercent / 100.0));
-      }
+  // LOWER PRIORITY: User Preferences
+  if (favorites.contains(song.filename)) {
+    if (config.personality == ShufflePersonality.consistent) {
+      weight *= 1.4;
+    } else if (config.personality == ShufflePersonality.explorer) {
+      weight *= 1.12;
+    } else {
+      weight *= config.favoriteMultiplier;
     }
+  }
+  if (suggestLess.contains(song.filename)) {
+    weight *= 0.2;
   }
 
   return max(0.0001, weight);
@@ -113,16 +145,22 @@ void main() {
         const ShuffleConfig(personality: ShufflePersonality.explorer);
     final state = ShuffleState(config: config);
 
-    test('Explorer gives 20% boost to unplayed songs', () {
+    test('Explorer gives 2x boost to unplayed songs', () {
       final weight =
-          calculateWeight(itemNew, null, state, [], [], {'new.mp3': 0}, 60);
-      expect(weight, closeTo(1.2, 0.001));
+          calculateWeight(itemNew, null, state, [], [], {'new.mp3': 0}, 60, []);
+      expect(weight, closeTo(2.0, 0.001));
     });
 
-    test('Explorer favorite multiplier is 1.12', () {
+    test(
+        'Explorer favorite multiplier is 1.12, plus explorer boost for low play ratio',
+        () {
       final weight = calculateWeight(
-          itemFav, null, state, ['fav.mp3'], [], {'fav.mp3': 20}, 60);
-      expect(weight, closeTo(1.12, 0.001));
+          itemFav, null, state, ['fav.mp3'], [], {'fav.mp3': 20}, 60, []);
+      // playRatio = 20/60 = 0.33 (< 0.4)
+      // explorerReward = 1.0 + (1.0 - (0.33/0.4)) = 1.0 + 0.175 = 1.175
+      // favorite = 1.12
+      // total = 1.175 * 1.12 = 1.316
+      expect(weight, closeTo(1.316, 0.02));
     });
   });
 
@@ -132,22 +170,25 @@ void main() {
     final state = ShuffleState(config: config);
 
     test('Consistent gives boost to often played songs', () {
-      final weight =
-          calculateWeight(itemFreq, null, state, [], [], {'freq.mp3': 60}, 60);
+      final weight = calculateWeight(
+          itemFreq, null, state, [], [], {'freq.mp3': 60}, 60, []);
       expect(weight, closeTo(1.3, 0.001));
     });
 
-    test('Consistent favorite multiplier is 1.4', () {
+    test('Consistent favorite multiplier is 1.4, plus often-played boost', () {
       final weight = calculateWeight(
-          itemFav, null, state, ['fav.mp3'], [], {'fav.mp3': 20}, 60);
-      // 1.4 (fav) * 1.3 (often played) = 1.82
+          itemFav, null, state, ['fav.mp3'], [], {'fav.mp3': 20}, 60, []);
+      // fav.mp3 has 20 plays, threshold is 10, so it gets often-played boost
+      // often-played = 1.3
+      // favorite = 1.4
+      // total = 1.3 * 1.4 = 1.82
       expect(weight, closeTo(1.82, 0.001));
     });
 
     test('Consistent adapts to new users (maxPlayCount < 10)', () {
       // maxPlayCount = 2, threshold = floor(2 * 0.7) = 1
       final weight =
-          calculateWeight(itemFav, null, state, [], [], {'fav.mp3': 1}, 2);
+          calculateWeight(itemFav, null, state, [], [], {'fav.mp3': 1}, 2, []);
       expect(weight, closeTo(1.3, 0.001));
     });
   });

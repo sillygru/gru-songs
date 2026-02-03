@@ -4,6 +4,7 @@ import 'home_screen.dart';
 import 'library_screen.dart';
 import 'profile_screen.dart';
 import '../widgets/now_playing_bar.dart';
+import '../widgets/app_drawer.dart';
 import '../../providers/providers.dart';
 import '../../services/telemetry_service.dart';
 
@@ -119,14 +120,55 @@ class MainScreen extends ConsumerStatefulWidget {
 }
 
 class _MainScreenState extends ConsumerState<MainScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   int _selectedIndex = 0;
+  bool _isDrawerOpen = false;
+
+  // Gesture detection for drawer
+  double _dragStartX = 0;
+  bool _isDraggingFromEdge = false;
+  static const double _edgeDragWidth = 60.0;
+  static const double _minDragDistance = 30.0;
 
   final List<Widget> _screens = [
     const HomeScreen(),
     const LibraryScreen(),
     const ProfileScreen(),
   ];
+
+  void _openDrawer() {
+    setState(() {
+      _isDrawerOpen = true;
+    });
+  }
+
+  void _closeDrawer() {
+    setState(() {
+      _isDrawerOpen = false;
+    });
+  }
+
+  void _onHorizontalDragStart(DragStartDetails details) {
+    // Check if drag starts from left edge
+    if (details.globalPosition.dx <= _edgeDragWidth && !_isDrawerOpen) {
+      _isDraggingFromEdge = true;
+      _dragStartX = details.globalPosition.dx;
+    }
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_isDraggingFromEdge && !_isDrawerOpen) {
+      final dragDistance = details.globalPosition.dx - _dragStartX;
+      if (dragDistance > _minDragDistance) {
+        _openDrawer();
+        _isDraggingFromEdge = false;
+      }
+    }
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    _isDraggingFromEdge = false;
+  }
 
   @override
   void initState() {
@@ -156,25 +198,36 @@ class _MainScreenState extends ConsumerState<MainScreen>
     final topPadding = MediaQuery.of(context).padding.top;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: _selectedIndex,
-            children: _screens,
-          ),
-          Positioned(
-            top: topPadding,
-            left: 0,
-            right: 0,
-            child: const SyncIndicator(),
-          ),
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: NowPlayingBar(),
-          ),
-        ],
+      body: GestureDetector(
+        onHorizontalDragStart: _onHorizontalDragStart,
+        onHorizontalDragUpdate: _onHorizontalDragUpdate,
+        onHorizontalDragEnd: _onHorizontalDragEnd,
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          children: [
+            IndexedStack(
+              index: _selectedIndex,
+              children: _screens,
+            ),
+            Positioned(
+              top: topPadding,
+              left: 0,
+              right: 0,
+              child: const SyncIndicator(),
+            ),
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: NowPlayingBar(),
+            ),
+            // Drawer overlay
+            if (_isDrawerOpen)
+              Positioned.fill(
+                child: AppDrawer(onClose: _closeDrawer),
+              ),
+          ],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,

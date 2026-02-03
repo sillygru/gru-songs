@@ -1011,6 +1011,45 @@ class DatabaseService {
     }
   }
 
+  Future<
+      List<
+          ({
+            String filename,
+            double timestamp,
+            double playRatio,
+            String eventType
+          })>> getPlayHistory({
+    int limit = 200,
+  }) async {
+    await _ensureInitialized();
+
+    if (_statsDatabase == null) {
+      return [];
+    }
+
+    try {
+      // Get all recent play events with their actual play ratios
+      // This allows weighting logic to differentiate between barely-listened and fully-listened songs
+      final events = await _statsDatabase!.query(
+        'playevent',
+        orderBy: 'timestamp DESC',
+        limit: limit,
+      );
+
+      return events.map((e) {
+        return (
+          filename: e['song_filename'] as String,
+          timestamp: (e['timestamp'] as num).toDouble(),
+          playRatio: (e['play_ratio'] as num).toDouble(),
+          eventType: e['event_type'] as String,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('Error getting play history: $e');
+      return [];
+    }
+  }
+
   Future<Map<String, dynamic>> getFunStats() async {
     await _ensureInitialized();
 

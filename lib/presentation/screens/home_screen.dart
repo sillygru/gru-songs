@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/album_art_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/scanning_progress_bar.dart';
+import '../widgets/song_options_menu.dart';
 import '../../providers/providers.dart';
 import '../../services/android_storage_service.dart';
 import '../../services/telemetry_service.dart';
@@ -177,12 +178,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         );
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: () {
-                        ref.invalidate(songsProvider);
-                      },
-                    ),
                   ],
                 ),
                 SliverToBoxAdapter(
@@ -213,6 +208,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             onTap: () {
                               audioManager.playSong(song,
                                   contextQueue: topRecommendations);
+                            },
+                            onLongPress: () {
+                              showSongOptionsMenu(
+                                  context, ref, song.filename, song.title,
+                                  song: song);
                             },
                             child: SizedBox(
                               width: 160,

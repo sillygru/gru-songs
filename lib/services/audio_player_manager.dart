@@ -56,6 +56,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   DateTime? _playStartTime;
   bool _isCompleting = false;
 
+  // Previous session tracking for ignoring quick skips of resumed songs
+  String? _previousSessionSongFilename;
+  bool _isResumedFromPreviousSession = false;
+
   // Volume monitoring
   VolumeMonitorService? _volumeMonitorService;
 
@@ -226,7 +230,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         final newFilename = currentItem.id;
         if (_currentSongFilename != null &&
             _currentSongFilename != newFilename) {
-          if (!_isCompleting) _flushStats(eventType: 'skip');
+          if (!_isCompleting) {
+            // Check if this is a quick skip of a resumed song from previous session
+            final shouldIgnore = _isResumedFromPreviousSession &&
+                _currentSongFilename == _previousSessionSongFilename &&
+                _foregroundDuration + _backgroundDuration <= 10.0;
+
+            if (!shouldIgnore) {
+              _flushStats(eventType: 'skip');
+            }
+          }
         }
         if (_currentSongFilename != newFilename) {
           _isCompleting = false;
@@ -235,6 +248,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _backgroundDuration = 0.0;
           _playStartTime = _player.playing ? DateTime.now() : null;
           currentSongNotifier.value = _songMap[newFilename];
+          _isResumedFromPreviousSession = false;
           _savePlaybackState();
         }
       }
@@ -380,19 +394,43 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         (song?.duration?.inMilliseconds.toDouble() ?? 0.0) / 1000.0;
 
     double finalDuration = _foregroundDuration + _backgroundDuration;
+
+    // Categorization logic
+    String finalEventType = eventType;
+
+    // 1. Completion exceptions: if skipped/stopped in last 10s or over 1.0 ratio, it's a complete
+    if (totalLength > 0) {
+      final double ratio = finalDuration / totalLength;
+      final double remaining = totalLength - finalDuration;
+
+      if (remaining <= 10.0 || ratio >= 1.0) {
+        finalEventType = 'complete';
+      } else if (ratio < 0.10) {
+        // If played for less than 10% of duration, count as skip
+        finalEventType = 'skip';
+      } else if (eventType == 'listen') {
+        // If it was a 'listen' event (pause/lifecycle change) but it's NOT the last song
+        // (meaning another song will be played in this session),
+        // it's actually a 'skip' if it's not the last thing recorded.
+        // However, at the time of _flushStats(listen), we don't always know if another song will follow.
+        // But per requirements: "when theres a song after it it should count a 'listen' as a skip"
+        // This is handled by 'skip' being passed when song actually switches.
+      }
+    }
+
     if (finalDuration > 0.5) {
       _statsService.trackStats({
         'username': _username!,
         'song_filename': _currentSongFilename!,
         'duration_played': finalDuration,
-        'event_type': eventType,
+        'event_type': finalEventType,
         'foreground_duration': _foregroundDuration,
         'background_duration': _backgroundDuration,
         'total_length': totalLength,
       });
 
-      // Add to local history if completed OR played for at least 5 seconds (to treat as a "seen" song for anti-repeat)
-      if (eventType == 'complete' || finalDuration > 5.0) {
+      // Add to local history if completed OR played for at least 5 seconds
+      if (finalEventType == 'complete' || finalDuration > 5.0) {
         _addToShuffleHistory(_currentSongFilename!);
       }
     }
@@ -413,27 +451,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _addToShuffleHistory(String filename) {
-    final history = List<HistoryEntry>.from(_shuffleState.history);
-    final newEntry = HistoryEntry(
-        filename: filename,
-        timestamp: DateTime.now().millisecondsSinceEpoch / 1000.0);
-
-    // Remove this song and any songs in the same merge group from history
-    // This ensures merged songs are treated as "the same song" for anti-repeat
-    final filenamesToRemove = <String>{filename};
-    final groupFilenames = _getMergedGroupFilenames(filename);
-    filenamesToRemove.addAll(groupFilenames);
-
-    history.removeWhere((e) => filenamesToRemove.contains(e.filename));
-    history.insert(0, newEntry);
-
-    if (history.length > _shuffleState.config.historyLimit) {
-      history.removeRange(_shuffleState.config.historyLimit, history.length);
-    }
-
-    _shuffleState = _shuffleState.copyWith(history: history);
-    shuffleStateNotifier.value = _shuffleState;
-    _saveShuffleState();
+    // History is now tracked automatically via play events in the database
+    // No need to manually maintain a separate history list
   }
 
   @override
@@ -553,6 +572,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 .indexWhere((item) => item.song.filename == lastSongFilename);
             if (initialIndex != -1) {
               resumePosition = Duration(milliseconds: savedPositionMs);
+              _previousSessionSongFilename = lastSongFilename;
+              _isResumedFromPreviousSession = true;
             } else {
               initialIndex = 0;
             }
@@ -645,6 +666,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                   .indexWhere((item) => item.song.filename == lastSongFilename);
               if (initialIndex != -1) {
                 resumePosition = Duration(milliseconds: savedPositionMs);
+                _previousSessionSongFilename = lastSongFilename;
+                _isResumedFromPreviousSession = true;
               } else {
                 initialIndex = 0;
               }
@@ -654,7 +677,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 initialIndex: initialIndex,
                 startPlaying: false,
                 initialPosition: resumePosition);
-            currentSongNotifier.value = _effectiveQueue[initialIndex].song;
             return;
           }
         } catch (e) {
@@ -709,6 +731,48 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
       }
     }
+  }
+
+  Future<void> refreshQueue() async {
+    if (_effectiveQueue.isEmpty) return;
+
+    final currentIndex = _player.currentIndex ?? -1;
+    if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) return;
+
+    if (_shuffleState.config.enabled) {
+      final currentItem = _effectiveQueue[currentIndex];
+      final prefix = _effectiveQueue.sublist(0, currentIndex + 1);
+      final priorityItems = _effectiveQueue
+          .skip(currentIndex + 1)
+          .where((item) => item.isPriority)
+          .toList();
+
+      final sourcePool = _isRestrictedToOriginal
+          ? _originalQueue.map((q) => q.song).toList()
+          : _allSongs;
+
+      if (sourcePool.isEmpty) return;
+
+      final excluded = <String>{
+        ...prefix.map((item) => item.song.filename),
+        ...priorityItems.map((item) => item.song.filename),
+      };
+
+      final candidates = sourcePool
+          .where((song) => !excluded.contains(song.filename))
+          .toList();
+      final candidateItems = candidates.map((s) => QueueItem(song: s)).toList();
+
+      final shuffled =
+          await _weightedShuffle(candidateItems, lastItem: currentItem);
+
+      _effectiveQueue = [...prefix, ...priorityItems, ...shuffled];
+      await _rebuildQueue(
+          initialIndex: currentIndex, startPlaying: _player.playing);
+      return;
+    }
+
+    _applyLinear(currentIndex);
   }
 
   Future<AudioSource> _createAudioSource(QueueItem item) async {
@@ -813,9 +877,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       {QueueItem? lastItem}) async {
     if (items.isEmpty) return [];
 
-    // Fetch local play counts and skip stats for weighting
+    // Fetch local play counts, skip stats, and history (with actual play ratios) for weighting
     final playCounts = await DatabaseService.instance.getPlayCounts();
     final skipStats = await DatabaseService.instance.getSkipStats();
+    final playHistory = await DatabaseService.instance
+        .getPlayHistory(limit: _shuffleState.config.historyLimit);
 
     final result = <QueueItem>[];
     final remaining = List<QueueItem>.from(items);
@@ -829,8 +895,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     while (remaining.isNotEmpty) {
       final weights = remaining
-          .map((item) =>
-              _calculateWeight(item, prev, playCounts, skipStats, maxPlayCount))
+          .map((item) => _calculateWeight(
+              item, prev, playCounts, skipStats, maxPlayCount, playHistory))
           .toList();
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
       if (totalWeight <= 0) {
@@ -883,34 +949,114 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       QueueItem? prev,
       Map<String, int> playCounts,
       Map<String, ({int count, double avgRatio})> skipStats,
-      int maxPlayCount) {
+      int maxPlayCount,
+      List<
+              ({
+                String filename,
+                double timestamp,
+                double playRatio,
+                String eventType
+              })>
+          playHistory) {
     double weight = 1.0;
     final song = item.song;
     final config = _shuffleState.config;
     final count = playCounts[song.filename] ?? 0;
 
-    // 1. User Preferences
-    // Favorites and suggest-less are per-song only (not shared across merge groups)
-    final isFavorite = _isFavorite(song.filename);
-    if (isFavorite) {
-      if (config.personality == ShufflePersonality.consistent) {
-        weight *= 1.4; // +40% for consistent
-      } else if (config.personality == ShufflePersonality.explorer) {
-        weight *= 1.12; // +12% for explorer
-      } else {
-        weight *= config.favoriteMultiplier; // +20% default (1.2)
+    // HIERARCHY 1 (TOP PRIORITY): Global Recency Penalty (Last 200 songs)
+    // Check both the song itself and its merge group from database history
+    // Use actual play ratios to weight penalties - songs that were barely listened to
+    // (low play ratio) should have less penalty than songs fully listened to
+    if (playHistory.isNotEmpty) {
+      int historyIndex = -1;
+      double playRatioInHistory = 0.0;
+
+      // Find this song in history
+      for (int i = 0; i < playHistory.length; i++) {
+        if (playHistory[i].filename == song.filename) {
+          historyIndex = i;
+          playRatioInHistory = playHistory[i].playRatio;
+          break;
+        }
+      }
+
+      // Also check if any song in the merge group is in history
+      if (historyIndex == -1 && _mergedGroups.isNotEmpty) {
+        final groupFilenames = _getMergedGroupFilenames(song.filename);
+        for (int i = 0; i < playHistory.length && i < 200; i++) {
+          if (groupFilenames.contains(playHistory[i].filename)) {
+            historyIndex = i;
+            playRatioInHistory = playHistory[i].playRatio;
+            break;
+          }
+        }
+      }
+
+      if (historyIndex != -1 && historyIndex < 200) {
+        // Base penalty: 1% per 2 songs
+        // historyIndex=0,1 (most recent 2) -> 100% base penalty
+        // historyIndex=2,3 -> 99% base penalty
+        // historyIndex=4,5 -> 98% base penalty
+        // ...
+        // historyIndex=198,199 -> 1% base penalty
+        // historyIndex=200+ -> 0% base penalty
+        int basePenaltyPercent = 100 - (historyIndex ~/ 2);
+
+        // Adjust penalty based on play ratio
+        // If play ratio was low (e.g., 0.26), reduce the penalty
+        // If play ratio was high (e.g., 1.0), keep full penalty
+        // playRatio < 0.25: skip, apply 30% of base penalty
+        // playRatio 0.25-0.5: partial listen, apply 50% of base penalty
+        // playRatio 0.5-0.8: good listen, apply 80% of base penalty
+        // playRatio > 0.8: full listen, apply 100% of base penalty
+        double penaltyMultiplier = 1.0;
+        if (playRatioInHistory < 0.25) {
+          penaltyMultiplier = 0.3;
+        } else if (playRatioInHistory < 0.5) {
+          penaltyMultiplier = 0.5;
+        } else if (playRatioInHistory < 0.8) {
+          penaltyMultiplier = 0.8;
+        }
+
+        int adjustedPenaltyPercent =
+            (basePenaltyPercent * penaltyMultiplier).round();
+        weight *= (1.0 - (adjustedPenaltyPercent / 100.0));
       }
     }
-    // Suggest-less is per-song only (not shared across merge groups)
-    final isSuggestLess = _isSuggestLess(song.filename);
-    if (isSuggestLess) {
-      weight *= 0.2; // 80% penalty globally
+
+    // HIERARCHY 2: Global Skip Penalty (Often Skipped Songs)
+    // This OVERRIDES all other rewards/penalties
+    final stats = skipStats[song.filename];
+    if (stats != null && stats.count >= 3) {
+      final avgRatio = stats.avgRatio;
+      if (avgRatio <= 0.25) {
+        // Calculate penalty based on avgRatio
+        // avgRatio=0.01 -> 99% penalty (0.01 multiplier)
+        // avgRatio=0.10 -> 90% penalty (0.10 multiplier)
+        // avgRatio=0.25 -> 75% penalty (0.25 multiplier)
+        double skipPenaltyMultiplier = avgRatio;
+        weight *= skipPenaltyMultiplier;
+      }
     }
 
-    // 2. Personality Weights
+    // HIERARCHY 3: Mode-Specific Weights (Explorer, Consistent, Default)
     if (config.personality == ShufflePersonality.explorer) {
-      if (count == 0) {
-        weight *= 1.2; // 20% reward for never played
+      // Explorer mode: heavily reward least-played songs
+      if (maxPlayCount > 0) {
+        // Calculate play count relative to max
+        final playRatio = count / maxPlayCount;
+
+        if (playRatio <= 0.4) {
+          // Songs played 40% or less than the most played song get rewards
+          // playRatio=0.0 (never played) -> 2.0x multiplier
+          // playRatio=0.2 (20% of max) -> 1.5x multiplier
+          // playRatio=0.4 (40% of max) -> 1.0x multiplier
+          double explorerReward = 1.0 + (1.0 - (playRatio / 0.4));
+          weight *= explorerReward;
+        }
+      } else if (count == 0) {
+        // If there's no play count data yet, still reward unplayed songs
+        weight *= 2.0;
       }
     } else if (config.personality == ShufflePersonality.consistent) {
       // Adaptive Threshold for new users
@@ -947,42 +1093,25 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    // 3. Global Recency Penalty (Last 100 events)
-    // Check both the song itself and its merge group
-    if (_shuffleState.history.isNotEmpty) {
-      int historyIndex =
-          _shuffleState.history.indexWhere((e) => e.filename == song.filename);
-
-      // Also check if any song in the merge group is in history
-      if (historyIndex == -1 && _mergedGroups.isNotEmpty) {
-        final groupFilenames = _getMergedGroupFilenames(song.filename);
-        for (int i = 0; i < _shuffleState.history.length && i < 100; i++) {
-          if (groupFilenames.contains(_shuffleState.history[i].filename)) {
-            historyIndex = i;
-            break;
-          }
-        }
-      }
-
-      if (historyIndex != -1 && historyIndex < 100) {
-        int n = historyIndex + 1;
-        // n=1 (most recent) -> 100% penalty
-        // n=2 -> 98% penalty
-        // n=99 -> 1% penalty
-        int penaltyPercent = (n == 1) ? 100 : (100 - n);
-        if (penaltyPercent > 0) {
-          weight *= (1.0 - (penaltyPercent / 100.0));
-        }
+    // LOWER PRIORITY: User Preferences
+    // Favorites and suggest-less are per-song only (not shared across merge groups)
+    final isFavorite = _isFavorite(song.filename);
+    if (isFavorite) {
+      if (config.personality == ShufflePersonality.consistent) {
+        weight *= 1.4; // +40% for consistent
+      } else if (config.personality == ShufflePersonality.explorer) {
+        weight *= 1.12; // +12% for explorer
+      } else {
+        weight *= config.favoriteMultiplier; // +20% default (1.2)
       }
     }
-
-    // 4. Global Skip Penalty
-    final stats = skipStats[song.filename];
-    if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.15) {
-      weight *= 0.05; // 95% penalty
+    // Suggest-less is per-song only (not shared across merge groups)
+    final isSuggestLess = _isSuggestLess(song.filename);
+    if (isSuggestLess) {
+      weight *= 0.2; // 80% penalty globally
     }
 
-    // 5. Priority boost for merged groups
+    // LOWER PRIORITY: Priority boost for merged groups
     // If this song is the priority song in its merge group, give it a boost
     if (_mergedGroupPriorities.containsKey(song.filename)) {
       weight *= 1.5; // 50% boost for priority song

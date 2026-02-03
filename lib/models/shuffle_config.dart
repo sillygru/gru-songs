@@ -17,7 +17,7 @@ class ShuffleConfig extends Equatable {
     this.streakBreakerEnabled = true,
     this.favoriteMultiplier = 1.2,
     this.suggestLessMultiplier = 0.2,
-    this.historyLimit = 100,
+    this.historyLimit = 200,
     this.personality = ShufflePersonality.defaultMode,
   });
 
@@ -29,7 +29,7 @@ class ShuffleConfig extends Equatable {
       favoriteMultiplier: (json['favorite_multiplier'] ?? 1.2).toDouble(),
       suggestLessMultiplier:
           (json['suggest_less_multiplier'] ?? 0.2).toDouble(),
-      historyLimit: json['history_limit'] ?? 100,
+      historyLimit: json['history_limit'] ?? 200,
       personality: _parsePersonality(json['personality']),
     );
   }
@@ -131,40 +131,33 @@ class HistoryEntry extends Equatable {
 
 class ShuffleState extends Equatable {
   final ShuffleConfig config;
-  final List<HistoryEntry> history;
 
   const ShuffleState({
     this.config = const ShuffleConfig(),
-    this.history = const [],
   });
 
   factory ShuffleState.fromJson(Map<String, dynamic> json) {
-    final historyJson = json['history'] as List? ?? [];
     return ShuffleState(
       config: json['config'] != null
           ? ShuffleConfig.fromJson(json['config'])
           : const ShuffleConfig(),
-      history: historyJson.map((e) => HistoryEntry.fromJson(e)).toList(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'config': config.toJson(),
-      'history': history.map((e) => e.toJson()).toList(),
     };
   }
 
   ShuffleState copyWith({
     ShuffleConfig? config,
-    List<HistoryEntry>? history,
   }) {
     return ShuffleState(
       config: config ?? this.config,
-      history: history ?? this.history,
     );
   }
 
   @override
-  List<Object?> get props => [config, history];
+  List<Object?> get props => [config];
 }
