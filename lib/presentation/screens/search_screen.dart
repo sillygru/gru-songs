@@ -8,6 +8,8 @@ import '../../providers/search_provider.dart';
 import '../../services/audio_player_manager.dart';
 import '../widgets/search_filter_chips.dart';
 import '../widgets/search_result_item.dart';
+import '../widgets/bulk_selection_bar.dart';
+import '../../providers/selection_provider.dart';
 import 'song_list_screen.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -49,43 +51,55 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget build(BuildContext context) {
     final filterState = ref.watch(searchFilterProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
+    final selectionState = ref.watch(selectionProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _searchController,
-          autofocus: true,
-          style: const TextStyle(fontSize: 18),
-          decoration: InputDecoration(
-            hintText: 'Search songs, artists, albums...',
-            border: InputBorder.none,
-            hintStyle: TextStyle(
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurfaceVariant
-                  .withValues(alpha: 0.5),
+    return PopScope(
+      canPop: !selectionState.isSelectionMode,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (selectionState.isSelectionMode) {
+          ref.read(selectionProvider.notifier).exitSelectionMode();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: TextField(
+            controller: _searchController,
+            autofocus: true,
+            style: const TextStyle(fontSize: 18),
+            decoration: InputDecoration(
+              hintText: 'Search songs, artists, albums...',
+              border: InputBorder.none,
+              hintStyle: TextStyle(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withValues(alpha: 0.5),
+              ),
+            ),
+            onChanged: _onSearchChanged,
+          ),
+          actions: [
+            if (_query.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: _clearSearch,
+              ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(56),
+            child: Container(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: const SearchFilterChips(),
             ),
           ),
-          onChanged: _onSearchChanged,
         ),
-        actions: [
-          if (_query.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.clear),
-              onPressed: _clearSearch,
-            ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Container(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: const SearchFilterChips(),
-          ),
-        ),
+        body: _query.isEmpty
+            ? _buildEmptyState(context)
+            : _buildSearchResults(context, audioManager, filterState),
+        bottomNavigationBar:
+            selectionState.isSelectionMode ? const BulkSelectionBar() : null,
       ),
-      body: _query.isEmpty
-          ? _buildEmptyState(context)
-          : _buildSearchResults(context, audioManager, filterState),
     );
   }
 

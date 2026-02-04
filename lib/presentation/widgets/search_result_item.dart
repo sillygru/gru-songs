@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/search_result.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../providers/selection_provider.dart';
 import 'album_art_image.dart';
 import 'lyrics_match_widget.dart';
 import 'song_options_menu.dart';
@@ -26,6 +28,8 @@ class SearchResultItem extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final song = result.song;
     final userData = ref.watch(userDataProvider);
+    final selectionState = ref.watch(selectionProvider);
+    final isSelected = selectionState.selectedFilenames.contains(song.filename);
     final isSuggestLess = userData.isSuggestLess(song.filename);
     final isFavorite = userData.isFavorite(song.filename);
 
@@ -33,26 +37,49 @@ class SearchResultItem extends ConsumerWidget {
         ? '${heroTagPrefix}_${song.filename}'
         : 'search_result_${song.filename}';
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
+        color: isSelected
+            ? Theme.of(context)
+                .colorScheme
+                .primaryContainer
+                .withValues(alpha: 0.3)
+            : Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(12),
+        border: isSelected
+            ? Border.all(
+                color: Theme.of(context).colorScheme.primary,
+                width: 2,
+              )
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
+          onTap: selectionState.isSelectionMode
+              ? () => ref
+                  .read(selectionProvider.notifier)
+                  .toggleSelection(song.filename)
+              : onTap,
           onLongPress: () {
-            showSongOptionsMenu(
-              context,
-              ref,
-              song.filename,
-              song.title,
-              song: song,
-            );
+            if (!selectionState.isSelectionMode) {
+              ref
+                  .read(selectionProvider.notifier)
+                  .enterSelectionMode(song.filename);
+              HapticFeedback.heavyImpact();
+            } else {
+              showSongOptionsMenu(
+                context,
+                ref,
+                song.filename,
+                song.title,
+                song: song,
+              );
+            }
           },
           child: Padding(
             padding: const EdgeInsets.all(12.0),
@@ -63,17 +90,42 @@ class SearchResultItem extends ConsumerWidget {
                   children: [
                     Hero(
                       tag: heroTag,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: AlbumArtImage(
-                          url: song.coverUrl ?? '',
-                          filename: song.filename,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 112,
-                          memCacheHeight: 112,
-                        ),
+                      child: Stack(
+                        children: [
+                          AnimatedScale(
+                            duration: const Duration(milliseconds: 200),
+                            scale: isSelected ? 0.8 : 1.0,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: AlbumArtImage(
+                                url: song.coverUrl ?? '',
+                                filename: song.filename,
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 112,
+                                memCacheHeight: 112,
+                              ),
+                            ),
+                          ),
+                          if (isSelected)
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -94,7 +146,7 @@ class SearchResultItem extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    if (isFavorite) ...[
+                    if (isFavorite && !selectionState.isSelectionMode) ...[
                       const SizedBox(width: 8),
                       Icon(
                         Icons.favorite,

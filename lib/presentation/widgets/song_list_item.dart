@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/selection_provider.dart';
 import 'album_art_image.dart';
 import 'song_options_menu.dart';
 import 'heart_context_menu.dart';
@@ -33,6 +35,8 @@ class SongListItem extends ConsumerWidget {
     final userData = ref.watch(userDataProvider);
     final settings = ref.watch(settingsProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
+    final selectionState = ref.watch(selectionProvider);
+    final isSelected = selectionState.selectedFilenames.contains(song.filename);
     final isSuggestLess = userData.isSuggestLess(song.filename);
     final isFavorite = userData.isFavorite(song.filename);
 
@@ -47,33 +51,52 @@ class SongListItem extends ConsumerWidget {
         final effectiveIsPlaying =
             isPlaying ?? (currentSong?.filename == song.filename);
 
-        return Container(
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           decoration: BoxDecoration(
-            color: Theme.of(context).cardTheme.color,
+            color: isSelected
+                ? Theme.of(context)
+                    .colorScheme
+                    .primaryContainer
+                    .withValues(alpha: 0.3)
+                : Theme.of(context).cardTheme.color,
             borderRadius: BorderRadius.circular(12),
-            border: effectiveIsPlaying
+            border: isSelected
                 ? Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.5),
-                    width: 1.5)
-                : null,
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  )
+                : (effectiveIsPlaying
+                    ? Border.all(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.5),
+                        width: 1.5)
+                    : null),
           ),
           child: Material(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: onTap,
-              onLongPress: showMenu
-                  ? () {
-                      showSongOptionsMenu(
-                          context, ref, song.filename, song.title,
-                          song: song, playlistId: playlistId);
-                    }
-                  : null,
+              onTap: selectionState.isSelectionMode
+                  ? () => ref
+                      .read(selectionProvider.notifier)
+                      .toggleSelection(song.filename)
+                  : onTap,
+              onLongPress: () {
+                if (!selectionState.isSelectionMode) {
+                  ref
+                      .read(selectionProvider.notifier)
+                      .enterSelectionMode(song.filename);
+                  HapticFeedback.heavyImpact();
+                } else {
+                  showSongOptionsMenu(context, ref, song.filename, song.title,
+                      song: song, playlistId: playlistId);
+                }
+              },
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Row(
@@ -82,20 +105,41 @@ class SongListItem extends ConsumerWidget {
                       children: [
                         Hero(
                           tag: heroTag,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: AlbumArtImage(
-                              url: song.coverUrl ?? '',
-                              filename: song.filename,
-                              width: 56,
-                              height: 56,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 112,
-                              memCacheHeight: 112,
+                          child: AnimatedScale(
+                            duration: const Duration(milliseconds: 200),
+                            scale: isSelected ? 0.8 : 1.0,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: AlbumArtImage(
+                                url: song.coverUrl ?? '',
+                                filename: song.filename,
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 112,
+                                memCacheHeight: 112,
+                              ),
                             ),
                           ),
                         ),
-                        if (effectiveIsPlaying)
+                        if (isSelected)
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                            ),
+                          )
+                        else if (effectiveIsPlaying)
                           Positioned.fill(
                             child: StreamBuilder<PlayerState>(
                               stream: audioManager.player.playerStateStream,
@@ -188,7 +232,7 @@ class SongListItem extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    if (showMenu) ...[
+                    if (showMenu && !selectionState.isSelectionMode) ...[
                       const SizedBox(width: 8),
                       const SizedBox(width: 8),
                       if (song.playCount > 0)

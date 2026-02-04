@@ -312,6 +312,33 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
   }
 
+  Future<void> bulkHide(List<String> filenames, bool hide) async {
+    if (_username == null) return;
+
+    final newHidden = List<String>.from(state.hidden);
+
+    for (final filename in filenames) {
+      final isCurrentlyHidden = state.isHidden(filename);
+
+      if (hide && !isCurrentlyHidden) {
+        newHidden.add(filename);
+        await DatabaseService.instance.addHidden(filename);
+      } else if (!hide && isCurrentlyHidden) {
+        final actualFilename = state.hidden.firstWhere(
+          (h) =>
+              h.toLowerCase() == filename.toLowerCase() ||
+              p.basename(h).toLowerCase() == p.basename(filename).toLowerCase(),
+          orElse: () => filename,
+        );
+        newHidden.remove(actualFilename);
+        await DatabaseService.instance.removeHidden(actualFilename);
+      }
+    }
+
+    state = state.copyWith(hidden: newHidden);
+    _updateManager();
+  }
+
   // --- Playlist Management ---
 
   Future<void> createPlaylist(String name, [String? firstSong]) async {

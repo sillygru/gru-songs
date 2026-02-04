@@ -6,7 +6,9 @@ import 'profile_screen.dart';
 import '../widgets/now_playing_bar.dart';
 import '../widgets/app_drawer.dart';
 import '../../providers/providers.dart';
+import '../../providers/selection_provider.dart';
 import '../../services/telemetry_service.dart';
+import '../widgets/bulk_selection_bar.dart';
 
 class SyncIndicator extends ConsumerWidget {
   const SyncIndicator({super.key});
@@ -197,63 +199,78 @@ class _MainScreenState extends ConsumerState<MainScreen>
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
 
+    final selectionState = ref.watch(selectionProvider);
+
     return Scaffold(
-      body: GestureDetector(
-        onHorizontalDragStart: _onHorizontalDragStart,
-        onHorizontalDragUpdate: _onHorizontalDragUpdate,
-        onHorizontalDragEnd: _onHorizontalDragEnd,
-        behavior: HitTestBehavior.translucent,
-        child: Stack(
-          children: [
-            IndexedStack(
-              index: _selectedIndex,
-              children: _screens,
-            ),
-            Positioned(
-              top: topPadding,
-              left: 0,
-              right: 0,
-              child: const SyncIndicator(),
-            ),
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: NowPlayingBar(),
-            ),
-            // Drawer overlay
-            if (_isDrawerOpen)
-              Positioned.fill(
-                child: AppDrawer(onClose: _closeDrawer),
+      body: PopScope(
+        canPop: !selectionState.isSelectionMode,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          if (selectionState.isSelectionMode) {
+            ref.read(selectionProvider.notifier).exitSelectionMode();
+          }
+        },
+        child: GestureDetector(
+          onHorizontalDragStart: _onHorizontalDragStart,
+          onHorizontalDragUpdate: _onHorizontalDragUpdate,
+          onHorizontalDragEnd: _onHorizontalDragEnd,
+          behavior: HitTestBehavior.translucent,
+          child: Stack(
+            children: [
+              IndexedStack(
+                index: _selectedIndex,
+                children: _screens,
               ),
-          ],
+              Positioned(
+                top: topPadding,
+                left: 0,
+                right: 0,
+                child: const SyncIndicator(),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: selectionState.isSelectionMode
+                    ? const BulkSelectionBar()
+                    : const NowPlayingBar(),
+              ),
+              // Drawer overlay
+              if (_isDrawerOpen)
+                Positioned.fill(
+                  child: AppDrawer(onClose: _closeDrawer),
+                ),
+            ],
+          ),
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.library_music_outlined),
-            selectedIcon: Icon(Icons.library_music),
-            label: 'Library',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      bottomNavigationBar: selectionState.isSelectionMode
+          ? null
+          : NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) {
+                setState(() {
+                  _selectedIndex = index;
+                });
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.library_music_outlined),
+                  selectedIcon: Icon(Icons.library_music),
+                  label: 'Library',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: 'Profile',
+                ),
+              ],
+            ),
     );
   }
 }
