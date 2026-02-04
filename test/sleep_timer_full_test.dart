@@ -107,7 +107,7 @@ void main() {
     await Future.delayed(Duration.zero); // Let any initial setup run
 
     // Song duration is 3 mins (180s = 180000ms).
-    // Threshold is 180000 - 200 = 179800ms.
+    // Threshold is 180000 - 1000 = 179000ms.
 
     // Not yet
     positionSubject.add(Duration.zero);
@@ -119,7 +119,32 @@ void main() {
 
     // Trigger
     positionSubject.add(
-        const Duration(minutes: 2, seconds: 59, milliseconds: 900)); // 179900ms
+        const Duration(minutes: 2, seconds: 59, milliseconds: 100)); // 179100ms
+
+    await completer.future;
+    verify(mockAudioPlayer.pause()).called(1);
+  });
+
+  test('stopAfterCurrent triggers if track advances unexpectedly', () async {
+    final completer = Completer<void>();
+    service.mockExit = () async {
+      completer.complete();
+    };
+
+    service.start(
+      mode: SleepTimerMode.stopAfterCurrent,
+      minutes: 0,
+      tracks: 0,
+      letCurrentFinish: false,
+      audioManager: mockAudioManager,
+      onComplete: () {},
+    );
+
+    await Future.delayed(Duration.zero);
+
+    // Simulate advancing to next track before reaching threshold.
+    when(mockAudioPlayer.currentIndex).thenReturn(1);
+    sequenceStateSubject.add(MockSequenceState(1));
 
     await completer.future;
     verify(mockAudioPlayer.pause()).called(1);
@@ -156,7 +181,7 @@ void main() {
     // Listen for end.
 
     positionSubject
-        .add(const Duration(minutes: 2, seconds: 59, milliseconds: 900));
+        .add(const Duration(minutes: 2, seconds: 59, milliseconds: 100));
 
     await completer.future;
     verify(mockAudioPlayer.pause()).called(1);
@@ -180,7 +205,7 @@ void main() {
 
     // Should behave like stopAfterCurrent
     positionSubject
-        .add(const Duration(minutes: 2, seconds: 59, milliseconds: 900));
+        .add(const Duration(minutes: 2, seconds: 59, milliseconds: 100));
 
     await completer.future;
     verify(mockAudioPlayer.pause()).called(1);
@@ -228,7 +253,7 @@ void main() {
 
     // Now trigger end of song
     positionSubject
-        .add(const Duration(minutes: 2, seconds: 59, milliseconds: 900));
+        .add(const Duration(minutes: 2, seconds: 59, milliseconds: 100));
 
     await completer.future;
     verify(mockAudioPlayer.pause()).called(1);

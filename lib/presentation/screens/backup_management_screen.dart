@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 import '../../services/backup_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
@@ -167,8 +169,13 @@ class _BackupManagementScreenState
             backgroundColor: Colors.green,
           ),
         );
-        // Navigate back to refresh data
-        Navigator.pop(context);
+
+        // Show restart dialog after a brief delay
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _showRestartDialog();
+          }
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -541,5 +548,46 @@ class _BackupManagementScreenState
         ),
       ),
     );
+  }
+
+  Future<void> _showRestartDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.restart_alt, color: Colors.blue, size: 48),
+        title: const Text('Restart Required'),
+        content: const Text(
+          'Backup restore has been completed successfully.\n\n'
+          'The app needs to restart to apply all changes properly.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _restartApp();
+            },
+            child: const Text('Restart Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restartApp() async {
+    // For Android, we can use a platform channel to restart the app
+    // For other platforms, we just exit and let the user relaunch
+    if (Platform.isAndroid) {
+      try {
+        const platform = MethodChannel('gru_songs/app');
+        await platform.invokeMethod('restartApp');
+      } catch (e) {
+        // If platform method fails, just exit
+        exit(0);
+      }
+    } else {
+      // On other platforms, just exit
+      exit(0);
+    }
   }
 }

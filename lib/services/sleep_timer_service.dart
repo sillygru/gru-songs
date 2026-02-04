@@ -32,6 +32,7 @@ class SleepTimerService {
   // State for stopAfterTracks
   int _remainingTracks = 0;
   int? _lastIndex;
+  int? _stopAtEndIndex;
 
   // Test helper
   @visibleForTesting
@@ -147,14 +148,41 @@ class SleepTimerService {
   }
 
   /// Enables the "stop at end of song" logic
-  /// Pauses at Duration - 200ms
+  /// Pauses at Duration - 1 second
   void _enableStopAtEndOfSong(AudioPlayerManager audioManager) {
     _positionSub?.cancel();
+    _playerStateSub?.cancel();
+    _sequenceStateSub?.cancel();
+    _stopAtEndIndex = audioManager.player.currentIndex;
+
+    _sequenceStateSub = audioManager.player.sequenceStateStream.listen((state) {
+      final currentIndex = state.currentIndex;
+      if (_stopAtEndIndex != null &&
+          currentIndex != null &&
+          currentIndex != _stopAtEndIndex) {
+        _performShutdown(audioManager);
+      }
+    });
+
+    _playerStateSub = audioManager.player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        _performShutdown(audioManager);
+      }
+    });
+
     _positionSub = audioManager.player.positionStream.listen((pos) {
+      if (_stopAtEndIndex != null &&
+          audioManager.player.currentIndex != null &&
+          audioManager.player.currentIndex != _stopAtEndIndex) {
+        _performShutdown(audioManager);
+        return;
+      }
       final duration = audioManager.player.duration;
       if (duration != null && duration > const Duration(milliseconds: 500)) {
-        // Use 200ms buffer.
-        if (pos >= duration - const Duration(milliseconds: 200)) {
+        final threshold = duration > const Duration(seconds: 1)
+            ? duration - const Duration(seconds: 1)
+            : Duration.zero;
+        if (pos >= threshold) {
           _performShutdown(audioManager);
         }
       }
@@ -207,6 +235,7 @@ class SleepTimerService {
     _sequenceStateSub = null;
     _positionSub?.cancel();
     _positionSub = null;
+    _stopAtEndIndex = null;
 
     if (!keepActiveForShutdown) {
       _isActive = false;

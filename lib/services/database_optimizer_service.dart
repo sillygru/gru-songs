@@ -779,4 +779,40 @@ class DatabaseOptimizerService {
 
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
+
+  /// Re-index all search data without full database optimization
+  Future<OptimizationResult> reindexSearchOnly(String username) async {
+    final issuesFound = <String>[];
+    final fixesApplied = <String>[];
+    final details = <String, dynamic>{};
+
+    try {
+      // Only rebuild search index
+      final searchIndexResult = await _optimizeSearchIndex(username);
+      issuesFound.addAll(searchIndexResult['issues'] as List<String>);
+      fixesApplied.addAll(searchIndexResult['fixes'] as List<String>);
+      details['search_index'] = searchIndexResult['details'];
+
+      final success = issuesFound.isEmpty || fixesApplied.isNotEmpty;
+      final message = success
+          ? 'Search re-indexing completed successfully. ${fixesApplied.length} operations performed.'
+          : 'Search re-indexing found issues but could not complete all operations.';
+
+      return OptimizationResult(
+        success: success,
+        message: message,
+        details: details,
+        issuesFound: issuesFound,
+        fixesApplied: fixesApplied,
+      );
+    } catch (e) {
+      return OptimizationResult(
+        success: false,
+        message: 'Search re-indexing failed: $e',
+        issuesFound: issuesFound,
+        fixesApplied: fixesApplied,
+        details: details,
+      );
+    }
+  }
 }

@@ -294,6 +294,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           subtitle: 'Check and fix database issues',
           onTap: () => _showOptimizeDatabaseDialog(),
         ),
+        _buildListTile(
+          icon: Icons.search_rounded,
+          title: 'Re-index All',
+          subtitle: 'Rebuild search index without full optimization',
+          onTap: () => _showReindexDialog(),
+        ),
       ],
     );
   }
@@ -440,6 +446,151 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } else {
       // On other platforms, just exit
       exit(0);
+    }
+  }
+
+  Future<void> _showReindexDialog() async {
+    final authState = ref.read(authProvider);
+    final username = authState.username;
+    if (username == null) return;
+
+    // Show confirmation dialog
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.search_rounded, color: Colors.blue, size: 48),
+        title: const Text('Re-index Search Data'),
+        content: const Text(
+          'This will rebuild the search index from your cached songs.\n\n'
+          'This operation is faster than full database optimization and only affects search functionality.\n\n'
+          'Would you like to proceed?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Re-index'),
+          ),
+        ],
+      ),
+    );
+
+    if (proceed != true || !mounted) return;
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Re-indexing search data...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final optimizer = DatabaseOptimizerService();
+      final result = await optimizer.reindexSearchOnly(username);
+
+      if (mounted) {
+        Navigator.pop(context); // Pop loading
+
+        // Show results
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: Icon(
+              result.success ? Icons.check_circle : Icons.error,
+              color: result.success ? Colors.green : Colors.red,
+              size: 48,
+            ),
+            title: Text(
+                result.success ? 'Re-indexing Complete' : 'Re-indexing Issues'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(result.message),
+                  if (result.issuesFound.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Issues Found:',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...result.issuesFound.map((issue) => Padding(
+                          padding: const EdgeInsets.only(left: 8, bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('• '),
+                              Expanded(child: Text(issue)),
+                            ],
+                          ),
+                        )),
+                  ],
+                  if (result.fixesApplied.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Operations Performed:',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...result.fixesApplied.map((fix) => Padding(
+                          padding: const EdgeInsets.only(left: 8, bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.check,
+                                  size: 16, color: Colors.green),
+                              const SizedBox(width: 4),
+                              Expanded(child: Text(fix)),
+                            ],
+                          ),
+                        )),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Pop loading
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: const Icon(Icons.error, color: Colors.red, size: 48),
+            title: const Text('Re-indexing Failed'),
+            content: Text('An error occurred during re-indexing: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
 
