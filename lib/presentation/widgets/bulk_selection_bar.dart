@@ -4,6 +4,7 @@ import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/selection_provider.dart';
 import '../screens/bulk_metadata_screen.dart';
+import '../screens/edit_metadata_screen.dart';
 
 class BulkSelectionBar extends ConsumerWidget {
   const BulkSelectionBar({super.key});
@@ -73,13 +74,23 @@ class BulkSelectionBar extends ConsumerWidget {
                   label: 'Metadata',
                   onTap: selectedCount > 0
                       ? () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  BulkMetadataScreen(songs: selectedSongs),
-                            ),
-                          );
+                          if (selectedCount == 1) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    EditMetadataScreen(song: selectedSongs[0]),
+                              ),
+                            );
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    BulkMetadataScreen(songs: selectedSongs),
+                              ),
+                            );
+                          }
                         }
                       : null,
                 ),
