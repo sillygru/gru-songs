@@ -11,7 +11,7 @@ Gru Songs is a simple local music player app built with Flutter.
 - **Metadata Editing:** Built-in editor for modifying song metadata (title, artist, album, filename, lyrics)
 - **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
 - **Merged Songs:** Combine multiple versions of a track (remixes, live, etc.) into a single group for shuffle, keeping individual favorites and settings.
-- **Smart indexing for search:** When searching, song lyrics, albums and artists are all indexed for quick searches
+- **Sleep timer** Sleep timer with customizable duration and features.
 
 ## Additional Features
 - **Backups:** Backup management system
@@ -19,7 +19,8 @@ Gru Songs is a simple local music player app built with Flutter.
 - **Volume Monitoring:** Auto-pause playback when volume is muted and resume when restored
 - **Theme Selection:** Multiple theme options
 - **Statistics Tracking:** Collects stats (real)
-- **User Profiles:** Multi-user support with individual profiles and settings (who tf woud use this)
+- **User Profiles:** Multi-user support with individual profiles and settings (who tf would use this)
+- - **Smart indexing for search:** When searching, song lyrics, albums and artists are all indexed for quick searches
 
 ## Getting Started
 
