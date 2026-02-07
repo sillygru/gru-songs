@@ -887,6 +887,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final remaining = List<QueueItem>.from(items);
     QueueItem? prev = lastItem;
 
+    // Track all filenames from merge groups that have been added to result
+    // This ensures merged songs are treated as one unit across the entire queue
+    final Set<String> usedMergeGroupFilenames = {};
+
+    // If we have a lastItem, mark its entire merge group as used
+    if (lastItem != null) {
+      final lastMergeGroup = _getMergedGroupFilenames(lastItem.song.filename);
+      if (lastMergeGroup.isNotEmpty) {
+        usedMergeGroupFilenames.addAll(lastMergeGroup);
+      }
+    }
+
     // Calculate max play count for adaptive consistent mode
     int maxPlayCount = 0;
     if (playCounts.isNotEmpty) {
@@ -894,7 +906,23 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
 
     while (remaining.isNotEmpty) {
-      final weights = remaining
+      // Filter out songs from merge groups that have already been used
+      final availableItems = remaining.where((item) {
+        final mergeGroup = _getMergedGroupFilenames(item.song.filename);
+        if (mergeGroup.isEmpty) {
+          // Not in a merge group, always available
+          return true;
+        }
+        // Check if any song from this merge group has been used
+        return !mergeGroup
+            .any((filename) => usedMergeGroupFilenames.contains(filename));
+      }).toList();
+
+      // If all remaining items are from used merge groups, reset and allow them
+      final itemsToConsider =
+          availableItems.isNotEmpty ? availableItems : remaining;
+
+      final weights = itemsToConsider
           .map((item) => _calculateWeight(
               item, prev, playCounts, skipStats, maxPlayCount, playHistory))
           .toList();
@@ -914,8 +942,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           break;
         }
       }
-      if (selectedIdx == -1) selectedIdx = remaining.length - 1;
-      final selected = remaining.removeAt(selectedIdx);
+      if (selectedIdx == -1) selectedIdx = itemsToConsider.length - 1;
+      final selected = itemsToConsider[selectedIdx];
+
+      // Mark this song's entire merge group as used
+      final selectedMergeGroup =
+          _getMergedGroupFilenames(selected.song.filename);
+      if (selectedMergeGroup.isNotEmpty) {
+        usedMergeGroupFilenames.addAll(selectedMergeGroup);
+      }
+
+      remaining.remove(selected);
       result.add(selected);
       prev = selected;
     }
@@ -981,26 +1018,56 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
 
       // Also check if any song in the merge group is in history
-      if (historyIndex == -1 && _mergedGroups.isNotEmpty) {
+      // Use the MOST RECENT occurrence from the merge group (smallest historyIndex)
+      if (_mergedGroups.isNotEmpty) {
         final groupFilenames = _getMergedGroupFilenames(song.filename);
         for (int i = 0; i < playHistory.length && i < 200; i++) {
           if (groupFilenames.contains(playHistory[i].filename)) {
-            historyIndex = i;
-            playRatioInHistory = playHistory[i].playRatio;
-            break;
+            // If we haven't found this song yet, or this is more recent than what we found
+            if (historyIndex == -1 || i < historyIndex) {
+              historyIndex = i;
+              playRatioInHistory = playHistory[i].playRatio;
+            }
           }
         }
       }
 
       if (historyIndex != -1 && historyIndex < 200) {
-        // Base penalty: 1% per 2 songs
-        // historyIndex=0,1 (most recent 2) -> 100% base penalty
-        // historyIndex=2,3 -> 99% base penalty
-        // historyIndex=4,5 -> 98% base penalty
-        // ...
-        // historyIndex=198,199 -> 1% base penalty
-        // historyIndex=200+ -> 0% base penalty
-        int basePenaltyPercent = 100 - (historyIndex ~/ 2);
+        // MUCH MORE AGGRESSIVE PENALTY for recent plays
+        // Position 0-9 (last 10 songs): 99.9% penalty (virtually eliminated)
+        // Position 10-19: 99% penalty
+        // Position 20-29: 97% penalty
+        // Position 30-39: 94% penalty
+        // Position 40-49: 90% penalty
+        // Position 50-59: 85% penalty
+        // Position 60-79: 75% penalty
+        // Position 80-99: 60% penalty
+        // Position 100-149: 40% penalty
+        // Position 150-199: 20% penalty
+
+        double basePenaltyPercent;
+        if (historyIndex < 10) {
+          basePenaltyPercent = 99.9;
+        } else if (historyIndex < 20) {
+          basePenaltyPercent = 99.0;
+        } else if (historyIndex < 30) {
+          basePenaltyPercent = 97.0;
+        } else if (historyIndex < 40) {
+          basePenaltyPercent = 94.0;
+        } else if (historyIndex < 50) {
+          basePenaltyPercent = 90.0;
+        } else if (historyIndex < 60) {
+          basePenaltyPercent = 85.0;
+        } else if (historyIndex < 80) {
+          basePenaltyPercent = 75.0;
+        } else if (historyIndex < 100) {
+          basePenaltyPercent = 60.0;
+        } else if (historyIndex < 150) {
+          basePenaltyPercent = 40.0;
+        } else {
+          // 150-199
+          basePenaltyPercent = 20.0;
+        }
 
         // Adjust penalty based on play ratio
         // If play ratio was low (e.g., 0.26), reduce the penalty
@@ -1018,8 +1085,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           penaltyMultiplier = 0.8;
         }
 
-        int adjustedPenaltyPercent =
-            (basePenaltyPercent * penaltyMultiplier).round();
+        double adjustedPenaltyPercent = basePenaltyPercent * penaltyMultiplier;
         weight *= (1.0 - (adjustedPenaltyPercent / 100.0));
       }
     }
