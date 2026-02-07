@@ -312,6 +312,47 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
   }
 
+  Future<void> bulkToggleFavorite(List<String> filenames, bool favorite) async {
+    if (_username == null) return;
+
+    final newFavs = List<String>.from(state.favorites);
+    final newSL = List<String>.from(state.suggestLess);
+
+    for (final filename in filenames) {
+      final isCurrentlyFav = state.isFavorite(filename);
+
+      if (favorite && !isCurrentlyFav) {
+        newFavs.add(filename);
+        await DatabaseService.instance.addFavorite(filename);
+
+        // Remove from suggestLess if present
+        if (state.isSuggestLess(filename)) {
+          final actualSLMatch = state.suggestLess.firstWhere(
+            (sl) =>
+                sl.toLowerCase() == filename.toLowerCase() ||
+                p.basename(sl).toLowerCase() ==
+                    p.basename(filename).toLowerCase(),
+            orElse: () => filename,
+          );
+          newSL.remove(actualSLMatch);
+          await DatabaseService.instance.removeSuggestLess(actualSLMatch);
+        }
+      } else if (!favorite && isCurrentlyFav) {
+        final actualFilename = state.favorites.firstWhere(
+          (f) =>
+              f.toLowerCase() == filename.toLowerCase() ||
+              p.basename(f).toLowerCase() == p.basename(filename).toLowerCase(),
+          orElse: () => filename,
+        );
+        newFavs.remove(actualFilename);
+        await DatabaseService.instance.removeFavorite(actualFilename);
+      }
+    }
+
+    state = state.copyWith(favorites: newFavs, suggestLess: newSL);
+    _updateManager();
+  }
+
   Future<void> bulkHide(List<String> filenames, bool hide) async {
     if (_username == null) return;
 
@@ -380,6 +421,51 @@ class UserDataNotifier extends Notifier<UserDataState> {
             ..add(PlaylistSong(songFilename: songFilename, addedAt: now));
           return pl.copyWith(songs: updatedSongs, updatedAt: now);
         }
+      }
+      return pl;
+    }).toList();
+
+    state = state.copyWith(playlists: newPlaylists);
+  }
+
+  Future<void> bulkAddSongsToPlaylist(
+      String playlistId, List<String> filenames) async {
+    if (_username == null) return;
+
+    await DatabaseService.instance
+        .bulkAddSongsToPlaylist(playlistId, filenames);
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final newPlaylists = state.playlists.map((pl) {
+      if (pl.id == playlistId) {
+        final updatedSongs = List<PlaylistSong>.from(pl.songs);
+        for (final filename in filenames) {
+          if (!updatedSongs.any((s) => s.songFilename == filename)) {
+            updatedSongs
+                .add(PlaylistSong(songFilename: filename, addedAt: now));
+          }
+        }
+        return pl.copyWith(songs: updatedSongs, updatedAt: now);
+      }
+      return pl;
+    }).toList();
+
+    state = state.copyWith(playlists: newPlaylists);
+  }
+
+  Future<void> bulkRemoveSongsFromPlaylist(
+      String playlistId, List<String> filenames) async {
+    if (_username == null) return;
+
+    await DatabaseService.instance
+        .bulkRemoveSongsFromPlaylist(playlistId, filenames);
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final newPlaylists = state.playlists.map((pl) {
+      if (pl.id == playlistId) {
+        final updatedSongs =
+            pl.songs.where((s) => !filenames.contains(s.songFilename)).toList();
+        return pl.copyWith(songs: updatedSongs, updatedAt: now);
       }
       return pl;
     }).toList();

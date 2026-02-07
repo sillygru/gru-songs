@@ -5,6 +5,7 @@ import '../../providers/providers.dart';
 import '../../providers/selection_provider.dart';
 import '../screens/bulk_metadata_screen.dart';
 import '../screens/edit_metadata_screen.dart';
+import 'playlist_selector_screen.dart';
 
 class BulkSelectionBar extends ConsumerWidget {
   const BulkSelectionBar({super.key});
@@ -95,6 +96,20 @@ class BulkSelectionBar extends ConsumerWidget {
                       : null,
                 ),
                 _ActionButton(
+                  icon: Icons.favorite_border,
+                  label: 'Favorite',
+                  onTap: selectedCount > 0
+                      ? () => _bulkToggleFavorite(context, ref, selectedSongs)
+                      : null,
+                ),
+                _ActionButton(
+                  icon: Icons.playlist_add,
+                  label: 'Playlist',
+                  onTap: selectedCount > 0
+                      ? () => _bulkAddToPlaylist(context, ref, selectedSongs)
+                      : null,
+                ),
+                _ActionButton(
                   icon: Icons.visibility_off,
                   label: 'Hide',
                   onTap: selectedCount > 0
@@ -116,6 +131,46 @@ class BulkSelectionBar extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _bulkToggleFavorite(
+      BuildContext context, WidgetRef ref, List<Song> songs) {
+    final filenames = songs.map((s) => s.filename).toList();
+    ref.read(userDataProvider.notifier).bulkToggleFavorite(filenames, true);
+    ref.read(selectionProvider.notifier).exitSelectionMode();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Added ${songs.length} songs to favorites')),
+    );
+  }
+
+  void _bulkAddToPlaylist(
+      BuildContext context, WidgetRef ref, List<Song> songs) {
+    final filenames = songs.map((s) => s.filename).toList();
+    final playlists = ref.read(userDataProvider).playlists;
+    final sorted = List.of(playlists)
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    if (sorted.isEmpty) {
+      showBulkPlaylistSelector(context, ref, filenames);
+    } else {
+      final latest = sorted.first;
+      ref
+          .read(userDataProvider.notifier)
+          .bulkAddSongsToPlaylist(latest.id, filenames);
+      ref.read(selectionProvider.notifier).exitSelectionMode();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Added ${songs.length} songs to ${latest.name}"),
+          action: SnackBarAction(
+            label: "Change",
+            onPressed: () {
+              showBulkPlaylistSelector(context, ref, filenames);
+            },
+          ),
+        ),
+      );
+    }
   }
 
   void _confirmHide(BuildContext context, WidgetRef ref, List<Song> songs) {

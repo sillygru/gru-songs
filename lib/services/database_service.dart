@@ -415,6 +415,54 @@ class DatabaseService {
     });
   }
 
+  Future<void> bulkAddSongsToPlaylist(
+      String playlistId, List<String> filenames) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+    await _userDataDatabase!.transaction((txn) async {
+      for (final filename in filenames) {
+        final existing = await txn.query('playlist_song',
+            where: 'playlist_id = ? AND song_filename = ?',
+            whereArgs: [playlistId, filename]);
+
+        if (existing.isEmpty) {
+          await txn.insert('playlist_song', {
+            'playlist_id': playlistId,
+            'song_filename': filename,
+            'added_at': now
+          });
+        }
+      }
+
+      // Update playlist timestamp once
+      await txn.update('playlist', {'updated_at': now},
+          where: 'id = ?', whereArgs: [playlistId]);
+    });
+  }
+
+  Future<void> bulkRemoveSongsFromPlaylist(
+      String playlistId, List<String> filenames) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+
+    await _userDataDatabase!.transaction((txn) async {
+      for (final filename in filenames) {
+        await txn.delete('playlist_song',
+            where: 'playlist_id = ? AND song_filename = ?',
+            whereArgs: [playlistId, filename]);
+      }
+
+      // Update playlist timestamp
+      await txn.update('playlist', {'updated_at': now},
+          where: 'id = ?', whereArgs: [playlistId]);
+    });
+  }
+
   Future<void> removeSongFromPlaylist(
       String playlistId, String songFilename) async {
     await _ensureInitialized();
