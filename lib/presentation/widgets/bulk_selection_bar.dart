@@ -71,6 +71,20 @@ class BulkSelectionBar extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _ActionButton(
+                  icon: Icons.favorite_border,
+                  label: 'Favorite',
+                  onTap: selectedCount > 0
+                      ? () => _bulkToggleFavorite(context, ref, selectedSongs)
+                      : null,
+                ),
+                _ActionButton(
+                  icon: Icons.playlist_add,
+                  label: 'Playlist',
+                  onTap: selectedCount > 0
+                      ? () => _bulkAddToPlaylist(context, ref, selectedSongs)
+                      : null,
+                ),
+                _ActionButton(
                   icon: Icons.edit,
                   label: 'Metadata',
                   onTap: selectedCount > 0
@@ -93,20 +107,6 @@ class BulkSelectionBar extends ConsumerWidget {
                             );
                           }
                         }
-                      : null,
-                ),
-                _ActionButton(
-                  icon: Icons.favorite_border,
-                  label: 'Favorite',
-                  onTap: selectedCount > 0
-                      ? () => _bulkToggleFavorite(context, ref, selectedSongs)
-                      : null,
-                ),
-                _ActionButton(
-                  icon: Icons.playlist_add,
-                  label: 'Playlist',
-                  onTap: selectedCount > 0
-                      ? () => _bulkAddToPlaylist(context, ref, selectedSongs)
                       : null,
                 ),
                 _ActionButton(
