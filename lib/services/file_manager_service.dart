@@ -1,12 +1,15 @@
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:metadata_god/metadata_god.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart' as amr;
 import 'database_service.dart';
+import 'scanner_service.dart';
 import '../models/song.dart';
 import 'storage_service.dart';
 import 'android_storage_service.dart';
@@ -103,11 +106,11 @@ class FileManagerService {
         );
       }
 
-      // 1. Update ID3 tag
+      // 1. Update ID3 tag in the actual song file
       await updateMetadataInternal(song.url,
           picture: newPicture, removePicture: imagePath == null);
 
-      // 2. Update cached extracted cover
+      // 2. Rebuild the cover cache for this specific song from the actual file
       final supportDir = await getApplicationSupportDirectory();
       final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
       if (!await coversDir.exists()) {
@@ -116,7 +119,7 @@ class FileManagerService {
 
       final hash = md5.convert(utf8.encode(song.url)).toString();
 
-      // Clean up old cached files for this song (including timestamped ones)
+      // Clean up ALL old cached files for this song
       try {
         final files = await coversDir.list().toList();
         for (final entity in files) {
@@ -132,13 +135,40 @@ class FileManagerService {
       }
 
       if (imagePath != null) {
-        // Get the new mtime of the file
         final songFile = File(song.url);
         final stat = await songFile.stat();
         final mtimeMs = stat.modified.millisecondsSinceEpoch;
 
+        // Re-extract the cover from the actual file on disk to verify the
+        // metadata write persisted and to build the cache using the exact same
+        // logic the scanner/rebuild uses.  Skip folder covers — we are setting
+        // a per-song cover, not picking up a shared folder image.
+        String? extractedPath;
+        try {
+          extractedPath = await ScannerService.extractCoverForFile(
+            songFile,
+            coversDir,
+            hash,
+            mtimeMs,
+            skipFolderCover: true,
+          );
+        } catch (e) {
+          debugPrint(
+              'FileManager: re-extraction after metadata write failed: $e');
+        }
+
+        if (extractedPath != null) {
+          debugPrint(
+              'FileManager: verified cover persisted in file → $extractedPath');
+          return extractedPath;
+        }
+
+        // Fallback: the metadata write may not have been readable by the
+        // extraction libraries, but we know the bytes are correct so write
+        // them to cache directly.
+        debugPrint(
+            'FileManager: extraction could not read back cover, writing bytes directly');
         final ext = p.extension(imagePath).toLowerCase();
-        // Add mtime to ensure unique filename and bust cache, and allow ScannerService to verify validity
         final newCoverFile =
             File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
         await newCoverFile.writeAsBytes(newPicture!.data);
@@ -166,7 +196,7 @@ class FileManagerService {
     try {
       // Decode the image to ensure it's valid and to re-encode as JPG
       final bytes = await coverFile.readAsBytes();
-      
+
       // Run heavy image processing in an isolate
       return await compute(_processImageForExport, bytes);
     } catch (e) {
@@ -178,6 +208,28 @@ class FileManagerService {
   Future<void> exportSongCover(Song song, String destinationPath) async {
     final jpgBytes = await getCoverExportBytes(song);
     await File(destinationPath).writeAsBytes(jpgBytes);
+  }
+
+  /// Fixes the song cover by trimming black borders and cropping to a square.
+  /// Returns a list of fixed image options.
+  /// The first option is the standard auto-crop.
+  /// Subsequent options are alternatives (e.g., symmetrical crop).
+  Future<List<Uint8List>> getFixedCoverOptions(Song song) async {
+    if (song.coverUrl == null) {
+      throw Exception("No cover available to fix");
+    }
+
+    final coverFile = File(song.coverUrl!);
+    if (!await coverFile.exists()) {
+      throw Exception("Cover file not found at ${song.coverUrl}");
+    }
+
+    try {
+      final bytes = await coverFile.readAsBytes();
+      return await compute(_processFixOptions, bytes);
+    } catch (e) {
+      throw Exception("Failed to fix cover: $e");
+    }
   }
 
   // Top-level function for compute
@@ -197,6 +249,106 @@ class FileManagerService {
     }
     // Encode as JPG with 85% quality
     return Uint8List.fromList(img.encodeJpg(image, quality: 85));
+  }
+
+  // Top-level function for compute
+  static List<Uint8List> _processFixOptions(Uint8List bytes) {
+    final image = img.decodeImage(bytes);
+    if (image == null) {
+      throw Exception("Could not decode cover image");
+    }
+
+    // 1. Detect Content Bounding Box
+    int minX = image.width;
+    int minY = image.height;
+    int maxX = 0;
+    int maxY = 0;
+
+    bool foundContent = false;
+    const threshold = 45; // Tolerance for "black"/noise
+
+    for (var y = 0; y < image.height; y++) {
+      for (var x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        // Access r, g, b directly from pixel
+        if (pixel.r > threshold || pixel.g > threshold || pixel.b > threshold) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          foundContent = true;
+        }
+      }
+    }
+
+    // Helper to square crop and encode
+    Uint8List squareCropAndEncode(img.Image imgToCrop) {
+      img.Image cropped = imgToCrop;
+      if (cropped.width != cropped.height) {
+        int size =
+            cropped.width < cropped.height ? cropped.width : cropped.height;
+        int xOffset = (cropped.width - size) ~/ 2;
+        int yOffset = (cropped.height - size) ~/ 2;
+
+        cropped = img.copyCrop(cropped,
+            x: xOffset, y: yOffset, width: size, height: size);
+      }
+      return Uint8List.fromList(img.encodeJpg(cropped, quality: 85));
+    }
+
+    if (!foundContent) {
+      // If all black, just return original squared
+      return [squareCropAndEncode(image)];
+    }
+
+    final results = <Uint8List>[];
+
+    // --- Option 1: Standard (Crop to detected content) ---
+    img.Image standardCrop = image;
+    final trimWidth = maxX - minX + 1;
+    final trimHeight = maxY - minY + 1;
+
+    // Only crop if we actually found borders to remove
+    if (trimWidth < image.width || trimHeight < image.height) {
+      standardCrop = img.copyCrop(image,
+          x: minX, y: minY, width: trimWidth, height: trimHeight);
+    }
+    results.add(squareCropAndEncode(standardCrop));
+
+    // --- Option 2: Symmetrical Crop ---
+    // Useful for cases where one side has a black border and the other has a blur/noise
+    // but we want to crop symmetrically based on the detected border.
+
+    int leftInset = minX;
+    int rightInset = image.width - 1 - maxX;
+    int topInset = minY;
+    int bottomInset = image.height - 1 - maxY;
+
+    int symH = max(leftInset, rightInset);
+    int symV = max(topInset, bottomInset);
+
+    // Only add if it yields a different crop rectangle than the standard one
+    // Standard crop rect: x=minX, y=minY, w=trimWidth, h=trimHeight
+    // Symmetrical crop rect: x=symH, y=symV, w=image.width-2*symH, h=image.height-2*symV
+
+    bool isDifferent = (leftInset != symH) ||
+        (rightInset != symH) ||
+        (topInset != symV) ||
+        (bottomInset != symV);
+
+    if (isDifferent) {
+      // Ensure we don't crop everything away
+      if (2 * symH < image.width && 2 * symV < image.height) {
+        final symWidth = image.width - 2 * symH;
+        final symHeight = image.height - 2 * symV;
+
+        final symCrop = img.copyCrop(image,
+            x: symH, y: symV, width: symWidth, height: symHeight);
+        results.add(squareCropAndEncode(symCrop));
+      }
+    }
+
+    return results;
   }
 
   String _getMimeTypeFromExtension(String extension) {
@@ -235,24 +387,15 @@ class FileManagerService {
           final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
           await File(fileUrl).copy(tempFile.path);
 
-          final metadata = await MetadataGod.readMetadata(file: tempFile.path);
-          final updatedMetadata = Metadata(
-            title: title ?? metadata.title,
-            artist: artist ?? metadata.artist,
-            album: album ?? metadata.album,
-            albumArtist: metadata.albumArtist,
-            trackNumber: metadata.trackNumber,
-            trackTotal: metadata.trackTotal,
-            discNumber: metadata.discNumber,
-            discTotal: metadata.discTotal,
-            year: metadata.year,
-            genre: metadata.genre,
-            picture: removePicture ? null : (picture ?? metadata.picture),
-          );
-
-          await MetadataGod.writeMetadata(
-            file: tempFile.path,
-            metadata: updatedMetadata,
+          // Use audio_metadata_reader for cover updates and MetadataGod for text
+          await _updateMetadataWithLibraries(
+            tempFile: tempFile,
+            tempDir: tempDir,
+            title: title,
+            artist: artist,
+            album: album,
+            picture: picture,
+            removePicture: removePicture,
           );
 
           final sourceRelativePath = p.relative(fileUrl, from: rootPath);
@@ -268,33 +411,123 @@ class FileManagerService {
         }
       }
 
-      // Read existing metadata
-      final metadata = await MetadataGod.readMetadata(file: fileUrl);
+      // For non-Android platforms, work in a temp directory too for safety
+      final tempDir = await Directory.systemTemp.createTemp('gru_meta_');
+      final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
+      await File(fileUrl).copy(tempFile.path);
 
-      // Create updated metadata object
-      final updatedMetadata = Metadata(
-        title: title ?? metadata.title,
-        artist: artist ?? metadata.artist,
-        album: album ?? metadata.album,
-        albumArtist: metadata.albumArtist,
-        trackNumber: metadata.trackNumber,
-        trackTotal: metadata.trackTotal,
-        discNumber: metadata.discNumber,
-        discTotal: metadata.discTotal,
-        year: metadata.year,
-        genre: metadata.genre,
-        picture: removePicture ? null : (picture ?? metadata.picture),
+      await _updateMetadataWithLibraries(
+        tempFile: tempFile,
+        tempDir: tempDir,
+        title: title,
+        artist: artist,
+        album: album,
+        picture: picture,
+        removePicture: removePicture,
       );
 
-      // Write it back
-      await MetadataGod.writeMetadata(
-        file: fileUrl,
-        metadata: updatedMetadata,
-      );
+      // Copy the updated file back to original location
+      await tempFile.copy(fileUrl);
+      await tempDir.delete(recursive: true);
+
       debugPrint("Successfully updated metadata for $fileUrl");
     } catch (e) {
       throw Exception("Failed to update song metadata: $e");
     }
+  }
+
+  /// Helper method to update metadata using both audio_metadata_reader (for covers)
+  /// and MetadataGod (for text). Works on all platforms.
+  Future<void> _updateMetadataWithLibraries({
+    required File tempFile,
+    required Directory tempDir,
+    String? title,
+    String? artist,
+    String? album,
+    Picture? picture,
+    bool removePicture = false,
+  }) async {
+    // For cover updates, use audio_metadata_reader with working directory workaround
+    // The library has a bug where it writes to hardcoded "a_new.mp4" etc.
+    if (picture != null || removePicture) {
+      final originalDir = Directory.current;
+      try {
+        // Change to temp directory so the library creates a_new.* files there
+        Directory.current = tempDir;
+
+        amr.updateMetadata(tempFile, (metadata) {
+          final amrPicture = picture != null
+              ? amr.Picture(
+                  Uint8List.fromList(picture.data),
+                  picture.mimeType,
+                  amr.PictureType.coverFront,
+                )
+              : null;
+
+          // Handle different metadata types
+          if (metadata is amr.Mp3Metadata) {
+            if (removePicture) {
+              metadata.pictures.clear();
+            } else if (amrPicture != null) {
+              metadata.pictures = [amrPicture];
+            }
+          } else if (metadata is amr.Mp4Metadata) {
+            metadata.picture = removePicture ? null : amrPicture;
+          } else if (metadata is amr.VorbisMetadata) {
+            if (removePicture) {
+              metadata.pictures.clear();
+            } else if (amrPicture != null) {
+              metadata.pictures = [amrPicture];
+            }
+          } else if (metadata is amr.RiffMetadata) {
+            if (removePicture) {
+              metadata.pictures.clear();
+            } else if (amrPicture != null) {
+              metadata.pictures = [amrPicture];
+            }
+          }
+        });
+
+        // The library writes to a_new.* - rename it back to original
+        final extension = p.extension(tempFile.path).toLowerCase();
+        String? newFileName;
+        if (extension == '.mp4' || extension == '.m4a') {
+          newFileName = 'a_new.mp4';
+        } else if (extension == '.wav') {
+          newFileName = 'a_new.wav';
+        }
+
+        if (newFileName != null) {
+          final newFile = File(p.join(tempDir.path, newFileName));
+          if (await newFile.exists()) {
+            await newFile.rename(tempFile.path);
+          }
+        }
+      } finally {
+        Directory.current = originalDir;
+      }
+    }
+
+    // Use MetadataGod for text metadata (works reliably)
+    final metadata = await MetadataGod.readMetadata(file: tempFile.path);
+    final updatedMetadata = Metadata(
+      title: title ?? metadata.title,
+      artist: artist ?? metadata.artist,
+      album: album ?? metadata.album,
+      albumArtist: metadata.albumArtist,
+      trackNumber: metadata.trackNumber,
+      trackTotal: metadata.trackTotal,
+      discNumber: metadata.discNumber,
+      discTotal: metadata.discTotal,
+      year: metadata.year,
+      genre: metadata.genre,
+      picture: metadata.picture, // Keep whatever audio_metadata_reader wrote
+    );
+
+    await MetadataGod.writeMetadata(
+      file: tempFile.path,
+      metadata: updatedMetadata,
+    );
   }
 
   /// Renames a song file locally.

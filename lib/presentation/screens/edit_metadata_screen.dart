@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
@@ -113,14 +114,225 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
     }
   }
 
+  Future<void> _fixThumbnail(Song currentSong) async {
+    if (currentSong.coverUrl == null) return;
+
+    try {
+      setState(() => _isSaving = true);
+
+      final fixedOptions = await ref
+          .read(fileManagerServiceProvider)
+          .getFixedCoverOptions(currentSong);
+
+      if (!mounted) return;
+
+      // Show comparison dialog
+      final resultBytes = await showDialog<Uint8List>(
+        context: context,
+        builder: (context) {
+          int selectedIndex = 0;
+          bool showAlternatives = false;
+
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text("Fix Thumbnail Result"),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Review the changes below:"),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            children: [
+                              const Text("Original",
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  color: Colors
+                                      .black12, // Subtle background to see borders
+                                  child: Image.file(
+                                    File(currentSong.coverUrl!),
+                                    height: 100,
+                                    width: 100,
+                                    fit: BoxFit
+                                        .contain, // Changed from cover to contain to show full image including borders
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Icon(Icons.arrow_forward),
+                        ),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                  fixedOptions.length > 1
+                                      ? "New (Option ${selectedIndex + 1})"
+                                      : "New",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  color: Colors.black12,
+                                  child: Image.memory(
+                                    fixedOptions[selectedIndex],
+                                    height: 100,
+                                    width: 100,
+                                    fit: BoxFit.contain, // Consistent scaling
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (fixedOptions.length > 1) ...[
+                      const SizedBox(height: 16),
+                      if (!showAlternatives)
+                        TextButton.icon(
+                          onPressed: () =>
+                              setState(() => showAlternatives = true),
+                          icon: const Icon(Icons.grid_view),
+                          label: const Text("See Alternatives"),
+                        )
+                      else
+                        SizedBox(
+                          height: 80,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: fixedOptions.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 8),
+                            itemBuilder: (context, index) {
+                              return GestureDetector(
+                                onTap: () =>
+                                    setState(() => selectedIndex = index),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: index == selectedIndex
+                                        ? Border.all(
+                                            color:
+                                                Theme.of(context).primaryColor,
+                                            width: 2)
+                                        : Border.all(
+                                            color: Colors.transparent,
+                                            width: 2),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Image.memory(
+                                    fixedOptions[index],
+                                    width: 80,
+                                    height: 80,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, null),
+                    child: const Text("Cancel"),
+                  ),
+                  FilledButton(
+                    onPressed: () =>
+                        Navigator.pop(context, fixedOptions[selectedIndex]),
+                    child: const Text("Apply"),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (resultBytes != null) {
+        // We need to save the bytes to a temp file to pass to updateSongCover
+        // (Since updateSongCover expects a file path)
+        final tempDir = await Directory.systemTemp.createTemp();
+        final tempFile = File(p.join(tempDir.path, 'fixed_cover.jpg'));
+        await tempFile.writeAsBytes(resultBytes);
+
+        await ref
+            .read(songsProvider.notifier)
+            .updateSongCover(currentSong, tempFile.path);
+
+        // Clean up temp file
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Thumbnail fixed successfully")),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error fixing thumbnail: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  void _showFixHelp() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.auto_fix_high),
+            SizedBox(width: 8),
+            Text("Fix Thumbnail"),
+          ],
+        ),
+        content: const Text(
+          "This tool automatically improves your album art by:\n\n"
+          "1. Detecting and removing black bars/borders (common in YouTube thumbnails)\n"
+          "2. Cropping the image to a perfect square (1:1 ratio)\n\n"
+          "Best used for converting 16:9 thumbnails into proper album covers.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Got it"),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _exportImage(Song currentSong) async {
     if (currentSong.coverUrl == null) return;
 
     try {
       setState(() => _isSaving = true);
-      
+
       // Get bytes first to satisfy file_picker requirement on Android/iOS
-      final bytes = await ref.read(fileManagerServiceProvider).getCoverExportBytes(currentSong);
+      final bytes = await ref
+          .read(fileManagerServiceProvider)
+          .getCoverExportBytes(currentSong);
 
       final savePath = await FilePicker.platform.saveFile(
         dialogTitle: 'Export Cover',
@@ -133,7 +345,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
       if (savePath != null) {
         // On desktop, we need to write the file ourselves
         if (!Platform.isAndroid && !Platform.isIOS) {
-           await File(savePath).writeAsBytes(bytes);
+          await File(savePath).writeAsBytes(bytes);
         }
 
         if (mounted) {
@@ -249,6 +461,25 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                         onPressed: () => _pickImage(currentSong),
                         icon: const Icon(Icons.image),
                         label: const Text("Change Cover"),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: currentSong.coverUrl == null
+                                  ? null
+                                  : () => _fixThumbnail(currentSong),
+                              icon: const Icon(Icons.auto_fix_high),
+                              label: const Text("Fix Thumbnail"),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: _showFixHelp,
+                            icon: const Icon(Icons.help_outline),
+                            tooltip: "What does this do?",
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Row(

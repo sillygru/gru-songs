@@ -615,6 +615,15 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           .read(fileManagerServiceProvider)
           .updateSongCover(song, imagePath);
 
+      // Read the file's new mtime since the metadata write changed it on disk
+      double? newMtime;
+      try {
+        final stat = await File(song.url).stat();
+        newMtime = stat.modified.millisecondsSinceEpoch / 1000.0;
+      } catch (_) {
+        newMtime = song.mtime;
+      }
+
       if (state.hasValue) {
         final current = state.value ?? [];
         state = AsyncValue.data([
@@ -630,7 +639,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
                 coverUrl: newCoverPath,
                 playCount: s.playCount,
                 duration: s.duration,
-                mtime: s.mtime,
+                mtime: newMtime,
               )
             else
               s,

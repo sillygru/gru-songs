@@ -5,7 +5,9 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../domain/services/search_service.dart';
+import '../models/song.dart';
 import '../services/storage_service.dart';
+import '../services/scanner_service.dart';
 
 /// Result of a database optimization operation
 class OptimizationResult {
@@ -40,7 +42,10 @@ class DatabaseOptimizerService {
   DatabaseOptimizerService._internal();
 
   /// Analyzes and optimizes all database files for a user
-  Future<OptimizationResult> optimizeDatabases(String username) async {
+  Future<OptimizationResult> optimizeDatabases(
+    String username, {
+    void Function(String message, double progress)? onProgress,
+  }) async {
     final issuesFound = <String>[];
     final fixesApplied = <String>[];
     final details = <String, dynamic>{};
@@ -51,28 +56,85 @@ class DatabaseOptimizerService {
       final userDataDbPath = join(docDir.path, '${username}_data.db');
 
       // Clean up shuffle state JSON (remove history data)
+      onProgress?.call('Cleaning up shuffle state...', 0.05);
       final shuffleCleanupResult = await _cleanupShuffleStateJson(username);
       issuesFound.addAll(shuffleCleanupResult['issues'] as List<String>);
       fixesApplied.addAll(shuffleCleanupResult['fixes'] as List<String>);
       details['shuffle_state_cleanup'] = shuffleCleanupResult['details'];
 
       // Optimize stats database (fix event types, vacuum)
+      onProgress?.call('Optimizing stats database...', 0.1);
       final statsResult = await _optimizeStatsDatabase(statsDbPath);
       issuesFound.addAll(statsResult['issues'] as List<String>);
       fixesApplied.addAll(statsResult['fixes'] as List<String>);
       details['stats_db'] = statsResult['details'];
 
       // Optimize user data database (fix schema, orphans, duplicates)
+      onProgress?.call('Optimizing user data database...', 0.2);
       final userDataResult = await _optimizeUserDataDatabase(userDataDbPath);
       issuesFound.addAll(userDataResult['issues'] as List<String>);
       fixesApplied.addAll(userDataResult['fixes'] as List<String>);
       details['user_data_db'] = userDataResult['details'];
 
+      // Rebuild cover caches
+      onProgress?.call('Preparing to rebuild cover cache...', 0.3);
+      try {
+        final storage = StorageService();
+        final songs = await storage.loadSongs(username);
+
+        if (songs.isNotEmpty) {
+          final scanner = ScannerService();
+          final coverMap =
+              await scanner.rebuildCoverCache(songs, onProgress: (p) {
+            onProgress?.call(
+                'Rebuilding covers... ${(p * 100).toInt()}%', 0.3 + (p * 0.5));
+          });
+
+          // Update stored songs with the actual cover URLs from the rebuild
+          onProgress?.call('Updating song cover references...', 0.8);
+          int coversUpdated = 0;
+          final updatedSongs = songs.map((song) {
+            final newCoverUrl = coverMap[song.url];
+            if (newCoverUrl != song.coverUrl) {
+              coversUpdated++;
+              return Song(
+                title: song.title,
+                artist: song.artist,
+                album: song.album,
+                filename: song.filename,
+                url: song.url,
+                lyricsUrl: song.lyricsUrl,
+                coverUrl: newCoverUrl,
+                playCount: song.playCount,
+                duration: song.duration,
+                mtime: song.mtime,
+              );
+            }
+            return song;
+          }).toList();
+
+          await storage.saveSongs(username, updatedSongs);
+
+          fixesApplied.add('Rebuilt cover cache for ${songs.length} songs');
+          if (coversUpdated > 0) {
+            fixesApplied.add('Updated $coversUpdated song cover references');
+          }
+          details['covers_rebuilt'] = songs.length;
+          details['covers_updated'] = coversUpdated;
+        }
+      } catch (e) {
+        issuesFound.add('Error rebuilding covers: $e');
+        debugPrint('Error rebuilding covers: $e');
+      }
+
       // Optimize/rebuild search index
+      onProgress?.call('Optimizing search index...', 0.9);
       final searchIndexResult = await _optimizeSearchIndex(username);
       issuesFound.addAll(searchIndexResult['issues'] as List<String>);
       fixesApplied.addAll(searchIndexResult['fixes'] as List<String>);
       details['search_index'] = searchIndexResult['details'];
+
+      onProgress?.call('Finalizing...', 1.0);
 
       final success = issuesFound.isEmpty || fixesApplied.isNotEmpty;
       final message = success

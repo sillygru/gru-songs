@@ -244,5 +244,41 @@ void main() {
       expect(exportedBytes[0], 0xFF);
       expect(exportedBytes[1], 0xD8);
     });
+
+    test(
+        'getFixedCoverOptions should return multiple options for asymmetrical borders',
+        () async {
+      // Create an image 100x100
+      final image = img.Image(width: 100, height: 100);
+
+      // Fill with "blur" (e.g. dark grey but above threshold 45)
+      img.fill(image, color: img.ColorRgb8(50, 50, 50));
+
+      // Add black border on LEFT only (0..19)
+      // Color < 45. e.g. 0.
+      img.fillRect(image,
+          x1: 0, y1: 0, x2: 19, y2: 99, color: img.ColorRgb8(0, 0, 0));
+
+      // Save to file
+      final coverPath = p.join(tempDir.path, 'asym_cover.png');
+      await File(coverPath).writeAsBytes(img.encodePng(image));
+
+      final songWithCover = Song(
+        title: 'Test Song',
+        artist: 'Test Artist',
+        album: 'Test Album',
+        filename: 'test.mp3',
+        url: testSong.url,
+        coverUrl: coverPath,
+        playCount: 0,
+        duration: const Duration(seconds: 180),
+        mtime: DateTime.now().millisecondsSinceEpoch / 1000.0,
+      );
+
+      final options = await fileManager.getFixedCoverOptions(songWithCover);
+
+      // Should have Standard (crop left only) and Symmetrical (crop both)
+      expect(options.length, greaterThanOrEqualTo(2));
+    });
   });
 }

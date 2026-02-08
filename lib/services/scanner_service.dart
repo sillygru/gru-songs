@@ -30,6 +30,18 @@ class _ScanParams {
   });
 }
 
+class _RebuildParams {
+  final List<Song> songs;
+  final String coversDirPath;
+  final SendPort sendPort;
+
+  _RebuildParams({
+    required this.songs,
+    required this.coversDirPath,
+    required this.sendPort,
+  });
+}
+
 class ScannerService {
   static final List<String> _supportedExtensions = [
     '.mp3',
@@ -38,6 +50,43 @@ class ScannerService {
     '.flac',
     '.ogg'
   ];
+
+  /// Extracts cover art from a single song file using the same logic as the
+  /// scanner (metadata reader → manual byte extraction → folder cover).
+  /// Returns the path to the cached cover file, or null if no cover was found.
+  static Future<String?> extractCoverForFile(
+    File file,
+    Directory coversDir,
+    String hash,
+    int mtimeMs, {
+    bool skipFolderCover = false,
+  }) async {
+    if (!await file.exists()) return null;
+
+    // Try metadata extraction first
+    try {
+      final metadata = amr.readMetadata(file);
+      if (metadata.pictures.isNotEmpty) {
+        final picture = metadata.pictures.first;
+        final coverExt = _getExtFromMime(picture.mimetype);
+        final coverFile =
+            File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+        await coverFile.writeAsBytes(picture.bytes);
+        return coverFile.path;
+      }
+    } catch (e) {
+      debugPrint('extractCoverForFile: metadata read failed: $e');
+    }
+
+    // Try manual byte-level extraction
+    final manual =
+        await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+    if (manual != null) return manual;
+
+    // Try folder cover as last resort
+    if (skipFolderCover) return null;
+    return _findCoverInFolder(p.dirname(file.path));
+  }
 
   Future<List<Song>> scanDirectory(
     String path, {
@@ -134,6 +183,115 @@ class ScannerService {
     });
 
     return completer.future;
+  }
+
+  Future<Map<String, String?>> rebuildCoverCache(
+    List<Song> songs, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+
+    if (!await coversDir.exists()) {
+      await coversDir.create(recursive: true);
+    }
+
+    final receivePort = ReceivePort();
+    await Isolate.spawn(
+        _isolateRebuildCovers,
+        _RebuildParams(
+          songs: songs,
+          coversDirPath: coversDir.path,
+          sendPort: receivePort.sendPort,
+        ));
+
+    final completer = Completer<Map<String, String?>>();
+    receivePort.listen((message) {
+      if (message is double) {
+        onProgress?.call(message);
+      } else if (message is Map) {
+        receivePort.close();
+        completer.complete(Map<String, String?>.from(message));
+      } else {
+        receivePort.close();
+        completer.completeError(message);
+      }
+    });
+
+    return completer.future;
+  }
+
+  static Future<void> _isolateRebuildCovers(_RebuildParams params) async {
+    final coversDir = Directory(params.coversDirPath);
+    final folderCoverCache = <String, String?>{};
+    final coverResults = <String, String?>{};
+
+    for (int i = 0; i < params.songs.length; i++) {
+      final song = params.songs[i];
+      final file = File(song.url);
+      String? resolvedCoverUrl;
+
+      if (await file.exists()) {
+        try {
+          int mtimeMs;
+          if (song.mtime != null) {
+            mtimeMs = (song.mtime! * 1000).round();
+          } else {
+            final stat = await file.stat();
+            mtimeMs = stat.modified.millisecondsSinceEpoch;
+          }
+
+          final hash = md5.convert(utf8.encode(file.path)).toString();
+
+          // Check if already exists - preserve existing covers to avoid overwriting manual changes
+          for (final ext in ['.jpg', '.png', '.jpeg', '.webp']) {
+            final cachedFile =
+                File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+            if (await cachedFile.exists()) {
+              resolvedCoverUrl = cachedFile.path;
+              break;
+            }
+          }
+
+          if (resolvedCoverUrl == null) {
+            // Try metadata extraction first
+            try {
+              final metadata = amr.readMetadata(file);
+              if (metadata.pictures.isNotEmpty) {
+                final picture = metadata.pictures.first;
+                final coverExt = _getExtFromMime(picture.mimetype);
+                final coverFile =
+                    File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+                await coverFile.writeAsBytes(picture.bytes);
+                resolvedCoverUrl = coverFile.path;
+              }
+            } catch (e) {
+              debugPrint('No embedded cover found for ${song.title}: $e');
+            }
+
+            // Try manual extraction if no embedded cover found
+            resolvedCoverUrl ??=
+                await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+
+            // Try folder cover as last resort
+            if (resolvedCoverUrl == null) {
+              final parentPath = p.dirname(file.path);
+              resolvedCoverUrl = folderCoverCache.putIfAbsent(
+                  parentPath, () => _findCoverInFolder(parentPath));
+            }
+          }
+        } catch (e) {
+          debugPrint('Error rebuilding cover for ${song.title}: $e');
+        }
+      }
+
+      coverResults[song.url] = resolvedCoverUrl;
+
+      if (i % 10 == 0) {
+        params.sendPort.send((i + 1) / params.songs.length);
+      }
+    }
+    params.sendPort.send(coverResults);
   }
 
   static Future<void> _isolateScan(_ScanParams params) async {

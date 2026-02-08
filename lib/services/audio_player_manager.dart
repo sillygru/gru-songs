@@ -723,11 +723,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _savePlaybackState();
 
     // If something changed in the current item, we need to rebuild the player queue
-    // to update the AudioSource (which contains the filename/URL)
+    // to update the AudioSource (which contains the filename/URL and artUri)
     if (currentIdx != null && currentItemBefore != null) {
       final currentItemAfter = _effectiveQueue[currentIdx];
       if (currentItemBefore.song.url != currentItemAfter.song.url ||
-          currentItemBefore.song.filename != currentItemAfter.song.filename) {
+          currentItemBefore.song.filename != currentItemAfter.song.filename ||
+          currentItemBefore.song.coverUrl != currentItemAfter.song.coverUrl) {
         _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
       }
     }

@@ -626,16 +626,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (proceed != true || !mounted) return;
 
+    final progressNotifier = ValueNotifier<double>(0.0);
+    final messageNotifier = ValueNotifier<String>('Starting optimization...');
+
     // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Text('Optimizing database...'),
+            ValueListenableBuilder<String>(
+              valueListenable: messageNotifier,
+              builder: (context, message, _) =>
+                  Text(message, textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 20),
+            ValueListenableBuilder<double>(
+              valueListenable: progressNotifier,
+              builder: (context, progress, _) =>
+                  LinearProgressIndicator(value: progress),
+            ),
           ],
         ),
       ),
@@ -643,7 +655,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       final optimizer = DatabaseOptimizerService();
-      final result = await optimizer.optimizeDatabases(username);
+      final result = await optimizer.optimizeDatabases(
+        username,
+        onProgress: (message, progress) {
+          messageNotifier.value = message;
+          progressNotifier.value = progress;
+        },
+      );
 
       if (mounted) {
         Navigator.pop(context); // Pop loading
