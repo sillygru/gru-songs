@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:file_picker/file_picker.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../widgets/album_art_image.dart';
 
 class EditMetadataScreen extends ConsumerStatefulWidget {
   final Song song;
@@ -37,6 +40,117 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
     _artistController.dispose();
     _albumController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage(Song currentSong) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        setState(() => _isSaving = true);
+        final path = result.files.single.path!;
+        await ref
+            .read(songsProvider.notifier)
+            .updateSongCover(currentSong, path);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Cover updated successfully")),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error picking image: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _removeImage(Song currentSong) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Remove Cover"),
+        content: const Text("Are you sure you want to remove the cover art?"),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("CANCEL")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("REMOVE")),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isSaving = true);
+      try {
+        await ref
+            .read(songsProvider.notifier)
+            .updateSongCover(currentSong, null);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Cover removed")),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error removing cover: $e")),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  Future<void> _exportImage(Song currentSong) async {
+    if (currentSong.coverUrl == null) return;
+
+    try {
+      setState(() => _isSaving = true);
+      
+      // Get bytes first to satisfy file_picker requirement on Android/iOS
+      final bytes = await ref.read(fileManagerServiceProvider).getCoverExportBytes(currentSong);
+
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export Cover',
+        fileName:
+            '${p.basenameWithoutExtension(currentSong.filename)}_cover.jpg',
+        type: FileType.image,
+        bytes: bytes, // Required for Android/iOS
+      );
+
+      if (savePath != null) {
+        // On desktop, we need to write the file ourselves
+        if (!Platform.isAndroid && !Platform.isIOS) {
+           await File(savePath).writeAsBytes(bytes);
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Cover exported to $savePath")),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error exporting cover: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   Future<void> _save() async {
@@ -83,6 +197,13 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch for updates to the song
+    final songs = ref.watch(songsProvider).asData?.value ?? [];
+    final currentSong = songs.firstWhere(
+      (s) => s.filename == widget.song.filename,
+      orElse: () => widget.song,
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Edit Metadata"),
@@ -106,6 +227,60 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildSectionTitle("Cover Art"),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AlbumArtImage(
+                    url: currentSong.coverUrl ?? '',
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _pickImage(currentSong),
+                        icon: const Icon(Icons.image),
+                        label: const Text("Change Cover"),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: currentSong.coverUrl == null
+                                  ? null
+                                  : () => _exportImage(currentSong),
+                              icon: const Icon(Icons.download),
+                              label: const Text("Export"),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: currentSong.coverUrl == null
+                                  ? null
+                                  : () => _removeImage(currentSong),
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              label: const Text("Remove",
+                                  style: TextStyle(color: Colors.red)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
             _buildSectionTitle("File Information"),
             const SizedBox(height: 8),
             TextField(

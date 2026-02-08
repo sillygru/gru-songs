@@ -607,6 +607,57 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }());
   }
 
+  Future<void> updateSongCover(Song song, String? imagePath) async {
+    final notifier = ref.read(metadataSaveProvider.notifier);
+    notifier.start();
+    try {
+      final newCoverPath = await ref
+          .read(fileManagerServiceProvider)
+          .updateSongCover(song, imagePath);
+
+      if (state.hasValue) {
+        final current = state.value ?? [];
+        state = AsyncValue.data([
+          for (final s in current)
+            if (s.filename == song.filename)
+              Song(
+                title: s.title,
+                artist: s.artist,
+                album: s.album,
+                filename: s.filename,
+                url: s.url,
+                lyricsUrl: s.lyricsUrl,
+                coverUrl: newCoverPath,
+                playCount: s.playCount,
+                duration: s.duration,
+                mtime: s.mtime,
+              )
+            else
+              s,
+        ]);
+      }
+      // Force refresh to ensure UI updates across the app
+      ref.read(audioPlayerManagerProvider).refreshSongs(state.value ?? []);
+      await refresh(isBackground: true);
+      notifier.success('Cover updated successfully');
+    } catch (e) {
+      notifier.error('Failed to update cover');
+      debugPrint('Failed to update song cover: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> exportSongCover(Song song, String destinationPath) async {
+    try {
+      await ref
+          .read(fileManagerServiceProvider)
+          .exportSongCover(song, destinationPath);
+    } catch (e) {
+      debugPrint('Failed to export cover: $e');
+      rethrow;
+    }
+  }
+
   Future<void> updateLyrics(Song song, String lyricsContent) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {

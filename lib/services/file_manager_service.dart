@@ -1,6 +1,10 @@
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:metadata_god/metadata_god.dart';
 import 'database_service.dart';
 import '../models/song.dart';
@@ -16,7 +20,7 @@ class FileManagerService {
     try {
       // 1. Update locally
       debugPrint('FileManager: Starting local metadata update...');
-      await _updateMetadataInternal(song.url, title: newTitle);
+      await updateMetadataInternal(song.url, title: newTitle);
       debugPrint('FileManager: Local metadata update successful');
     } catch (e) {
       debugPrint('FileManager: updateSongTitle failed: $e');
@@ -28,7 +32,7 @@ class FileManagerService {
   Future<void> updateSongMetadata(
       Song song, String title, String artist, String album) async {
     // 1. Update locally
-    await _updateMetadataInternal(song.url,
+    await updateMetadataInternal(song.url,
         title: title, artist: artist, album: album);
   }
 
@@ -59,9 +63,163 @@ class FileManagerService {
     }
   }
 
-  /// Internal method to update metadata.
-  Future<void> _updateMetadataInternal(String fileUrl,
-      {String? title, String? artist, String? album}) async {
+  /// Updates the song cover art.
+  /// [imagePath] is the path to the new image file. If null, the cover is removed.
+  Future<String?> updateSongCover(Song song, String? imagePath) async {
+    debugPrint('FileManager: updateSongCover called for ${song.filename}');
+
+    try {
+      Picture? newPicture;
+      if (imagePath != null) {
+        final file = File(imagePath);
+        if (!await file.exists()) {
+          throw Exception("Image file not found: $imagePath");
+        }
+
+        // Basic validation
+        final length = await file.length();
+        if (length > 10 * 1024 * 1024) {
+          // 10MB limit
+          throw Exception("Image file too large (max 10MB)");
+        }
+
+        final bytes = await file.readAsBytes();
+
+        // Validate image dimensions and format in a separate isolate
+        final image = await compute(_decodeImage, bytes);
+
+        if (image == null) {
+          throw Exception("Invalid or unsupported image format");
+        }
+        if (image.width < 50 || image.height < 50) {
+          throw Exception("Image too small (minimum 50x50 pixels)");
+        }
+
+        final mimeType = _getMimeTypeFromExtension(p.extension(imagePath));
+
+        newPicture = Picture(
+          mimeType: mimeType,
+          data: bytes,
+        );
+      }
+
+      // 1. Update ID3 tag
+      await updateMetadataInternal(song.url,
+          picture: newPicture, removePicture: imagePath == null);
+
+      // 2. Update cached extracted cover
+      final supportDir = await getApplicationSupportDirectory();
+      final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+      if (!await coversDir.exists()) {
+        await coversDir.create(recursive: true);
+      }
+
+      final hash = md5.convert(utf8.encode(song.url)).toString();
+
+      // Clean up old cached files for this song (including timestamped ones)
+      try {
+        final files = await coversDir.list().toList();
+        for (final entity in files) {
+          if (entity is File) {
+            final filename = p.basename(entity.path);
+            if (filename.startsWith(hash)) {
+              await entity.delete();
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("Error cleaning up old covers: $e");
+      }
+
+      if (imagePath != null) {
+        // Get the new mtime of the file
+        final songFile = File(song.url);
+        final stat = await songFile.stat();
+        final mtimeMs = stat.modified.millisecondsSinceEpoch;
+
+        final ext = p.extension(imagePath).toLowerCase();
+        // Add mtime to ensure unique filename and bust cache, and allow ScannerService to verify validity
+        final newCoverFile =
+            File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+        await newCoverFile.writeAsBytes(newPicture!.data);
+        return newCoverFile.path;
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('FileManager: updateSongCover failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Gets the bytes for exporting the song cover (as JPG).
+  Future<Uint8List> getCoverExportBytes(Song song) async {
+    if (song.coverUrl == null) {
+      throw Exception("No cover available to export");
+    }
+
+    final coverFile = File(song.coverUrl!);
+    if (!await coverFile.exists()) {
+      throw Exception("Cover file not found at ${song.coverUrl}");
+    }
+
+    try {
+      // Decode the image to ensure it's valid and to re-encode as JPG
+      final bytes = await coverFile.readAsBytes();
+      
+      // Run heavy image processing in an isolate
+      return await compute(_processImageForExport, bytes);
+    } catch (e) {
+      throw Exception("Failed to export cover: $e");
+    }
+  }
+
+  /// Exports the current song cover to the specified path.
+  Future<void> exportSongCover(Song song, String destinationPath) async {
+    final jpgBytes = await getCoverExportBytes(song);
+    await File(destinationPath).writeAsBytes(jpgBytes);
+  }
+
+  // Top-level function for compute
+  static img.Image? _decodeImage(Uint8List bytes) {
+    try {
+      return img.decodeImage(bytes);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Top-level function for compute
+  static Uint8List _processImageForExport(Uint8List bytes) {
+    final image = img.decodeImage(bytes);
+    if (image == null) {
+      throw Exception("Could not decode cover image");
+    }
+    // Encode as JPG with 85% quality
+    return Uint8List.fromList(img.encodeJpg(image, quality: 85));
+  }
+
+  String _getMimeTypeFromExtension(String extension) {
+    switch (extension.toLowerCase()) {
+      case '.png':
+        return 'image/png';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.bmp':
+        return 'image/bmp';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  @visibleForTesting
+  Future<void> updateMetadataInternal(String fileUrl,
+      {String? title,
+      String? artist,
+      String? album,
+      Picture? picture,
+      bool removePicture = false}) async {
     try {
       if (Platform.isAndroid) {
         final storage = StorageService();
@@ -89,7 +247,7 @@ class FileManagerService {
             discTotal: metadata.discTotal,
             year: metadata.year,
             genre: metadata.genre,
-            picture: metadata.picture,
+            picture: removePicture ? null : (picture ?? metadata.picture),
           );
 
           await MetadataGod.writeMetadata(
@@ -125,7 +283,7 @@ class FileManagerService {
         discTotal: metadata.discTotal,
         year: metadata.year,
         genre: metadata.genre,
-        picture: metadata.picture,
+        picture: removePicture ? null : (picture ?? metadata.picture),
       );
 
       // Write it back
