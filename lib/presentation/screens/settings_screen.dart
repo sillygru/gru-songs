@@ -109,76 +109,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         centerTitle: true,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         children: [
           _buildSettingsGroup(
-            title: 'Appearance',
-            children: [
-              _buildListTile(
-                icon: Icons.palette_outlined,
-                title: 'App Theme',
-                subtitle: 'Choose your visual style',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const ThemeSelectionScreen()),
-                  );
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.timer_outlined),
-                title: const Text('Show Song Duration'),
-                subtitle: const Text('Display duration in song lists'),
-                value: settings.showSongDuration,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setShowSongDuration(val);
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.waves_rounded),
-                title: const Text('Audio Visualizer'),
-                subtitle: const Text('Show animated wave while playing'),
-                value: settings.visualizerEnabled,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setVisualizerEnabled(val);
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.volume_off_rounded),
-                title: const Text('Auto-Pause on Mute'),
-                subtitle: const Text(
-                    'Automatically pause playback when volume is set to 0'),
-                value: settings.autoPauseOnVolumeZero,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setAutoPauseOnVolumeZero(val);
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.volume_up_rounded),
-                title: const Text('Auto-Resume on Unmute'),
-                subtitle: const Text(
-                    'Automatically resume playback when volume is restored from 0'),
-                value: settings.autoResumeOnVolumeRestore,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setAutoResumeOnVolumeRestore(val);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildSettingsGroup(
-            title: 'Storage & Folders',
+            title: 'Library & Storage',
+            icon: Icons.library_music_outlined,
             children: [
               FutureBuilder<String?>(
                   future: ref.read(storageServiceProvider).getMusicFolderPath(),
                   builder: (context, snapshot) {
                     return _buildListTile(
-                      icon: Icons.library_music_outlined,
+                      icon: Icons.folder_outlined,
                       title: 'Music Folder',
                       subtitle: snapshot.data ?? 'Not selected',
                       onTap: _selectMusicFolder,
@@ -195,18 +136,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onTap: _selectLyricsFolder,
                     );
                   }),
-              _buildListTile(
-                icon: Icons.storage_outlined,
-                title: 'Manage Storage',
-                subtitle: 'Disk usage and data management',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const StorageManagementScreen()),
-                  );
-                },
-              ),
               _buildListTile(
                 icon: Icons.refresh_rounded,
                 title: 'Re-scan Library Now',
@@ -226,14 +155,96 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   );
                 },
               ),
+              _buildListTile(
+                icon: Icons.storage_outlined,
+                title: 'Manage Storage',
+                subtitle: 'Disk usage and data management',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const StorageManagementScreen()),
+                  );
+                },
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          _buildTelemetrySettings(),
-          const SizedBox(height: 16),
+          _buildSettingsGroup(
+            title: 'Playback & Audio',
+            icon: Icons.play_circle_outline,
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.waves_rounded),
+                title: const Text('Audio Visualizer'),
+                subtitle: const Text('Show animated wave while playing'),
+                value: settings.visualizerEnabled,
+                onChanged: (val) {
+                  ref.read(settingsProvider.notifier).setVisualizerEnabled(val);
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.volume_off_rounded),
+                title: const Text('Auto-Pause on Mute'),
+                subtitle:
+                    const Text('Automatically pause playback when volume is 0'),
+                value: settings.autoPauseOnVolumeZero,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setAutoPauseOnVolumeZero(val);
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.volume_up_rounded),
+                title: const Text('Auto-Resume on Unmute'),
+                subtitle: const Text(
+                    'Automatically resume playback when volume is restored'),
+                value: settings.autoResumeOnVolumeRestore,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setAutoResumeOnVolumeRestore(val);
+                },
+              ),
+            ],
+          ),
+          _buildSettingsGroup(
+            title: 'Appearance',
+            icon: Icons.palette_outlined,
+            children: [
+              _buildListTile(
+                icon: Icons.color_lens_outlined,
+                title: 'App Theme',
+                subtitle: 'Choose your visual style',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const ThemeSelectionScreen()),
+                  );
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.timer_outlined),
+                title: const Text('Show Song Duration'),
+                subtitle: const Text('Display duration in song lists'),
+                value: settings.showSongDuration,
+                onChanged: (val) {
+                  ref.read(settingsProvider.notifier).setShowSongDuration(val);
+                },
+              ),
+            ],
+          ),
           _buildDataManagementSettings(),
-          const SizedBox(height: 16),
-          _buildPullToRefreshSettings(),
+          _buildSettingsGroup(
+            title: 'Privacy & Others',
+            icon: Icons.security_outlined,
+            children: [
+              _buildTelemetryWidget(),
+              _buildPullToRefreshTile(),
+            ],
+          ),
+          const SizedBox(height: 32),
         ],
       ),
     );
@@ -245,11 +256,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return _buildSettingsGroup(
       title: 'Data Management',
+      icon: Icons.settings_backup_restore_rounded,
       children: [
         _buildListTile(
           icon: Icons.upload_file_rounded,
           title: 'Export App Data',
-          subtitle: 'Backup your stats, favorites, and playlists to a .zip',
+          subtitle: 'Backup your stats, favorites, and playlists',
           onTap: () async {
             if (username == null) return;
             try {
@@ -274,13 +286,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _buildListTile(
           icon: Icons.download_for_offline_rounded,
           title: 'Import App Data',
-          subtitle: 'Restore or merge data from a backup .zip',
+          subtitle: 'Restore or merge data from a backup',
           onTap: () => _handleImport(),
         ),
         _buildListTile(
           icon: Icons.download_rounded,
           title: 'Import from Namida',
-          subtitle: 'Import playlists and favorites from Namida backup',
+          subtitle: 'Import playlists and favorites from Namida',
           onTap: () {
             Navigator.push(
               context,
@@ -297,10 +309,194 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _buildListTile(
           icon: Icons.search_rounded,
           title: 'Re-index All',
-          subtitle: 'Rebuild search index without full optimization',
+          subtitle: 'Rebuild search index only',
           onTap: () => _showReindexDialog(),
         ),
       ],
+    );
+  }
+
+  Widget _buildTelemetryWidget() {
+    final settings = ref.watch(settingsProvider);
+    final levels = [
+      'Level 0',
+      'Level 1',
+      'Level 2',
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.analytics_outlined,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(width: 12),
+              const Text(
+                'Telemetry Level',
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+              ),
+              const Spacer(),
+              Text(
+                levels[settings.telemetryLevel.clamp(0, 2)],
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Slider(
+            value: settings.telemetryLevel.toDouble().clamp(0, 2),
+            min: 0,
+            max: 2,
+            divisions: 2,
+            label: levels[settings.telemetryLevel.clamp(0, 2)],
+            onChanged: (val) {
+              ref
+                  .read(settingsProvider.notifier)
+                  .setTelemetryLevel(val.toInt());
+            },
+          ),
+          _buildLevelExplanation(settings.telemetryLevel.clamp(0, 2)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLevelExplanation(int level) {
+    final explanations = [
+      '• No data will be shared with developers.',
+      '• Basic app information (version, platform).\n• App startup notification.',
+      '• Everything in level 1.\n• Anonymous usage events (settings changed).\n• Library rescans and data management (import/export).',
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        explanations[level],
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    );
+  }
+
+  Widget _buildSettingsGroup({
+    required String title,
+    required List<Widget> children,
+    IconData? icon,
+  }) {
+    final theme = Theme.of(context);
+    final List<Widget> childrenWithDividers = [];
+
+    for (int i = 0; i < children.length; i++) {
+      childrenWithDividers.add(children[i]);
+      if (i < children.length - 1) {
+        childrenWithDividers.add(
+          Divider(
+            height: 1,
+            indent: 56,
+            endIndent: 16,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                title.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Card(
+          elevation: 0,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          color:
+              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: childrenWithDividers,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPullToRefreshTile() {
+    return FutureBuilder<bool>(
+      future: ref.read(storageServiceProvider).getPullToRefreshEnabled(),
+      builder: (context, snapshot) {
+        return SwitchListTile(
+          secondary: const Icon(Icons.touch_app_outlined),
+          title: const Text('Pull to Refresh'),
+          subtitle: const Text('Swipe down to refresh library'),
+          value: snapshot.data ?? true,
+          onChanged: (val) async {
+            await ref.read(storageServiceProvider).setPullToRefreshEnabled(val);
+
+            await TelemetryService.instance.trackEvent(
+                'setting_changed',
+                {
+                  'setting': 'pull_to_refresh_enabled',
+                  'value': val,
+                },
+                requiredLevel: 2);
+
+            setState(() {});
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildListTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+    Color? textColor,
+    Color? iconColor,
+  }) {
+    return ListTile(
+      leading: Icon(icon,
+          color: iconColor ?? Theme.of(context).colorScheme.onSurfaceVariant),
+      title: Text(title,
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+      subtitle: subtitle != null
+          ? Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)
+          : null,
+      trailing: const Icon(Icons.chevron_right, size: 20),
+      onTap: onTap,
     );
   }
 
@@ -769,178 +965,5 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       }
     }
-  }
-
-  Widget _buildTelemetrySettings() {
-    final settings = ref.watch(settingsProvider);
-    final levels = [
-      'Level 0',
-      'Level 1',
-      'Level 2',
-    ];
-
-    return _buildSettingsGroup(
-      title: 'Telemetry',
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Share anonymous data with developers?',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              Slider(
-                value: settings.telemetryLevel.toDouble().clamp(0, 2),
-                min: 0,
-                max: 2,
-                divisions: 2,
-                label: levels[settings.telemetryLevel.clamp(0, 2)],
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setTelemetryLevel(val.toInt());
-                },
-              ),
-              Center(
-                child: Text(
-                  levels[settings.telemetryLevel.clamp(0, 2)],
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildLevelExplanation(settings.telemetryLevel.clamp(0, 2)),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLevelExplanation(int level) {
-    final explanations = [
-      '• No data will be shared with developers.',
-      '• Basic app information (version, platform).\n• App startup notification.',
-      '• Everything in level 1.\n• Anonymous usage events (settings changed).\n• Library rescans and data management (import/export).',
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        explanations[level],
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-    );
-  }
-
-  Widget _buildSettingsGroup(
-      {required String title, required List<Widget> children}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
-          child: Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-        Card(
-          elevation: 0,
-          color: Theme.of(context)
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(alpha: 0.3),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: children,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPullToRefreshSettings() {
-    return FutureBuilder<bool>(
-      future: ref.read(storageServiceProvider).getIsLocalMode(),
-      builder: (context, snapshot) {
-        return _buildSettingsGroup(
-          title: 'Pull to Refresh',
-          children: [
-            FutureBuilder<bool>(
-              future:
-                  ref.read(storageServiceProvider).getPullToRefreshEnabled(),
-              builder: (context, snapshot) {
-                return SwitchListTile(
-                  secondary: const Icon(Icons.touch_app_outlined),
-                  title: const Text('Enable Pull to Refresh'),
-                  value: snapshot.data ?? true,
-                  onChanged: (val) async {
-                    await ref
-                        .read(storageServiceProvider)
-                        .setPullToRefreshEnabled(val);
-
-                    await TelemetryService.instance.trackEvent(
-                        'setting_changed',
-                        {
-                          'setting': 'pull_to_refresh_enabled',
-                          'value': val,
-                        },
-                        requiredLevel: 2);
-
-                    setState(() {});
-                  },
-                );
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildListTile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-    Color? textColor,
-    Color? iconColor,
-  }) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest
-          .withValues(alpha: 0.3),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: Icon(icon, color: iconColor),
-        title: Text(title,
-            style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
-        subtitle: subtitle != null ? Text(subtitle) : null,
-        trailing: const Icon(Icons.chevron_right, size: 20),
-        onTap: onTap,
-      ),
-    );
   }
 }

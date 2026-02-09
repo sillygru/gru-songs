@@ -10,6 +10,7 @@ class SettingsState {
   final bool autoResumeOnVolumeRestore;
   final SongSortOrder sortOrder;
   final bool showSongDuration;
+  final bool animatedSoundWaveEnabled;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -18,6 +19,7 @@ class SettingsState {
     this.autoResumeOnVolumeRestore = true,
     this.sortOrder = SongSortOrder.title,
     this.showSongDuration = false,
+    this.animatedSoundWaveEnabled = true,
   });
 
   SettingsState copyWith({
@@ -27,6 +29,7 @@ class SettingsState {
     bool? autoResumeOnVolumeRestore,
     SongSortOrder? sortOrder,
     bool? showSongDuration,
+    bool? animatedSoundWaveEnabled,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -37,6 +40,8 @@ class SettingsState {
           autoResumeOnVolumeRestore ?? this.autoResumeOnVolumeRestore,
       sortOrder: sortOrder ?? this.sortOrder,
       showSongDuration: showSongDuration ?? this.showSongDuration,
+      animatedSoundWaveEnabled:
+          animatedSoundWaveEnabled ?? this.animatedSoundWaveEnabled,
     );
   }
 }
@@ -48,6 +53,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyAutoResumeOnVolumeRestore = 'auto_resume_on_volume_restore';
   static const _keySortOrder = 'sort_order';
   static const _keyShowSongDuration = 'show_song_duration';
+  static const _keyAnimatedSoundWaveEnabled = 'animated_sound_wave_enabled';
 
   @override
   SettingsState build() {
@@ -68,6 +74,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
           ? SongSortOrder.values[sortOrderIndex]
           : SongSortOrder.title,
       showSongDuration: prefs.getBool(_keyShowSongDuration) ?? false,
+      animatedSoundWaveEnabled:
+          prefs.getBool(_keyAnimatedSoundWaveEnabled) ?? true,
     );
   }
 
@@ -150,6 +158,20 @@ class SettingsNotifier extends Notifier<SettingsState> {
         'setting_changed',
         {
           'setting': 'auto_resume_on_volume_restore',
+          'value': enabled,
+        },
+        requiredLevel: 2);
+  }
+
+  Future<void> setAnimatedSoundWaveEnabled(bool enabled) async {
+    state = state.copyWith(animatedSoundWaveEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAnimatedSoundWaveEnabled, enabled);
+
+    await TelemetryService.instance.trackEvent(
+        'setting_changed',
+        {
+          'setting': 'animated_sound_wave_enabled',
           'value': enabled,
         },
         requiredLevel: 2);

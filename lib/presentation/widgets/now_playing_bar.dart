@@ -10,11 +10,23 @@ import '../../providers/settings_provider.dart';
 import '../screens/player_screen.dart';
 import 'audio_visualizer.dart';
 
-class NowPlayingBar extends ConsumerWidget {
+class NowPlayingBar extends ConsumerStatefulWidget {
   const NowPlayingBar({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NowPlayingBar> createState() => _NowPlayingBarState();
+}
+
+class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
+  String? _lastSongId;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final player = ref.watch(audioPlayerManagerProvider).player;
     final settings = ref.watch(settingsProvider);
     final isDesktop =
@@ -31,6 +43,10 @@ class NowPlayingBar extends ConsumerWidget {
 
         final metadata = state.currentSource?.tag as MediaItem?;
         if (metadata == null) return const SizedBox.shrink();
+
+        if (metadata.id != _lastSongId) {
+          _lastSongId = metadata.id;
+        }
 
         return GestureDetector(
           onTap: () {

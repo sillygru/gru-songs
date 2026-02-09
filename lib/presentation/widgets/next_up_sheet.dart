@@ -120,81 +120,84 @@ class NextUpSheet extends ConsumerWidget {
                               final item = upcomingQueue[index];
                               final song = item.song;
 
-                              return Padding(
+                              return RepaintBoundary(
                                 key: ValueKey(item.queueId),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 4),
-                                child: Material(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .surfaceContainer,
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: ListTile(
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(12)),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 4),
-                                    leading: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: AlbumArtImage(
-                                        url: item.song.coverUrl ?? '',
-                                        filename: item.song.filename,
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                    title: Text(
-                                      song.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: item.isPriority
-                                            ? Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : null,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      song.artist,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (item.isPriority)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(right: 8),
-                                            child: Icon(Icons.push_pin,
-                                                size: 16,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary),
-                                          ),
-                                        IconButton(
-                                          icon: const Icon(
-                                              Icons.remove_circle_outline,
-                                              size: 20),
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant
-                                              .withValues(alpha: 0.7),
-                                          onPressed: () {
-                                            audioManager.removeFromQueue(
-                                                currentIndex + 1 + index);
-                                          },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 4),
+                                  child: Material(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainer,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: ListTile(
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12)),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 4),
+                                      leading: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: AlbumArtImage(
+                                          url: item.song.coverUrl ?? '',
+                                          filename: item.song.filename,
+                                          width: 48,
+                                          height: 48,
+                                          fit: BoxFit.cover,
                                         ),
-                                        Icon(Icons.drag_handle,
+                                      ),
+                                      title: Text(
+                                        song.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: item.isPriority
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .primary
+                                              : null,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        song.artist,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (item.isPriority)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  right: 8),
+                                              child: Icon(Icons.push_pin,
+                                                  size: 16,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary),
+                                            ),
+                                          IconButton(
+                                            icon: const Icon(
+                                                Icons.remove_circle_outline,
+                                                size: 20),
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .onSurfaceVariant
-                                                .withValues(alpha: 0.5)),
-                                      ],
+                                                .withValues(alpha: 0.7),
+                                            onPressed: () {
+                                              audioManager.removeFromQueue(
+                                                  currentIndex + 1 + index);
+                                            },
+                                          ),
+                                          Icon(Icons.drag_handle,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant
+                                                  .withValues(alpha: 0.5)),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
