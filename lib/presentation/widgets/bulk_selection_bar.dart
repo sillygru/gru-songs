@@ -21,6 +21,11 @@ class BulkSelectionBar extends ConsumerWidget {
         .where((s) => selectionState.selectedFilenames.contains(s.filename))
         .toList();
 
+    final currentSong =
+        ref.read(audioPlayerManagerProvider).currentSongNotifier.value;
+    final isCurrentlyPlaying =
+        selectedSongs.any((s) => s.filename == currentSong?.filename);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -87,7 +92,7 @@ class BulkSelectionBar extends ConsumerWidget {
                 _ActionButton(
                   icon: Icons.edit,
                   label: 'Metadata',
-                  onTap: selectedCount > 0
+                  onTap: selectedCount > 0 && !isCurrentlyPlaying
                       ? () {
                           if (selectedCount == 1) {
                             Navigator.push(

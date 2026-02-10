@@ -3,17 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:metadata_god/metadata_god.dart';
+import 'dart:async';
 import 'presentation/screens/main_screen.dart';
+import 'presentation/screens/setup_screen.dart';
 import 'providers/auth_provider.dart';
+import 'providers/permission_provider.dart';
 import 'services/cache_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'presentation/screens/setup_screen.dart';
 import 'providers/setup_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/app_theme.dart';
-import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

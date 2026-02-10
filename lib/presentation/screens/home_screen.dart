@@ -37,8 +37,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return;
       }
       final storage = ref.read(storageServiceProvider);
-      await storage.setMusicFolderTreeUri(selection.treeUri);
-      await storage.setMusicFolderPath(selection.path!);
+      await storage.addMusicFolder(selection.path!, selection.treeUri);
       ref.invalidate(songsProvider);
       return;
     }
@@ -46,7 +45,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory == null) return;
     final storage = ref.read(storageServiceProvider);
-    await storage.setMusicFolderPath(selectedDirectory);
+    await storage.addMusicFolder(selectedDirectory, null);
     ref.invalidate(songsProvider);
   }
 

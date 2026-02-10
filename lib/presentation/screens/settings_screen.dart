@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
 import 'storage_management_screen.dart';
+import 'folder_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../services/android_storage_service.dart';
 import '../../services/data_export_service.dart';
@@ -42,12 +43,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
       final storage = ref.read(storageServiceProvider);
-      await storage.setMusicFolderTreeUri(selection.treeUri);
-      await storage.setMusicFolderPath(selection.path!);
+      await storage.addMusicFolder(selection.path!, selection.treeUri);
       ref.invalidate(songsProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Music folder updated")));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text("Music folder added")));
       }
       return;
     }
@@ -55,11 +55,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory == null) return;
     final storage = ref.read(storageServiceProvider);
-    await storage.setMusicFolderPath(selectedDirectory);
+    await storage.addMusicFolder(selectedDirectory, null);
     ref.invalidate(songsProvider);
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Music folder updated")));
+          .showSnackBar(const SnackBar(content: Text("Music folder added")));
     }
   }
 
@@ -115,27 +115,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'Library & Storage',
             icon: Icons.library_music_outlined,
             children: [
-              FutureBuilder<String?>(
-                  future: ref.read(storageServiceProvider).getMusicFolderPath(),
-                  builder: (context, snapshot) {
-                    return _buildListTile(
-                      icon: Icons.folder_outlined,
-                      title: 'Music Folder',
-                      subtitle: snapshot.data ?? 'Not selected',
-                      onTap: _selectMusicFolder,
-                    );
-                  }),
-              FutureBuilder<String?>(
-                  future:
-                      ref.read(storageServiceProvider).getLyricsFolderPath(),
-                  builder: (context, snapshot) {
-                    return _buildListTile(
-                      icon: Icons.lyrics_outlined,
-                      title: 'Lyrics Folder',
-                      subtitle: snapshot.data ?? 'Not selected (Optional)',
-                      onTap: _selectLyricsFolder,
-                    );
-                  }),
+              _buildListTile(
+                icon: Icons.folder_outlined,
+                title: 'Music Folders',
+                subtitle: 'Manage music library folders',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const FolderManagementScreen(
+                        isMusicFolders: true,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              _buildListTile(
+                icon: Icons.lyrics_outlined,
+                title: 'Lyrics Folders',
+                subtitle: 'Manage lyrics folders (Optional)',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const FolderManagementScreen(
+                        isMusicFolders: false,
+                      ),
+                    ),
+                  );
+                },
+              ),
               _buildListTile(
                 icon: Icons.refresh_rounded,
                 title: 'Re-scan Library Now',

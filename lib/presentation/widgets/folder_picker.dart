@@ -141,28 +141,9 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
                                         : p.join(widget.rootPath,
                                             _currentRelativePath, name);
 
-                                if (Platform.isAndroid) {
-                                  final storage =
-                                      ref.read(storageServiceProvider);
-                                  final treeUri =
-                                      await storage.getMusicFolderTreeUri();
-                                  if (treeUri == null || treeUri.isEmpty) {
-                                    throw Exception(
-                                        'Missing folder permission. Re-select the music folder.');
-                                  }
-                                  final relativePath =
-                                      _currentRelativePath.isEmpty
-                                          ? name
-                                          : p.join(_currentRelativePath, name);
-                                  await AndroidStorageService.createFolder(
-                                    treeUri: treeUri,
-                                    relativePath: relativePath,
-                                  );
-                                } else {
-                                  final newDir = Directory(newFolderPath);
-                                  if (!await newDir.exists()) {
-                                    await newDir.create(recursive: true);
-                                  }
+                                final newDir = Directory(newFolderPath);
+                                if (!await newDir.exists()) {
+                                  await newDir.create(recursive: true);
                                 }
 
                                 // Keep state in sync for scanner refresh.

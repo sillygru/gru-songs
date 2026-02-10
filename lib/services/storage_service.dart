@@ -10,6 +10,8 @@ class StorageService {
   static const String _musicFolderTreeUriKey = 'music_folder_tree_uri';
   static const String _lyricsFolderKey = 'lyrics_folder_path';
   static const String _lyricsFolderTreeUriKey = 'lyrics_folder_tree_uri';
+  static const String _excludedFoldersKey = 'excluded_folders';
+  static const String _lastLibraryFolderKey = 'last_library_folder';
   static const String _isSetupCompleteKey = 'is_setup_complete_v2';
   static const String _isLocalModeKey = 'is_local_mode';
   static const String _localUsernameKey = 'local_username';
@@ -67,26 +69,6 @@ class StorageService {
   }
 
   // Folder Paths
-  Future<String?> getMusicFolderPath() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_musicFolderKey);
-  }
-
-  Future<void> setMusicFolderPath(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_musicFolderKey, path);
-  }
-
-  Future<String?> getMusicFolderTreeUri() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_musicFolderTreeUriKey);
-  }
-
-  Future<void> setMusicFolderTreeUri(String uri) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_musicFolderTreeUriKey, uri);
-  }
-
   Future<String?> getLyricsFolderPath() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_lyricsFolderKey);
@@ -105,6 +87,69 @@ class StorageService {
   Future<void> setLyricsFolderTreeUri(String uri) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lyricsFolderTreeUriKey, uri);
+  }
+
+  // Multiple Music Folders
+  Future<List<Map<String, String>>> getMusicFolders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList('music_folders_list') ?? [];
+    return jsonList.map((json) {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return {
+        'path': map['path'] as String,
+        'treeUri': map['treeUri'] as String? ?? '',
+      };
+    }).toList();
+  }
+
+  Future<void> setMusicFolders(List<Map<String, String>> folders) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = folders.map((folder) {
+      return jsonEncode({
+        'path': folder['path'],
+        'treeUri': folder['treeUri'] ?? '',
+      });
+    }).toList();
+    await prefs.setStringList('music_folders_list', jsonList);
+  }
+
+  Future<void> addMusicFolder(String path, String? treeUri) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getStringList('music_folders_list') ?? [];
+    final newFolder = jsonEncode({
+      'path': path,
+      'treeUri': treeUri ?? '',
+    });
+    // Check if already exists
+    final exists = current.any((json) {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return map['path'] == path;
+    });
+    if (!exists) {
+      current.add(newFolder);
+      await prefs.setStringList('music_folders_list', current);
+    }
+  }
+
+  Future<void> removeMusicFolder(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getStringList('music_folders_list') ?? [];
+    current.removeWhere((json) {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return map['path'] == path;
+    });
+    await prefs.setStringList('music_folders_list', current);
+  }
+
+  // Legacy compatibility - returns first music folder or null
+  Future<String?> getMusicFolderPath() async {
+    final folders = await getMusicFolders();
+    if (folders.isNotEmpty) {
+      return folders.first['path'];
+    }
+    // Fallback to old key for migration
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_musicFolderKey);
   }
 
   Future<bool> getIsSetupComplete() async {
@@ -165,6 +210,96 @@ class StorageService {
   Future<void> setHasSentFirstStartup(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hasSentFirstStartupKey, value);
+  }
+
+  // Excluded Folders
+  Future<List<String>> getExcludedFolders() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_excludedFoldersKey) ?? [];
+  }
+
+  Future<void> setExcludedFolders(List<String> folders) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_excludedFoldersKey, folders);
+  }
+
+  Future<void> addExcludedFolder(String folder) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getStringList(_excludedFoldersKey) ?? [];
+    if (!current.contains(folder)) {
+      current.add(folder);
+      await prefs.setStringList(_excludedFoldersKey, current);
+    }
+  }
+
+  Future<void> removeExcludedFolder(String folder) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getStringList(_excludedFoldersKey) ?? [];
+    current.remove(folder);
+    await prefs.setStringList(_excludedFoldersKey, current);
+  }
+
+  // Last Library Folder
+  Future<String?> getLastLibraryFolder() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lastLibraryFolderKey);
+  }
+
+  Future<void> setLastLibraryFolder(String folder) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastLibraryFolderKey, folder);
+  }
+
+  // Multiple Lyrics Folders
+  Future<List<Map<String, String>>> getLyricsFolders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList('lyrics_folders_list') ?? [];
+    return jsonList.map((json) {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return {
+        'path': map['path'] as String,
+        'treeUri': map['treeUri'] as String? ?? '',
+      };
+    }).toList();
+  }
+
+  Future<void> setLyricsFolders(List<Map<String, String>> folders) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = folders.map((folder) {
+      return jsonEncode({
+        'path': folder['path'],
+        'treeUri': folder['treeUri'] ?? '',
+      });
+    }).toList();
+    await prefs.setStringList('lyrics_folders_list', jsonList);
+  }
+
+  Future<void> addLyricsFolder(String path, String? treeUri) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getStringList('lyrics_folders_list') ?? [];
+    final newFolder = jsonEncode({
+      'path': path,
+      'treeUri': treeUri ?? '',
+    });
+    // Check if already exists
+    final exists = current.any((json) {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return map['path'] == path;
+    });
+    if (!exists) {
+      current.add(newFolder);
+      await prefs.setStringList('lyrics_folders_list', current);
+    }
+  }
+
+  Future<void> removeLyricsFolder(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getStringList('lyrics_folders_list') ?? [];
+    current.removeWhere((json) {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return map['path'] == path;
+    });
+    await prefs.setStringList('lyrics_folders_list', current);
   }
 
   Future<void> saveSongs(String? username, List<Song> songs) async {

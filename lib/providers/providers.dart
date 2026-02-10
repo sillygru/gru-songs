@@ -242,10 +242,13 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final scanner = ref.read(scannerServiceProvider);
     final auth = ref.read(authProvider);
 
-    final musicPath = await storage.getMusicFolderPath();
-    final lyricsPath = await storage.getLyricsFolderPath();
+    final musicFolders = await storage.getMusicFolders();
+    final lyricsFolders = await storage.getLyricsFolders();
 
-    if (musicPath == null || musicPath.isEmpty) return [];
+    if (musicFolders.isEmpty) {
+      debugPrint('No music folders configured. Cannot scan.');
+      return [];
+    }
 
     // Only show scanning indicator for non-background scans or if explicitly requested
     if (!isBackground || showIndicator) {
@@ -254,18 +257,31 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     ref.read(scanProgressProvider.notifier).state = 0.0;
 
     try {
-      final songs = await scanner.scanDirectory(
-        musicPath,
-        existingSongs: existingSongs,
-        lyricsPath: lyricsPath,
-        onProgress: (progress) {
-          ref.read(scanProgressProvider.notifier).state = progress;
-        },
-      );
+      final List<Song> allSongs = [];
+
+      // Scan each music folder
+      for (int i = 0; i < musicFolders.length; i++) {
+        final folder = musicFolders[i];
+        final path = folder['path'];
+        if (path == null || path.isEmpty) continue;
+
+        final folderSongs = await scanner.scanDirectory(
+          path,
+          existingSongs: existingSongs,
+          lyricsPath: null, // Use lyricsFolders instead
+          onProgress: (progress) {
+            // Overall progress across all folders
+            final overallProgress = (i + progress) / musicFolders.length;
+            ref.read(scanProgressProvider.notifier).state = overallProgress;
+          },
+        );
+
+        allSongs.addAll(folderSongs);
+      }
 
       // De-duplicate by filename
       final seenFilenames = <String>{};
-      final uniqueSongs = songs.where((s) {
+      final uniqueSongs = allSongs.where((s) {
         if (seenFilenames.contains(s.filename)) return false;
         seenFilenames.add(s.filename);
         return true;
@@ -693,49 +709,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }
 
     try {
-      final storage = ref.read(storageServiceProvider);
-      if (Platform.isAndroid) {
-        final treeUri = await storage.getMusicFolderTreeUri();
-        final rootPath = await storage.getMusicFolderPath();
-        if (treeUri != null && treeUri.isNotEmpty && rootPath != null) {
-          if (!p.isWithin(rootPath, song.url) &&
-              !p.equals(rootPath, p.dirname(song.url))) {
-            throw Exception('Source file is outside the music folder.');
-          }
-          if (!p.isWithin(rootPath, targetDirectoryPath) &&
-              !p.equals(rootPath, targetDirectoryPath)) {
-            throw Exception('Target folder is outside the music folder.');
-          }
-
-          final sourceRelativePath = p.relative(song.url, from: rootPath);
-          final targetRelativeDir =
-              p.relative(targetDirectoryPath, from: rootPath);
-          await AndroidStorageService.moveFile(
-            treeUri: treeUri,
-            sourceRelativePath: sourceRelativePath,
-            targetRelativeDir:
-                targetRelativeDir == '.' ? '' : targetRelativeDir,
-          );
-
-          if (song.lyricsUrl != null) {
-            final lyricsPath = song.lyricsUrl!;
-            if (p.isWithin(rootPath, lyricsPath) ||
-                p.equals(rootPath, p.dirname(lyricsPath))) {
-              final lyricsRelativePath = p.relative(lyricsPath, from: rootPath);
-              await AndroidStorageService.moveFile(
-                treeUri: treeUri,
-                sourceRelativePath: lyricsRelativePath,
-                targetRelativeDir:
-                    targetRelativeDir == '.' ? '' : targetRelativeDir,
-              );
-            }
-          }
-
-          await refresh();
-          return;
-        }
-      }
-
       final oldFile = File(song.url);
       if (!await oldFile.exists()) {
         if (kDebugMode) {
@@ -822,34 +795,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }
 
     try {
-      final storage = ref.read(storageServiceProvider);
-      if (Platform.isAndroid) {
-        final treeUri = await storage.getMusicFolderTreeUri();
-        final rootPath = await storage.getMusicFolderPath();
-        if (treeUri != null && treeUri.isNotEmpty && rootPath != null) {
-          if (!p.isWithin(rootPath, oldFolderPath) &&
-              !p.equals(rootPath, oldFolderPath)) {
-            throw Exception('Source folder is outside the music folder.');
-          }
-          if (!p.isWithin(rootPath, targetParentPath) &&
-              !p.equals(rootPath, targetParentPath)) {
-            throw Exception('Target folder is outside the music folder.');
-          }
-
-          final sourceRelativePath = p.relative(oldFolderPath, from: rootPath);
-          final targetParentRelativePath =
-              p.relative(targetParentPath, from: rootPath);
-          await AndroidStorageService.moveFolder(
-            treeUri: treeUri,
-            sourceRelativePath: sourceRelativePath,
-            targetParentRelativePath:
-                targetParentRelativePath == '.' ? '' : targetParentRelativePath,
-          );
-          await refresh();
-          return;
-        }
-      }
-
       final oldDir = Directory(oldFolderPath);
       if (!await oldDir.exists()) {
         if (kDebugMode) {

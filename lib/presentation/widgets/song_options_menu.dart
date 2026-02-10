@@ -18,6 +18,11 @@ void showSongOptionsMenu(
           final userData = consumerRef.watch(userDataProvider);
           final isFavorite = userData.isFavorite(songFilename);
           final isSuggestLess = userData.isSuggestLess(songFilename);
+          final currentSong = consumerRef
+              .read(audioPlayerManagerProvider)
+              .currentSongNotifier
+              .value;
+          final isCurrentlyPlaying = currentSong?.filename == songFilename;
 
           return SafeArea(
             child: SizedBox(
@@ -244,16 +249,19 @@ void showSongOptionsMenu(
                       ListTile(
                         leading: const Icon(Icons.edit_outlined),
                         title: const Text("Edit Metadata"),
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  EditMetadataScreen(song: song),
-                            ),
-                          );
-                        },
+                        enabled: !isCurrentlyPlaying,
+                        onTap: isCurrentlyPlaying
+                            ? null
+                            : () {
+                                Navigator.pop(sheetContext);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        EditMetadataScreen(song: song),
+                                  ),
+                                );
+                              },
                       ),
                     ],
                     ListTile(

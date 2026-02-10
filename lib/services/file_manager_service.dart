@@ -2,6 +2,7 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -12,7 +13,6 @@ import 'database_service.dart';
 import 'scanner_service.dart';
 import '../models/song.dart';
 import 'storage_service.dart';
-import 'android_storage_service.dart';
 
 class FileManagerService {
   /// Updates the song title in the file metadata.
@@ -373,161 +373,119 @@ class FileManagerService {
       Picture? picture,
       bool removePicture = false}) async {
     try {
-      if (Platform.isAndroid) {
-        final storage = StorageService();
-        final treeUri = await storage.getMusicFolderTreeUri();
-        final rootPath = await storage.getMusicFolderPath();
-        if (treeUri != null && treeUri.isNotEmpty && rootPath != null) {
-          if (!p.isWithin(rootPath, fileUrl) &&
-              !p.equals(rootPath, p.dirname(fileUrl))) {
-            throw Exception('Source file is outside the music folder.');
-          }
+      debugPrint("FileManager: Updating metadata for $fileUrl");
+      debugPrint(
+          "FileManager: picture=${picture != null}, removePicture=$removePicture");
 
-          final tempDir = await Directory.systemTemp.createTemp('gru_meta_');
-          final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
-          await File(fileUrl).copy(tempFile.path);
-
-          // Use audio_metadata_reader for cover updates and MetadataGod for text
-          await _updateMetadataWithLibraries(
-            tempFile: tempFile,
-            tempDir: tempDir,
-            title: title,
-            artist: artist,
-            album: album,
-            picture: picture,
-            removePicture: removePicture,
-          );
-
-          final sourceRelativePath = p.relative(fileUrl, from: rootPath);
-          await AndroidStorageService.writeFileFromPath(
-            treeUri: treeUri,
-            sourceRelativePath: sourceRelativePath,
-            sourcePath: tempFile.path,
-          );
-
-          await tempDir.delete(recursive: true);
-          debugPrint("Successfully updated metadata for $fileUrl");
-          return;
-        }
+      // Handle cover art updates using audio_metadata_reader (more reliable for pictures)
+      if (picture != null || removePicture) {
+        await _updateCoverWithAudioMetadataReader(
+          fileUrl,
+          picture: picture,
+          removePicture: removePicture,
+        );
       }
 
-      // For non-Android platforms, work in a temp directory too for safety
-      final tempDir = await Directory.systemTemp.createTemp('gru_meta_');
-      final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
-      await File(fileUrl).copy(tempFile.path);
-
-      await _updateMetadataWithLibraries(
-        tempFile: tempFile,
-        tempDir: tempDir,
-        title: title,
-        artist: artist,
-        album: album,
-        picture: picture,
-        removePicture: removePicture,
+      // Handle text metadata using MetadataGod
+      final currentMetadata = await MetadataGod.readMetadata(file: fileUrl);
+      final updatedMetadata = Metadata(
+        title: title ?? currentMetadata.title,
+        artist: artist ?? currentMetadata.artist,
+        album: album ?? currentMetadata.album,
+        albumArtist: currentMetadata.albumArtist,
+        trackNumber: currentMetadata.trackNumber,
+        trackTotal: currentMetadata.trackTotal,
+        discNumber: currentMetadata.discNumber,
+        discTotal: currentMetadata.discTotal,
+        year: currentMetadata.year,
+        genre: currentMetadata.genre,
+        picture: currentMetadata
+            .picture, // Keep existing picture (already updated above if needed)
       );
 
-      // Copy the updated file back to original location
-      await tempFile.copy(fileUrl);
-      await tempDir.delete(recursive: true);
+      await MetadataGod.writeMetadata(
+        file: fileUrl,
+        metadata: updatedMetadata,
+      );
 
       debugPrint("Successfully updated metadata for $fileUrl");
     } catch (e) {
+      debugPrint("FileManager: Failed to update metadata: $e");
       throw Exception("Failed to update song metadata: $e");
     }
   }
 
-  /// Helper method to update metadata using both audio_metadata_reader (for covers)
-  /// and MetadataGod (for text). Works on all platforms.
-  Future<void> _updateMetadataWithLibraries({
-    required File tempFile,
-    required Directory tempDir,
-    String? title,
-    String? artist,
-    String? album,
+  /// Updates cover art using audio_metadata_reader (more reliable for pictures)
+  Future<void> _updateCoverWithAudioMetadataReader(
+    String fileUrl, {
     Picture? picture,
     bool removePicture = false,
   }) async {
-    // For cover updates, use audio_metadata_reader with working directory workaround
-    // The library has a bug where it writes to hardcoded "a_new.mp4" etc.
-    if (picture != null || removePicture) {
-      final originalDir = Directory.current;
+    final file = File(fileUrl);
+    final originalDir = Directory.current;
+    final tempDir = await Directory.systemTemp.createTemp('gru_cover_');
+
+    try {
+      // Change to temp directory for audio_metadata_reader workaround
+      Directory.current = tempDir;
+
+      final amrPicture = picture != null
+          ? amr.Picture(
+              Uint8List.fromList(picture.data),
+              picture.mimeType,
+              amr.PictureType.coverFront,
+            )
+          : null;
+
+      amr.updateMetadata(file, (metadata) {
+        // Handle different metadata types
+        if (metadata is amr.Mp3Metadata) {
+          if (removePicture) {
+            metadata.pictures.clear();
+          } else if (amrPicture != null) {
+            metadata.pictures = [amrPicture];
+          }
+        } else if (metadata is amr.Mp4Metadata) {
+          metadata.picture = removePicture ? null : amrPicture;
+        } else if (metadata is amr.VorbisMetadata) {
+          if (removePicture) {
+            metadata.pictures.clear();
+          } else if (amrPicture != null) {
+            metadata.pictures = [amrPicture];
+          }
+        } else if (metadata is amr.RiffMetadata) {
+          if (removePicture) {
+            metadata.pictures.clear();
+          } else if (amrPicture != null) {
+            metadata.pictures = [amrPicture];
+          }
+        }
+      });
+
+      // The library writes to a_new.* - rename it back to original
+      final extension = p.extension(file.path).toLowerCase();
+      String? newFileName;
+      if (extension == '.mp4' || extension == '.m4a') {
+        newFileName = 'a_new.mp4';
+      } else if (extension == '.wav') {
+        newFileName = 'a_new.wav';
+      }
+
+      if (newFileName != null) {
+        final newFile = File(p.join(tempDir.path, newFileName));
+        if (await newFile.exists()) {
+          await newFile.rename(file.path);
+        }
+      }
+    } finally {
+      Directory.current = originalDir;
+      // Clean up temp directory
       try {
-        // Change to temp directory so the library creates a_new.* files there
-        Directory.current = tempDir;
-
-        amr.updateMetadata(tempFile, (metadata) {
-          final amrPicture = picture != null
-              ? amr.Picture(
-                  Uint8List.fromList(picture.data),
-                  picture.mimeType,
-                  amr.PictureType.coverFront,
-                )
-              : null;
-
-          // Handle different metadata types
-          if (metadata is amr.Mp3Metadata) {
-            if (removePicture) {
-              metadata.pictures.clear();
-            } else if (amrPicture != null) {
-              metadata.pictures = [amrPicture];
-            }
-          } else if (metadata is amr.Mp4Metadata) {
-            metadata.picture = removePicture ? null : amrPicture;
-          } else if (metadata is amr.VorbisMetadata) {
-            if (removePicture) {
-              metadata.pictures.clear();
-            } else if (amrPicture != null) {
-              metadata.pictures = [amrPicture];
-            }
-          } else if (metadata is amr.RiffMetadata) {
-            if (removePicture) {
-              metadata.pictures.clear();
-            } else if (amrPicture != null) {
-              metadata.pictures = [amrPicture];
-            }
-          }
-        });
-
-        // The library writes to a_new.* - rename it back to original
-        final extension = p.extension(tempFile.path).toLowerCase();
-        String? newFileName;
-        if (extension == '.mp4' || extension == '.m4a') {
-          newFileName = 'a_new.mp4';
-        } else if (extension == '.wav') {
-          newFileName = 'a_new.wav';
-        }
-
-        if (newFileName != null) {
-          final newFile = File(p.join(tempDir.path, newFileName));
-          if (await newFile.exists()) {
-            await newFile.rename(tempFile.path);
-          }
-        }
-      } finally {
-        Directory.current = originalDir;
+        await tempDir.delete(recursive: true);
+      } catch (e) {
+        debugPrint("Error cleaning up temp directory: $e");
       }
     }
-
-    // Use MetadataGod for text metadata (works reliably)
-    final metadata = await MetadataGod.readMetadata(file: tempFile.path);
-    final updatedMetadata = Metadata(
-      title: title ?? metadata.title,
-      artist: artist ?? metadata.artist,
-      album: album ?? metadata.album,
-      albumArtist: metadata.albumArtist,
-      trackNumber: metadata.trackNumber,
-      trackTotal: metadata.trackTotal,
-      discNumber: metadata.discNumber,
-      discTotal: metadata.discTotal,
-      year: metadata.year,
-      genre: metadata.genre,
-      picture: metadata.picture, // Keep whatever audio_metadata_reader wrote
-    );
-
-    await MetadataGod.writeMetadata(
-      file: tempFile.path,
-      metadata: updatedMetadata,
-    );
   }
 
   /// Renames a song file locally.
@@ -544,27 +502,7 @@ class FileManagerService {
 
     // 1. Rename physical file
     try {
-      if (Platform.isAndroid) {
-        final storage = StorageService();
-        final treeUri = await storage.getMusicFolderTreeUri();
-        final rootPath = await storage.getMusicFolderPath();
-        if (treeUri != null && treeUri.isNotEmpty && rootPath != null) {
-          if (!p.isWithin(rootPath, oldPath) &&
-              !p.equals(rootPath, p.dirname(oldPath))) {
-            throw Exception('Source file is outside the music folder.');
-          }
-          final sourceRelativePath = p.relative(oldPath, from: rootPath);
-          await AndroidStorageService.renameFile(
-            treeUri: treeUri,
-            sourceRelativePath: sourceRelativePath,
-            newName: newFilename,
-          );
-        } else {
-          await File(oldPath).rename(newPath);
-        }
-      } else {
-        await File(oldPath).rename(newPath);
-      }
+      await File(oldPath).rename(newPath);
     } catch (e) {
       throw Exception("Failed to rename file on filesystem: $e");
     }
@@ -577,28 +515,7 @@ class FileManagerService {
         final lyricsExt = p.extension(song.lyricsUrl!);
         final newLyricsPath = p.join(lyricsDir, "$newTitle$lyricsExt");
         try {
-          if (Platform.isAndroid) {
-            final storage = StorageService();
-            final lyricsTreeUri = await storage.getLyricsFolderTreeUri();
-            final lyricsRoot = await storage.getLyricsFolderPath();
-            if (lyricsTreeUri != null &&
-                lyricsTreeUri.isNotEmpty &&
-                lyricsRoot != null &&
-                (p.isWithin(lyricsRoot, oldLyricsFile.path) ||
-                    p.equals(lyricsRoot, p.dirname(oldLyricsFile.path)))) {
-              final lyricsRelativePath =
-                  p.relative(oldLyricsFile.path, from: lyricsRoot);
-              await AndroidStorageService.renameFile(
-                treeUri: lyricsTreeUri,
-                sourceRelativePath: lyricsRelativePath,
-                newName: "$newTitle$lyricsExt",
-              );
-            } else {
-              await oldLyricsFile.rename(newLyricsPath);
-            }
-          } else {
-            await oldLyricsFile.rename(newLyricsPath);
-          }
+          await oldLyricsFile.rename(newLyricsPath);
         } catch (e) {
           debugPrint("Failed to rename lyrics file: $e");
         }
@@ -613,25 +530,6 @@ class FileManagerService {
 
   /// Deletes a song file from the filesystem.
   Future<void> deleteSongFile(Song song) async {
-    if (Platform.isAndroid) {
-      final storage = StorageService();
-      final treeUri = await storage.getMusicFolderTreeUri();
-      final rootPath = await storage.getMusicFolderPath();
-      if (treeUri != null && treeUri.isNotEmpty && rootPath != null) {
-        if (!p.isWithin(rootPath, song.url) &&
-            !p.equals(rootPath, p.dirname(song.url))) {
-          throw Exception('Source file is outside the music folder.');
-        }
-        final sourceRelativePath = p.relative(song.url, from: rootPath);
-        await AndroidStorageService.deleteFile(
-          treeUri: treeUri,
-          sourceRelativePath: sourceRelativePath,
-        );
-        debugPrint("Deleted file: ${song.url}");
-        return;
-      }
-    }
-
     final file = File(song.url);
     if (await file.exists()) {
       await file.delete();

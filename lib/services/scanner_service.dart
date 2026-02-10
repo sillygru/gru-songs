@@ -8,23 +8,27 @@ import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:collection/collection.dart';
 import '../models/song.dart';
 import 'database_service.dart';
 import '../domain/services/search_service.dart';
+import 'storage_service.dart';
 
 class _ScanParams {
-  final String path;
+  final List<String> paths;
+  final List<String> excludedFolders;
   final List<Song>? existingSongs;
   final String coversDirPath;
-  final String? lyricsPath;
+  final List<Map<String, String>> lyricsFolders;
   final Map<String, int> playCounts;
   final SendPort sendPort;
 
   _ScanParams({
-    required this.path,
+    required this.paths,
+    required this.excludedFolders,
     this.existingSongs,
     required this.coversDirPath,
-    this.lyricsPath,
+    required this.lyricsFolders,
     required this.playCounts,
     required this.sendPort,
   });
@@ -51,43 +55,8 @@ class ScannerService {
     '.ogg'
   ];
 
-  /// Extracts cover art from a single song file using the same logic as the
-  /// scanner (metadata reader → manual byte extraction → folder cover).
-  /// Returns the path to the cached cover file, or null if no cover was found.
-  static Future<String?> extractCoverForFile(
-    File file,
-    Directory coversDir,
-    String hash,
-    int mtimeMs, {
-    bool skipFolderCover = false,
-  }) async {
-    if (!await file.exists()) return null;
-
-    // Try metadata extraction first
-    try {
-      final metadata = amr.readMetadata(file);
-      if (metadata.pictures.isNotEmpty) {
-        final picture = metadata.pictures.first;
-        final coverExt = _getExtFromMime(picture.mimetype);
-        final coverFile =
-            File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
-        await coverFile.writeAsBytes(picture.bytes);
-        return coverFile.path;
-      }
-    } catch (e) {
-      debugPrint('extractCoverForFile: metadata read failed: $e');
-    }
-
-    // Try manual byte-level extraction
-    final manual =
-        await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
-    if (manual != null) return manual;
-
-    // Try folder cover as last resort
-    if (skipFolderCover) return null;
-    return _findCoverInFolder(p.dirname(file.path));
-  }
-
+  /// Scans a specific directory for audio files (backward compatibility).
+  /// Note: This method respects excluded folders from settings.
   Future<List<Song>> scanDirectory(
     String path, {
     List<Song>? existingSongs,
@@ -97,10 +66,10 @@ class ScannerService {
     String? username,
     void Function(List<Song>)? onComplete,
   }) async {
-    // Request permissions before accessing storage
+    // Check for storage permission
     if (Platform.isAndroid) {
-      var statusStorage = await Permission.storage.request();
-      var statusAudio = await Permission.audio.request();
+      var statusStorage = await Permission.storage.status;
+      var statusAudio = await Permission.audio.status;
 
       if (!statusStorage.isGranted && !statusAudio.isGranted) {
         debugPrint('Storage permissions not granted. Cannot scan directory.');
@@ -111,8 +80,16 @@ class ScannerService {
     final dir = Directory(path);
     if (!await dir.exists()) return [];
 
+    final storage = StorageService();
+    final excludedFolders = await storage.getExcludedFolders();
     final effectivePlayCounts =
         playCounts ?? await DatabaseService.instance.getPlayCounts();
+
+    // Convert single lyricsPath to lyricsFolders format
+    final List<Map<String, String>> lyricsFolders = [];
+    if (lyricsPath != null && lyricsPath.isNotEmpty) {
+      lyricsFolders.add({'path': lyricsPath, 'treeUri': ''});
+    }
 
     final supportDir = await getApplicationSupportDirectory();
     final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
@@ -122,10 +99,142 @@ class ScannerService {
 
     final receivePort = ReceivePort();
     final params = _ScanParams(
-      path: path,
+      paths: [path],
+      excludedFolders: excludedFolders,
       existingSongs: existingSongs,
       coversDirPath: coversDir.path,
-      lyricsPath: lyricsPath,
+      lyricsFolders: lyricsFolders,
+      playCounts: effectivePlayCounts,
+      sendPort: receivePort.sendPort,
+    );
+
+    await Isolate.spawn(_isolateScan, params);
+
+    final completer = Completer<List<Song>>();
+
+    receivePort.listen((message) async {
+      if (message is double) {
+        onProgress?.call(message);
+      } else if (message is List<Song>) {
+        if (username != null) {
+          try {
+            final searchService = SearchService();
+            await searchService.initForUser(username);
+            await searchService.rebuildIndex(message);
+            debugPrint('Search index rebuilt with ${message.length} songs');
+          } catch (e) {
+            debugPrint('Error rebuilding search index: $e');
+          }
+        }
+        onComplete?.call(message);
+        completer.complete(message);
+        receivePort.close();
+      } else if (message is List) {
+        try {
+          final songs = message.cast<Song>();
+          if (username != null) {
+            try {
+              final searchService = SearchService();
+              await searchService.initForUser(username);
+              await searchService.rebuildIndex(songs);
+              debugPrint('Search index rebuilt with ${songs.length} songs');
+            } catch (e) {
+              debugPrint('Error rebuilding search index: $e');
+            }
+          }
+          onComplete?.call(songs);
+          completer.complete(songs);
+        } catch (e) {
+          completer.completeError("Failed to cast result to List<Song>");
+        }
+        receivePort.close();
+      } else {
+        receivePort.close();
+        completer.completeError("Unknown message from isolate: $message");
+      }
+    }, onError: (e) {
+      receivePort.close();
+      completer.completeError(e);
+    });
+
+    return completer.future;
+  }
+
+  /// Scans the entire device for audio files, respecting excluded folders.
+  Future<List<Song>> scanDevice({
+    List<Song>? existingSongs,
+    List<Map<String, String>>? lyricsFolders,
+    Map<String, int>? playCounts,
+    void Function(double progress)? onProgress,
+    String? username,
+    void Function(List<Song>)? onComplete,
+  }) async {
+    // Check for all files access permission
+    if (Platform.isAndroid) {
+      final status = await Permission.manageExternalStorage.status;
+      if (!status.isGranted) {
+        debugPrint('All files access permission not granted. Cannot scan.');
+        return [];
+      }
+    }
+
+    final storage = StorageService();
+    final excludedFolders = await storage.getExcludedFolders();
+    final effectiveLyricsFolders =
+        lyricsFolders ?? await storage.getLyricsFolders();
+    final effectivePlayCounts =
+        playCounts ?? await DatabaseService.instance.getPlayCounts();
+
+    // Determine scan paths based on platform
+    final List<String> scanPaths = [];
+    if (Platform.isAndroid) {
+      // Common storage locations on Android
+      scanPaths.addAll([
+        '/storage/emulated/0',
+        '/storage/emulated/0/Music',
+        '/storage/emulated/0/Download',
+      ]);
+    } else if (Platform.isMacOS) {
+      scanPaths.addAll([
+        '${Platform.environment['HOME']}/Music',
+        '/Users',
+      ]);
+    } else if (Platform.isWindows) {
+      scanPaths.addAll([
+        Platform.environment['USERPROFILE'] ?? '',
+      ]);
+    } else if (Platform.isLinux) {
+      scanPaths.addAll([
+        '${Platform.environment['HOME']}/Music',
+        '${Platform.environment['HOME']}',
+      ]);
+    }
+
+    // Filter to only existing paths
+    final validPaths = scanPaths.where((path) {
+      if (path.isEmpty) return false;
+      final dir = Directory(path);
+      return dir.existsSync();
+    }).toList();
+
+    if (validPaths.isEmpty) {
+      debugPrint('No valid scan paths found.');
+      return [];
+    }
+
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+    if (!await coversDir.exists()) {
+      await coversDir.create(recursive: true);
+    }
+
+    final receivePort = ReceivePort();
+    final params = _ScanParams(
+      paths: validPaths,
+      excludedFolders: excludedFolders,
+      existingSongs: existingSongs,
+      coversDirPath: coversDir.path,
+      lyricsFolders: effectiveLyricsFolders,
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
     );
@@ -183,6 +292,43 @@ class ScannerService {
     });
 
     return completer.future;
+  }
+
+  /// Extracts cover art from a single song file using the same logic as the
+  /// scanner (metadata reader → manual byte extraction → folder cover).
+  /// Returns the path to the cached cover file, or null if no cover was found.
+  static Future<String?> extractCoverForFile(
+    File file,
+    Directory coversDir,
+    String hash,
+    int mtimeMs, {
+    bool skipFolderCover = false,
+  }) async {
+    if (!await file.exists()) return null;
+
+    // Try metadata extraction first
+    try {
+      final metadata = amr.readMetadata(file);
+      if (metadata.pictures.isNotEmpty) {
+        final picture = metadata.pictures.first;
+        final coverExt = _getExtFromMime(picture.mimetype);
+        final coverFile =
+            File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+        await coverFile.writeAsBytes(picture.bytes);
+        return coverFile.path;
+      }
+    } catch (e) {
+      debugPrint('extractCoverForFile: metadata read failed: $e');
+    }
+
+    // Try manual byte-level extraction
+    final manual =
+        await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+    if (manual != null) return manual;
+
+    // Try folder cover as last resort
+    if (skipFolderCover) return null;
+    return _findCoverInFolder(p.dirname(file.path));
   }
 
   Future<Map<String, String?>> rebuildCoverCache(
@@ -276,8 +422,11 @@ class ScannerService {
             // Try folder cover as last resort
             if (resolvedCoverUrl == null) {
               final parentPath = p.dirname(file.path);
-              resolvedCoverUrl = folderCoverCache.putIfAbsent(
-                  parentPath, () => _findCoverInFolder(parentPath));
+              if (!folderCoverCache.containsKey(parentPath)) {
+                folderCoverCache[parentPath] =
+                    await _findCoverInFolder(parentPath);
+              }
+              resolvedCoverUrl = folderCoverCache[parentPath];
             }
           }
         } catch (e) {
@@ -295,7 +444,6 @@ class ScannerService {
   }
 
   static Future<void> _isolateScan(_ScanParams params) async {
-    final dir = Directory(params.path);
     final coversDir = Directory(params.coversDirPath);
 
     // Create a lookup map for existing songs
@@ -303,14 +451,46 @@ class ScannerService {
         ? {for (var s in params.existingSongs!) s.url: s}
         : {};
 
+    // Convert excluded folders to a set for faster lookup
+    final excludedSet = params.excludedFolders.toSet();
+
     try {
-      final List<FileSystemEntity> entities =
-          dir.listSync(recursive: true, followLinks: false);
-      final List<File> audioFiles = entities
-          .whereType<File>()
-          .where((f) =>
-              _supportedExtensions.contains(p.extension(f.path).toLowerCase()))
-          .toList();
+      final List<File> audioFiles = [];
+
+      // Scan all provided paths
+      for (final scanPath in params.paths) {
+        final dir = Directory(scanPath);
+        if (!await dir.exists()) continue;
+
+        try {
+          await for (final entity
+              in dir.list(recursive: true, followLinks: false)) {
+            if (entity is File) {
+              final path = entity.path;
+
+              // Check if file has supported extension
+              if (!_supportedExtensions
+                  .contains(p.extension(path).toLowerCase())) {
+                continue;
+              }
+
+              // Check if path is in excluded folder
+              bool isExcluded = false;
+              for (final excluded in excludedSet) {
+                if (p.isWithin(excluded, path) || p.equals(excluded, path)) {
+                  isExcluded = true;
+                  break;
+                }
+              }
+              if (isExcluded) continue;
+
+              audioFiles.add(entity);
+            }
+          }
+        } catch (e) {
+          debugPrint('Error scanning $scanPath: $e');
+        }
+      }
 
       final Map<String, String?> folderCoverCache = {};
       final List<Song> songs = [];
@@ -342,7 +522,7 @@ class ScannerService {
           ));
         } else {
           final song = await _processSingleFile(file, coversDir,
-              folderCoverCache, params.lyricsPath, params.playCounts,
+              folderCoverCache, params.lyricsFolders, params.playCounts,
               mtime: currentMtime);
           songs.add(song);
         }
@@ -363,7 +543,7 @@ class ScannerService {
       File file,
       Directory coversDir,
       Map<String, String?> folderCoverCache,
-      String? lyricsPath,
+      List<Map<String, String>> lyricsFolders,
       Map<String, int> playCounts,
       {double? mtime}) async {
     final filename = p.basename(file.path);
@@ -421,16 +601,30 @@ class ScannerService {
     coverUrl ??=
         await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
 
-    coverUrl ??= folderCoverCache.putIfAbsent(
-        parentPath, () => _findCoverInFolder(parentPath));
+    if (coverUrl == null) {
+      if (!folderCoverCache.containsKey(parentPath)) {
+        folderCoverCache[parentPath] = await _findCoverInFolder(parentPath);
+      }
+      coverUrl = folderCoverCache[parentPath];
+    }
 
+    // Search for lyrics in configured lyrics folders
     String? lyricsUrl;
+
+    // First check in song's own folder
     lyricsUrl = await _findLyricsForSong(
         p.basenameWithoutExtension(file.path), parentPath);
 
-    if (lyricsUrl == null && lyricsPath != null) {
-      lyricsUrl = await _findLyricsForSong(
-          p.basenameWithoutExtension(file.path), lyricsPath);
+    // Then check in configured lyrics folders
+    if (lyricsUrl == null) {
+      for (final lyricsFolder in lyricsFolders) {
+        final path = lyricsFolder['path'];
+        if (path != null && path.isNotEmpty) {
+          lyricsUrl = await _findLyricsForSong(
+              p.basenameWithoutExtension(file.path), path);
+          if (lyricsUrl != null) break;
+        }
+      }
     }
 
     return Song(
@@ -497,65 +691,109 @@ class ScannerService {
 
   static Future<String?> _scanForAPIC(List<int> bytes, RandomAccessFile raf,
       int offset, Directory coversDir, String hash, int mtimeMs) async {
-    for (int i = 0; i < bytes.length - 20; i++) {
-      if (bytes[i] == 0x41 &&
-          bytes[i + 1] == 0x50 &&
-          bytes[i + 2] == 0x49 &&
-          bytes[i + 3] == 0x43) {
-        int tagSize = (bytes[i + 4] << 21) |
-            (bytes[i + 5] << 14) |
-            (bytes[i + 6] << 7) |
-            bytes[i + 7];
-        if (tagSize > 5000 && tagSize < 15 * 1024 * 1024) {
-          final subChunk =
-              bytes.sublist(i, (i + tagSize + 20).clamp(0, bytes.length));
-          return await _scanBufferForSignatures(
-              subChunk, raf, offset + i, coversDir, hash, mtimeMs);
+    final apicSig = [0x41, 0x50, 0x49, 0x43]; // "APIC"
+    int apicPos = _findBytes(bytes, apicSig);
+    while (apicPos != -1) {
+      final realOffset = offset + apicPos;
+      final rafHeader = await raf.read(4);
+      if (rafHeader.length < 4) break;
+
+      final sizeBuffer = await raf.read(4);
+      if (sizeBuffer.length < 4) break;
+
+      final size = _readInt32BE(sizeBuffer);
+      if (size <= 0 || size > 50 * 1024 * 1024) {
+        final nextOffset = realOffset + 4;
+        await raf.setPosition(nextOffset);
+        final moreBytes = await raf.read(bytes.length);
+        apicPos = _findBytes(moreBytes, apicSig);
+        continue;
+      }
+
+      final data = await raf.read(size);
+      if (data.length < size) break;
+
+      final mimeTypeEnd = data.indexOf(0);
+      if (mimeTypeEnd > 0 && mimeTypeEnd < 100) {
+        final mimeType = String.fromCharCodes(data.sublist(0, mimeTypeEnd));
+        final mimeExtMap = {
+          'image/jpeg': '.jpg',
+          'image/png': '.png',
+          'image/webp': '.webp',
+          'image/bmp': '.bmp',
+        };
+        final ext = mimeExtMap[mimeType] ?? '.jpg';
+
+        // Skip picture type and description to get image data
+        int imgStart = mimeTypeEnd + 1;
+        if (imgStart < data.length) imgStart++; // Skip picture type
+        while (imgStart < data.length && data[imgStart] != 0) imgStart++;
+        if (imgStart < data.length) imgStart++; // Skip null terminator
+
+        if (imgStart < data.length && data.length - imgStart > 100) {
+          final extToSig = {
+            '.jpg': [0xFF, 0xD8],
+            '.png': [0x89, 0x50],
+            '.webp': [0x52, 0x49],
+          };
+          final expectedSig = extToSig[ext] ?? [];
+          final actualSig = data.sublist(imgStart, imgStart + 2);
+
+          if (ListEquality().equals(expectedSig, actualSig)) {
+            final coverFile =
+                File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+            await coverFile.writeAsBytes(data.sublist(imgStart));
+            return coverFile.path;
+          }
         }
       }
+
+      // Continue searching
+      final nextOffset = realOffset + 4;
+      await raf.setPosition(nextOffset);
+      final moreBytes = await raf.read(bytes.length);
+      apicPos = _findBytes(moreBytes, apicSig);
     }
     return null;
   }
 
   static Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf,
       int offset, Directory coversDir, String hash, int mtimeMs) async {
-    for (int i = 0; i < bytes.length - 24; i++) {
-      if (bytes[i] == 0x63 &&
-          bytes[i + 1] == 0x6F &&
-          bytes[i + 2] == 0x76 &&
-          bytes[i + 3] == 0x72) {
-        for (int j = i + 4; j < i + 128 && j < bytes.length - 16; j++) {
-          if (bytes[j] == 0x64 &&
-              bytes[j + 1] == 0x61 &&
-              bytes[j + 2] == 0x74 &&
-              bytes[j + 3] == 0x61) {
-            final dataSize = (bytes[j - 4] << 24) |
-                (bytes[j - 3] << 16) |
-                (bytes[j - 2] << 8) |
-                bytes[j - 1];
-            final imageSize = dataSize - 16;
+    int pos = 0;
+    while (pos < bytes.length - 8) {
+      final size = _readInt32BE(bytes.sublist(pos, pos + 4));
+      final typeStr = String.fromCharCodes(bytes.sublist(pos + 4, pos + 8));
 
-            if (imageSize > 1024 && imageSize < 15 * 1024 * 1024) {
-              final startPos = offset + j + 12;
-              await raf.setPosition(startPos);
-              final imgData = await raf.read(imageSize);
-
-              String type = 'jpg';
-              if (bytes[j + 11] == 14) {
-                type = 'png';
-              } else if (bytes[j + 11] == 27) {
-                type = 'bmp';
-              }
-
-              final coverFile =
-                  File(p.join(coversDir.path, '${hash}_$mtimeMs.$type'));
-              await coverFile.writeAsBytes(imgData);
-              return coverFile.path;
-            }
+      if (typeStr == 'covr' && size > 8 && size < 50 * 1024 * 1024) {
+        final dataOffset = pos + 8;
+        if (dataOffset + size - 8 <= bytes.length) {
+          final coverData = bytes.sublist(dataOffset, dataOffset + size - 8);
+          final ext = _detectImageFormat(coverData);
+          if (ext != null) {
+            final coverFile =
+                File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+            await coverFile.writeAsBytes(coverData);
+            return coverFile.path;
           }
         }
+        return null;
       }
+
+      if (size < 8) break;
+      pos += size;
     }
+    return null;
+  }
+
+  static String? _detectImageFormat(List<int> data) {
+    if (data.length < 4) return null;
+    final header = data.sublist(0, 4);
+
+    if (header[0] == 0xFF && header[1] == 0xD8) return '.jpg';
+    if (header[0] == 0x89 && header[1] == 0x50) return '.png';
+    if (header[0] == 0x52 && header[1] == 0x49) return '.webp';
+    if (header[0] == 0x42 && header[1] == 0x4D) return '.bmp';
+
     return null;
   }
 
@@ -566,116 +804,115 @@ class ScannerService {
       Directory coversDir,
       String hash,
       int mtimeMs) async {
-    for (int i = 0; i < bytes.length - 8; i++) {
-      if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF) {
-        final res = await _extractImageAt(
-            raf, offset + i, 'jpg', coversDir, hash, mtimeMs);
-        if (res != null) return res;
-      }
-      if (bytes[i] == 0x89 &&
-          bytes[i + 1] == 0x50 &&
-          bytes[i + 2] == 0x4E &&
-          bytes[i + 3] == 0x47) {
-        final res = await _extractImageAt(
-            raf, offset + i, 'png', coversDir, hash, mtimeMs);
-        if (res != null) return res;
-      }
-      if (bytes[i] == 0x52 &&
-          bytes[i + 1] == 0x49 &&
-          bytes[i + 2] == 0x46 &&
-          bytes[i + 3] == 0x46) {
-        if (i + 12 <= bytes.length &&
-            bytes[i + 8] == 0x57 &&
-            bytes[i + 9] == 0x45 &&
-            bytes[i + 10] == 0x42 &&
-            bytes[i + 11] == 0x50) {
-          final res = await _extractImageAt(
-              raf, offset + i, 'webp', coversDir, hash, mtimeMs);
-          if (res != null) return res;
+    final signatures = {
+      '.jpg': [0xFF, 0xD8, 0xFF],
+      '.png': [0x89, 0x50, 0x4E, 0x47],
+      '.webp': [0x52, 0x49, 0x46, 0x46],
+    };
+
+    for (final entry in signatures.entries) {
+      final ext = entry.key;
+      final sig = entry.value;
+      int pos = _findBytes(bytes, sig);
+
+      if (pos != -1) {
+        final realOffset = offset + pos;
+        int? endPos = _findBytes(bytes.sublist(pos + sig.length), [0xFF, 0xD9]);
+
+        if (endPos == -1 && ext == '.jpg') {
+          await raf.setPosition(realOffset);
+          final moreData = await raf.read(10 * 1024 * 1024);
+          endPos = _findBytes(moreData, [0xFF, 0xD9]);
+          if (endPos != -1) {
+            endPos += sig.length + moreData.length;
+          }
+        }
+
+        if (endPos != -1 && endPos > sig.length + 100) {
+          final coverFile =
+              File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+          await coverFile.writeAsBytes(bytes.sublist(pos, pos + endPos + 2));
+          return coverFile.path;
         }
       }
     }
     return null;
   }
 
-  static Future<String?> _extractImageAt(RandomAccessFile raf, int pos,
-      String type, Directory coversDir, String hash, int mtimeMs) async {
-    await raf.setPosition(pos);
-    final data = await raf.read(15 * 1024 * 1024);
-
-    int actualEnd = data.length;
-    if (type == 'jpg') {
-      int lastFFD9 = -1;
-      for (int k = 0; k < data.length - 1; k++) {
-        if (data[k] == 0xFF && data[k + 1] == 0xD9) {
-          lastFFD9 = k + 2;
-          if (k + 4 < data.length) {
-            if (data[k + 2] != 0xFF || data[k + 3] == 0x00) {
-              actualEnd = lastFFD9;
-              break;
-            }
-          }
-        }
-      }
-      if (lastFFD9 != -1) actualEnd = lastFFD9;
-      if (actualEnd == data.length && data.length < 50 * 1024) return null;
-    } else if (type == 'png') {
-      final pngEnd = [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
-      for (int k = 0; k < data.length - pngEnd.length; k++) {
-        bool match = true;
-        for (int l = 0; l < pngEnd.length; l++) {
-          if (data[k + l] != pngEnd[l]) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          actualEnd = k + pngEnd.length;
+  static int _findBytes(List<int> bytes, List<int> pattern) {
+    if (pattern.isEmpty || bytes.length < pattern.length) return -1;
+    for (int i = 0; i <= bytes.length - pattern.length; i++) {
+      bool found = true;
+      for (int j = 0; j < pattern.length; j++) {
+        if (bytes[i + j] != pattern[j]) {
+          found = false;
           break;
         }
       }
+      if (found) return i;
     }
+    return -1;
+  }
 
-    if (actualEnd > 1024) {
-      final coverFile = File(p.join(coversDir.path, '${hash}_$mtimeMs.$type'));
-      await coverFile.writeAsBytes(data.sublist(0, actualEnd));
-      return coverFile.path;
-    }
-    return null;
+  static int _readInt32BE(List<int> bytes) {
+    return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
   }
 
   static String _getExtFromMime(String? mimeType) {
-    if (mimeType == null) return '.jpg';
-    final mime = mimeType.toLowerCase();
-    if (mime.contains('png')) return '.png';
-    if (mime.contains('webp')) return '.webp';
-    if (mime.contains('gif')) return '.gif';
-    return '.jpg';
+    switch (mimeType?.toLowerCase()) {
+      case 'image/jpeg':
+      case 'image/jpg':
+        return '.jpg';
+      case 'image/png':
+        return '.png';
+      case 'image/webp':
+        return '.webp';
+      case 'image/bmp':
+        return '.bmp';
+      default:
+        return '.jpg';
+    }
   }
 
-  static String? _findCoverInFolder(String folderPath) {
-    final possibleNames = [
+  static Future<String?> _findCoverInFolder(String folderPath) async {
+    final dir = Directory(folderPath);
+    if (!await dir.exists()) return null;
+
+    final coverNames = [
       'cover.jpg',
       'cover.png',
       'folder.jpg',
       'folder.png',
       'album.jpg',
-      'album.png'
+      'album.png',
+      'front.jpg',
+      'front.png',
     ];
-    for (final name in possibleNames) {
+
+    for (final name in coverNames) {
       final file = File(p.join(folderPath, name));
-      if (file.existsSync()) return file.path;
+      if (await file.exists()) {
+        return file.path;
+      }
     }
+
     return null;
   }
 
   static Future<String?> _findLyricsForSong(
-      String title, String lyricsPath) async {
-    final possibleNames = ['$title.lrc', '$title.txt'];
-    for (final name in possibleNames) {
-      final file = File(p.join(lyricsPath, name));
-      if (file.existsSync()) return file.path;
+      String songName, String folderPath) async {
+    final dir = Directory(folderPath);
+    if (!await dir.exists()) return null;
+
+    final extensions = ['.lrc', '.txt'];
+
+    for (final ext in extensions) {
+      final file = File(p.join(folderPath, '$songName$ext'));
+      if (await file.exists()) {
+        return file.path;
+      }
     }
+
     return null;
   }
 }
