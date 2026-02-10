@@ -3,14 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
 import 'storage_management_screen.dart';
 import 'folder_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
-import '../../services/android_storage_service.dart';
 import '../../services/data_export_service.dart';
 import '../../services/telemetry_service.dart';
 import '../../services/database_optimizer_service.dart';
@@ -28,71 +26,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void dispose() {
     super.dispose();
-  }
-
-  Future<void> _selectMusicFolder() async {
-    if (Platform.isAndroid) {
-      final selection = await AndroidStorageService.pickTree();
-      if (selection == null) return;
-      if (selection.path == null || selection.path!.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Unable to access selected folder")),
-          );
-        }
-        return;
-      }
-      final storage = ref.read(storageServiceProvider);
-      await storage.addMusicFolder(selection.path!, selection.treeUri);
-      ref.invalidate(songsProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Music folder added")));
-      }
-      return;
-    }
-
-    final selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory == null) return;
-    final storage = ref.read(storageServiceProvider);
-    await storage.addMusicFolder(selectedDirectory, null);
-    ref.invalidate(songsProvider);
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Music folder added")));
-    }
-  }
-
-  Future<void> _selectLyricsFolder() async {
-    if (Platform.isAndroid) {
-      final selection = await AndroidStorageService.pickTree();
-      if (selection == null) return;
-      if (selection.path == null || selection.path!.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Unable to access selected folder")),
-          );
-        }
-        return;
-      }
-      final storage = ref.read(storageServiceProvider);
-      await storage.setLyricsFolderTreeUri(selection.treeUri);
-      await storage.setLyricsFolderPath(selection.path!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Lyrics folder updated")));
-      }
-      return;
-    }
-
-    final selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory == null) return;
-    final storage = ref.read(storageServiceProvider);
-    await storage.setLyricsFolderPath(selectedDirectory);
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Lyrics folder updated")));
-    }
   }
 
   @override

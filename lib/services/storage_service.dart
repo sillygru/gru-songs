@@ -7,7 +7,6 @@ import '../models/song.dart';
 
 class StorageService {
   static const String _musicFolderKey = 'music_folder_path';
-  static const String _musicFolderTreeUriKey = 'music_folder_tree_uri';
   static const String _lyricsFolderKey = 'lyrics_folder_path';
   static const String _lyricsFolderTreeUriKey = 'lyrics_folder_tree_uri';
   static const String _excludedFoldersKey = 'excluded_folders';

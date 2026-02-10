@@ -11,7 +11,6 @@ import '../services/scanner_service.dart';
 import '../services/database_service.dart';
 import '../services/bulk_metadata_service.dart';
 import '../services/file_manager_service.dart';
-import '../services/android_storage_service.dart';
 import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
 import '../data/repositories/song_repository.dart';
@@ -243,7 +242,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final auth = ref.read(authProvider);
 
     final musicFolders = await storage.getMusicFolders();
-    final lyricsFolders = await storage.getLyricsFolders();
 
     if (musicFolders.isEmpty) {
       debugPrint('No music folders configured. Cannot scan.');
@@ -635,6 +633,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final notifier = ref.read(metadataSaveProvider.notifier);
     notifier.start();
     try {
+      await ref.read(audioPlayerManagerProvider).stopIfCurrentSong(song.url);
       final newCoverPath = await ref
           .read(fileManagerServiceProvider)
           .updateSongCover(song, imagePath);

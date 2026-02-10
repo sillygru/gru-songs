@@ -697,7 +697,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         child: StreamBuilder<PositionData>(
                           stream: _positionDataStream,
                           builder: (context, snapshot) {
-                            if (metadata == null) return const SizedBox.shrink();
+                            if (metadata == null) {
+                              return const SizedBox.shrink();
+                            }
                             final positionData = snapshot.data;
                             return WaveformProgressBar(
                               filename: metadata.id,

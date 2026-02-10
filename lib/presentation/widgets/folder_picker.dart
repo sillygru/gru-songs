@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
-import '../../services/android_storage_service.dart';
 import 'folder_grid_image.dart';
 
 class FolderPicker extends ConsumerStatefulWidget {

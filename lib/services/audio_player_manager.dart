@@ -87,6 +87,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   AudioPlayer get player => _player;
 
+  Future<bool> stopIfCurrentSong(String fileUrl) async {
+    final current = currentSongNotifier.value;
+    if (current == null) return false;
+    if (!p.equals(current.url, fileUrl)) return false;
+    try {
+      await _player.stop();
+      return true;
+    } catch (e) {
+      debugPrint('AudioPlayerManager: failed to stop for edit: $e');
+      return false;
+    }
+  }
+
   bool _isFavorite(String filename) {
     if (_favorites.contains(filename)) return true;
     final searchBasename = p.basename(filename);

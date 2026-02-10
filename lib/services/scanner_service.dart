@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:collection/collection.dart';
 import '../models/song.dart';
 import 'database_service.dart';
 import '../domain/services/search_service.dart';
@@ -19,6 +18,7 @@ class _ScanParams {
   final List<String> excludedFolders;
   final List<Song>? existingSongs;
   final String coversDirPath;
+  final String lockDirPath;
   final List<Map<String, String>> lyricsFolders;
   final Map<String, int> playCounts;
   final SendPort sendPort;
@@ -28,6 +28,7 @@ class _ScanParams {
     required this.excludedFolders,
     this.existingSongs,
     required this.coversDirPath,
+    required this.lockDirPath,
     required this.lyricsFolders,
     required this.playCounts,
     required this.sendPort,
@@ -37,11 +38,13 @@ class _ScanParams {
 class _RebuildParams {
   final List<Song> songs;
   final String coversDirPath;
+  final String lockDirPath;
   final SendPort sendPort;
 
   _RebuildParams({
     required this.songs,
     required this.coversDirPath,
+    required this.lockDirPath,
     required this.sendPort,
   });
 }
@@ -68,12 +71,17 @@ class ScannerService {
   }) async {
     // Check for storage permission
     if (Platform.isAndroid) {
-      var statusStorage = await Permission.storage.status;
-      var statusAudio = await Permission.audio.status;
+      final statusAll = await Permission.manageExternalStorage.status;
+      if (statusAll.isGranted) {
+        // All files access granted: proceed without storage/audio checks.
+      } else {
+        var statusStorage = await Permission.storage.status;
+        var statusAudio = await Permission.audio.status;
 
-      if (!statusStorage.isGranted && !statusAudio.isGranted) {
-        debugPrint('Storage permissions not granted. Cannot scan directory.');
-        return [];
+        if (!statusStorage.isGranted && !statusAudio.isGranted) {
+          debugPrint('Storage permissions not granted. Cannot scan directory.');
+          return [];
+        }
       }
     }
 
@@ -96,6 +104,10 @@ class ScannerService {
     if (!await coversDir.exists()) {
       await coversDir.create(recursive: true);
     }
+    final lockDir = Directory(p.join(supportDir.path, 'file_locks'));
+    if (!await lockDir.exists()) {
+      await lockDir.create(recursive: true);
+    }
 
     final receivePort = ReceivePort();
     final params = _ScanParams(
@@ -103,6 +115,7 @@ class ScannerService {
       excludedFolders: excludedFolders,
       existingSongs: existingSongs,
       coversDirPath: coversDir.path,
+      lockDirPath: lockDir.path,
       lyricsFolders: lyricsFolders,
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
@@ -227,6 +240,10 @@ class ScannerService {
     if (!await coversDir.exists()) {
       await coversDir.create(recursive: true);
     }
+    final lockDir = Directory(p.join(supportDir.path, 'file_locks'));
+    if (!await lockDir.exists()) {
+      await lockDir.create(recursive: true);
+    }
 
     final receivePort = ReceivePort();
     final params = _ScanParams(
@@ -234,6 +251,7 @@ class ScannerService {
       excludedFolders: excludedFolders,
       existingSongs: existingSongs,
       coversDirPath: coversDir.path,
+      lockDirPath: lockDir.path,
       lyricsFolders: effectiveLyricsFolders,
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
@@ -341,6 +359,10 @@ class ScannerService {
     if (!await coversDir.exists()) {
       await coversDir.create(recursive: true);
     }
+    final lockDir = Directory(p.join(supportDir.path, 'file_locks'));
+    if (!await lockDir.exists()) {
+      await lockDir.create(recursive: true);
+    }
 
     final receivePort = ReceivePort();
     await Isolate.spawn(
@@ -348,6 +370,7 @@ class ScannerService {
         _RebuildParams(
           songs: songs,
           coversDirPath: coversDir.path,
+          lockDirPath: lockDir.path,
           sendPort: receivePort.sendPort,
         ));
 
@@ -378,7 +401,9 @@ class ScannerService {
       String? resolvedCoverUrl;
 
       if (await file.exists()) {
+        RandomAccessFile? lockHandle;
         try {
+          lockHandle = await _acquireSharedLock(params.lockDirPath, file.path);
           int mtimeMs;
           if (song.mtime != null) {
             mtimeMs = (song.mtime! * 1000).round();
@@ -431,6 +456,8 @@ class ScannerService {
           }
         } catch (e) {
           debugPrint('Error rebuilding cover for ${song.title}: $e');
+        } finally {
+          await _releaseLock(lockHandle);
         }
       }
 
@@ -521,10 +548,17 @@ class ScannerService {
             mtime: currentMtime,
           ));
         } else {
-          final song = await _processSingleFile(file, coversDir,
-              folderCoverCache, params.lyricsFolders, params.playCounts,
-              mtime: currentMtime);
-          songs.add(song);
+          RandomAccessFile? lockHandle;
+          try {
+            lockHandle =
+                await _acquireSharedLock(params.lockDirPath, file.path);
+            final song = await _processSingleFile(file, coversDir,
+                folderCoverCache, params.lyricsFolders, params.playCounts,
+                mtime: currentMtime);
+            songs.add(song);
+          } finally {
+            await _releaseLock(lockHandle);
+          }
         }
 
         if (i % 10 == 0) {
@@ -691,109 +725,65 @@ class ScannerService {
 
   static Future<String?> _scanForAPIC(List<int> bytes, RandomAccessFile raf,
       int offset, Directory coversDir, String hash, int mtimeMs) async {
-    final apicSig = [0x41, 0x50, 0x49, 0x43]; // "APIC"
-    int apicPos = _findBytes(bytes, apicSig);
-    while (apicPos != -1) {
-      final realOffset = offset + apicPos;
-      final rafHeader = await raf.read(4);
-      if (rafHeader.length < 4) break;
-
-      final sizeBuffer = await raf.read(4);
-      if (sizeBuffer.length < 4) break;
-
-      final size = _readInt32BE(sizeBuffer);
-      if (size <= 0 || size > 50 * 1024 * 1024) {
-        final nextOffset = realOffset + 4;
-        await raf.setPosition(nextOffset);
-        final moreBytes = await raf.read(bytes.length);
-        apicPos = _findBytes(moreBytes, apicSig);
-        continue;
-      }
-
-      final data = await raf.read(size);
-      if (data.length < size) break;
-
-      final mimeTypeEnd = data.indexOf(0);
-      if (mimeTypeEnd > 0 && mimeTypeEnd < 100) {
-        final mimeType = String.fromCharCodes(data.sublist(0, mimeTypeEnd));
-        final mimeExtMap = {
-          'image/jpeg': '.jpg',
-          'image/png': '.png',
-          'image/webp': '.webp',
-          'image/bmp': '.bmp',
-        };
-        final ext = mimeExtMap[mimeType] ?? '.jpg';
-
-        // Skip picture type and description to get image data
-        int imgStart = mimeTypeEnd + 1;
-        if (imgStart < data.length) imgStart++; // Skip picture type
-        while (imgStart < data.length && data[imgStart] != 0) imgStart++;
-        if (imgStart < data.length) imgStart++; // Skip null terminator
-
-        if (imgStart < data.length && data.length - imgStart > 100) {
-          final extToSig = {
-            '.jpg': [0xFF, 0xD8],
-            '.png': [0x89, 0x50],
-            '.webp': [0x52, 0x49],
-          };
-          final expectedSig = extToSig[ext] ?? [];
-          final actualSig = data.sublist(imgStart, imgStart + 2);
-
-          if (ListEquality().equals(expectedSig, actualSig)) {
-            final coverFile =
-                File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-            await coverFile.writeAsBytes(data.sublist(imgStart));
-            return coverFile.path;
-          }
+    for (int i = 0; i < bytes.length - 20; i++) {
+      if (bytes[i] == 0x41 &&
+          bytes[i + 1] == 0x50 &&
+          bytes[i + 2] == 0x49 &&
+          bytes[i + 3] == 0x43) {
+        int tagSize = (bytes[i + 4] << 21) |
+            (bytes[i + 5] << 14) |
+            (bytes[i + 6] << 7) |
+            bytes[i + 7];
+        if (tagSize > 5000 && tagSize < 15 * 1024 * 1024) {
+          final subChunk =
+              bytes.sublist(i, (i + tagSize + 20).clamp(0, bytes.length));
+          return await _scanBufferForSignatures(
+              subChunk, raf, offset + i, coversDir, hash, mtimeMs);
         }
       }
-
-      // Continue searching
-      final nextOffset = realOffset + 4;
-      await raf.setPosition(nextOffset);
-      final moreBytes = await raf.read(bytes.length);
-      apicPos = _findBytes(moreBytes, apicSig);
     }
     return null;
   }
 
   static Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf,
       int offset, Directory coversDir, String hash, int mtimeMs) async {
-    int pos = 0;
-    while (pos < bytes.length - 8) {
-      final size = _readInt32BE(bytes.sublist(pos, pos + 4));
-      final typeStr = String.fromCharCodes(bytes.sublist(pos + 4, pos + 8));
+    for (int i = 0; i < bytes.length - 24; i++) {
+      if (bytes[i] == 0x63 &&
+          bytes[i + 1] == 0x6F &&
+          bytes[i + 2] == 0x76 &&
+          bytes[i + 3] == 0x72) {
+        for (int j = i + 4; j < i + 128 && j < bytes.length - 16; j++) {
+          if (bytes[j] == 0x64 &&
+              bytes[j + 1] == 0x61 &&
+              bytes[j + 2] == 0x74 &&
+              bytes[j + 3] == 0x61) {
+            final dataSize = (bytes[j - 4] << 24) |
+                (bytes[j - 3] << 16) |
+                (bytes[j - 2] << 8) |
+                bytes[j - 1];
+            final imageSize = dataSize - 16;
 
-      if (typeStr == 'covr' && size > 8 && size < 50 * 1024 * 1024) {
-        final dataOffset = pos + 8;
-        if (dataOffset + size - 8 <= bytes.length) {
-          final coverData = bytes.sublist(dataOffset, dataOffset + size - 8);
-          final ext = _detectImageFormat(coverData);
-          if (ext != null) {
-            final coverFile =
-                File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-            await coverFile.writeAsBytes(coverData);
-            return coverFile.path;
+            if (imageSize > 1024 && imageSize < 15 * 1024 * 1024) {
+              final startPos = offset + j + 12;
+              await raf.setPosition(startPos);
+              final imgData = await raf.read(imageSize);
+
+              String type = 'jpg';
+              if (bytes[j + 11] == 14) {
+                type = 'png';
+              } else if (bytes[j + 11] == 27) {
+                type = 'bmp';
+              }
+
+              final coverFile =
+                  File(p.join(coversDir.path, '${hash}_$mtimeMs.$type'));
+              await coverFile.writeAsBytes(imgData);
+              return coverFile.path;
+            }
           }
         }
-        return null;
       }
-
-      if (size < 8) break;
-      pos += size;
     }
-    return null;
-  }
-
-  static String? _detectImageFormat(List<int> data) {
-    if (data.length < 4) return null;
-    final header = data.sublist(0, 4);
-
-    if (header[0] == 0xFF && header[1] == 0xD8) return '.jpg';
-    if (header[0] == 0x89 && header[1] == 0x50) return '.png';
-    if (header[0] == 0x52 && header[1] == 0x49) return '.webp';
-    if (header[0] == 0x42 && header[1] == 0x4D) return '.bmp';
-
     return null;
   }
 
@@ -804,115 +794,140 @@ class ScannerService {
       Directory coversDir,
       String hash,
       int mtimeMs) async {
-    final signatures = {
-      '.jpg': [0xFF, 0xD8, 0xFF],
-      '.png': [0x89, 0x50, 0x4E, 0x47],
-      '.webp': [0x52, 0x49, 0x46, 0x46],
-    };
-
-    for (final entry in signatures.entries) {
-      final ext = entry.key;
-      final sig = entry.value;
-      int pos = _findBytes(bytes, sig);
-
-      if (pos != -1) {
-        final realOffset = offset + pos;
-        int? endPos = _findBytes(bytes.sublist(pos + sig.length), [0xFF, 0xD9]);
-
-        if (endPos == -1 && ext == '.jpg') {
-          await raf.setPosition(realOffset);
-          final moreData = await raf.read(10 * 1024 * 1024);
-          endPos = _findBytes(moreData, [0xFF, 0xD9]);
-          if (endPos != -1) {
-            endPos += sig.length + moreData.length;
-          }
-        }
-
-        if (endPos != -1 && endPos > sig.length + 100) {
-          final coverFile =
-              File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-          await coverFile.writeAsBytes(bytes.sublist(pos, pos + endPos + 2));
-          return coverFile.path;
+    for (int i = 0; i < bytes.length - 8; i++) {
+      if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF) {
+        final res = await _extractImageAt(
+            raf, offset + i, 'jpg', coversDir, hash, mtimeMs);
+        if (res != null) return res;
+      }
+      if (bytes[i] == 0x89 &&
+          bytes[i + 1] == 0x50 &&
+          bytes[i + 2] == 0x4E &&
+          bytes[i + 3] == 0x47) {
+        final res = await _extractImageAt(
+            raf, offset + i, 'png', coversDir, hash, mtimeMs);
+        if (res != null) return res;
+      }
+      if (bytes[i] == 0x52 &&
+          bytes[i + 1] == 0x49 &&
+          bytes[i + 2] == 0x46 &&
+          bytes[i + 3] == 0x46) {
+        if (i + 12 <= bytes.length &&
+            bytes[i + 8] == 0x57 &&
+            bytes[i + 9] == 0x45 &&
+            bytes[i + 10] == 0x42 &&
+            bytes[i + 11] == 0x50) {
+          final res = await _extractImageAt(
+              raf, offset + i, 'webp', coversDir, hash, mtimeMs);
+          if (res != null) return res;
         }
       }
     }
     return null;
   }
 
-  static int _findBytes(List<int> bytes, List<int> pattern) {
-    if (pattern.isEmpty || bytes.length < pattern.length) return -1;
-    for (int i = 0; i <= bytes.length - pattern.length; i++) {
-      bool found = true;
-      for (int j = 0; j < pattern.length; j++) {
-        if (bytes[i + j] != pattern[j]) {
-          found = false;
+  static Future<String?> _extractImageAt(RandomAccessFile raf, int pos,
+      String type, Directory coversDir, String hash, int mtimeMs) async {
+    await raf.setPosition(pos);
+    final data = await raf.read(15 * 1024 * 1024);
+
+    int actualEnd = data.length;
+    if (type == 'jpg') {
+      int lastFFD9 = -1;
+      for (int k = 0; k < data.length - 1; k++) {
+        if (data[k] == 0xFF && data[k + 1] == 0xD9) {
+          lastFFD9 = k + 2;
+          if (k + 4 < data.length) {
+            if (data[k + 2] != 0xFF || data[k + 3] == 0x00) {
+              actualEnd = lastFFD9;
+              break;
+            }
+          }
+        }
+      }
+      if (lastFFD9 != -1) actualEnd = lastFFD9;
+      if (actualEnd == data.length && data.length < 50 * 1024) return null;
+    } else if (type == 'png') {
+      final pngEnd = [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
+      for (int k = 0; k < data.length - pngEnd.length; k++) {
+        bool match = true;
+        for (int l = 0; l < pngEnd.length; l++) {
+          if (data[k + l] != pngEnd[l]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          actualEnd = k + pngEnd.length;
           break;
         }
       }
-      if (found) return i;
     }
-    return -1;
-  }
 
-  static int _readInt32BE(List<int> bytes) {
-    return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+    if (actualEnd > 1024) {
+      final coverFile = File(p.join(coversDir.path, '${hash}_$mtimeMs.$type'));
+      await coverFile.writeAsBytes(data.sublist(0, actualEnd));
+      return coverFile.path;
+    }
+    return null;
   }
 
   static String _getExtFromMime(String? mimeType) {
-    switch (mimeType?.toLowerCase()) {
-      case 'image/jpeg':
-      case 'image/jpg':
-        return '.jpg';
-      case 'image/png':
-        return '.png';
-      case 'image/webp':
-        return '.webp';
-      case 'image/bmp':
-        return '.bmp';
-      default:
-        return '.jpg';
-    }
+    if (mimeType == null) return '.jpg';
+    final mime = mimeType.toLowerCase();
+    if (mime.contains('png')) return '.png';
+    if (mime.contains('webp')) return '.webp';
+    if (mime.contains('gif')) return '.gif';
+    return '.jpg';
   }
 
   static Future<String?> _findCoverInFolder(String folderPath) async {
-    final dir = Directory(folderPath);
-    if (!await dir.exists()) return null;
-
-    final coverNames = [
+    final possibleNames = [
       'cover.jpg',
       'cover.png',
       'folder.jpg',
       'folder.png',
       'album.jpg',
       'album.png',
-      'front.jpg',
-      'front.png',
     ];
-
-    for (final name in coverNames) {
+    for (final name in possibleNames) {
       final file = File(p.join(folderPath, name));
-      if (await file.exists()) {
-        return file.path;
-      }
+      if (await file.exists()) return file.path;
     }
-
     return null;
   }
 
   static Future<String?> _findLyricsForSong(
       String songName, String folderPath) async {
-    final dir = Directory(folderPath);
-    if (!await dir.exists()) return null;
-
-    final extensions = ['.lrc', '.txt'];
-
-    for (final ext in extensions) {
-      final file = File(p.join(folderPath, '$songName$ext'));
-      if (await file.exists()) {
-        return file.path;
-      }
+    final possibleNames = ['$songName.lrc', '$songName.txt'];
+    for (final name in possibleNames) {
+      final file = File(p.join(folderPath, name));
+      if (await file.exists()) return file.path;
     }
-
     return null;
+  }
+
+  static Future<RandomAccessFile?> _acquireSharedLock(
+      String lockDirPath, String filePath) async {
+    try {
+      final hash = md5.convert(utf8.encode(filePath)).toString();
+      final lockFile = File(p.join(lockDirPath, '$hash.lock'));
+      final raf = await lockFile.open(mode: FileMode.append);
+      await raf.lock(FileLock.shared);
+      return raf;
+    } catch (e) {
+      debugPrint('Scanner: failed to acquire lock for $filePath: $e');
+      return null;
+    }
+  }
+
+  static Future<void> _releaseLock(RandomAccessFile? raf) async {
+    if (raf == null) return;
+    try {
+      await raf.unlock();
+    } catch (_) {}
+    try {
+      await raf.close();
+    } catch (_) {}
   }
 }

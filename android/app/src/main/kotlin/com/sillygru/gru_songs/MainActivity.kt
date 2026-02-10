@@ -303,23 +303,39 @@ class MainActivity : AudioServiceActivity() {
 
         val existing = parent.findFile(fileName)
         val mimeType = guessMimeType(fileName)
-        val target = existing ?: parent.createFile(mimeType, fileName)
-        if (target == null) {
-            result.error("create_failed", "Unable to create destination file", null)
+
+        // Write to a temp file first to avoid corrupting the original on partial writes.
+        val tempName = "$fileName.tmp"
+        parent.findFile(tempName)?.delete()
+        val tempTarget = parent.createFile(mimeType, tempName)
+        if (tempTarget == null) {
+            result.error("create_failed", "Unable to create temp file", null)
             return
         }
 
         try {
             File(sourcePath).inputStream().use { input ->
-                contentResolver.openOutputStream(target.uri, "w")?.use { output ->
+                contentResolver.openOutputStream(tempTarget.uri, "w")?.use { output ->
                     input.copyTo(output)
                 } ?: run {
                     result.error("write_failed", "Unable to open output stream", null)
                     return
                 }
             }
+            if (existing != null && !existing.delete()) {
+                result.error("delete_failed", "Failed to delete existing file", null)
+                tempTarget.delete()
+                return
+            }
+            val renamed = tempTarget.renameTo(fileName)
+            if (!renamed) {
+                result.error("rename_failed", "Failed to rename temp file", null)
+                tempTarget.delete()
+                return
+            }
             result.success(true)
         } catch (e: Exception) {
+            tempTarget.delete()
             result.error("write_failed", "Failed to write file", e.message)
         }
     }

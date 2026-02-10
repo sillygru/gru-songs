@@ -15,6 +15,7 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
+        android:extractNativeLibs="true"
         android:usesCleartextTraffic="true">
         <activity
             android:name="com.sillygru.gru_songs.MainActivity"

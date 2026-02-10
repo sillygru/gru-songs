@@ -7,7 +7,6 @@ import 'dart:async';
 import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/setup_screen.dart';
 import 'providers/auth_provider.dart';
-import 'providers/permission_provider.dart';
 import 'services/cache_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
