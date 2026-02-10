@@ -196,17 +196,16 @@ class WaveformPainter extends CustomPainter {
 
     if (totalBars <= 0) return;
 
-    // Downsample peaks to fit the width
     final displayPeaks = _downsample(peaks, totalBars);
 
     final yCenter = size.height / 2;
     final activeBars = (progress * displayPeaks.length).floor();
 
     for (int i = 0; i < displayPeaks.length; i++) {
-      final v = displayPeaks[i];
-      // Apply power curve for punchier look
-      final shapedV = math.pow(v, 0.7).toDouble();
-      final barHeight = math.max(2.0, shapedV * size.height);
+      double v = displayPeaks[i];
+
+      final shapedV = _calibrateAmplitude(v);
+      final barHeight = math.max(1.0, shapedV * size.height * 0.85);
 
       final x = i * step + barWidth / 2;
       paint.color = i < activeBars ? activeColor : inactiveColor;
@@ -218,6 +217,14 @@ class WaveformPainter extends CustomPainter {
         paint,
       );
     }
+  }
+
+  double _calibrateAmplitude(double amplitude) {
+    if (amplitude < 0.15) return amplitude * 0.8;
+    if (amplitude < 0.35) return 0.12 + (amplitude - 0.15) * 0.6;
+    if (amplitude < 0.6) return 0.24 + (amplitude - 0.35) * 0.5;
+    if (amplitude < 0.8) return 0.36 + (amplitude - 0.6) * 0.5;
+    return 0.46 + (amplitude - 0.8) * 0.4;
   }
 
   List<double> _downsample(List<double> samples, int targetCount) {

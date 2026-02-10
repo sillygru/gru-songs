@@ -21,6 +21,7 @@ class _StorageManagementScreenState
   int _backupsSize = 0;
   int _libraryCacheSize = 0;
   int _searchIndexSize = 0;
+  int _waveformCacheSize = 0;
   bool _isClearing = false;
 
   @override
@@ -46,6 +47,8 @@ class _StorageManagementScreenState
             await StorageAnalysisService.instance.getLibraryCacheSize();
         final searchSize =
             await StorageAnalysisService.instance.getSearchIndexSize(username);
+        final waveformSize =
+            await StorageAnalysisService.instance.getWaveformCacheSize();
 
         if (mounted) {
           setState(() {
@@ -54,6 +57,7 @@ class _StorageManagementScreenState
             _backupsSize = backupsSize;
             _libraryCacheSize = libSize;
             _searchIndexSize = searchSize;
+            _waveformCacheSize = waveformSize;
             _isLoading = false;
           });
         }
@@ -342,6 +346,38 @@ class _StorageManagementScreenState
     }
   }
 
+  Future<void> _handleClearWaveformCache() async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Clear Waveform Cache?',
+      content: 'This will delete all cached song waveforms.\n\n'
+          'Waveforms will be regenerated the next time you view song details.',
+      confirmText: 'Clear Cache',
+      confirmColor: Colors.orange,
+    );
+
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isClearing = true);
+
+    try {
+      await StorageAnalysisService.instance.clearWaveformCache();
+      await _loadSizes();
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Waveform cache cleared successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error clearing waveform cache: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _handleDangerousClear() async {
     final confirmed = await _showConfirmationDialog(
       title: 'Clear All User Data?',
@@ -352,7 +388,8 @@ class _StorageManagementScreenState
           '• Cached song covers\n'
           '• All local backups\n'
           '• Library cache\n'
-          '• Search index\n\n'
+          '• Search index\n'
+          '• Waveform cache\n\n'
           'You will be logged out immediately.',
       confirmText: 'Clear Everything',
       confirmColor: Colors.red,
@@ -442,6 +479,16 @@ class _StorageManagementScreenState
                     color: Colors.teal,
                     onClear:
                         _searchIndexSize > 0 ? _handleClearSearchIndex : null,
+                  ),
+                  _buildStorageCard(
+                    title: 'Waveform Cache',
+                    subtitle: 'Cached song waveforms for visualizers',
+                    size: _waveformCacheSize,
+                    icon: Icons.waves_rounded,
+                    color: Colors.cyan,
+                    onClear: _waveformCacheSize > 0
+                        ? _handleClearWaveformCache
+                        : null,
                   ),
                   const SizedBox(height: 24),
                   const Divider(),

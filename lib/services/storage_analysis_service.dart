@@ -107,6 +107,29 @@ class StorageAnalysisService {
     return 0;
   }
 
+  Future<int> getWaveformCacheSize() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
+      if (await cacheDir.exists()) {
+        int total = 0;
+        await for (var entity
+            in cacheDir.list(recursive: true, followLinks: false)) {
+          if (entity is File) {
+            final name = p.basename(entity.path);
+            if (name.startsWith('waveform_') && name.endsWith('.json')) {
+              total += await entity.length();
+            }
+          }
+        }
+        return total;
+      }
+    } catch (e) {
+      debugPrint('Error calculating waveform cache size: $e');
+    }
+    return 0;
+  }
+
   Future<int> _getDirSize(Directory dir) async {
     int total = 0;
     try {
@@ -211,6 +234,28 @@ class StorageAnalysisService {
     }
   }
 
+  /// Clears only the waveform cache
+  Future<void> clearWaveformCache() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
+      if (await cacheDir.exists()) {
+        await for (var entity
+            in cacheDir.list(recursive: true, followLinks: false)) {
+          if (entity is File) {
+            final name = p.basename(entity.path);
+            if (name.startsWith('waveform_') && name.endsWith('.json')) {
+              await entity.delete();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing waveform cache: $e');
+      rethrow;
+    }
+  }
+
   Future<void> clearAllUserData(String username) async {
     try {
       // 1. Delete Database Files
@@ -228,7 +273,10 @@ class StorageAnalysisService {
       // 5. Delete Search Index (if exists)
       await clearSearchIndex(username);
 
-      // 6. Clear Shared Preferences (except maybe some global flags if needed, but "all associated user data" implies full wipe)
+      // 6. Delete Waveform Cache
+      await clearWaveformCache();
+
+      // 7. Clear Shared Preferences (except maybe some global flags if needed, but "all associated user data" implies full wipe)
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
     } catch (e) {
