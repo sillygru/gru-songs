@@ -12,6 +12,8 @@ import '../services/database_service.dart';
 import '../services/bulk_metadata_service.dart';
 import '../services/file_manager_service.dart';
 import '../services/android_storage_service.dart';
+import '../services/waveform_service.dart';
+import '../services/cache_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import '../providers/auth_provider.dart';
@@ -155,6 +157,12 @@ final scannerServiceProvider = Provider<ScannerService>((ref) {
 
 final fileManagerServiceProvider = Provider<FileManagerService>((ref) {
   return FileManagerService();
+});
+
+final waveformServiceProvider = Provider<WaveformService>((ref) {
+  final service = WaveformService(CacheService.instance);
+  ref.onDispose(() => service.dispose());
+  return service;
 });
 
 final songRepositoryProvider = Provider<SongRepository>((ref) {

@@ -12,7 +12,7 @@ import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/heart_context_menu.dart';
 import '../widgets/next_up_sheet.dart';
-import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
+import '../widgets/waveform_progress_bar.dart';
 import 'song_list_screen.dart';
 
 class PositionData {
@@ -697,22 +697,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         child: StreamBuilder<PositionData>(
                           stream: _positionDataStream,
                           builder: (context, snapshot) {
+                            if (metadata == null) return const SizedBox.shrink();
                             final positionData = snapshot.data;
-                            return ProgressBar(
+                            return WaveformProgressBar(
+                              filename: metadata.id,
+                              path: metadata.extras?['audioPath'] ?? '',
                               progress: positionData?.position ?? Duration.zero,
-                              buffered: Duration.zero,
                               total: positionData?.duration ?? Duration.zero,
-                              progressBarColor:
-                                  Theme.of(context).colorScheme.primary,
-                              baseBarColor: Colors.white.withValues(alpha: 0.1),
-                              thumbColor: Theme.of(context).colorScheme.primary,
-                              timeLabelTextStyle: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
                               onSeek: player.seek,
                             );
                           },
