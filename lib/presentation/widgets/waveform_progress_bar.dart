@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
@@ -100,48 +99,70 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar> {
             widget.onSeek(widget.total * percent);
           },
           child: SizedBox(
-            height: 60,
-            width: double.infinity,
-            child: _isLoading
-                ? Center(
-                    child: LinearProgressIndicator(
-                      backgroundColor: Colors.white.withValues(alpha: 0.1),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.5),
-                      ),
-                    ),
-                  )
-                : (_peaks == null || _peaks!.isEmpty)
-                    ? Container(
-                        height: 2,
-                        color: Colors.white.withValues(alpha: 0.1),
-                        alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(
-                          widthFactor: widget.total.inMilliseconds > 0
-                              ? (widget.progress.inMilliseconds /
-                                      widget.total.inMilliseconds)
-                                  .clamp(0.0, 1.0)
-                              : 0.0,
-                          child: Container(
-                              color: Theme.of(context).colorScheme.primary),
-                        ),
-                      )
-                    : CustomPaint(
-                        painter: WaveformPainter(
-                          peaks: _peaks!,
-                          progress: widget.total.inMilliseconds > 0
-                              ? (widget.progress.inMilliseconds /
-                                      widget.total.inMilliseconds)
-                                  .clamp(0.0, 1.0)
-                              : 0.0,
-                          activeColor: Theme.of(context).colorScheme.primary,
-                          inactiveColor: Colors.white.withValues(alpha: 0.1),
+              height: 60,
+              width: double.infinity,
+              child: _isLoading
+                  ? Center(
+                      child: LinearProgressIndicator(
+                        backgroundColor: Colors.white.withValues(alpha: 0.1),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withAlpha((0.5 * 255).round()),
                         ),
                       ),
-          ),
+                    )
+                  : (_peaks == null || _peaks!.isEmpty)
+                      ? Container(
+                          height: 2,
+                          color: Colors.white.withValues(alpha: 0.1),
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: widget.total.inMilliseconds > 0
+                                ? (widget.progress.inMilliseconds /
+                                        widget.total.inMilliseconds)
+                                    .clamp(0.0, 1.0)
+                                : 0.0,
+                            child: Container(
+                                color: Theme.of(context).colorScheme.primary),
+                          ),
+                        )
+                      : () {
+                          final box = context.findRenderObject() as RenderBox;
+                          final totalBars = (box.size.width / 3).floor();
+                          final displayPeaks = _downsample(_peaks!, totalBars);
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            mainAxisSize: MainAxisSize.max,
+                            children: displayPeaks.asMap().entries.map((entry) {
+                              final i = entry.key;
+                              final v = entry.value;
+                              final isActive = i <
+                                  (widget.total.inMilliseconds > 0
+                                          ? (widget.progress.inMilliseconds /
+                                                      widget
+                                                          .total.inMilliseconds)
+                                                  .clamp(0.0, 1.0) *
+                                              displayPeaks.length
+                                          : 0.0)
+                                      .floor();
+                              final size = box.size;
+                              return SizedBox(
+                                height: (v * size.height * 25).clamp(3.0, size.height * 0.85),
+                                width: 2.0,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: isActive
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.white.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(1.0),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          );
+                        }()),
         ),
         const SizedBox(height: 8),
         Row(
@@ -168,64 +189,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar> {
       ],
     );
   }
-}
-
-class WaveformPainter extends CustomPainter {
-  final List<double> peaks;
-  final double progress;
-  final Color activeColor;
-  final Color inactiveColor;
-
-  WaveformPainter({
-    required this.peaks,
-    required this.progress,
-    required this.activeColor,
-    required this.inactiveColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    const barWidth = 2.0;
-    const spacing = 1.0;
-    final step = barWidth + spacing;
-    final totalBars = (size.width / step).floor();
-
-    if (totalBars <= 0) return;
-
-    final displayPeaks = _downsample(peaks, totalBars);
-
-    final yCenter = size.height / 2;
-    final activeBars = (progress * displayPeaks.length).floor();
-
-    for (int i = 0; i < displayPeaks.length; i++) {
-      double v = displayPeaks[i];
-
-      final shapedV = _calibrateAmplitude(v);
-      final barHeight = math.max(1.0, shapedV * size.height * 0.85);
-
-      final x = i * step + barWidth / 2;
-      paint.color = i < activeBars ? activeColor : inactiveColor;
-      paint.strokeWidth = barWidth;
-
-      canvas.drawLine(
-        Offset(x, yCenter - barHeight / 2),
-        Offset(x, yCenter + barHeight / 2),
-        paint,
-      );
-    }
-  }
-
-  double _calibrateAmplitude(double amplitude) {
-    if (amplitude < 0.15) return amplitude * 0.8;
-    if (amplitude < 0.35) return 0.12 + (amplitude - 0.15) * 0.6;
-    if (amplitude < 0.6) return 0.24 + (amplitude - 0.35) * 0.5;
-    if (amplitude < 0.8) return 0.36 + (amplitude - 0.6) * 0.5;
-    return 0.46 + (amplitude - 0.8) * 0.4;
-  }
 
   List<double> _downsample(List<double> samples, int targetCount) {
     if (samples.length == targetCount) return samples;
@@ -249,13 +212,5 @@ class WaveformPainter extends CustomPainter {
       result.add(max);
     }
     return result;
-  }
-
-  @override
-  bool shouldRepaint(covariant WaveformPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.peaks != peaks ||
-        oldDelegate.activeColor != activeColor ||
-        oldDelegate.inactiveColor != inactiveColor;
   }
 }

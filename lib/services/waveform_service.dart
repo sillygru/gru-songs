@@ -6,7 +6,6 @@ import 'cache_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:crypto/crypto.dart';
 
 class WaveformService {
   final CacheService _cacheService;
@@ -58,9 +57,7 @@ class WaveformService {
           '-vn -ac 1 -f csv '
           '-af "compand,astats=metadata=1:reset=1,selectivecolor=color=white,ametadata=select=key:file=$outputPath" '
           '-y "$outputPath"';
-
-      final session =
-          await FFmpegKit.executeAsync(command); // Use async execution
+      final session = await FFmpegKit.executeAsync(command);
       final returnCode = await session.getReturnCode();
 
       if (!await File(outputPath).exists()) {
@@ -96,12 +93,6 @@ class WaveformService {
       }
       final outputPath = p.join(tempDir.path,
           'waveform_${DateTime.now().millisecondsSinceEpoch}.raw');
-
-      // Ultra-optimized command: low sample rate, minimal processing
-      final command = '-i "$path" '
-          '-vn -ac 1 -ar 4000 -f f32le '
-          '-af "volumedetect" ' // Just detect volume levels
-          '-y "$outputPath"';
 
       final session = await FFmpegKit.executeWithArguments([
         '-i',
@@ -153,8 +144,12 @@ class WaveformService {
             if (cleanPart.isNotEmpty) {
               final numValue = double.tryParse(cleanPart);
               if (numValue != null) {
-                // Normalize to 0-1 range
-                values.add(numValue.abs().clamp(0.0, 1.0).toDouble());
+                var normalizedValue = numValue.abs();
+                // Simple linear scaling
+                normalizedValue = normalizedValue * 0.9;
+                // Clamp to reasonable maximum
+                normalizedValue = normalizedValue.clamp(0.0, 64.0) / 64.0;
+                values.add(normalizedValue.clamp(0.0, 1.0));
               }
             }
           }
@@ -198,6 +193,10 @@ class WaveformService {
           if (values[j] > maxVal) maxVal = values[j];
         }
 
+        // Simple linear scaling
+        maxVal = maxVal * 0.9;
+        // Clamp to reasonable maximum
+        maxVal = maxVal.clamp(0.0, 64.0) / 64.0;
         result.add(maxVal.clamp(0.0, 1.0));
       } else {
         result.add(0.0);
@@ -221,6 +220,10 @@ class WaveformService {
           final amp = floatData[j].abs();
           if (amp > maxAmp) maxAmp = amp;
         }
+        // Simple linear scaling
+        maxAmp = maxAmp * 0.9;
+        // Clamp to reasonable maximum
+        maxAmp = maxAmp.clamp(0.0, 64.0) / 64.0;
         samples.add(maxAmp.clamp(0.0, 1.0));
       }
 
@@ -239,9 +242,13 @@ class WaveformService {
     final samples = <double>[];
     final random = DateTime.now().millisecond;
     for (int i = 0; i < count; i++) {
-      final base = 0.3 + (i % 5) * 0.05;
-      final variation = ((random * (i + 1)) % 100) / 1000.0;
-      samples.add((base + variation).clamp(0.0, 1.0));
+      // Simple linear scaling
+      final base = 0.05 + (i % 11) * 0.08;
+      final variation = ((random * (i + 1)) % 250) / 1000.0;
+      final value = (base + variation).clamp(0.0, 1.0);
+      final enhancedValue = value * 0.9;
+      final clampedValue = enhancedValue.clamp(0.0, 64.0) / 64.0;
+      samples.add(clampedValue.clamp(0.0, 1.0));
     }
     return samples;
   }
