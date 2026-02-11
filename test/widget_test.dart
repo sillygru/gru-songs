@@ -8,12 +8,12 @@ void main() {
     // Build our app and trigger a frame.
     await tester.pumpWidget(
       const ProviderScope(
-        child: GruSongsApp(),
+        child: WispieApp(),
       ),
     );
 
     // Verify that we are on the SetupScreen
-    expect(find.text('Gru Songs'), findsOneWidget);
+    expect(find.text('Wispie'), findsOneWidget);
     expect(find.text('Your personal music library'), findsOneWidget);
   });
 }

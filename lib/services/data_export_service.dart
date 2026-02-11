@@ -45,14 +45,14 @@ class DataExportService {
 
       // 3. Zip it up
       final encoder = ZipFileEncoder();
-      final zipPath = join(tempDir.path, 'gru_songs_backup_$username.zip');
+      final zipPath = join(tempDir.path, 'wispie_backup_$username.zip');
       encoder.create(zipPath);
       encoder.addDirectory(exportDir);
       encoder.close();
 
       // 4. Share
       final xFile = XFile(zipPath);
-      await Share.shareXFiles([xFile], text: 'Gru Songs Backup for $username');
+      await Share.shareXFiles([xFile], text: 'Wispie Backup for $username');
     } finally {
       // Cleanup
       if (await exportDir.exists()) {

@@ -61,7 +61,7 @@ class TelemetryService {
       final request = await client.postUrl(uri);
 
       request.headers.set('Content-Type', 'application/json');
-      request.headers.set('User-Agent', 'GruSongs_$_appVersion');
+      request.headers.set('User-Agent', 'Wispie_$_appVersion');
 
       request.add(utf8.encode(jsonEncode(payload)));
 

@@ -255,7 +255,7 @@ class ThemePreviewWidget extends StatelessWidget {
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
-                        const Text('Gru Songs',
+                        const Text('Wispie',
                             style: TextStyle(
                                 fontWeight: FontWeight.w900, fontSize: 18)),
                         const Spacer(),

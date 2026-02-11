@@ -149,7 +149,8 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar> {
                                       .floor();
                               final size = box.size;
                               return SizedBox(
-                                height: (v * size.height * 25).clamp(3.0, size.height * 0.85),
+                                height: (v * size.height * 25)
+                                    .clamp(3.0, size.height * 0.85),
                                 width: 2.0,
                                 child: Container(
                                   decoration: BoxDecoration(

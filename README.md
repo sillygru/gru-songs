@@ -1,9 +1,13 @@
-# Gru Songs
+# Wispie
 
-## What is Gru Songs?
-Gru Songs is a simple local music player app built with Flutter.
+## What is Wispie?
+Wispie is a simple local music player app built with Flutter.
 
 [Features](#features) | [Additional Features](#additional-features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
+
+## Important
+- This is still in development, it's an alpha version. It is considerably stable and usable but there are still features yet to be implemented and lots of UI improvements/polish to be made.
+
 
 ## Features
 - **Shuffle personalities:** Multiple shuffle personalities, default, explorer and consistent
@@ -28,7 +32,7 @@ Simply install the app from the releases page.
 
 ## Good to know
 
-User data in Gru Songs is tied to the music file's name. If you rename a file outside of the Gru Songs app (such as with your file manager), any stats and preferences linked to that file such as play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
+User data in Wispie is tied to the music file's name. If you rename a file outside of the Wispie app (such as with your file manager), any stats and preferences linked to that file such as play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
 
 ## Screenshots
 

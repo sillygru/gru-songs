@@ -36,7 +36,7 @@ class NamidaImportResult {
   });
 }
 
-/// Service for importing data from Namida backup files into Gru Songs
+/// Service for importing data from Namida backup files into Wispie
 ///
 /// Namida stores data in JSON files within a specific directory structure.
 /// Key files:

@@ -153,7 +153,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 SliverAppBar(
                   floating: true,
                   snap: true,
-                  title: const Text('Gru Songs',
+                  title: const Text('Wispie',
                       style: TextStyle(fontWeight: FontWeight.w900)),
                   centerTitle: false,
                   actions: [

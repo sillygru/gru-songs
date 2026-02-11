@@ -247,7 +247,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Gru Songs',
+                  'Wispie',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),

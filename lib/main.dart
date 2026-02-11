@@ -67,7 +67,7 @@ Future<void> main() async {
           .overrideWith(() => InitializedSetupNotifier(isSetupComplete)),
       authProvider.overrideWith(() => PreloadedAuthNotifier(username)),
     ],
-    child: const GruSongsApp(),
+    child: const WispieApp(),
   ));
 }
 
@@ -99,8 +99,8 @@ class InitializedSetupNotifier extends SetupNotifier {
   bool build() => initialValue;
 }
 
-class GruSongsApp extends ConsumerWidget {
-  const GruSongsApp({super.key});
+class WispieApp extends ConsumerWidget {
+  const WispieApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -109,7 +109,7 @@ class GruSongsApp extends ConsumerWidget {
     final themeState = ref.watch(themeProvider);
 
     return MaterialApp(
-      title: 'Gru Songs',
+      title: 'Wispie',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getTheme(themeState.mode),
       home: (!isSetupComplete || !authState.isAuthenticated)

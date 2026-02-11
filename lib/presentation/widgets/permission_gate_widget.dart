@@ -55,7 +55,7 @@ class PermissionGateWidget extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'To edit song metadata and album artwork, Gru Songs needs access to your files. This is only used for managing your music library.',
+            'To edit song metadata and album artwork, Wispie needs access to your files. This is only used for managing your music library.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
