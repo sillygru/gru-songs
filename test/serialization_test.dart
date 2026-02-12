@@ -11,7 +11,7 @@ void main() {
         album: 'Test Album',
         filename: 'test.mp3',
         url: 'http://test.com/test.mp3',
-        lyricsUrl: 'http://test.com/lyrics',
+        hasLyrics: true,
         coverUrl: 'http://test.com/cover',
         playCount: 10,
         duration: Duration(seconds: 120),

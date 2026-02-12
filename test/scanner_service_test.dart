@@ -81,22 +81,6 @@ void main() {
       expect(songs[0].coverUrl, coverFile.path);
     });
 
-    test('scanDirectory finds lyrics if lyricsPath is provided', () async {
-      final mp3File = File(p.join(tempDir.path, 'Happy.mp3'));
-      await mp3File.writeAsString('dummy mp3');
-
-      final lyricsDir =
-          await Directory(p.join(tempDir.path, 'lyrics')).create();
-      final lrcFile = File(p.join(lyricsDir.path, 'Happy.lrc'));
-      await lrcFile.writeAsString('[00:01.00]Be happy');
-
-      final songs = await scannerService.scanDirectory(tempDir.path,
-          lyricsPath: lyricsDir.path, playCounts: {});
-
-      expect(songs.length, 1);
-      expect(songs[0].lyricsUrl, lrcFile.path);
-    });
-
     test('scanDirectory recursive search', () async {
       final subDir = await Directory(p.join(tempDir.path, 'subdir')).create();
       final mp3File = File(p.join(subDir.path, 'subsong.mp3'));

@@ -12,6 +12,7 @@ import '../models/song.dart';
 import 'database_service.dart';
 import '../domain/services/search_service.dart';
 import 'storage_service.dart';
+import 'ffmpeg_service.dart';
 
 class _ScanParams {
   final List<String> paths;
@@ -19,7 +20,6 @@ class _ScanParams {
   final List<Song>? existingSongs;
   final String coversDirPath;
   final String lockDirPath;
-  final List<Map<String, String>> lyricsFolders;
   final Map<String, int> playCounts;
   final SendPort sendPort;
 
@@ -29,7 +29,6 @@ class _ScanParams {
     this.existingSongs,
     required this.coversDirPath,
     required this.lockDirPath,
-    required this.lyricsFolders,
     required this.playCounts,
     required this.sendPort,
   });
@@ -93,12 +92,6 @@ class ScannerService {
     final effectivePlayCounts =
         playCounts ?? await DatabaseService.instance.getPlayCounts();
 
-    // Convert single lyricsPath to lyricsFolders format
-    final List<Map<String, String>> lyricsFolders = [];
-    if (lyricsPath != null && lyricsPath.isNotEmpty) {
-      lyricsFolders.add({'path': lyricsPath, 'treeUri': ''});
-    }
-
     final supportDir = await getApplicationSupportDirectory();
     final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
     if (!await coversDir.exists()) {
@@ -116,7 +109,6 @@ class ScannerService {
       existingSongs: existingSongs,
       coversDirPath: coversDir.path,
       lockDirPath: lockDir.path,
-      lyricsFolders: lyricsFolders,
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
     );
@@ -193,8 +185,6 @@ class ScannerService {
 
     final storage = StorageService();
     final excludedFolders = await storage.getExcludedFolders();
-    final effectiveLyricsFolders =
-        lyricsFolders ?? await storage.getLyricsFolders();
     final effectivePlayCounts =
         playCounts ?? await DatabaseService.instance.getPlayCounts();
 
@@ -252,7 +242,6 @@ class ScannerService {
       existingSongs: existingSongs,
       coversDirPath: coversDir.path,
       lockDirPath: lockDir.path,
-      lyricsFolders: effectiveLyricsFolders,
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
     );
@@ -542,7 +531,7 @@ class ScannerService {
             filename: existingSong.filename,
             url: existingSong.url,
             coverUrl: existingSong.coverUrl,
-            lyricsUrl: existingSong.lyricsUrl,
+            hasLyrics: existingSong.hasLyrics,
             playCount: updatedPlayCount,
             duration: existingSong.duration,
             mtime: currentMtime,
@@ -552,8 +541,8 @@ class ScannerService {
           try {
             lockHandle =
                 await _acquireSharedLock(params.lockDirPath, file.path);
-            final song = await _processSingleFile(file, coversDir,
-                folderCoverCache, params.lyricsFolders, params.playCounts,
+            final song = await _processSingleFile(
+                file, coversDir, folderCoverCache, params.playCounts,
                 mtime: currentMtime);
             songs.add(song);
           } finally {
@@ -573,12 +562,8 @@ class ScannerService {
     }
   }
 
-  static Future<Song> _processSingleFile(
-      File file,
-      Directory coversDir,
-      Map<String, String?> folderCoverCache,
-      List<Map<String, String>> lyricsFolders,
-      Map<String, int> playCounts,
+  static Future<Song> _processSingleFile(File file, Directory coversDir,
+      Map<String, String?> folderCoverCache, Map<String, int> playCounts,
       {double? mtime}) async {
     final filename = p.basename(file.path);
     final parentPath = file.parent.path;
@@ -589,6 +574,7 @@ class ScannerService {
     String album = 'Unknown Album';
     Duration? duration;
     String? coverUrl;
+    bool hasLyrics = false;
 
     // Calculate mtimeMs for cache lookup
     int mtimeMs;
@@ -617,6 +603,12 @@ class ScannerService {
       if (metadata.album?.isNotEmpty == true) album = metadata.album!;
       duration = metadata.duration;
 
+      // Check for embedded lyrics using audio_metadata_reader
+      // Note: FFmpeg is used for actual lyrics reading in the main thread
+      if (metadata.lyrics?.isNotEmpty == true) {
+        hasLyrics = true;
+      }
+
       if (coverUrl == null && metadata.pictures.isNotEmpty) {
         final picture = metadata.pictures.first;
         final coverExt = _getExtFromMime(picture.mimetype);
@@ -642,25 +634,6 @@ class ScannerService {
       coverUrl = folderCoverCache[parentPath];
     }
 
-    // Search for lyrics in configured lyrics folders
-    String? lyricsUrl;
-
-    // First check in song's own folder
-    lyricsUrl = await _findLyricsForSong(
-        p.basenameWithoutExtension(file.path), parentPath);
-
-    // Then check in configured lyrics folders
-    if (lyricsUrl == null) {
-      for (final lyricsFolder in lyricsFolders) {
-        final path = lyricsFolder['path'];
-        if (path != null && path.isNotEmpty) {
-          lyricsUrl = await _findLyricsForSong(
-              p.basenameWithoutExtension(file.path), path);
-          if (lyricsUrl != null) break;
-        }
-      }
-    }
-
     return Song(
       title: title,
       artist: artist,
@@ -668,7 +641,7 @@ class ScannerService {
       filename: filename,
       url: file.path,
       coverUrl: coverUrl,
-      lyricsUrl: lyricsUrl,
+      hasLyrics: hasLyrics,
       playCount: playCounts[filename] ?? 0,
       duration: duration,
       mtime:
@@ -890,16 +863,6 @@ class ScannerService {
       'album.jpg',
       'album.png',
     ];
-    for (final name in possibleNames) {
-      final file = File(p.join(folderPath, name));
-      if (await file.exists()) return file.path;
-    }
-    return null;
-  }
-
-  static Future<String?> _findLyricsForSong(
-      String songName, String folderPath) async {
-    final possibleNames = ['$songName.lrc', '$songName.txt'];
     for (final name in possibleNames) {
       final file = File(p.join(folderPath, name));
       if (await file.exists()) return file.path;

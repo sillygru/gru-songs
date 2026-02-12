@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../models/song.dart';
+import '../../services/ffmpeg_service.dart';
 import '../models/search_index_entry.dart';
 
 /// Repository for managing the search index database
@@ -17,6 +18,7 @@ class SearchIndexRepository {
 
   Database? _database;
   String? _currentUsername;
+  final FFmpegService _ffmpegService = FFmpegService();
 
   /// Gets the database file path for a given username
   Future<String> _getDbPath(String username) async {
@@ -98,6 +100,19 @@ class SearchIndexRepository {
       // Batch insert all songs
       final batch = txn.batch();
       for (final song in songs) {
+        // Read embedded lyrics from audio file if available
+        String? lyricsContent;
+        if (song.hasLyrics) {
+          try {
+            final lyrics = await _ffmpegService.getLyrics(song.url);
+            if (lyrics != null && lyrics.isNotEmpty) {
+              lyricsContent = LyricLine.extractPlainText(lyrics).toLowerCase();
+            }
+          } catch (e) {
+            debugPrint('Error reading lyrics for ${song.filename}: $e');
+          }
+        }
+
         batch.insert(
           _tableName,
           {
@@ -105,28 +120,11 @@ class SearchIndexRepository {
             'title': song.title.toLowerCase(),
             'artist': song.artist.toLowerCase(),
             'album': song.album.toLowerCase(),
-            'lyrics_content': (String? lyricsUrl) {
-              if (lyricsUrl == null) return null;
-              try {
-                final file = File(lyricsUrl);
-                if (file.existsSync()) {
-                  final content = file.readAsStringSync();
-                  // Extract plain text without timestamps for search indexing
-                  return LyricLine.extractPlainText(content).toLowerCase();
-                }
-              } catch (e) {
-                debugPrint('Error reading lyrics for ${song.filename}: $e');
-              }
-              return null;
-            }(song.lyricsUrl),
+            'lyrics_content': lyricsContent,
             'title_length': song.title.length,
             'artist_length': song.artist.length,
             'album_length': song.album.length,
-            'lyrics_length': song.lyricsUrl != null
-                ? File(song.lyricsUrl!).existsSync()
-                    ? File(song.lyricsUrl!).lengthSync()
-                    : 0
-                : 0,
+            'lyrics_length': lyricsContent?.length ?? 0,
             'last_modified': DateTime.now().millisecondsSinceEpoch,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
@@ -156,14 +154,12 @@ class SearchIndexRepository {
     String? lyricsContent;
     int lyricsLength = 0;
 
-    if (song.lyricsUrl != null) {
+    if (song.hasLyrics) {
       try {
-        final file = File(song.lyricsUrl!);
-        if (await file.exists()) {
-          final content = await file.readAsString();
-          // Extract plain text without timestamps for search indexing
-          lyricsContent = LyricLine.extractPlainText(content).toLowerCase();
-          lyricsLength = await file.length();
+        final lyrics = await _ffmpegService.getLyrics(song.url);
+        if (lyrics != null && lyrics.isNotEmpty) {
+          lyricsContent = LyricLine.extractPlainText(lyrics).toLowerCase();
+          lyricsLength = lyrics.length;
         }
       } catch (e) {
         debugPrint('Error reading lyrics for ${song.filename}: $e');

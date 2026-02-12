@@ -120,16 +120,13 @@ void main() {
       final songFile = File(p.join(sourceDir.path, 'test_song.mp3'));
       await songFile.writeAsString('dummy mp3 content');
 
-      final lyricsFile = File(p.join(sourceDir.path, 'test_song.lrc'));
-      await lyricsFile.writeAsString('dummy lyrics content');
-
       final song = Song(
         title: 'Test Song',
         artist: 'Test Artist',
         album: 'Test Album',
         filename: 'test_song.mp3',
         url: songFile.path,
-        lyricsUrl: lyricsFile.path,
+        hasLyrics: true,
       );
 
       final notifier = container.read(songsProvider.notifier);
@@ -141,16 +138,11 @@ void main() {
       }
 
       final newSongPath = p.join(targetDir.path, 'test_song.mp3');
-      final newLyricsPath = p.join(targetDir.path, 'test_song.lrc');
 
       expect(File(newSongPath).existsSync(), true,
           reason: 'Song file should be in target directory');
-      expect(File(newLyricsPath).existsSync(), true,
-          reason: 'Lyrics file should be in target directory');
       expect(songFile.existsSync(), false,
           reason: 'Original song file should be gone');
-      expect(lyricsFile.existsSync(), false,
-          reason: 'Original lyrics file should be gone');
     });
 
     test('moveSong creates target directory if it does not exist', () async {

@@ -85,28 +85,11 @@ class FileManagerService {
         title: title, artist: artist, album: album);
   }
 
-  /// Updates lyrics for a song.
+  /// Updates lyrics for a song by embedding them into the audio file metadata.
   Future<void> updateLyrics(Song song, String lyricsContent) async {
-    String? lyricsPath = song.lyricsUrl;
-
-    if (lyricsPath == null) {
-      // Create new lyrics file in the lyrics folder if configured
-      final lyricsFolder = await StorageService().getLyricsFolderPath();
-      if (lyricsFolder != null) {
-        final songTitle = p.basenameWithoutExtension(song.filename);
-        lyricsPath = p.join(lyricsFolder, "$songTitle.lrc");
-      } else {
-        // Fallback: put it next to the song
-        final songDir = p.dirname(song.url);
-        final songTitle = p.basenameWithoutExtension(song.filename);
-        lyricsPath = p.join(songDir, "$songTitle.lrc");
-      }
-    }
-
     try {
-      final file = File(lyricsPath);
-      await file.writeAsString(lyricsContent);
-      debugPrint("Updated lyrics for ${song.filename} at $lyricsPath");
+      await updateMetadataInternal(song.url, lyrics: lyricsContent);
+      debugPrint("Updated embedded lyrics for ${song.filename}");
     } catch (e) {
       throw Exception("Failed to update lyrics: $e");
     }
@@ -468,6 +451,7 @@ class FileManagerService {
       {String? title,
       String? artist,
       String? album,
+      String? lyrics,
       Picture? picture,
       bool removePicture = false}) async {
     try {
@@ -540,7 +524,7 @@ class FileManagerService {
     }
   }
 
-  /// Helper method to update metadata using both audio_metadata_reader (for covers)
+  /// Helper method to update metadata using both audio_metadata_reader (for covers and lyrics)
   /// and MetadataGod (for text). Works on all platforms.
   Future<void> _updateMetadataWithLibraries({
     required File tempFile,
@@ -548,6 +532,7 @@ class FileManagerService {
     String? title,
     String? artist,
     String? album,
+    String? lyrics,
     Picture? picture,
     bool removePicture = false,
   }) async {
@@ -589,6 +574,11 @@ class FileManagerService {
             } else if (amrPicture != null) {
               metadata.pictures = [amrPicture];
             }
+          }
+
+          // Set lyrics using extension method if provided
+          if (lyrics != null) {
+            metadata.setLyrics(lyrics);
           }
         });
 
@@ -678,43 +668,7 @@ class FileManagerService {
       throw Exception("Failed to rename file on filesystem: $e");
     }
 
-    // 2. Also rename lyrics if they exist and match the old filename
-    if (song.lyricsUrl != null) {
-      final oldLyricsFile = File(song.lyricsUrl!);
-      if (await oldLyricsFile.exists()) {
-        final lyricsDir = p.dirname(song.lyricsUrl!);
-        final lyricsExt = p.extension(song.lyricsUrl!);
-        final newLyricsPath = p.join(lyricsDir, "$newTitle$lyricsExt");
-        try {
-          if (Platform.isAndroid) {
-            final storage = StorageService();
-            final lyricsTreeUri = await storage.getLyricsFolderTreeUri();
-            final lyricsRoot = await storage.getLyricsFolderPath();
-            if (lyricsTreeUri != null &&
-                lyricsTreeUri.isNotEmpty &&
-                lyricsRoot != null &&
-                (p.isWithin(lyricsRoot, oldLyricsFile.path) ||
-                    p.equals(lyricsRoot, p.dirname(oldLyricsFile.path)))) {
-              final lyricsRelativePath =
-                  p.relative(oldLyricsFile.path, from: lyricsRoot);
-              await AndroidStorageService.renameFile(
-                treeUri: lyricsTreeUri,
-                sourceRelativePath: lyricsRelativePath,
-                newName: "$newTitle$lyricsExt",
-              );
-            } else {
-              await oldLyricsFile.rename(newLyricsPath);
-            }
-          } else {
-            await oldLyricsFile.rename(newLyricsPath);
-          }
-        } catch (e) {
-          debugPrint("Failed to rename lyrics file: $e");
-        }
-      }
-    }
-
-    // 3. Update local DB
+    // 2. Update local DB
     await DatabaseService.instance.renameFile(song.filename, newFilename);
 
     debugPrint("Successfully renamed ${song.filename} to $newFilename");

@@ -35,6 +35,7 @@ class TestFileManagerService extends FileManagerService {
       {String? title,
       String? artist,
       String? album,
+      String? lyrics,
       Picture? picture,
       bool removePicture = false}) async {
     metadataUpdateCallCount++;

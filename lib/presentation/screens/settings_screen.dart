@@ -56,24 +56,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const FolderManagementScreen(
-                        isMusicFolders: true,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              _buildListTile(
-                icon: Icons.lyrics_outlined,
-                title: 'Lyrics Folders',
-                subtitle: 'Manage lyrics folders (Optional)',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const FolderManagementScreen(
-                        isMusicFolders: false,
-                      ),
+                      builder: (context) => const FolderManagementScreen(),
                     ),
                   );
                 },

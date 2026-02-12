@@ -15,8 +15,8 @@ class Song extends Equatable {
   final String album;
   final String filename;
   final String url;
-  final String? lyricsUrl;
   final String? coverUrl;
+  final bool hasLyrics;
   final int playCount;
   final Duration? duration;
   final double? mtime;
@@ -27,8 +27,8 @@ class Song extends Equatable {
     required this.album,
     required this.filename,
     required this.url,
-    this.lyricsUrl,
     this.coverUrl,
+    this.hasLyrics = false,
     this.playCount = 0,
     this.duration,
     this.mtime,
@@ -41,8 +41,8 @@ class Song extends Equatable {
       album: json['album'] ?? 'Unknown Album',
       filename: json['filename'] ?? '',
       url: json['url'] ?? '',
-      lyricsUrl: json['lyrics_url'],
       coverUrl: json['cover_url'],
+      hasLyrics: json['has_lyrics'] ?? false,
       playCount: json['play_count'] ?? 0,
       duration: (json['duration'] != null && json['duration'] > 0)
           ? Duration(milliseconds: (json['duration'] * 1000).round())
@@ -58,8 +58,8 @@ class Song extends Equatable {
       'album': album,
       'filename': filename,
       'url': url,
-      'lyrics_url': lyricsUrl,
       'cover_url': coverUrl,
+      'has_lyrics': hasLyrics,
       'play_count': playCount,
       if (duration != null) 'duration': duration!.inMilliseconds / 1000.0,
       if (mtime != null) 'mtime': mtime,
@@ -73,8 +73,8 @@ class Song extends Equatable {
         album,
         filename,
         url,
-        lyricsUrl,
         coverUrl,
+        hasLyrics,
         playCount,
         duration,
         mtime

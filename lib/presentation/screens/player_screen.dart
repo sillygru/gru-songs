@@ -181,13 +181,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     super.dispose();
   }
 
-  void _toggleLyrics(String? lyricsUrl) async {
+  void _toggleLyrics() async {
     if (_showLyrics) {
       setState(() => _showLyrics = false);
       return;
     }
-
-    if (lyricsUrl == null) return;
 
     setState(() {
       _showLyrics = true;
@@ -196,24 +194,41 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
 
     if (_lyrics == null) {
-      final repo = ref.read(songRepositoryProvider);
-      final lyricsContent = await repo.getLyrics(lyricsUrl);
-      if (mounted) {
-        final parsedLyrics = lyricsContent != null
-            ? LyricLine.parse(lyricsContent)
-            : <LyricLine>[];
-        setState(() {
-          _lyrics = parsedLyrics;
-          _lyricKeys =
-              List.generate(parsedLyrics.length, (index) => GlobalKey());
-          _loadingLyrics = false;
-        });
+      // Get current song from player
+      final sequenceState = player.sequenceState;
+      final currentSource = sequenceState?.currentSource;
+      final tag = currentSource?.tag;
+      if (tag is MediaItem) {
+        final songs = ref.read(songsProvider).asData?.value ?? [];
+        final currentSong = songs.cast<Song?>().firstWhere(
+              (s) => s?.filename == tag.id,
+              orElse: () => null,
+            );
+        if (currentSong != null) {
+          final repo = ref.read(songRepositoryProvider);
+          final lyricsContent = await repo.getLyrics(currentSong);
+          if (mounted) {
+            final parsedLyrics = lyricsContent != null
+                ? LyricLine.parse(lyricsContent)
+                : <LyricLine>[];
+            setState(() {
+              _lyrics = parsedLyrics;
+              _lyricKeys =
+                  List.generate(parsedLyrics.length, (index) => GlobalKey());
+              _loadingLyrics = false;
+            });
 
-        // Find current position and scroll after first build
-        _updateCurrentLyricIndex(player.position);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _showLyrics) _scrollToCurrentLyric();
-        });
+            // Find current position and scroll after first build
+            _updateCurrentLyricIndex(player.position);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _showLyrics) _scrollToCurrentLyric();
+            });
+          }
+        } else {
+          if (mounted) setState(() => _loadingLyrics = false);
+        }
+      } else {
+        if (mounted) setState(() => _loadingLyrics = false);
       }
     } else {
       // Already loaded, just scroll to current
@@ -419,10 +434,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               return GestureDetector(
                                 onVerticalDragUpdate: (details) {
                                   if (details.primaryDelta! < -5) {
-                                    if (!_showLyrics &&
-                                        metadata.extras?['lyricsUrl'] != null) {
-                                      _toggleLyrics(metadata
-                                          .extras!['lyricsUrl'] as String);
+                                    if (!_showLyrics) {
+                                      _toggleLyrics();
                                     }
                                   } else if (details.primaryDelta! > 5) {
                                     if (_showLyrics) {
@@ -744,43 +757,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           children: [
                             // Lyrics
                             IconButton(
-                              icon: metadata?.extras?['lyricsUrl'] != null
-                                  ? const Icon(Icons.lyrics_outlined)
-                                  : Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        const Icon(Icons.lyrics_outlined,
-                                            color: Colors.white24),
-                                        Transform.rotate(
-                                          angle: 0.8,
-                                          child: Container(
-                                            width: 2.5,
-                                            height: 24,
-                                            decoration: BoxDecoration(
-                                              color: Colors.white60,
-                                              borderRadius:
-                                                  BorderRadius.circular(1),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Theme.of(context)
-                                                      .scaffoldBackgroundColor,
-                                                  blurRadius: 0,
-                                                  spreadRadius: 1,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                              icon: const Icon(Icons.lyrics_outlined),
                               color: _showLyrics
                                   ? Theme.of(context).colorScheme.primary
                                   : Colors.white60,
                               onPressed: () {
-                                if (metadata?.extras?['lyricsUrl'] != null) {
-                                  _toggleLyrics(
-                                      metadata!.extras!['lyricsUrl'] as String);
-                                }
+                                _toggleLyrics();
                               },
                             ),
                             const SizedBox(width: 32),

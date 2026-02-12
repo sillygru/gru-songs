@@ -6,12 +6,7 @@ import '../../providers/providers.dart';
 import 'package:file_picker/file_picker.dart';
 
 class FolderManagementScreen extends ConsumerStatefulWidget {
-  final bool isMusicFolders;
-
-  const FolderManagementScreen({
-    super.key,
-    required this.isMusicFolders,
-  });
+  const FolderManagementScreen({super.key});
 
   @override
   ConsumerState<FolderManagementScreen> createState() =>
@@ -31,9 +26,7 @@ class _FolderManagementScreenState
 
   Future<void> _loadFolders() async {
     final storage = ref.read(storageServiceProvider);
-    final folders = widget.isMusicFolders
-        ? await storage.getMusicFolders()
-        : await storage.getLyricsFolders();
+    final folders = await storage.getMusicFolders();
     setState(() {
       _folders = folders;
       _isLoading = false;
@@ -41,8 +34,8 @@ class _FolderManagementScreenState
   }
 
   Future<void> _addFolder() async {
-    if (Platform.isAndroid && !widget.isMusicFolders) {
-      // For lyrics folders on Android, use SAF
+    if (Platform.isAndroid) {
+      // For Android, use SAF
       final selection = await AndroidStorageService.pickTree();
       if (selection == null) return;
       if (selection.path == null || selection.path!.isEmpty) {
@@ -54,21 +47,13 @@ class _FolderManagementScreenState
         return;
       }
       final storage = ref.read(storageServiceProvider);
-      if (widget.isMusicFolders) {
-        await storage.addMusicFolder(selection.path!, selection.treeUri);
-      } else {
-        await storage.addLyricsFolder(selection.path!, selection.treeUri);
-      }
+      await storage.addMusicFolder(selection.path!, selection.treeUri);
     } else {
-      // For music folders or non-Android platforms, use file picker
+      // For non-Android platforms, use file picker
       final selectedDirectory = await FilePicker.platform.getDirectoryPath();
       if (selectedDirectory == null) return;
       final storage = ref.read(storageServiceProvider);
-      if (widget.isMusicFolders) {
-        await storage.addMusicFolder(selectedDirectory, null);
-      } else {
-        await storage.addLyricsFolder(selectedDirectory, null);
-      }
+      await storage.addMusicFolder(selectedDirectory, null);
     }
 
     await _loadFolders();
@@ -76,45 +61,30 @@ class _FolderManagementScreenState
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(widget.isMusicFolders
-                ? "Music folder added"
-                : "Lyrics folder added")),
+        const SnackBar(content: Text("Music folder added")),
       );
     }
   }
 
   Future<void> _removeFolder(String path) async {
     final storage = ref.read(storageServiceProvider);
-    if (widget.isMusicFolders) {
-      await storage.removeMusicFolder(path);
-    } else {
-      await storage.removeLyricsFolder(path);
-    }
+    await storage.removeMusicFolder(path);
 
     await _loadFolders();
     ref.invalidate(songsProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(widget.isMusicFolders
-                ? "Music folder removed"
-                : "Lyrics folder removed")),
+        const SnackBar(content: Text("Music folder removed")),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.isMusicFolders ? "Music Folders" : "Lyrics Folders";
-    final subtitle = widget.isMusicFolders
-        ? "Select folders containing your music files"
-        : "Select folders containing .lrc or .txt lyric files";
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: const Text("Music Folders"),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -123,7 +93,7 @@ class _FolderManagementScreenState
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Text(
-                    subtitle,
+                    "Select folders containing your music files",
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),

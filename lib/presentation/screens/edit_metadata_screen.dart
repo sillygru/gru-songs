@@ -554,9 +554,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
             ListTile(
               leading: const Icon(Icons.lyrics_outlined),
               title: const Text("Edit Lyrics"),
-              subtitle: Text(widget.song.lyricsUrl != null
-                  ? "Lyrics file exists"
-                  : "No lyrics file found"),
+              subtitle: const Text("View or edit embedded lyrics"),
               trailing: const Icon(Icons.chevron_right),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -618,14 +616,14 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
   }
 
   Future<void> _loadLyrics() async {
-    if (widget.song.lyricsUrl == null) {
+    if (!widget.song.hasLyrics) {
       setState(() => _isLoading = false);
       return;
     }
 
     try {
       final repo = ref.read(songRepositoryProvider);
-      final content = await repo.getLyrics(widget.song.lyricsUrl!);
+      final content = await repo.getLyrics(widget.song);
       if (mounted) {
         setState(() {
           _controller.text = content ?? "";
@@ -692,7 +690,7 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
               child: Column(
                 children: [
                   const Text(
-                    "Lyrics are saved as .lrc files. You can use [mm:ss.xx] timestamps for synced lyrics.",
+                    "Lyrics are embedded in the audio file. You can use [mm:ss.xx] timestamps for synced lyrics.",
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const SizedBox(height: 16),

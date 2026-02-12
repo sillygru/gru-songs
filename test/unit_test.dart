@@ -10,7 +10,7 @@ void main() {
         'album': 'Test Album',
         'filename': 'test.mp3',
         'url': '/stream/test.mp3',
-        'lyrics_url': '/lyrics/test.lrc',
+        'has_lyrics': true,
         'cover_url': '/cover/test.mp3'
       };
 
@@ -21,7 +21,7 @@ void main() {
       expect(song.album, 'Test Album');
       expect(song.filename, 'test.mp3');
       expect(song.url, '/stream/test.mp3');
-      expect(song.lyricsUrl, '/lyrics/test.lrc');
+      expect(song.hasLyrics, true);
       expect(song.coverUrl, '/cover/test.mp3');
     });
 

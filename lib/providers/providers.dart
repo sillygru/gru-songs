@@ -422,8 +422,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         album: s.album,
         filename: s.filename,
         url: s.url,
-        lyricsUrl: s.lyricsUrl,
         coverUrl: s.coverUrl,
+        hasLyrics: s.hasLyrics,
         playCount: newCount,
         duration: s.duration,
         mtime: s.mtime,
@@ -571,8 +571,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
                   album: s.album,
                   filename: s.filename,
                   url: s.url,
-                  lyricsUrl: s.lyricsUrl,
                   coverUrl: s.coverUrl,
+                  hasLyrics: s.hasLyrics,
                   playCount: s.playCount,
                   duration: s.duration,
                   mtime: s.mtime,
@@ -610,8 +610,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
                   album: album,
                   filename: s.filename,
                   url: s.url,
-                  lyricsUrl: s.lyricsUrl,
                   coverUrl: s.coverUrl,
+                  hasLyrics: s.hasLyrics,
                   playCount: s.playCount,
                   duration: s.duration,
                   mtime: s.mtime,
@@ -658,8 +658,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
                 album: s.album,
                 filename: s.filename,
                 url: s.url,
-                lyricsUrl: s.lyricsUrl,
                 coverUrl: newCoverPath,
+                hasLyrics: s.hasLyrics,
                 playCount: s.playCount,
                 duration: s.duration,
                 mtime: newMtime,
@@ -751,24 +751,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       }
       if (kDebugMode) {
         debugPrint("MOVE_SONG: Move successful");
-      }
-
-      // Also try to move lyrics if they exist
-      if (song.lyricsUrl != null) {
-        final oldLyricsFile = File(song.lyricsUrl!);
-        if (await oldLyricsFile.exists()) {
-          final lyricsFilename = p.basename(song.lyricsUrl!);
-          final newLyricsPath = p.join(targetDirectoryPath, lyricsFilename);
-          try {
-            await oldLyricsFile.rename(newLyricsPath);
-          } catch (e) {
-            await oldLyricsFile.copy(newLyricsPath);
-            await oldLyricsFile.delete();
-          }
-          if (kDebugMode) {
-            debugPrint("MOVE_SONG: Lyrics moved to $newLyricsPath");
-          }
-        }
       }
 
       if (kDebugMode) {
