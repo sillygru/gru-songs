@@ -45,131 +45,130 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentThemeMode = ref.watch(themeProvider).mode;
+    final themeState = ref.watch(themeProvider);
+    final currentThemeMode = themeState.mode;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Choose Theme'),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 20),
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: AppThemeMode.values.length,
-              onPageChanged: (index) {
-                setState(() {
-                  _currentIndex = index;
-                });
-              },
-              itemBuilder: (context, index) {
-                final mode = AppThemeMode.values[index];
-                final isApplied = mode == currentThemeMode;
-                final isFocused = index == _currentIndex;
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 400,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: AppThemeMode.values.length,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final mode = AppThemeMode.values[index];
+                  final isApplied = mode == currentThemeMode;
+                  final isFocused = index == _currentIndex;
 
-                return AnimatedScale(
-                  scale: isFocused ? 1.0 : 0.9,
-                  duration: const Duration(milliseconds: 300),
-                  child: Center(
-                    child: AspectRatio(
-                      aspectRatio: 9 / 18,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                            if (isApplied)
+                  return AnimatedScale(
+                    scale: isFocused ? 1.0 : 0.9,
+                    duration: const Duration(milliseconds: 300),
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: 9 / 18,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
                               BoxShadow(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withValues(alpha: 0.4),
-                                blurRadius: 15,
-                                spreadRadius: 2,
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
                               ),
-                          ],
-                        ),
-                        // Use foregroundDecoration to ensure border is on top and doesn't get cut
-                        foregroundDecoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          border: isApplied
-                              ? Border.all(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  width: 3,
-                                )
-                              : Border.all(
-                                  color: Colors.white.withValues(alpha: 0.05),
-                                  width: 1,
+                              if (isApplied)
+                                BoxShadow(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.4),
+                                  blurRadius: 15,
+                                  spreadRadius: 2,
                                 ),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            // Optimize with RepaintBoundary and IgnorePointer
-                            RepaintBoundary(
-                              child: IgnorePointer(
-                                child: FittedBox(
-                                  fit: BoxFit.contain,
-                                  child: SizedBox(
-                                    width: 420,
-                                    height: 840,
-                                    child: ThemePreviewWidget(mode: mode),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (isApplied)
-                              Positioned(
-                                top: 10,
-                                right: 10,
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
+                            ],
+                          ),
+                          foregroundDecoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: isApplied
+                                ? Border.all(
                                     color:
                                         Theme.of(context).colorScheme.primary,
-                                    shape: BoxShape.circle,
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 4,
-                                      )
-                                    ],
+                                    width: 3,
+                                  )
+                                : Border.all(
+                                    color: Colors.white.withValues(alpha: 0.05),
+                                    width: 1,
                                   ),
-                                  child: const Icon(
-                                    Icons.check,
-                                    color: Colors.white,
-                                    size: 20,
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              RepaintBoundary(
+                                child: IgnorePointer(
+                                  child: FittedBox(
+                                    fit: BoxFit.contain,
+                                    child: SizedBox(
+                                      width: 420,
+                                      height: 840,
+                                      child: ThemePreviewWidget(
+                                        mode: mode,
+                                        themeState:
+                                            themeState, // Pass state for custom/cover preview
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                          ],
+                              if (isApplied)
+                                Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      shape: BoxShape.circle,
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Colors.black26,
+                                          blurRadius: 4,
+                                        )
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainer,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: SafeArea(
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     AppThemeMode.values[_currentIndex]
@@ -182,13 +181,48 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                           letterSpacing: 1.2,
                         ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Swipe to browse styles",
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                  const SizedBox(height: 24),
+                  if (AppThemeMode.values[_currentIndex] ==
+                      AppThemeMode.custom) ...[
+                    _buildColorSection(
+                      context,
+                      "Primary Color",
+                      Color(themeState.customPrimaryColor),
+                      (color) => ref
+                          .read(themeProvider.notifier)
+                          .setCustomColors(primary: color.toARGB32()),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildColorSection(
+                      context,
+                      "Background color",
+                      Color(themeState.customBackgroundColor),
+                      (color) => ref
+                          .read(themeProvider.notifier)
+                          .setCustomColors(background: color.toARGB32()),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                  SwitchListTile(
+                    title:
+                        const Text("Match buttons to currently playing cover"),
+                    subtitle:
+                        const Text("Dynamically extract colors from album art"),
+                    value: themeState.useCoverColor,
+                    onChanged: (val) => ref
+                        .read(themeProvider.notifier)
+                        .setCoverColorSettings(useCover: val),
                   ),
+                  if (themeState.useCoverColor)
+                    SwitchListTile(
+                      title: const Text("Apply cover color to whole app"),
+                      subtitle:
+                          const Text("Updates all screens to match the cover"),
+                      value: themeState.applyCoverColorToAll,
+                      onChanged: (val) => ref
+                          .read(themeProvider.notifier)
+                          .setCoverColorSettings(applyAll: val),
+                    ),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
@@ -196,7 +230,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                     child: FilledButton(
                       onPressed:
                           currentThemeMode == AppThemeMode.values[_currentIndex]
-                              ? null // Disable if already selected
+                              ? null
                               : _applyTheme,
                       style: FilledButton.styleFrom(
                         shape: RoundedRectangleBorder(
@@ -214,11 +248,81 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 48),
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorSection(BuildContext context, String label,
+      Color currentColor, Function(Color) onColorSelected) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _buildColorOption(currentColor, isSelected: true),
+              const VerticalDivider(),
+              ...[
+                Colors.red,
+                Colors.pink,
+                Colors.purple,
+                Colors.deepPurple,
+                Colors.indigo,
+                Colors.blue,
+                Colors.lightBlue,
+                Colors.cyan,
+                Colors.teal,
+                Colors.green,
+                Colors.lightGreen,
+                Colors.lime,
+                Colors.yellow,
+                Colors.amber,
+                Colors.orange,
+                Colors.deepOrange,
+                Colors.brown,
+                Colors.grey,
+                Colors.blueGrey,
+                const Color(0xFF121212),
+                const Color(0xFF000000),
+                const Color(0xFF1A1A1A),
+              ].map((color) => _buildColorOption(color,
+                  onTap: () => onColorSelected(color))),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildColorOption(Color color,
+      {bool isSelected = false, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isSelected ? Colors.white : Colors.white24,
+            width: isSelected ? 3 : 1,
+          ),
+        ),
+        child: isSelected
+            ? const Icon(Icons.check, size: 20, color: Colors.white)
+            : null,
       ),
     );
   }
@@ -226,12 +330,17 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
 
 class ThemePreviewWidget extends StatelessWidget {
   final AppThemeMode mode;
+  final ThemeState themeState;
 
-  const ThemePreviewWidget({super.key, required this.mode});
+  const ThemePreviewWidget(
+      {super.key, required this.mode, required this.themeState});
 
   @override
   Widget build(BuildContext context) {
-    final themeData = AppTheme.getTheme(mode);
+    // Generate a temporary state to preview the selected mode
+    final previewState = themeState.copyWith(mode: mode);
+    final themeData =
+        AppTheme.getTheme(previewState, coverColor: themeState.extractedColor);
 
     return MediaQuery(
       data: const MediaQueryData(

@@ -111,7 +111,7 @@ class WispieApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Wispie',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.getTheme(themeState.mode),
+      theme: AppTheme.getTheme(themeState),
       home: (!isSetupComplete || !authState.isAuthenticated)
           ? const SetupScreen()
           : const MainScreen(),

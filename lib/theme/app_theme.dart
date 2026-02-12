@@ -1,130 +1,208 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import '../providers/theme_provider.dart';
 
-enum AppThemeMode { classic, oled, ocean, sunset }
+enum AppThemeMode { classic, oled, ocean, sunset, custom }
 
 class AppTheme {
-  static ThemeData getTheme(AppThemeMode mode) {
-    switch (mode) {
+  static ThemeData getTheme(ThemeState state, {Color? coverColor}) {
+    final effectiveCoverColor = coverColor ?? state.extractedColor;
+
+    // If cover color should be used for the whole app
+    if (state.useCoverColor &&
+        state.applyCoverColorToAll &&
+        effectiveCoverColor != null) {
+      return _getDynamicTheme(effectiveCoverColor);
+    }
+
+    final Color? overlayColor =
+        (state.useCoverColor && !state.applyCoverColorToAll)
+            ? effectiveCoverColor
+            : null;
+
+    switch (state.mode) {
       case AppThemeMode.classic:
-        return _classicTheme;
+        return _classicTheme(overlayColor);
       case AppThemeMode.oled:
-        return _oledTheme;
+        return _oledTheme(overlayColor);
       case AppThemeMode.ocean:
-        return _oceanTheme;
+        return _oceanTheme(overlayColor);
       case AppThemeMode.sunset:
-        return _sunsetTheme;
+        return _sunsetTheme(overlayColor);
+      case AppThemeMode.custom:
+        return _getCustomTheme(
+          Color(state.customPrimaryColor),
+          Color(state.customBackgroundColor),
+          overlayColor,
+        );
     }
   }
 
-  static final ThemeData _classicTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: AppPalette.primaryRed,
-      brightness: Brightness.dark,
-      surface: AppPalette.backgroundDark,
-    ),
-    scaffoldBackgroundColor: AppPalette.backgroundDark,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppPalette.backgroundDark,
-      scrolledUnderElevation: 0,
-    ),
-    cardTheme: CardThemeData(
-      color: AppPalette.surfaceDark,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: AppPalette.backgroundDark,
-      indicatorColor: AppPalette.primaryRed.withValues(alpha: 0.2),
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-    ),
-  );
+  static ThemeData getPlayerTheme(ThemeState state, Color? coverColor) {
+    final effectiveCoverColor = coverColor ?? state.extractedColor;
+    if (state.useCoverColor && effectiveCoverColor != null) {
+      return _getDynamicTheme(effectiveCoverColor);
+    }
+    return getTheme(state, coverColor: effectiveCoverColor);
+  }
 
-  static final ThemeData _oledTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.white,
-      brightness: Brightness.dark,
-      surface: Colors.black,
-    ),
-    scaffoldBackgroundColor: Colors.black,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.black,
-      scrolledUnderElevation: 0,
-    ),
-    cardTheme: CardThemeData(
-      color: const Color(0xFF121212),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+  static ThemeData _getDynamicTheme(Color seedColor) {
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: seedColor,
+        brightness: Brightness.dark,
+        surface: AppPalette.backgroundDark,
       ),
-    ),
-    bottomSheetTheme: const BottomSheetThemeData(
-      backgroundColor: Colors.black,
-      modalBackgroundColor: Colors.black,
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Colors.black,
-      indicatorColor: Colors.white.withValues(alpha: 0.2),
-    ),
-  );
+      scaffoldBackgroundColor: AppPalette.backgroundDark,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppPalette.backgroundDark,
+        scrolledUnderElevation: 0,
+      ),
+    );
+  }
 
-  static final ThemeData _oceanTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.cyan,
-      brightness: Brightness.dark,
-      surface: AppPalette.backgroundOcean,
-      primary: Colors.cyanAccent,
-    ),
-    scaffoldBackgroundColor: AppPalette.backgroundOcean,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppPalette.backgroundOcean,
-      scrolledUnderElevation: 0,
-    ),
-    cardTheme: CardThemeData(
-      color: AppPalette.surfaceOcean,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+  static ThemeData _getCustomTheme(Color primary, Color background,
+      [Color? overridePrimary]) {
+    final effectivePrimary = overridePrimary ?? primary;
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: effectivePrimary,
+        brightness: Brightness.dark,
+        surface: background,
+      ).copyWith(
+        primary: effectivePrimary,
+        surface: background,
       ),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: AppPalette.backgroundOcean,
-      indicatorColor: Colors.cyan.withValues(alpha: 0.2),
-    ),
-  );
+      scaffoldBackgroundColor: background,
+      appBarTheme: AppBarTheme(
+        backgroundColor: background,
+        scrolledUnderElevation: 0,
+      ),
+    );
+  }
 
-  static final ThemeData _sunsetTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.orange,
-      brightness: Brightness.dark,
-      surface: const Color(0xFF2D1B2E),
-    ).copyWith(
-      primaryContainer: const Color(0xFF701B4B), // Rich Plum/Sunset Pink
-      onPrimaryContainer: Colors.white,
-    ),
-    scaffoldBackgroundColor: const Color(0xFF201020),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Color(0xFF201020),
-      scrolledUnderElevation: 0,
-    ),
-    cardTheme: CardThemeData(
-      color: const Color(0xFF402030),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+  static ThemeData _classicTheme([Color? overridePrimary]) {
+    final primary = overridePrimary ?? AppPalette.primaryRed;
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: Brightness.dark,
+        surface: AppPalette.backgroundDark,
+      ).copyWith(primary: primary),
+      scaffoldBackgroundColor: AppPalette.backgroundDark,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppPalette.backgroundDark,
+        scrolledUnderElevation: 0,
       ),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: const Color(0xFF201020),
-      indicatorColor: Colors.orange.withValues(alpha: 0.2),
-    ),
-  );
+      cardTheme: CardThemeData(
+        color: AppPalette.surfaceDark,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: AppPalette.backgroundDark,
+        indicatorColor: primary.withValues(alpha: 0.2),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      ),
+    );
+  }
+
+  static ThemeData _oledTheme([Color? overridePrimary]) {
+    final primary = overridePrimary ?? Colors.white;
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: Brightness.dark,
+        surface: Colors.black,
+      ).copyWith(primary: primary),
+      scaffoldBackgroundColor: Colors.black,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.black,
+        scrolledUnderElevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        color: const Color(0xFF121212),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.black,
+        modalBackgroundColor: Colors.black,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: Colors.black,
+        indicatorColor: primary.withValues(alpha: 0.2),
+      ),
+    );
+  }
+
+  static ThemeData _oceanTheme([Color? overridePrimary]) {
+    final primary = overridePrimary ?? Colors.cyanAccent;
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: Brightness.dark,
+        surface: AppPalette.backgroundOcean,
+      ).copyWith(primary: primary),
+      scaffoldBackgroundColor: AppPalette.backgroundOcean,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppPalette.backgroundOcean,
+        scrolledUnderElevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        color: AppPalette.surfaceOcean,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: AppPalette.backgroundOcean,
+        indicatorColor: primary.withValues(alpha: 0.2),
+      ),
+    );
+  }
+
+  static ThemeData _sunsetTheme([Color? overridePrimary]) {
+    final primary = overridePrimary ?? Colors.orange;
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: Brightness.dark,
+        surface: const Color(0xFF2D1B2E),
+      ).copyWith(
+        primary: primary,
+        primaryContainer: const Color(0xFF701B4B), // Rich Plum/Sunset Pink
+        onPrimaryContainer: Colors.white,
+      ),
+      scaffoldBackgroundColor: const Color(0xFF201020),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF201020),
+        scrolledUnderElevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        color: const Color(0xFF402030),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF201020),
+        indicatorColor: primary.withValues(alpha: 0.2),
+      ),
+    );
+  }
 }

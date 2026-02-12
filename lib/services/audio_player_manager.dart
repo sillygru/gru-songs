@@ -14,6 +14,8 @@ import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
 import 'volume_monitor_service.dart';
+import 'color_extraction_service.dart';
+import '../providers/theme_provider.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
@@ -260,9 +262,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _foregroundDuration = 0.0;
           _backgroundDuration = 0.0;
           _playStartTime = _player.playing ? DateTime.now() : null;
-          currentSongNotifier.value = _songMap[newFilename];
+          final song = _songMap[newFilename];
+          currentSongNotifier.value = song;
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
+
+          // Extract color from cover
+          if (song != null && _ref != null) {
+            ColorExtractionService.extractColor(song.coverUrl).then((color) {
+              _ref!.read(themeProvider.notifier).updateExtractedColor(color);
+            });
+          }
         }
       }
     });
@@ -596,6 +606,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
               initialIndex: initialIndex,
               startPlaying: false,
               initialPosition: resumePosition);
+
+          // Extract color for initial song
+          if (_ref != null) {
+            final initialSong = _effectiveQueue[initialIndex].song;
+            ColorExtractionService.extractColor(initialSong.coverUrl)
+                .then((color) {
+              _ref!.read(themeProvider.notifier).updateExtractedColor(color);
+            });
+          }
           return;
         }
       } catch (e) {
@@ -809,7 +828,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         duration: song.duration,
         artUri: artUri,
         extras: {
-          'hasLyrics': song.hasLyrics, // Use the actual flag from the song model
+          'hasLyrics':
+              song.hasLyrics, // Use the actual flag from the song model
           'remoteUrl': song.url,
           'queueId': item.queueId,
           'isPriority': item.isPriority,
