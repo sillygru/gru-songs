@@ -809,7 +809,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         duration: song.duration,
         artUri: artUri,
         extras: {
-          'hasLyrics': true, // Always allow trying to load lyrics
+          'hasLyrics': song.hasLyrics, // Use the actual flag from the song model
           'remoteUrl': song.url,
           'queueId': item.queueId,
           'isPriority': item.isPriority,

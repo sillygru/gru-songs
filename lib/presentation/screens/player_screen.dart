@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -345,6 +346,42 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  Widget _buildOverlayButton({
+    required Widget icon,
+    required VoidCallback onPressed,
+    Color? color,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1,
+            ),
+          ),
+          child: IconButton(
+            icon: icon,
+            onPressed: onPressed,
+            color: color ?? Colors.white,
+            iconSize: 24,
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // _buildGlassControls removed.
+  // _buildBlurButton removed.
+  // _buildBottomDock removed.
+
   Stream<PositionData> get _positionDataStream =>
       Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
           player.positionStream,
@@ -414,7 +451,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ],
 
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 64),
+                  padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -504,6 +541,40 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                           cacheWidth: 800,
                                                           fit: BoxFit.cover,
                                                         ),
+                                                      ),
+                                                    ),
+                                                    // Overlay Controls (Lyrics / Queue)
+                                                    if (metadata.extras?['hasLyrics'] ?? false)
+                                                      Positioned(
+                                                        bottom: 12,
+                                                        left: 12,
+                                                        child: _buildOverlayButton(
+                                                          icon: const Icon(
+                                                              Icons.lyrics_outlined),
+                                                          color: _showLyrics
+                                                              ? Theme.of(context)
+                                                                  .colorScheme
+                                                                  .primary
+                                                              : Colors.white,
+                                                          onPressed: _toggleLyrics,
+                                                        ),
+                                                      ),
+                                                    Positioned(
+                                                      bottom: 12,
+                                                      right: 12,
+                                                      child: _buildOverlayButton(
+                                                        icon: const Icon(
+                                                            Icons.queue_music),
+                                                        onPressed: () {
+                                                          showModalBottomSheet(
+                                                            context: context,
+                                                            backgroundColor:
+                                                                Colors
+                                                                    .transparent,
+                                                            builder: (context) =>
+                                                                const NextUpSheet(),
+                                                          );
+                                                        },
                                                       ),
                                                     ),
                                                   ],
@@ -650,6 +721,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                             },
                                                           ),
                                                         ),
+                                              // Overlay Controls in Lyrics Mode (Lyrics / Queue)
+                                              if (metadata.extras?['hasLyrics'] ?? false)
+                                                Positioned(
+                                                  bottom: 12,
+                                                  left: 12,
+                                                  child: _buildOverlayButton(
+                                                    icon: const Icon(
+                                                        Icons.lyrics_outlined),
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .primary,
+                                                    onPressed: _toggleLyrics,
+                                                  ),
+                                                ),
+                                              Positioned(
+                                                bottom: 12,
+                                                right: 12,
+                                                child: _buildOverlayButton(
+                                                  icon: const Icon(
+                                                      Icons.queue_music),
+                                                  onPressed: () {
+                                                    showModalBottomSheet(
+                                                      context: context,
+                                                      backgroundColor:
+                                                          Colors.transparent,
+                                                      builder: (context) =>
+                                                          const NextUpSheet(),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
                                             ],
                                           ),
                                         ),
@@ -658,54 +760,102 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             }),
                           ),
                         ),
-                        const SizedBox(height: 32),
-                        Text(
-                          metadata.title,
-                          style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        RichText(
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          text: TextSpan(
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              fontFamily: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.fontFamily,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant
-                                  .withValues(alpha: 0.7),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    metadata.title,
+                                    style: const TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.5),
+                                    textAlign: TextAlign.left,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  RichText(
+                                    textAlign: TextAlign.left,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    text: TextSpan(
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                        fontFamily: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.fontFamily,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant
+                                            .withValues(alpha: 0.7),
+                                      ),
+                                      children: [
+                                        TextSpan(
+                                          text: metadata.artist ??
+                                              'Unknown Artist',
+                                          recognizer: _artistRecognizer
+                                            ..onTap = () => _navigateToArtist(
+                                                metadata.artist ??
+                                                    'Unknown Artist'),
+                                        ),
+                                        const TextSpan(text: ' • '),
+                                        TextSpan(
+                                          text: metadata.album ??
+                                              'Unknown Album',
+                                          recognizer: _albumRecognizer
+                                            ..onTap = () => _navigateToAlbum(
+                                                metadata.album ??
+                                                    'Unknown Album'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            children: [
-                              TextSpan(
-                                text: metadata.artist ?? 'Unknown Artist',
-                                recognizer: _artistRecognizer
-                                  ..onTap = () => _navigateToArtist(
-                                      metadata.artist ?? 'Unknown Artist'),
-                              ),
-                              const TextSpan(text: ' • '),
-                              TextSpan(
-                                text: metadata.album ?? 'Unknown Album',
-                                recognizer: _albumRecognizer
-                                  ..onTap = () => _navigateToAlbum(
-                                      metadata.album ?? 'Unknown Album'),
-                              ),
-                            ],
-                          ),
+                            const SizedBox(width: 16),
+                            Consumer(
+                              builder: (context, ref, child) {
+                                final isFav = ref.watch(userDataProvider
+                                    .select((s) => s.isFavorite(metadata.id)));
+                                return GestureDetector(
+                                  onLongPress: () {
+                                    showHeartContextMenu(
+                                      context: context,
+                                      ref: ref,
+                                      songFilename: metadata.id,
+                                      songTitle: metadata.title,
+                                    );
+                                  },
+                                  child: IconButton(
+                                    icon: Icon(isFav
+                                        ? Icons.favorite
+                                        : Icons.favorite_border),
+                                    color:
+                                        isFav ? Colors.redAccent : Colors.white,
+                                    onPressed: () {
+                                      ref
+                                          .read(userDataProvider.notifier)
+                                          .toggleFavorite(metadata.id);
+                                    },
+                                    iconSize: 28,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
+
                       ],
-                      const SizedBox(height: 32),
+
                       RepaintBoundary(
                         child: StreamBuilder<PositionData>(
                           stream: _positionDataStream,
@@ -725,7 +875,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                       ),
                       if (isDesktop || isIPad) ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 16),
                         Row(
                           children: [
                             const Icon(Icons.volume_down,
@@ -749,71 +899,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           ],
                         ),
                       ],
-                      const SizedBox(height: 32),
-                      // Secondary Controls
-                      RepaintBoundary(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Lyrics
-                            IconButton(
-                              icon: const Icon(Icons.lyrics_outlined),
-                              color: _showLyrics
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Colors.white60,
-                              onPressed: () {
-                                _toggleLyrics();
-                              },
-                            ),
-                            const SizedBox(width: 32),
-                            // Queue
-                            IconButton(
-                              icon: const Icon(Icons.queue_music),
-                              color: Colors.white60,
-                              onPressed: () {
-                                showModalBottomSheet(
-                                  context: context,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (context) => const NextUpSheet(),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 32),
-                            // Favorite
-                            if (metadata != null)
-                              Consumer(
-                                builder: (context, ref, child) {
-                                  final isFav = ref.watch(
-                                      userDataProvider.select(
-                                          (s) => s.isFavorite(metadata.id)));
-                                  return GestureDetector(
-                                    onLongPress: () {
-                                      showHeartContextMenu(
-                                        context: context,
-                                        ref: ref,
-                                        songFilename: metadata.id,
-                                        songTitle: metadata.title,
-                                      );
-                                    },
-                                    child: IconButton(
-                                      icon: Icon(isFav
-                                          ? Icons.favorite
-                                          : Icons.favorite_border),
-                                      color: isFav
-                                          ? Colors.redAccent
-                                          : Colors.white60,
-                                      onPressed: () {
-                                        ref
-                                            .read(userDataProvider.notifier)
-                                            .toggleFavorite(metadata.id);
-                                      },
-                                    ),
-                                  );
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
                       const SizedBox(height: 32),
                       // Main Controls
                       RepaintBoundary(
@@ -972,6 +1057,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     ],
                   ),
                 ),
+
               ],
             );
           },
