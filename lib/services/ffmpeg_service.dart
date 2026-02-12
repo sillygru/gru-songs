@@ -11,9 +11,6 @@ class FFmpegService {
     required String outputPath,
     String? imagePath,
   }) async {
-    final input = _q(inputPath);
-    final output = _q(outputPath);
-
     final List<String> args;
     if (imagePath == null || imagePath.isEmpty) {
       // Remove attached picture streams, keep audio + metadata.
@@ -32,13 +29,20 @@ class FFmpegService {
       // 3. Mark the image as 'attached_pic'
       args = [
         '-y',
-        '-i', inputPath,
-        '-i', imagePath,
-        '-map', '0:a?',
-        '-map', '1',
-        '-c', 'copy',
-        '-disposition:v:0', 'attached_pic',
-        '-map_metadata', '0',
+        '-i',
+        inputPath,
+        '-i',
+        imagePath,
+        '-map',
+        '0:a?',
+        '-map',
+        '1',
+        '-c',
+        'copy',
+        '-disposition:v:0',
+        'attached_pic',
+        '-map_metadata',
+        '0',
         outputPath,
       ];
     }
@@ -81,8 +85,9 @@ class FFmpegService {
 
       final output = await session.getOutput();
       if (output == null || output.isEmpty) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('FFmpegService: Empty output for: $filePath');
+        }
         return null;
       }
 
@@ -91,8 +96,9 @@ class FFmpegService {
       final tags = json['format']?['tags'];
 
       if (tags == null) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('FFmpegService: No tags found in: $filePath');
+        }
         return null;
       }
 
@@ -105,8 +111,9 @@ class FFmpegService {
         return lyrics.toString();
       }
 
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('FFmpegService: No lyrics tag found in: $filePath');
+      }
       return null;
     } catch (e) {
       if (kDebugMode) debugPrint('FFmpegService: Error reading lyrics: $e');
@@ -122,9 +129,12 @@ class FFmpegService {
     try {
       final session = await FFmpegKit.executeWithArguments([
         '-y',
-        '-i', inputPath,
-        '-map', '0:v:0',
-        '-c', 'copy',
+        '-i',
+        inputPath,
+        '-map',
+        '0:v:0',
+        '-c',
+        'copy',
         outputPath,
       ]);
       final rc = await session.getReturnCode();
@@ -135,22 +145,25 @@ class FFmpegService {
           return outputPath;
         }
       } else {
-         // Fallback: If copy fails (e.g. stream issue), try simple re-encode
-         final session2 = await FFmpegKit.executeWithArguments([
-           '-y',
-           '-i', inputPath,
-           '-an',
-           '-vcodec', 'mjpeg',
-           '-q:v', '2',
-           outputPath,
-         ]);
-         final rc2 = await session2.getReturnCode();
-         if (ReturnCode.isSuccess(rc2)) {
-           final file = File(outputPath);
-           if (await file.exists() && await file.length() > 0) {
-             return outputPath;
-           }
-         }
+        // Fallback: If copy fails (e.g. stream issue), try simple re-encode
+        final session2 = await FFmpegKit.executeWithArguments([
+          '-y',
+          '-i',
+          inputPath,
+          '-an',
+          '-vcodec',
+          'mjpeg',
+          '-q:v',
+          '2',
+          outputPath,
+        ]);
+        final rc2 = await session2.getReturnCode();
+        if (ReturnCode.isSuccess(rc2)) {
+          final file = File(outputPath);
+          if (await file.exists() && await file.length() > 0) {
+            return outputPath;
+          }
+        }
       }
     } catch (e) {
       if (kDebugMode) debugPrint('FFmpegService: Extraction failed: $e');

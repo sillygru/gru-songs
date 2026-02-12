@@ -196,7 +196,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (_lyrics == null) {
       // Get current song from player
       final sequenceState = player.sequenceState;
-      final currentSource = sequenceState?.currentSource;
+      final currentSource = sequenceState.currentSource;
       final tag = currentSource?.tag;
       if (tag is MediaItem) {
         final songs = ref.read(songsProvider).asData?.value ?? [];

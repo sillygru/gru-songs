@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
 import 'cache_service.dart';
 import 'package:flutter/foundation.dart';
@@ -57,8 +56,7 @@ class WaveformService {
           '-vn -ac 1 -f csv '
           '-af "compand,astats=metadata=1:reset=1,selectivecolor=color=white,ametadata=select=key:file=$outputPath" '
           '-y "$outputPath"';
-      final session = await FFmpegKit.executeAsync(command);
-      final returnCode = await session.getReturnCode();
+      await FFmpegKit.executeAsync(command);
 
       if (!await File(outputPath).exists()) {
         // Fallback to a faster raw extraction method if the advanced method fails
@@ -94,7 +92,7 @@ class WaveformService {
       final outputPath = p.join(tempDir.path,
           'waveform_${DateTime.now().millisecondsSinceEpoch}.raw');
 
-      final session = await FFmpegKit.executeWithArguments([
+      await FFmpegKit.executeWithArguments([
         '-i',
         path,
         '-vn',
@@ -109,8 +107,6 @@ class WaveformService {
         '-y',
         outputPath
       ]);
-
-      final returnCode = await session.getReturnCode();
 
       final file = File(outputPath);
       if (!await file.exists()) {

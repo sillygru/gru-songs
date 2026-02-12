@@ -226,14 +226,14 @@ class FileManagerService {
 
     final tempDir = await Directory.systemTemp.createTemp('gru_ffmpeg_');
     final ext = p.extension(fileUrl).toLowerCase();
-    
+
     // Prepare the standardized input image (JPEG)
     File? standardizedImageFile;
     if (imagePath != null) {
       try {
         final originalImage = File(imagePath);
         final bytes = await originalImage.readAsBytes();
-        
+
         // Decode and re-encode as JPEG to ensure standard format
         // This avoids issues where FFmpeg might produce incompatible MJPEG streams
         // or fail with certain input formats (e.g. some PNGs)
@@ -242,14 +242,14 @@ class FileManagerService {
           // Normalize size if too large (optional optimization, max 1000px)
           img.Image processedImage = image;
           if (processedImage.width > 1000 || processedImage.height > 1000) {
-            processedImage = img.copyResize(
-              processedImage, 
-              width: processedImage.width > processedImage.height ? 1000 : null,
-              height: processedImage.height > processedImage.width ? 1000 : null,
-              maintainAspect: true
-            );
+            processedImage = img.copyResize(processedImage,
+                width:
+                    processedImage.width > processedImage.height ? 1000 : null,
+                height:
+                    processedImage.height > processedImage.width ? 1000 : null,
+                maintainAspect: true);
           }
-          
+
           final jpgBytes = img.encodeJpg(processedImage, quality: 90);
           standardizedImageFile = File(p.join(tempDir.path, 'cover_std.jpg'));
           await standardizedImageFile.writeAsBytes(jpgBytes);
@@ -262,7 +262,7 @@ class FileManagerService {
 
     final tempOut = File(p.join(tempDir.path, 'out$ext'));
     final ffmpeg = FFmpegService();
-    
+
     try {
       await ffmpeg.embedCover(
         inputPath: fileUrl,
@@ -628,20 +628,23 @@ class FileManagerService {
         if (await newFile.exists()) {
           await newFile.rename(tempFile.path);
         } else {
-            // Fallback for specific known behaviors if the generic one fails
-             String? specificNewName;
-             if (extension == '.mp4' || extension == '.m4a' || extension == '.m4b') {
-               specificNewName = 'a_new.mp4'; // Library defaults to .mp4 for m4a container
-             } else if (extension == '.wav') {
-               specificNewName = 'a_new.wav';
-             }
+          // Fallback for specific known behaviors if the generic one fails
+          String? specificNewName;
+          if (extension == '.mp4' ||
+              extension == '.m4a' ||
+              extension == '.m4b') {
+            specificNewName =
+                'a_new.mp4'; // Library defaults to .mp4 for m4a container
+          } else if (extension == '.wav') {
+            specificNewName = 'a_new.wav';
+          }
 
-             if (specificNewName != null) {
-                final specificFile = File(p.join(tempDir.path, specificNewName));
-                if (await specificFile.exists()) {
-                  await specificFile.rename(tempFile.path);
-                }
-             }
+          if (specificNewName != null) {
+            final specificFile = File(p.join(tempDir.path, specificNewName));
+            if (await specificFile.exists()) {
+              await specificFile.rename(tempFile.path);
+            }
+          }
         }
       } finally {
         Directory.current = originalDir;
