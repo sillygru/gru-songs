@@ -424,26 +424,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 if (metadata != null) ...[
                   Positioned.fill(
                     child: RepaintBoundary(
-                      child: Opacity(
-                        opacity: 0.2,
-                        child: AlbumArtImage(
-                          url: metadata.artUri?.toString() ?? '',
-                          filename: metadata.id,
-                          fit: BoxFit.cover,
-                        ),
+                      child: AlbumArtImage(
+                        url: metadata.artUri?.toString() ?? '',
+                        filename: metadata.id,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),
                   Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.8),
-                            Colors.black.withValues(alpha: 0.95),
-                          ],
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.6),
+                              Colors.black.withValues(alpha: 0.85),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -481,11 +481,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                   }
                                 },
                                 child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
+                                  duration: const Duration(milliseconds: 500),
+                                  switchInCurve: Curves.easeOutQuart,
+                                  switchOutCurve: Curves.easeInQuart,
                                   transitionBuilder: (child, animation) {
+                                    final isLyrics = child is ClipRRect;
+                                    
                                     return FadeTransition(
                                       opacity: animation,
-                                      child: child,
+                                      child: ScaleTransition(
+                                        scale: Tween<double>(
+                                          begin: isLyrics ? 0.92 : 1.05,
+                                          end: 1.0,
+                                        ).animate(animation),
+                                        child: child,
+                                      ),
                                     );
                                   },
                                   child: !_showLyrics
@@ -588,23 +598,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                               BorderRadius.circular(24),
                                           child: Stack(
                                             children: [
-                                              // Background for lyrics
-                                              Positioned.fill(
-                                                child: Opacity(
-                                                  opacity: 0.15,
-                                                  child: AlbumArtImage(
-                                                    url: metadata.artUri
-                                                            ?.toString() ??
-                                                        '',
-                                                    filename: metadata.id,
-                                                    fit: BoxFit.cover,
-                                                    cacheWidth: 400,
-                                                  ),
-                                                ),
-                                              ),
                                               Positioned.fill(
                                                 child: Container(
-                                                  color: Colors.black87,
+                                                  color: Colors.black45,
                                                 ),
                                               ),
                                               _loadingLyrics
