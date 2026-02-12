@@ -54,7 +54,12 @@ class ScannerService {
     '.m4a',
     '.wav',
     '.flac',
-    '.ogg'
+    '.ogg',
+    '.wma',
+    '.aac',
+    '.m4b',
+    '.mp4',
+    '.opus'
   ];
 
   /// Scans a specific directory for audio files (backward compatibility).
@@ -310,6 +315,7 @@ class ScannerService {
     String hash,
     int mtimeMs, {
     bool skipFolderCover = false,
+    bool useFFmpegFallback = false,
   }) async {
     if (!await file.exists()) return null;
 
@@ -332,6 +338,28 @@ class ScannerService {
     final manual =
         await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
     if (manual != null) return manual;
+
+    // (Old comment about enabling FFmpeg fallback for Main Isolate only)
+    // Actually, we want to try this whenever manual extraction fails, provided we can trust FFmpegService.
+    if (useFFmpegFallback) {
+      try {
+        // Use a unique suffix so we don't conflict with other attempts
+        debugPrint(
+            'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
+        final coverFile =
+            File(p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg'));
+        final extracted = await FFmpegService().extractCover(
+          inputPath: file.path,
+          outputPath: coverFile.path,
+        );
+        if (extracted != null) {
+          debugPrint('Scanner: FFmpeg fallback success!');
+          return extracted;
+        }
+      } catch (e) {
+        debugPrint('Scanner: FFmpeg fallback failed: $e');
+      }
+    }
 
     // Try folder cover as last resort
     if (skipFolderCover) return null;
@@ -404,7 +432,7 @@ class ScannerService {
           final hash = md5.convert(utf8.encode(file.path)).toString();
 
           // Check if already exists - preserve existing covers to avoid overwriting manual changes
-          for (final ext in ['.jpg', '.png', '.jpeg', '.webp']) {
+          for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
             final cachedFile =
                 File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
             if (await cachedFile.exists()) {
@@ -520,7 +548,7 @@ class ScannerService {
         final existingSong = existingSongsMap[file.path];
         if (existingSong != null &&
             existingSong.mtime != null &&
-            (existingSong.mtime! - currentMtime).abs() < 0.1) {
+            (existingSong.mtime! - currentMtime).abs() < 2.0) {
           final updatedPlayCount = params.playCounts[existingSong.filename] ??
               existingSong.playCount;
 
@@ -588,7 +616,7 @@ class ScannerService {
     final hash = md5.convert(utf8.encode(file.path)).toString();
 
     // Check for valid cache first (hash_mtimeMs.ext)
-    for (final ext in ['.jpg', '.png', '.jpeg', '.webp']) {
+    for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
       final cachedFile = File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
       if (await cachedFile.exists()) {
         coverUrl = cachedFile.path;
@@ -768,7 +796,10 @@ class ScannerService {
       String hash,
       int mtimeMs) async {
     for (int i = 0; i < bytes.length - 8; i++) {
-      if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF) {
+      // Relaxed JPEG check: Valid JPEGs start with FF D8.
+      // The byte after D8 can vary (e.g. FF E0 for JFIF, FF E1 for Exif, FF DB for DQT).
+      // Strict FF D8 FF check fails for valid JPEGs embedded by FFmpeg.
+      if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8) {
         final res = await _extractImageAt(
             raf, offset + i, 'jpg', coversDir, hash, mtimeMs);
         if (res != null) return res;
@@ -850,7 +881,9 @@ class ScannerService {
     final mime = mimeType.toLowerCase();
     if (mime.contains('png')) return '.png';
     if (mime.contains('webp')) return '.webp';
+    if (mime.contains('webp')) return '.webp';
     if (mime.contains('gif')) return '.gif';
+    if (mime.contains('bmp')) return '.bmp';
     return '.jpg';
   }
 

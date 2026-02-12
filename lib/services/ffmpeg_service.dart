@@ -14,24 +14,36 @@ class FFmpegService {
     final input = _q(inputPath);
     final output = _q(outputPath);
 
-    final String cmd;
+    final List<String> args;
     if (imagePath == null || imagePath.isEmpty) {
       // Remove attached picture streams, keep audio + metadata.
-      cmd = '-y -i $input -map 0:a -c copy -map_metadata 0 '
-          '-movflags use_metadata_tags $output';
+      args = [
+        '-y',
+        '-i', inputPath,
+        '-map', '0:a?', // Safely map all audio streams
+        '-c', 'copy',
+        '-map_metadata', '0',
+        outputPath,
+      ];
     } else {
-      final image = _q(imagePath);
-      // Add/replace cover art as attached picture.
-      cmd = '-y -i $input -i $image '
-          '-map 0:a -map 1:v '
-          '-c copy -map_metadata 0 '
-          '-disposition:v:0 attached_pic '
-          '-metadata:s:v title="Album cover" '
-          '-metadata:s:v comment="Cover (front)" '
-          '-movflags use_metadata_tags $output';
+      // Add/replace cover art as attached picture mirroring Namida's method.
+      // 1. Map all audio from first input (0:a?)
+      // 2. Map the image from second input (1)
+      // 3. Mark the image as 'attached_pic'
+      args = [
+        '-y',
+        '-i', inputPath,
+        '-i', imagePath,
+        '-map', '0:a?',
+        '-map', '1',
+        '-c', 'copy',
+        '-disposition:v:0', 'attached_pic',
+        '-map_metadata', '0',
+        outputPath,
+      ];
     }
 
-    final session = await FFmpegKit.execute(cmd);
+    final session = await FFmpegKit.executeWithArguments(args);
     final rc = await session.getReturnCode();
     if (!ReturnCode.isSuccess(rc)) {
       final logs = await session.getAllLogsAsString();
@@ -100,6 +112,51 @@ class FFmpegService {
       if (kDebugMode) debugPrint('FFmpegService: Error reading lyrics: $e');
       return null;
     }
+  }
+
+  Future<String?> extractCover({
+    required String inputPath,
+    required String outputPath,
+  }) async {
+    // Optimized: Stream copy mirroring Namida's extraction logic
+    try {
+      final session = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i', inputPath,
+        '-map', '0:v:0',
+        '-c', 'copy',
+        outputPath,
+      ]);
+      final rc = await session.getReturnCode();
+
+      if (ReturnCode.isSuccess(rc)) {
+        final file = File(outputPath);
+        if (await file.exists() && await file.length() > 0) {
+          return outputPath;
+        }
+      } else {
+         // Fallback: If copy fails (e.g. stream issue), try simple re-encode
+         final session2 = await FFmpegKit.executeWithArguments([
+           '-y',
+           '-i', inputPath,
+           '-an',
+           '-vcodec', 'mjpeg',
+           '-q:v', '2',
+           outputPath,
+         ]);
+         final rc2 = await session2.getReturnCode();
+         if (ReturnCode.isSuccess(rc2)) {
+           final file = File(outputPath);
+           if (await file.exists() && await file.length() > 0) {
+             return outputPath;
+           }
+         }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('FFmpegService: Extraction failed: $e');
+    }
+
+    return null;
   }
 
   String _q(String path) {

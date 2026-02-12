@@ -187,6 +187,7 @@ class FileManagerService {
             hash,
             mtimeMs,
             skipFolderCover: true,
+            useFFmpegFallback: true,
           );
         } catch (e) {
           debugPrint(
@@ -225,42 +226,78 @@ class FileManagerService {
 
     final tempDir = await Directory.systemTemp.createTemp('gru_ffmpeg_');
     final ext = p.extension(fileUrl).toLowerCase();
-    final tempOut = File(p.join(tempDir.path, 'out$ext'));
-
-    final ffmpeg = FFmpegService();
-    await ffmpeg.embedCover(
-      inputPath: fileUrl,
-      outputPath: tempOut.path,
-      imagePath: imagePath,
-    );
-
-    if (Platform.isAndroid &&
-        treeUri != null &&
-        treeUri.isNotEmpty &&
-        rootPath != null &&
-        rootPath.isNotEmpty) {
-      if (!p.isWithin(rootPath, fileUrl) &&
-          !p.equals(rootPath, p.dirname(fileUrl))) {
-        throw Exception('Source file is outside the music folder.');
+    
+    // Prepare the standardized input image (JPEG)
+    File? standardizedImageFile;
+    if (imagePath != null) {
+      try {
+        final originalImage = File(imagePath);
+        final bytes = await originalImage.readAsBytes();
+        
+        // Decode and re-encode as JPEG to ensure standard format
+        // This avoids issues where FFmpeg might produce incompatible MJPEG streams
+        // or fail with certain input formats (e.g. some PNGs)
+        final image = await compute(_decodeImage, bytes);
+        if (image != null) {
+          // Normalize size if too large (optional optimization, max 1000px)
+          img.Image processedImage = image;
+          if (processedImage.width > 1000 || processedImage.height > 1000) {
+            processedImage = img.copyResize(
+              processedImage, 
+              width: processedImage.width > processedImage.height ? 1000 : null,
+              height: processedImage.height > processedImage.width ? 1000 : null,
+              maintainAspect: true
+            );
+          }
+          
+          final jpgBytes = img.encodeJpg(processedImage, quality: 90);
+          standardizedImageFile = File(p.join(tempDir.path, 'cover_std.jpg'));
+          await standardizedImageFile.writeAsBytes(jpgBytes);
+        }
+      } catch (e) {
+        debugPrint('FileManager: Failed to standardize image: $e');
+        // Fallback to original path if conversion fails
       }
-      final sourceRelativePath = p.relative(fileUrl, from: rootPath);
-      await AndroidStorageService.writeFileFromPath(
-        treeUri: treeUri,
-        sourceRelativePath: sourceRelativePath,
-        sourcePath: tempOut.path,
-      );
-    } else {
-      final original = File(fileUrl);
-      final backup = File('$fileUrl.bak');
-      if (await backup.exists()) {
-        await backup.delete();
-      }
-      await original.rename(backup.path);
-      await tempOut.rename(original.path);
-      await backup.delete();
     }
 
-    await tempDir.delete(recursive: true);
+    final tempOut = File(p.join(tempDir.path, 'out$ext'));
+    final ffmpeg = FFmpegService();
+    
+    try {
+      await ffmpeg.embedCover(
+        inputPath: fileUrl,
+        outputPath: tempOut.path,
+        imagePath: standardizedImageFile?.path ?? imagePath,
+      );
+
+      if (Platform.isAndroid &&
+          treeUri != null &&
+          treeUri.isNotEmpty &&
+          rootPath != null &&
+          rootPath.isNotEmpty) {
+        if (!p.isWithin(rootPath, fileUrl) &&
+            !p.equals(rootPath, p.dirname(fileUrl))) {
+          throw Exception('Source file is outside the music folder.');
+        }
+        final sourceRelativePath = p.relative(fileUrl, from: rootPath);
+        await AndroidStorageService.writeFileFromPath(
+          treeUri: treeUri,
+          sourceRelativePath: sourceRelativePath,
+          sourcePath: tempOut.path,
+        );
+      } else {
+        final original = File(fileUrl);
+        final backup = File('$fileUrl.bak');
+        if (await backup.exists()) {
+          await backup.delete();
+        }
+        await original.rename(backup.path);
+        await tempOut.rename(original.path);
+        await backup.delete();
+      }
+    } finally {
+      await tempDir.delete(recursive: true);
+    }
   }
 
   /// Gets the bytes for exporting the song cover (as JPG).
@@ -584,18 +621,27 @@ class FileManagerService {
 
         // The library writes to a_new.* - rename it back to original
         final extension = p.extension(tempFile.path).toLowerCase();
-        String? newFileName;
-        if (extension == '.mp4' || extension == '.m4a') {
-          newFileName = 'a_new.mp4';
-        } else if (extension == '.wav') {
-          newFileName = 'a_new.wav';
-        }
+        // audio_metadata_reader tends to write to 'a_new[ext]'
+        final defaultNewName = 'a_new$extension';
+        final newFile = File(p.join(tempDir.path, defaultNewName));
 
-        if (newFileName != null) {
-          final newFile = File(p.join(tempDir.path, newFileName));
-          if (await newFile.exists()) {
-            await newFile.rename(tempFile.path);
-          }
+        if (await newFile.exists()) {
+          await newFile.rename(tempFile.path);
+        } else {
+            // Fallback for specific known behaviors if the generic one fails
+             String? specificNewName;
+             if (extension == '.mp4' || extension == '.m4a' || extension == '.m4b') {
+               specificNewName = 'a_new.mp4'; // Library defaults to .mp4 for m4a container
+             } else if (extension == '.wav') {
+               specificNewName = 'a_new.wav';
+             }
+
+             if (specificNewName != null) {
+                final specificFile = File(p.join(tempDir.path, specificNewName));
+                if (await specificFile.exists()) {
+                  await specificFile.rename(tempFile.path);
+                }
+             }
         }
       } finally {
         Directory.current = originalDir;

@@ -638,13 +638,26 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           .read(fileManagerServiceProvider)
           .updateSongCover(song, imagePath);
 
-      // Read the file's new mtime since the metadata write changed it on disk
+      // Read the file's new mtime. Prefer the one embedded in the cache filename
+      // to ensure consistency with the scanner service.
       double? newMtime;
-      try {
-        final stat = await File(song.url).stat();
-        newMtime = stat.modified.millisecondsSinceEpoch / 1000.0;
-      } catch (_) {
-        newMtime = song.mtime;
+      if (newCoverPath != null) {
+        final match = RegExp(r'_(\d+)(\.[^.]+)?$').firstMatch(newCoverPath);
+        if (match != null) {
+          final ms = int.tryParse(match.group(1)!);
+          if (ms != null) {
+            newMtime = ms / 1000.0;
+          }
+        }
+      }
+
+      if (newMtime == null) {
+        try {
+          final stat = await File(song.url).stat();
+          newMtime = stat.modified.millisecondsSinceEpoch / 1000.0;
+        } catch (_) {
+          newMtime = song.mtime;
+        }
       }
 
       if (state.hasValue) {
