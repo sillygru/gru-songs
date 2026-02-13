@@ -131,6 +131,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       .setAutoResumeOnVolumeRestore(val);
                 },
               ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Text(
+                  'Song Transitions',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
+              _buildDurationSlider(
+                icon: Icons.volume_down_rounded,
+                title: 'Fade Out',
+                value: settings.fadeOutDuration,
+                onChanged: (val) =>
+                    ref.read(settingsProvider.notifier).setFadeOutDuration(val),
+              ),
+              _buildDurationSlider(
+                icon: Icons.volume_up_rounded,
+                title: 'Fade In',
+                value: settings.fadeInDuration,
+                onChanged: (val) =>
+                    ref.read(settingsProvider.notifier).setFadeInDuration(val),
+              ),
+              _buildDurationSlider(
+                icon: Icons.hourglass_empty_rounded,
+                title: 'Gap / Delay',
+                value: settings.delayDuration,
+                onChanged: (val) =>
+                    ref.read(settingsProvider.notifier).setDelayDuration(val),
+              ),
             ],
           ),
           _buildSettingsGroup(
@@ -422,6 +450,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           : null,
       trailing: const Icon(Icons.chevron_right, size: 20),
       onTap: onTap,
+    );
+  }
+
+  Widget _buildDurationSlider({
+    required IconData icon,
+    required String title,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+              const Spacer(),
+              Text(
+                '${value.toStringAsFixed(1)}s',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: value,
+            min: 0,
+            max: 12,
+            divisions: 24,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
     );
   }
 

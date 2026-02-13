@@ -62,6 +62,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Volume monitoring
   VolumeMonitorService? _volumeMonitorService;
 
+  // Fading and delay state
+  bool _isFadingIn = false;
+  bool _isFadingOut = false;
+  bool _isWaitingForDelay = false;
+  String? _lastFadedFilename;
+  Timer? _fadeTimer;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<SequenceState?>? _sequenceSubscription;
+
   // New stats counters
   double _foregroundDuration = 0.0;
   double _backgroundDuration = 0.0;
@@ -82,6 +91,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _initStatsListeners();
     _initPersistence();
     _initVolumeMonitoring();
+    _initFadingListeners();
   }
 
   AudioPlayer get player => _player;
@@ -161,6 +171,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<void> playSong(Song song,
       {List<Song>? contextQueue, bool startPlaying = true}) async {
+    _resetFading();
     await _player.setShuffleModeEnabled(false);
 
     // 1. Setup Local Queue (Optimistic)
@@ -351,6 +362,112 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _volumeMonitorService
           ?.setAutoPauseEnabled(initialSettings.autoPauseOnVolumeZero);
     }
+  }
+
+  void _initFadingListeners() {
+    _positionSubscription = _player.positionStream.listen((position) {
+      if (_ref == null) return;
+      final settings = _ref!.read(settingsProvider);
+      final fadeOutDuration = settings.fadeOutDuration;
+      final delayDuration = settings.delayDuration;
+
+      final totalDuration = _player.duration;
+      if (totalDuration == null) return;
+
+      final remaining = totalDuration - position;
+
+      // 1. Delay logic (pause at 1s remaining)
+      if (delayDuration > 0 &&
+          remaining.inMilliseconds <= 1000 &&
+          remaining.inMilliseconds > 0 &&
+          !_isWaitingForDelay &&
+          _player.playing) {
+        _isWaitingForDelay = true;
+        _player.pause();
+        
+        // Subtract 1 second from the setting because we are pausing 1s early
+        final adjustedDelayMs = max(0.0, (delayDuration - 1.0) * 1000).toInt();
+        
+        Future.delayed(
+            Duration(milliseconds: adjustedDelayMs), () {
+          // Verify we're still on the same song before resuming
+          if (_player.duration == totalDuration) {
+            _player.play();
+          }
+        });
+      }
+
+      // 2. Fade Out logic
+      if (fadeOutDuration > 0) {
+        if (remaining.inMilliseconds <= fadeOutDuration * 1000 &&
+            remaining.inMilliseconds > 0 &&
+            _player.playing) {
+          _isFadingOut = true;
+          final volume = (remaining.inMilliseconds / (fadeOutDuration * 1000))
+              .clamp(0.0, 1.0);
+          _player.setVolume(volume);
+        } else if (_isFadingOut &&
+            remaining.inMilliseconds > fadeOutDuration * 1000) {
+          _isFadingOut = false;
+          if (!_isFadingIn) {
+            _player.setVolume(1.0);
+          }
+        }
+      } else {
+        if (!_isFadingIn && _player.volume != 1.0) {
+          _player.setVolume(1.0);
+        }
+      }
+    });
+
+    _sequenceSubscription = _player.sequenceStateStream.listen((state) async {
+      if (_ref == null) return;
+      final settings = _ref!.read(settingsProvider);
+
+      final currentItem = state.currentSource?.tag;
+      if (currentItem is MediaItem) {
+        final newFilename = currentItem.id;
+        if (_lastFadedFilename != newFilename) {
+          _lastFadedFilename = newFilename;
+          _isWaitingForDelay = false;
+          _isFadingOut = false;
+
+          if (settings.fadeInDuration > 0) {
+            _startFadeIn(settings.fadeInDuration);
+          } else {
+            _player.setVolume(1.0);
+          }
+        }
+      }
+    });
+  }
+
+  void _startFadeIn(double duration) {
+    _fadeTimer?.cancel();
+    _isFadingIn = true;
+    _player.setVolume(0.0);
+
+    final startTime = DateTime.now();
+    _fadeTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+      final targetMs = duration * 1000;
+
+      if (elapsed >= targetMs) {
+        _player.setVolume(1.0);
+        _isFadingIn = false;
+        timer.cancel();
+      } else {
+        _player.setVolume(elapsed / targetMs);
+      }
+    });
+  }
+
+  void _resetFading() {
+    _fadeTimer?.cancel();
+    _isFadingIn = false;
+    _isFadingOut = false;
+    _isWaitingForDelay = false;
+    _player.setVolume(1.0);
   }
 
   Future<ShuffleState?> syncShuffleState() async {
@@ -1380,6 +1497,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       bool startPlaying = true,
       Duration? initialPosition}) async {
     if (_effectiveQueue.isEmpty) return;
+    _resetFading();
 
     final targetIndex = initialIndex ?? _player.currentIndex ?? 0;
     final currentItem = (targetIndex < _effectiveQueue.length)
@@ -1444,6 +1562,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   void dispose() {
     _volumeMonitorService?.dispose();
+    _positionSubscription?.cancel();
+    _sequenceSubscription?.cancel();
+    _fadeTimer?.cancel();
     _player.dispose();
     shuffleNotifier.dispose();
     _syncTimer?.cancel();

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -48,6 +49,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late TapGestureRecognizer _albumRecognizer;
   late AnimationController _playPauseController;
 
+  StreamSubscription? _sequenceSubscription;
+  StreamSubscription? _playerStateSubscription;
+  StreamSubscription? _positionSubscription;
+
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
 
   @override
@@ -59,7 +64,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     _artistRecognizer = TapGestureRecognizer();
     _albumRecognizer = TapGestureRecognizer();
-    player.sequenceStateStream.listen((state) {
+    _sequenceSubscription = player.sequenceStateStream.listen((state) {
       final tag = state.currentSource?.tag;
       final String? songId = tag is MediaItem ? tag.id : null;
 
@@ -79,7 +84,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
 
     // Sync animation controller with player state
-    player.playerStateStream.listen((state) {
+    _playerStateSubscription = player.playerStateStream.listen((state) {
+      if (!mounted) return;
       if (state.playing) {
         _playPauseController.forward();
       } else {
@@ -87,7 +93,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     });
 
-    player.positionStream.listen((position) {
+    _positionSubscription = player.positionStream.listen((position) {
+      if (!mounted) return;
       if (_lyrics != null && _lyrics!.any((l) => l.time != Duration.zero)) {
         int newIndex = -1;
         for (int i = 0; i < _lyrics!.length; i++) {
@@ -176,6 +183,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   void dispose() {
+    _sequenceSubscription?.cancel();
+    _playerStateSubscription?.cancel();
+    _positionSubscription?.cancel();
     _currentLyricIndexNotifier.dispose();
     _playPauseController.dispose();
     _lyricsScrollController.dispose();

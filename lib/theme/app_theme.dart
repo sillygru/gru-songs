@@ -11,7 +11,8 @@ class AppTheme {
       return _getDynamicTheme(effectiveCoverColor);
     }
 
-    final Color? overlayColor = state.useCoverColor ? effectiveCoverColor : null;
+    final Color? overlayColor =
+        state.useCoverColor ? effectiveCoverColor : null;
 
     switch (state.mode) {
       case AppThemeMode.defaultTheme:

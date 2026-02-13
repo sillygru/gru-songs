@@ -11,6 +11,9 @@ class SettingsState {
   final SongSortOrder sortOrder;
   final bool showSongDuration;
   final bool animatedSoundWaveEnabled;
+  final double fadeOutDuration;
+  final double fadeInDuration;
+  final double delayDuration;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -20,6 +23,9 @@ class SettingsState {
     this.sortOrder = SongSortOrder.title,
     this.showSongDuration = false,
     this.animatedSoundWaveEnabled = true,
+    this.fadeOutDuration = 0.0,
+    this.fadeInDuration = 0.0,
+    this.delayDuration = 0.0,
   });
 
   SettingsState copyWith({
@@ -30,6 +36,9 @@ class SettingsState {
     SongSortOrder? sortOrder,
     bool? showSongDuration,
     bool? animatedSoundWaveEnabled,
+    double? fadeOutDuration,
+    double? fadeInDuration,
+    double? delayDuration,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -42,6 +51,9 @@ class SettingsState {
       showSongDuration: showSongDuration ?? this.showSongDuration,
       animatedSoundWaveEnabled:
           animatedSoundWaveEnabled ?? this.animatedSoundWaveEnabled,
+      fadeOutDuration: fadeOutDuration ?? this.fadeOutDuration,
+      fadeInDuration: fadeInDuration ?? this.fadeInDuration,
+      delayDuration: delayDuration ?? this.delayDuration,
     );
   }
 }
@@ -54,6 +66,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keySortOrder = 'sort_order';
   static const _keyShowSongDuration = 'show_song_duration';
   static const _keyAnimatedSoundWaveEnabled = 'animated_sound_wave_enabled';
+  static const _keyFadeOutDuration = 'fade_out_duration';
+  static const _keyFadeInDuration = 'fade_in_duration';
+  static const _keyDelayDuration = 'delay_duration';
 
   @override
   SettingsState build() {
@@ -76,7 +91,28 @@ class SettingsNotifier extends Notifier<SettingsState> {
       showSongDuration: prefs.getBool(_keyShowSongDuration) ?? false,
       animatedSoundWaveEnabled:
           prefs.getBool(_keyAnimatedSoundWaveEnabled) ?? true,
+      fadeOutDuration: prefs.getDouble(_keyFadeOutDuration) ?? 0.0,
+      fadeInDuration: prefs.getDouble(_keyFadeInDuration) ?? 0.0,
+      delayDuration: prefs.getDouble(_keyDelayDuration) ?? 0.0,
     );
+  }
+
+  Future<void> setFadeOutDuration(double value) async {
+    state = state.copyWith(fadeOutDuration: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyFadeOutDuration, value);
+  }
+
+  Future<void> setFadeInDuration(double value) async {
+    state = state.copyWith(fadeInDuration: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyFadeInDuration, value);
+  }
+
+  Future<void> setDelayDuration(double value) async {
+    state = state.copyWith(delayDuration: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyDelayDuration, value);
   }
 
   Future<void> setShowSongDuration(bool show) async {

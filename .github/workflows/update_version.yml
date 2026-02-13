@@ -1,0 +1,33 @@
+name: Update Version
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'pubspec.yaml'
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update pubspec.yaml
+        run: |
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          # Extract the base version (everything before the +)
+          # Matches 'version: 1.2.3-beta+456' -> '1.2.3-beta'
+          VERSION_BASE=$(grep '^version: ' pubspec.yaml | sed -E 's/version: ([^+]+).*/\1/')
+          
+          echo "New version: $VERSION_BASE+$COMMIT_COUNT"
+          sed -i "s/^version: .*/version: $VERSION_BASE+$COMMIT_COUNT/" pubspec.yaml
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update version to reflect commit count [skip ci]"
+          file_pattern: 'pubspec.yaml'
