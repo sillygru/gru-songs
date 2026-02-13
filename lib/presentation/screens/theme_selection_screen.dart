@@ -32,13 +32,23 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
     super.dispose();
   }
 
+  String _getModeName(AppThemeMode mode) {
+    switch (mode) {
+      case AppThemeMode.defaultTheme:
+        return "DEFAULT";
+      case AppThemeMode.oled:
+        return "OLED";
+      case AppThemeMode.matchCover:
+        return "MATCH WITH COVER";
+    }
+  }
+
   void _applyTheme() {
     final selectedMode = AppThemeMode.values[_currentIndex];
     ref.read(themeProvider.notifier).setTheme(selectedMode);
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          "Theme set to ${selectedMode.toString().split('.').last.toUpperCase()}"),
+      content: Text("Theme set to ${_getModeName(selectedMode)}"),
       duration: const Duration(seconds: 1),
     ));
   }
@@ -171,58 +181,12 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
               child: Column(
                 children: [
                   Text(
-                    AppThemeMode.values[_currentIndex]
-                        .toString()
-                        .split('.')
-                        .last
-                        .toUpperCase(),
+                    _getModeName(AppThemeMode.values[_currentIndex]),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.2,
                         ),
                   ),
-                  const SizedBox(height: 24),
-                  if (AppThemeMode.values[_currentIndex] ==
-                      AppThemeMode.custom) ...[
-                    _buildColorSection(
-                      context,
-                      "Primary Color",
-                      Color(themeState.customPrimaryColor),
-                      (color) => ref
-                          .read(themeProvider.notifier)
-                          .setCustomColors(primary: color.toARGB32()),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildColorSection(
-                      context,
-                      "Background color",
-                      Color(themeState.customBackgroundColor),
-                      (color) => ref
-                          .read(themeProvider.notifier)
-                          .setCustomColors(background: color.toARGB32()),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-                  SwitchListTile(
-                    title:
-                        const Text("Match buttons to currently playing cover"),
-                    subtitle:
-                        const Text("Dynamically extract colors from album art"),
-                    value: themeState.useCoverColor,
-                    onChanged: (val) => ref
-                        .read(themeProvider.notifier)
-                        .setCoverColorSettings(useCover: val),
-                  ),
-                  if (themeState.useCoverColor)
-                    SwitchListTile(
-                      title: const Text("Apply cover color to whole app"),
-                      subtitle:
-                          const Text("Updates all screens to match the cover"),
-                      value: themeState.applyCoverColorToAll,
-                      onChanged: (val) => ref
-                          .read(themeProvider.notifier)
-                          .setCoverColorSettings(applyAll: val),
-                    ),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
@@ -254,75 +218,6 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildColorSection(BuildContext context, String label,
-      Color currentColor, Function(Color) onColorSelected) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              _buildColorOption(currentColor, isSelected: true),
-              const VerticalDivider(),
-              ...[
-                Colors.red,
-                Colors.pink,
-                Colors.purple,
-                Colors.deepPurple,
-                Colors.indigo,
-                Colors.blue,
-                Colors.lightBlue,
-                Colors.cyan,
-                Colors.teal,
-                Colors.green,
-                Colors.lightGreen,
-                Colors.lime,
-                Colors.yellow,
-                Colors.amber,
-                Colors.orange,
-                Colors.deepOrange,
-                Colors.brown,
-                Colors.grey,
-                Colors.blueGrey,
-                const Color(0xFF121212),
-                const Color(0xFF000000),
-                const Color(0xFF1A1A1A),
-              ].map((color) => _buildColorOption(color,
-                  onTap: () => onColorSelected(color))),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildColorOption(Color color,
-      {bool isSelected = false, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        margin: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isSelected ? Colors.white : Colors.white24,
-            width: isSelected ? 3 : 1,
-          ),
-        ),
-        child: isSelected
-            ? const Icon(Icons.check, size: 20, color: Colors.white)
-            : null,
       ),
     );
   }

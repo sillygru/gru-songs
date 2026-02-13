@@ -1,46 +1,32 @@
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
 import '../providers/theme_provider.dart';
 
-enum AppThemeMode { classic, oled, ocean, sunset, custom }
+enum AppThemeMode { defaultTheme, oled, matchCover }
 
 class AppTheme {
   static ThemeData getTheme(ThemeState state, {Color? coverColor}) {
     final effectiveCoverColor = coverColor ?? state.extractedColor;
 
-    // If cover color should be used for the whole app
-    if (state.useCoverColor &&
-        state.applyCoverColorToAll &&
-        effectiveCoverColor != null) {
+    if (state.mode == AppThemeMode.matchCover && effectiveCoverColor != null) {
       return _getDynamicTheme(effectiveCoverColor);
     }
 
-    final Color? overlayColor =
-        (state.useCoverColor && !state.applyCoverColorToAll)
-            ? effectiveCoverColor
-            : null;
+    final Color? overlayColor = state.useCoverColor ? effectiveCoverColor : null;
 
     switch (state.mode) {
-      case AppThemeMode.classic:
-        return _classicTheme(overlayColor);
+      case AppThemeMode.defaultTheme:
+        return _defaultTheme(overlayColor);
       case AppThemeMode.oled:
         return _oledTheme(overlayColor);
-      case AppThemeMode.ocean:
-        return _oceanTheme(overlayColor);
-      case AppThemeMode.sunset:
-        return _sunsetTheme(overlayColor);
-      case AppThemeMode.custom:
-        return _getCustomTheme(
-          Color(state.customPrimaryColor),
-          Color(state.customBackgroundColor),
-          overlayColor,
-        );
+      case AppThemeMode.matchCover:
+        return _defaultTheme(overlayColor);
     }
   }
 
   static ThemeData getPlayerTheme(ThemeState state, Color? coverColor) {
     final effectiveCoverColor = coverColor ?? state.extractedColor;
-    if (state.useCoverColor && effectiveCoverColor != null) {
+    if ((state.mode == AppThemeMode.matchCover || state.useCoverColor) &&
+        effectiveCoverColor != null) {
       return _getDynamicTheme(effectiveCoverColor);
     }
     return getTheme(state, coverColor: effectiveCoverColor);
@@ -52,53 +38,35 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: seedColor,
         brightness: Brightness.dark,
-        surface: AppPalette.backgroundDark,
+        surface: const Color(0xFF0F0F0F),
       ),
-      scaffoldBackgroundColor: AppPalette.backgroundDark,
+      scaffoldBackgroundColor: const Color(0xFF0F0F0F),
       appBarTheme: const AppBarTheme(
-        backgroundColor: AppPalette.backgroundDark,
+        backgroundColor: Color(0xFF0F0F0F),
         scrolledUnderElevation: 0,
       ),
     );
   }
 
-  static ThemeData _getCustomTheme(Color primary, Color background,
-      [Color? overridePrimary]) {
-    final effectivePrimary = overridePrimary ?? primary;
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: effectivePrimary,
-        brightness: Brightness.dark,
-        surface: background,
-      ).copyWith(
-        primary: effectivePrimary,
-        surface: background,
-      ),
-      scaffoldBackgroundColor: background,
-      appBarTheme: AppBarTheme(
-        backgroundColor: background,
-        scrolledUnderElevation: 0,
-      ),
-    );
-  }
-
-  static ThemeData _classicTheme([Color? overridePrimary]) {
-    final primary = overridePrimary ?? AppPalette.primaryRed;
+  static ThemeData _defaultTheme([Color? overridePrimary]) {
+    final primary = overridePrimary ?? const Color(0xFFBB86FC); // Modern Violet
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primary,
         brightness: Brightness.dark,
-        surface: AppPalette.backgroundDark,
-      ).copyWith(primary: primary),
-      scaffoldBackgroundColor: AppPalette.backgroundDark,
+        surface: const Color(0xFF121212),
+      ).copyWith(
+        primary: primary,
+        secondary: const Color(0xFF03DAC6),
+      ),
+      scaffoldBackgroundColor: const Color(0xFF121212),
       appBarTheme: const AppBarTheme(
-        backgroundColor: AppPalette.backgroundDark,
+        backgroundColor: Color(0xFF121212),
         scrolledUnderElevation: 0,
       ),
       cardTheme: CardThemeData(
-        color: AppPalette.surfaceDark,
+        color: const Color(0xFF1E1E1E),
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -106,7 +74,7 @@ class AppTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: AppPalette.backgroundDark,
+        backgroundColor: const Color(0xFF121212),
         indicatorColor: primary.withValues(alpha: 0.2),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       ),
@@ -141,66 +109,6 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.black,
-        indicatorColor: primary.withValues(alpha: 0.2),
-      ),
-    );
-  }
-
-  static ThemeData _oceanTheme([Color? overridePrimary]) {
-    final primary = overridePrimary ?? Colors.cyanAccent;
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primary,
-        brightness: Brightness.dark,
-        surface: AppPalette.backgroundOcean,
-      ).copyWith(primary: primary),
-      scaffoldBackgroundColor: AppPalette.backgroundOcean,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: AppPalette.backgroundOcean,
-        scrolledUnderElevation: 0,
-      ),
-      cardTheme: CardThemeData(
-        color: AppPalette.surfaceOcean,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: AppPalette.backgroundOcean,
-        indicatorColor: primary.withValues(alpha: 0.2),
-      ),
-    );
-  }
-
-  static ThemeData _sunsetTheme([Color? overridePrimary]) {
-    final primary = overridePrimary ?? Colors.orange;
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primary,
-        brightness: Brightness.dark,
-        surface: const Color(0xFF2D1B2E),
-      ).copyWith(
-        primary: primary,
-        primaryContainer: const Color(0xFF701B4B), // Rich Plum/Sunset Pink
-        onPrimaryContainer: Colors.white,
-      ),
-      scaffoldBackgroundColor: const Color(0xFF201020),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF201020),
-        scrolledUnderElevation: 0,
-      ),
-      cardTheme: CardThemeData(
-        color: const Color(0xFF402030),
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: const Color(0xFF201020),
         indicatorColor: primary.withValues(alpha: 0.2),
       ),
     );
