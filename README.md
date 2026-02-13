@@ -6,14 +6,14 @@ Wispie is a simple local music player app built with Flutter.
 [Features](#features) | [Additional Features](#additional-features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
 
 ## Important
-- This is still in development, it's an alpha version. It is considerably stable and usable but there are still features yet to be implemented and lots of UI improvements/polish to be made.
+- This is still in development, it's a beta version. It is considerably stable and usable but there are still features yet to be implemented and lots of UI improvements/polish to be made.
 
 
 ## Features
-- **Shuffle personalities:** Multiple shuffle personalities, default, explorer and consistent
+- **Shuffle personalities:** Multiple shuffle personalities such as consistent and explorer with the hability to make your own
 - **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists.
 - **Metadata Editing:** Built-in editor for modifying song metadata (title, artist, album, filename, lyrics)
-- **Lyrics:** Support for `.lrc` files and embedded lyrics with synchronized scrolling.
+- **Lyrics:** Support for embedded lyrics with synchronized scrolling.
 - **Merged Songs:** Combine multiple versions of a track (remixes, live, etc.) into a single group for shuffle, keeping individual favorites and settings.
 - **Sleep timer** Sleep timer with customizable duration and features.
 
@@ -23,8 +23,8 @@ Wispie is a simple local music player app built with Flutter.
 - **Volume Monitoring:** Auto-pause playback when volume is muted and resume when restored
 - **Theme Selection:** Multiple theme options
 - **Statistics Tracking:** Collects stats (real)
-- **User Profiles:** Multi-user support with individual profiles and settings (who tf would use this)
-- - **Smart indexing for search:** When searching, song lyrics, albums and artists are all indexed for quick searches
+- **User Profiles:** Multi-user support with individual profiles and settings (who tf would use ts)
+- **Smart indexing for search:** When searching, song lyrics, albums and artists are all indexed for quick searches
 
 ## Getting Started
 

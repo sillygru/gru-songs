@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum ShufflePersonality { defaultMode, explorer, consistent }
+enum ShufflePersonality { defaultMode, explorer, consistent, custom }
 
 class ShuffleConfig extends Equatable {
   final bool enabled;
@@ -11,6 +11,20 @@ class ShuffleConfig extends Equatable {
   final int historyLimit;
   final ShufflePersonality personality;
 
+  // Custom mode - Simple Settings
+  final bool avoidRepeatingSongs;
+  final bool avoidRepeatingArtists;
+  final bool avoidRepeatingAlbums;
+  final bool
+      favorLeastPlayed; // true = favor least played, false = favor most played
+
+  // Custom mode - Advanced Settings (-99 to +99, 0 = neutral)
+  final int leastPlayedWeight;
+  final int mostPlayedWeight;
+  final int favoritesWeight;
+  final int suggestLessWeight;
+  final int playlistSongsWeight;
+
   const ShuffleConfig({
     this.enabled = false,
     this.antiRepeatEnabled = true,
@@ -19,6 +33,17 @@ class ShuffleConfig extends Equatable {
     this.suggestLessMultiplier = 0.2,
     this.historyLimit = 200,
     this.personality = ShufflePersonality.defaultMode,
+    // Custom mode - Simple (defaults)
+    this.avoidRepeatingSongs = true,
+    this.avoidRepeatingArtists = true,
+    this.avoidRepeatingAlbums = true,
+    this.favorLeastPlayed = true,
+    // Custom mode - Advanced (0 = neutral)
+    this.leastPlayedWeight = 0,
+    this.mostPlayedWeight = 0,
+    this.favoritesWeight = 0,
+    this.suggestLessWeight = 0,
+    this.playlistSongsWeight = 0,
   });
 
   factory ShuffleConfig.fromJson(Map<String, dynamic> json) {
@@ -31,6 +56,17 @@ class ShuffleConfig extends Equatable {
           (json['suggest_less_multiplier'] ?? 0.2).toDouble(),
       historyLimit: json['history_limit'] ?? 200,
       personality: _parsePersonality(json['personality']),
+      // Custom mode - Simple
+      avoidRepeatingSongs: json['avoid_repeating_songs'] ?? true,
+      avoidRepeatingArtists: json['avoid_repeating_artists'] ?? true,
+      avoidRepeatingAlbums: json['avoid_repeating_albums'] ?? true,
+      favorLeastPlayed: json['favor_least_played'] ?? true,
+      // Custom mode - Advanced
+      leastPlayedWeight: json['least_played_weight'] ?? 0,
+      mostPlayedWeight: json['most_played_weight'] ?? 0,
+      favoritesWeight: json['favorites_weight'] ?? 0,
+      suggestLessWeight: json['suggest_less_weight'] ?? 0,
+      playlistSongsWeight: json['playlist_songs_weight'] ?? 0,
     );
   }
 
@@ -43,6 +79,17 @@ class ShuffleConfig extends Equatable {
       'suggest_less_multiplier': suggestLessMultiplier,
       'history_limit': historyLimit,
       'personality': _personalityToString(personality),
+      // Custom mode - Simple
+      'avoid_repeating_songs': avoidRepeatingSongs,
+      'avoid_repeating_artists': avoidRepeatingArtists,
+      'avoid_repeating_albums': avoidRepeatingAlbums,
+      'favor_least_played': favorLeastPlayed,
+      // Custom mode - Advanced
+      'least_played_weight': leastPlayedWeight,
+      'most_played_weight': mostPlayedWeight,
+      'favorites_weight': favoritesWeight,
+      'suggest_less_weight': suggestLessWeight,
+      'playlist_songs_weight': playlistSongsWeight,
     };
   }
 
@@ -52,6 +99,8 @@ class ShuffleConfig extends Equatable {
         return ShufflePersonality.explorer;
       case 'consistent':
         return ShufflePersonality.consistent;
+      case 'custom':
+        return ShufflePersonality.custom;
       default:
         return ShufflePersonality.defaultMode;
     }
@@ -63,6 +112,8 @@ class ShuffleConfig extends Equatable {
         return 'explorer';
       case ShufflePersonality.consistent:
         return 'consistent';
+      case ShufflePersonality.custom:
+        return 'custom';
       default:
         return 'default';
     }
@@ -76,6 +127,17 @@ class ShuffleConfig extends Equatable {
     double? suggestLessMultiplier,
     int? historyLimit,
     ShufflePersonality? personality,
+    // Custom mode - Simple
+    bool? avoidRepeatingSongs,
+    bool? avoidRepeatingArtists,
+    bool? avoidRepeatingAlbums,
+    bool? favorLeastPlayed,
+    // Custom mode - Advanced
+    int? leastPlayedWeight,
+    int? mostPlayedWeight,
+    int? favoritesWeight,
+    int? suggestLessWeight,
+    int? playlistSongsWeight,
   }) {
     return ShuffleConfig(
       enabled: enabled ?? this.enabled,
@@ -86,6 +148,18 @@ class ShuffleConfig extends Equatable {
           suggestLessMultiplier ?? this.suggestLessMultiplier,
       historyLimit: historyLimit ?? this.historyLimit,
       personality: personality ?? this.personality,
+      // Custom mode - Simple
+      avoidRepeatingSongs: avoidRepeatingSongs ?? this.avoidRepeatingSongs,
+      avoidRepeatingArtists:
+          avoidRepeatingArtists ?? this.avoidRepeatingArtists,
+      avoidRepeatingAlbums: avoidRepeatingAlbums ?? this.avoidRepeatingAlbums,
+      favorLeastPlayed: favorLeastPlayed ?? this.favorLeastPlayed,
+      // Custom mode - Advanced
+      leastPlayedWeight: leastPlayedWeight ?? this.leastPlayedWeight,
+      mostPlayedWeight: mostPlayedWeight ?? this.mostPlayedWeight,
+      favoritesWeight: favoritesWeight ?? this.favoritesWeight,
+      suggestLessWeight: suggestLessWeight ?? this.suggestLessWeight,
+      playlistSongsWeight: playlistSongsWeight ?? this.playlistSongsWeight,
     );
   }
 
@@ -98,6 +172,17 @@ class ShuffleConfig extends Equatable {
         suggestLessMultiplier,
         historyLimit,
         personality,
+        // Custom mode - Simple
+        avoidRepeatingSongs,
+        avoidRepeatingArtists,
+        avoidRepeatingAlbums,
+        favorLeastPlayed,
+        // Custom mode - Advanced
+        leastPlayedWeight,
+        mostPlayedWeight,
+        favoritesWeight,
+        suggestLessWeight,
+        playlistSongsWeight,
       ];
 }
 

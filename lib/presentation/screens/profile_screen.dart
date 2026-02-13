@@ -10,6 +10,7 @@ import '../widgets/scanning_progress_bar.dart';
 import '../../services/telemetry_service.dart';
 import 'settings_screen.dart';
 import 'backup_management_screen.dart';
+import 'custom_shuffle_settings_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -225,12 +226,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                       subtitle: 'Favorites heavy',
                                       value: ShufflePersonality.consistent,
                                     ),
+                                    _buildRadioTile(
+                                      title: 'Custom',
+                                      subtitle: 'Configure your own shuffle',
+                                      value: ShufflePersonality.custom,
+                                    ),
                                   ],
                                 ),
                               ),
                             ),
                           );
                         }),
+                    // Custom Mode Settings Button
+                    ValueListenableBuilder<ShuffleState>(
+                      valueListenable: audioManager.shuffleStateNotifier,
+                      builder: (context, shuffleState, child) {
+                        if (shuffleState.config.personality !=
+                            ShufflePersonality.custom) {
+                          return const SizedBox.shrink();
+                        }
+                        return Column(
+                          children: [
+                            const SizedBox(height: 12),
+                            _buildListTile(
+                              icon: Icons.tune,
+                              title: 'Configure Custom Shuffle',
+                              subtitle: 'Adjust shuffle behavior settings',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const CustomShuffleSettingsScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                     const SizedBox(height: 24),
 
                     _buildSectionTitle('Account'),

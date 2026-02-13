@@ -47,9 +47,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Merged song groups for shuffle weighting
   Map<String, List<String>> _mergedGroups = {};
 
-  // Priority songs for each merge group (filename -> groupId for quick lookup)
-  Map<String, String> _mergedGroupPriorities = {};
-
   // Shuffle state
   ShuffleState _shuffleState = const ShuffleState();
 
@@ -133,20 +130,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       {List<String>? favorites,
       List<String>? suggestLess,
       List<String>? hidden,
-      Map<String, List<String>>? mergedGroups,
-      Map<String, String?>? mergedGroupPriorities}) {
+      Map<String, List<String>>? mergedGroups}) {
     if (favorites != null) _favorites = favorites;
     if (suggestLess != null) _suggestLess = suggestLess;
     if (hidden != null) _hidden = hidden;
     if (mergedGroups != null) _mergedGroups = mergedGroups;
-    if (mergedGroupPriorities != null) {
-      _mergedGroupPriorities = {};
-      for (final entry in mergedGroupPriorities.entries) {
-        if (entry.value != null) {
-          _mergedGroupPriorities[entry.value!] = entry.key;
-        }
-      }
-    }
   }
 
   Future<void> updateShuffleConfig(ShuffleConfig config) async {
@@ -912,26 +900,47 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       {QueueItem? lastItem}) async {
     if (items.isEmpty) return [];
 
-    // Fetch local play counts, skip stats, and history (with actual play ratios) for weighting
+    // Fetch local play counts, skip stats, and history for weighting
     final playCounts = await DatabaseService.instance.getPlayCounts();
     final skipStats = await DatabaseService.instance.getSkipStats();
     final playHistory = await DatabaseService.instance
         .getPlayHistory(limit: _shuffleState.config.historyLimit);
 
-    final result = <QueueItem>[];
-    final remaining = List<QueueItem>.from(items);
-    QueueItem? prev = lastItem;
+    // Group items by merge group - each merge group becomes one "virtual" item
+    final Map<String, List<QueueItem>> mergeGroups = {};
+    final List<QueueItem> standaloneItems = [];
 
-    // Track all filenames from merge groups that have been added to result
-    // This ensures merged songs are treated as one unit across the entire queue
-    final Set<String> usedMergeGroupFilenames = {};
-
-    // If we have a lastItem, mark its entire merge group as used
-    if (lastItem != null) {
-      final lastMergeGroup = _getMergedGroupFilenames(lastItem.song.filename);
-      if (lastMergeGroup.isNotEmpty) {
-        usedMergeGroupFilenames.addAll(lastMergeGroup);
+    for (final item in items) {
+      final groupId = _getMergedGroupId(item.song.filename);
+      if (groupId != null) {
+        mergeGroups.putIfAbsent(groupId, () => []).add(item);
+      } else {
+        standaloneItems.add(item);
       }
+    }
+
+    // Create virtual items for shuffle: standalone items + merge groups (as units)
+    final virtualItems = <_VirtualShuffleItem>[];
+
+    // Add standalone items
+    for (final item in standaloneItems) {
+      virtualItems.add(_VirtualShuffleItem(
+        type: _VirtualItemType.standalone,
+        items: [item],
+        representative: item,
+      ));
+    }
+
+    // Add merge groups as single virtual items
+    for (final entry in mergeGroups.entries) {
+      // Use the first item as representative for artist/album checks
+      // The actual song will be chosen later based on favorites/suggest-less
+      virtualItems.add(_VirtualShuffleItem(
+        type: _VirtualItemType.mergeGroup,
+        items: entry.value,
+        representative: entry.value.first,
+        groupId: entry.key,
+      ));
     }
 
     // Calculate max play count for adaptive consistent mode
@@ -940,33 +949,31 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       maxPlayCount = playCounts.values.fold(0, max);
     }
 
+    final result = <QueueItem>[];
+    final remaining = List<_VirtualShuffleItem>.from(virtualItems);
+    _VirtualShuffleItem? prev = lastItem != null
+        ? _createVirtualItemFromQueueItem(lastItem, mergeGroups)
+        : null;
+
     while (remaining.isNotEmpty) {
-      // Filter out songs from merge groups that have already been used
-      final availableItems = remaining.where((item) {
-        final mergeGroup = _getMergedGroupFilenames(item.song.filename);
-        if (mergeGroup.isEmpty) {
-          // Not in a merge group, always available
-          return true;
-        }
-        // Check if any song from this merge group has been used
-        return !mergeGroup
-            .any((filename) => usedMergeGroupFilenames.contains(filename));
-      }).toList();
-
-      // If all remaining items are from used merge groups, reset and allow them
-      final itemsToConsider =
-          availableItems.isNotEmpty ? availableItems : remaining;
-
-      final weights = itemsToConsider
-          .map((item) => _calculateWeight(
+      final weights = remaining
+          .map((item) => _calculateVirtualWeight(
               item, prev, playCounts, skipStats, maxPlayCount, playHistory))
           .toList();
+
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
       if (totalWeight <= 0) {
+        // Fallback: shuffle remaining and select randomly from each group
         remaining.shuffle();
-        result.addAll(remaining);
+        for (final virtualItem in remaining) {
+          final selected = _selectSongFromVirtualItem(virtualItem);
+          if (selected != null) {
+            result.add(selected);
+          }
+        }
         break;
       }
+
       double randomValue = Random().nextDouble() * totalWeight;
       int selectedIdx = -1;
       double cumulative = 0.0;
@@ -977,140 +984,199 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           break;
         }
       }
-      if (selectedIdx == -1) selectedIdx = itemsToConsider.length - 1;
-      final selected = itemsToConsider[selectedIdx];
+      if (selectedIdx == -1) selectedIdx = remaining.length - 1;
 
-      // Mark this song's entire merge group as used
-      final selectedMergeGroup =
-          _getMergedGroupFilenames(selected.song.filename);
-      if (selectedMergeGroup.isNotEmpty) {
-        usedMergeGroupFilenames.addAll(selectedMergeGroup);
+      final selectedVirtual = remaining[selectedIdx];
+      final selectedSong = _selectSongFromVirtualItem(selectedVirtual);
+
+      if (selectedSong != null) {
+        result.add(selectedSong);
+        prev = selectedVirtual;
       }
 
-      remaining.remove(selected);
-      result.add(selected);
-      prev = selected;
+      remaining.removeAt(selectedIdx);
     }
+
     return result;
   }
 
-  /// Checks if a song is in the same merge group as the previous song
-  bool _isInSameMergeGroup(String filename1, String filename2) {
-    for (final group in _mergedGroups.values) {
-      final contains1 = group.contains(filename1);
-      final contains2 = group.contains(filename2);
-      if (contains1 && contains2) {
-        return true;
-      }
+  /// Creates a virtual item from a queue item for comparison purposes
+  _VirtualShuffleItem? _createVirtualItemFromQueueItem(
+      QueueItem item, Map<String, List<QueueItem>> mergeGroups) {
+    final groupId = _getMergedGroupId(item.song.filename);
+    if (groupId != null && mergeGroups.containsKey(groupId)) {
+      return _VirtualShuffleItem(
+        type: _VirtualItemType.mergeGroup,
+        items: mergeGroups[groupId]!,
+        representative: item,
+        groupId: groupId,
+      );
     }
-    return false;
+    return _VirtualShuffleItem(
+      type: _VirtualItemType.standalone,
+      items: [item],
+      representative: item,
+    );
   }
 
-  /// Gets all filenames in the same merge group as the given filename
-  List<String> _getMergedGroupFilenames(String filename) {
-    for (final group in _mergedGroups.values) {
-      if (group.contains(filename)) {
-        return group;
+  /// Gets the merge group ID for a filename, or null if not in a group
+  String? _getMergedGroupId(String filename) {
+    for (final entry in _mergedGroups.entries) {
+      if (entry.value.contains(filename)) {
+        return entry.key;
       }
     }
-    return [];
+    return null;
   }
 
-  double _calculateWeight(
-      QueueItem item,
-      QueueItem? prev,
-      Map<String, int> playCounts,
-      Map<String, ({int count, double avgRatio})> skipStats,
-      int maxPlayCount,
-      List<
-              ({
-                String filename,
-                double timestamp,
-                double playRatio,
-                String eventType
-              })>
-          playHistory) {
+  /// Selects an actual song from a virtual item based on favorites/suggest-less
+  QueueItem? _selectSongFromVirtualItem(_VirtualShuffleItem virtualItem) {
+    if (virtualItem.items.length == 1) {
+      return virtualItem.items.first;
+    }
+
+    // For merge groups, select based on weighted random with favorites/suggest-less
+    final weights = virtualItem.items.map((item) {
+      double weight = 1.0;
+      if (_isFavorite(item.song.filename)) {
+        weight *= 2.0; // Favorites get 2x boost
+      }
+      if (_isSuggestLess(item.song.filename)) {
+        weight *= 0.2; // Suggest-less get 80% penalty
+      }
+      return weight;
+    }).toList();
+
+    final totalWeight = weights.fold(0.0, (a, b) => a + b);
+    if (totalWeight <= 0) {
+      return virtualItem.items.first;
+    }
+
+    double randomValue = Random().nextDouble() * totalWeight;
+    double cumulative = 0.0;
+    for (int i = 0; i < weights.length; i++) {
+      cumulative += weights[i];
+      if (randomValue <= cumulative) {
+        return virtualItem.items[i];
+      }
+    }
+    return virtualItem.items.last;
+  }
+
+  /// Calculates weight for a virtual item (merge group or standalone song)
+  double _calculateVirtualWeight(
+    _VirtualShuffleItem item,
+    _VirtualShuffleItem? prev,
+    Map<String, int> playCounts,
+    Map<String, ({int count, double avgRatio})> skipStats,
+    int maxPlayCount,
+    List<
+            ({
+              String filename,
+              double timestamp,
+              double playRatio,
+              String eventType
+            })>
+        playHistory,
+  ) {
     double weight = 1.0;
-    final song = item.song;
+    final representative = item.representative;
     final config = _shuffleState.config;
-    final count = playCounts[song.filename] ?? 0;
 
-    // HIERARCHY 1 (TOP PRIORITY): Global Recency Penalty (Last 200 songs)
-    // Check both the song itself and its merge group from database history
-    // Use actual play ratios to weight penalties - songs that were barely listened to
-    // (low play ratio) should have less penalty than songs fully listened to
-    if (playHistory.isNotEmpty) {
+    // Get effective play count for the group (sum of all songs in group)
+    int groupPlayCount = 0;
+    if (item.type == _VirtualItemType.mergeGroup) {
+      for (final queueItem in item.items) {
+        groupPlayCount += playCounts[queueItem.song.filename] ?? 0;
+      }
+    } else {
+      groupPlayCount = playCounts[representative.song.filename] ?? 0;
+    }
+
+    // HIERARCHY 1 (TOP PRIORITY): Global Recency Penalty
+    final bool isConsistentMode =
+        config.personality == ShufflePersonality.consistent;
+    final bool isCustomMode = config.personality == ShufflePersonality.custom;
+    final bool shouldAvoidRepeatingSongs =
+        isCustomMode ? config.avoidRepeatingSongs : !isConsistentMode;
+
+    if (shouldAvoidRepeatingSongs && playHistory.isNotEmpty) {
       int historyIndex = -1;
       double playRatioInHistory = 0.0;
 
-      // Find this song in history
+      // Check if any song in the group is in history
       for (int i = 0; i < playHistory.length; i++) {
-        if (playHistory[i].filename == song.filename) {
-          historyIndex = i;
-          playRatioInHistory = playHistory[i].playRatio;
-          break;
-        }
-      }
-
-      // Also check if any song in the merge group is in history
-      // Use the MOST RECENT occurrence from the merge group (smallest historyIndex)
-      if (_mergedGroups.isNotEmpty) {
-        final groupFilenames = _getMergedGroupFilenames(song.filename);
-        for (int i = 0; i < playHistory.length && i < 200; i++) {
-          if (groupFilenames.contains(playHistory[i].filename)) {
-            // If we haven't found this song yet, or this is more recent than what we found
-            if (historyIndex == -1 || i < historyIndex) {
-              historyIndex = i;
-              playRatioInHistory = playHistory[i].playRatio;
+        if (item.type == _VirtualItemType.mergeGroup) {
+          for (final queueItem in item.items) {
+            if (playHistory[i].filename == queueItem.song.filename) {
+              if (historyIndex == -1 || i < historyIndex) {
+                historyIndex = i;
+                playRatioInHistory = playHistory[i].playRatio;
+              }
+              break;
             }
+          }
+        } else {
+          if (playHistory[i].filename == representative.song.filename) {
+            historyIndex = i;
+            playRatioInHistory = playHistory[i].playRatio;
+            break;
           }
         }
       }
 
       if (historyIndex != -1 && historyIndex < 200) {
-        // MUCH MORE AGGRESSIVE PENALTY for recent plays
-        // Position 0-9 (last 10 songs): 99.9% penalty (virtually eliminated)
-        // Position 10-19: 99% penalty
-        // Position 20-29: 97% penalty
-        // Position 30-39: 94% penalty
-        // Position 40-49: 90% penalty
-        // Position 50-59: 85% penalty
-        // Position 60-79: 75% penalty
-        // Position 80-99: 60% penalty
-        // Position 100-149: 40% penalty
-        // Position 150-199: 20% penalty
-
         double basePenaltyPercent;
-        if (historyIndex < 10) {
-          basePenaltyPercent = 99.9;
-        } else if (historyIndex < 20) {
-          basePenaltyPercent = 99.0;
-        } else if (historyIndex < 30) {
-          basePenaltyPercent = 97.0;
-        } else if (historyIndex < 40) {
-          basePenaltyPercent = 94.0;
-        } else if (historyIndex < 50) {
-          basePenaltyPercent = 90.0;
-        } else if (historyIndex < 60) {
-          basePenaltyPercent = 85.0;
-        } else if (historyIndex < 80) {
-          basePenaltyPercent = 75.0;
-        } else if (historyIndex < 100) {
-          basePenaltyPercent = 60.0;
-        } else if (historyIndex < 150) {
-          basePenaltyPercent = 40.0;
+
+        // Consistent mode: relaxed penalties (allows familiar songs)
+        // Other modes: aggressive penalties (avoids recent songs)
+        if (isConsistentMode) {
+          // Relaxed penalties for Consistent mode
+          if (historyIndex < 10) {
+            basePenaltyPercent = 60.0;
+          } else if (historyIndex < 20) {
+            basePenaltyPercent = 50.0;
+          } else if (historyIndex < 30) {
+            basePenaltyPercent = 40.0;
+          } else if (historyIndex < 40) {
+            basePenaltyPercent = 30.0;
+          } else if (historyIndex < 50) {
+            basePenaltyPercent = 20.0;
+          } else if (historyIndex < 60) {
+            basePenaltyPercent = 15.0;
+          } else if (historyIndex < 80) {
+            basePenaltyPercent = 10.0;
+          } else if (historyIndex < 100) {
+            basePenaltyPercent = 5.0;
+          } else {
+            basePenaltyPercent = 0.0;
+          }
         } else {
-          // 150-199
-          basePenaltyPercent = 20.0;
+          // Aggressive penalties for Explorer/Default/Custom modes
+          if (historyIndex < 10) {
+            basePenaltyPercent = 99.9;
+          } else if (historyIndex < 20) {
+            basePenaltyPercent = 99.0;
+          } else if (historyIndex < 30) {
+            basePenaltyPercent = 97.0;
+          } else if (historyIndex < 40) {
+            basePenaltyPercent = 94.0;
+          } else if (historyIndex < 50) {
+            basePenaltyPercent = 90.0;
+          } else if (historyIndex < 60) {
+            basePenaltyPercent = 85.0;
+          } else if (historyIndex < 80) {
+            basePenaltyPercent = 75.0;
+          } else if (historyIndex < 100) {
+            basePenaltyPercent = 60.0;
+          } else if (historyIndex < 150) {
+            basePenaltyPercent = 40.0;
+          } else {
+            basePenaltyPercent = 20.0;
+          }
         }
 
         // Adjust penalty based on play ratio
-        // If play ratio was low (e.g., 0.26), reduce the penalty
-        // If play ratio was high (e.g., 1.0), keep full penalty
-        // playRatio < 0.25: skip, apply 30% of base penalty
-        // playRatio 0.25-0.5: partial listen, apply 50% of base penalty
-        // playRatio 0.5-0.8: good listen, apply 80% of base penalty
-        // playRatio > 0.8: full listen, apply 100% of base penalty
         double penaltyMultiplier = 1.0;
         if (playRatioInHistory < 0.25) {
           penaltyMultiplier = 0.3;
@@ -1125,42 +1191,35 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    // HIERARCHY 2: Global Skip Penalty (Often Skipped Songs)
-    // This OVERRIDES all other rewards/penalties
-    final stats = skipStats[song.filename];
-    if (stats != null && stats.count >= 3) {
-      final avgRatio = stats.avgRatio;
-      if (avgRatio <= 0.25) {
-        // Calculate penalty based on avgRatio
-        // avgRatio=0.01 -> 99% penalty (0.01 multiplier)
-        // avgRatio=0.10 -> 90% penalty (0.10 multiplier)
-        // avgRatio=0.25 -> 75% penalty (0.25 multiplier)
-        double skipPenaltyMultiplier = avgRatio;
-        weight *= skipPenaltyMultiplier;
+    // HIERARCHY 2: Global Skip Penalty
+    if (item.type == _VirtualItemType.standalone) {
+      final stats = skipStats[representative.song.filename];
+      if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.25) {
+        weight *= stats.avgRatio;
+      }
+    } else {
+      // For merge groups, check all songs
+      for (final queueItem in item.items) {
+        final stats = skipStats[queueItem.song.filename];
+        if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.25) {
+          weight *= 0.5; // 50% penalty if any song in group is often skipped
+          break;
+        }
       }
     }
 
-    // HIERARCHY 3: Mode-Specific Weights (Explorer, Consistent, Default)
+    // HIERARCHY 3: Mode-Specific Weights
     if (config.personality == ShufflePersonality.explorer) {
-      // Explorer mode: heavily reward least-played songs
       if (maxPlayCount > 0) {
-        // Calculate play count relative to max
-        final playRatio = count / maxPlayCount;
-
+        final playRatio = groupPlayCount / maxPlayCount;
         if (playRatio <= 0.4) {
-          // Songs played 40% or less than the most played song get rewards
-          // playRatio=0.0 (never played) -> 2.0x multiplier
-          // playRatio=0.2 (20% of max) -> 1.5x multiplier
-          // playRatio=0.4 (40% of max) -> 1.0x multiplier
           double explorerReward = 1.0 + (1.0 - (playRatio / 0.4));
           weight *= explorerReward;
         }
-      } else if (count == 0) {
-        // If there's no play count data yet, still reward unplayed songs
+      } else if (groupPlayCount == 0) {
         weight *= 2.0;
       }
     } else if (config.personality == ShufflePersonality.consistent) {
-      // Adaptive Threshold for new users
       int threshold = 10;
       if (maxPlayCount < 10) {
         threshold = max(1, (maxPlayCount * 0.7).floor());
@@ -1168,54 +1227,120 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         threshold = 5;
       }
 
-      if (count >= threshold && count > 0) {
-        weight *= 1.3; // 30% reward for often played
+      if (groupPlayCount >= threshold && groupPlayCount > 0) {
+        weight *= 1.3;
       }
-    } else if (config.personality == ShufflePersonality.defaultMode) {
-      // Default uses streak breaker
-      if (config.streakBreakerEnabled && prev != null) {
-        final prevSong = prev.song;
+    } else if (config.personality == ShufflePersonality.custom) {
+      // Custom mode: use user-defined weights (-99 to +99)
+      // Convert -99..+99 to multiplier (0.01 to 1.99, with 0 = 1.0 neutral)
+      double weightToMultiplier(int weight) {
+        return 1.0 + (weight / 100.0); // -99 -> 0.01, 0 -> 1.0, +99 -> 1.99
+      }
 
-        // Check if songs are in the same merge group (treat as same song for streak breaking)
-        if (_isInSameMergeGroup(song.filename, prevSong.filename)) {
-          weight *= 0.05; // 95% penalty for merged songs played back-to-back
-        } else {
-          if (song.artist != 'Unknown Artist' &&
+      // Apply least played weight for songs with low play count
+      if (maxPlayCount > 0) {
+        final playRatio = groupPlayCount / maxPlayCount;
+        if (playRatio <= 0.4 && config.leastPlayedWeight != 0) {
+          weight *= weightToMultiplier(config.leastPlayedWeight);
+        }
+      } else if (groupPlayCount == 0 && config.leastPlayedWeight != 0) {
+        weight *= weightToMultiplier(config.leastPlayedWeight);
+      }
+
+      // Apply most played weight for songs in top 40% of play counts
+      if (maxPlayCount > 0) {
+        final playRatio = groupPlayCount / maxPlayCount;
+        if (playRatio >= 0.6 && config.mostPlayedWeight != 0) {
+          weight *= weightToMultiplier(config.mostPlayedWeight);
+        }
+      }
+    }
+
+    // HIERARCHY 4: Artist/Album Avoidance (all modes except Consistent)
+    final bool isExplorer = config.personality == ShufflePersonality.explorer;
+    final bool isDefault = config.personality == ShufflePersonality.defaultMode;
+    final bool shouldAvoidArtist = isExplorer ||
+        isDefault ||
+        (isCustomMode && config.avoidRepeatingArtists);
+    final bool shouldAvoidAlbum = isExplorer ||
+        isDefault ||
+        (isCustomMode && config.avoidRepeatingAlbums);
+
+    if ((shouldAvoidArtist || shouldAvoidAlbum) && prev != null) {
+      final prevSong = prev.representative.song;
+      final currentSong = representative.song;
+
+      // Check if in same merge group
+      if (item.type == _VirtualItemType.mergeGroup &&
+          prev.type == _VirtualItemType.mergeGroup &&
+          item.groupId == prev.groupId) {
+        weight *= 0.01; // 99% penalty for same merge group
+      } else {
+        // Artist avoidance
+        if (shouldAvoidArtist) {
+          if (currentSong.artist != 'Unknown Artist' &&
               prevSong.artist != 'Unknown Artist' &&
-              song.artist == prevSong.artist) {
-            weight *= 0.5;
+              currentSong.artist == prevSong.artist) {
+            weight *= 0.5; // 50% penalty
           }
-          if (song.album != 'Unknown Album' &&
+        }
+
+        // Album avoidance
+        if (shouldAvoidAlbum) {
+          if (currentSong.album != 'Unknown Album' &&
               prevSong.album != 'Unknown Album' &&
-              song.album == prevSong.album) {
-            weight *= 0.7;
+              currentSong.album == prevSong.album) {
+            weight *= 0.7; // 30% penalty
           }
         }
       }
     }
 
-    // LOWER PRIORITY: User Preferences
-    // Favorites and suggest-less are per-song only (not shared across merge groups)
-    final isFavorite = _isFavorite(song.filename);
-    if (isFavorite) {
-      if (config.personality == ShufflePersonality.consistent) {
-        weight *= 1.4; // +40% for consistent
-      } else if (config.personality == ShufflePersonality.explorer) {
-        weight *= 1.12; // +12% for explorer
-      } else {
-        weight *= config.favoriteMultiplier; // +20% default (1.2)
+    // LOWER PRIORITY: Favorites and Suggest-Less (consider group as a whole)
+    bool hasFavorite = false;
+    bool hasSuggestLess = false;
+
+    if (item.type == _VirtualItemType.mergeGroup) {
+      for (final queueItem in item.items) {
+        if (_isFavorite(queueItem.song.filename)) hasFavorite = true;
+        if (_isSuggestLess(queueItem.song.filename)) hasSuggestLess = true;
       }
-    }
-    // Suggest-less is per-song only (not shared across merge groups)
-    final isSuggestLess = _isSuggestLess(song.filename);
-    if (isSuggestLess) {
-      weight *= 0.2; // 80% penalty globally
+    } else {
+      if (_isFavorite(representative.song.filename)) hasFavorite = true;
+      if (_isSuggestLess(representative.song.filename)) hasSuggestLess = true;
     }
 
-    // LOWER PRIORITY: Priority boost for merged groups
-    // If this song is the priority song in its merge group, give it a boost
-    if (_mergedGroupPriorities.containsKey(song.filename)) {
-      weight *= 1.5; // 50% boost for priority song
+    if (hasFavorite) {
+      if (config.personality == ShufflePersonality.consistent) {
+        weight *= 1.4;
+      } else if (config.personality == ShufflePersonality.explorer) {
+        weight *= 1.12;
+      } else if (config.personality == ShufflePersonality.custom) {
+        // Convert -99..+99 to multiplier
+        double weightToMultiplier(int weight) {
+          return 1.0 + (weight / 100.0);
+        }
+
+        if (config.favoritesWeight != 0) {
+          weight *= weightToMultiplier(config.favoritesWeight);
+        }
+      } else {
+        weight *= config.favoriteMultiplier;
+      }
+    }
+
+    if (hasSuggestLess) {
+      if (config.personality == ShufflePersonality.custom &&
+          config.suggestLessWeight != 0) {
+        // Convert -99..+99 to multiplier (negative = penalty, positive = boost)
+        double weightToMultiplier(int weight) {
+          return 1.0 + (weight / 100.0);
+        }
+
+        weight *= weightToMultiplier(config.suggestLessWeight);
+      } else {
+        weight *= 0.2;
+      }
     }
 
     return max(0.0001, weight);
@@ -1323,4 +1448,21 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     shuffleNotifier.dispose();
     _syncTimer?.cancel();
   }
+}
+
+// Helper enum and class for merge group shuffle logic
+enum _VirtualItemType { standalone, mergeGroup }
+
+class _VirtualShuffleItem {
+  final _VirtualItemType type;
+  final List<QueueItem> items;
+  final QueueItem representative;
+  final String? groupId;
+
+  _VirtualShuffleItem({
+    required this.type,
+    required this.items,
+    required this.representative,
+    this.groupId,
+  });
 }

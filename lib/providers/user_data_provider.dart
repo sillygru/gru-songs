@@ -183,7 +183,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
           suggestLess: state.suggestLess,
           hidden: state.hidden,
           mergedGroups: state.mergedGroups,
-          mergedGroupPriorities: state.mergedGroupPriorities,
         );
   }
 
