@@ -384,12 +384,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _player.playing) {
         _isWaitingForDelay = true;
         _player.pause();
-        
+
         // Subtract 1 second from the setting because we are pausing 1s early
         final adjustedDelayMs = max(0.0, (delayDuration - 1.0) * 1000).toInt();
-        
-        Future.delayed(
-            Duration(milliseconds: adjustedDelayMs), () {
+
+        Future.delayed(Duration(milliseconds: adjustedDelayMs), () {
           // Verify we're still on the same song before resuming
           if (_player.duration == totalDuration) {
             _player.play();
@@ -980,6 +979,65 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         config: _shuffleState.config.copyWith(enabled: isShuffle));
     shuffleStateNotifier.value = _shuffleState;
     updateShuffleConfig(_shuffleState.config); // Re-uses logic
+  }
+
+  /// Replaces the queue with new songs while keeping the current song playing.
+  /// If the currently playing song is the first song in the new queue, it is skipped.
+  Future<void> replaceQueue(List<Song> songs) async {
+    if (songs.isEmpty) return;
+
+    final currentSong = currentSongNotifier.value;
+    final isPlaying = _player.playing;
+
+    // Filter out the currently playing song if it's first in the list
+    List<Song> queueSongs = List.from(songs);
+    if (currentSong != null &&
+        isPlaying &&
+        queueSongs.isNotEmpty &&
+        queueSongs.first.filename == currentSong.filename) {
+      queueSongs.removeAt(0);
+    }
+
+    if (queueSongs.isEmpty) return;
+
+    _resetFading();
+    await _player.setShuffleModeEnabled(false);
+
+    // Set up the new queue
+    _originalQueue = queueSongs.map((s) => QueueItem(song: s)).toList();
+    _isRestrictedToOriginal = true;
+
+    if (_shuffleState.config.enabled) {
+      // If shuffle is enabled, we need to shuffle the remaining songs
+      final shuffledItems = await _weightedShuffle(
+        _originalQueue.map((item) => QueueItem(song: item.song)).toList(),
+        lastItem: currentSong != null ? QueueItem(song: currentSong) : null,
+      );
+
+      // Keep current song at the front if playing
+      if (currentSong != null && isPlaying) {
+        final currentItem = QueueItem(song: currentSong);
+        _effectiveQueue = [currentItem, ...shuffledItems];
+        await _rebuildQueue(initialIndex: 0, startPlaying: true);
+      } else {
+        _effectiveQueue = shuffledItems;
+        await _rebuildQueue(initialIndex: 0, startPlaying: true);
+      }
+    } else {
+      // Linear queue
+      if (currentSong != null && isPlaying) {
+        // Add current song to front, then the new queue
+        final currentItem = QueueItem(song: currentSong);
+        _effectiveQueue = [currentItem, ..._originalQueue];
+        await _rebuildQueue(initialIndex: 0, startPlaying: true);
+      } else {
+        _effectiveQueue = List.from(_originalQueue);
+        await _rebuildQueue(initialIndex: 0, startPlaying: true);
+      }
+    }
+
+    _savePlaybackState();
+    _updateQueueNotifier();
   }
 
   Future<void> _applyShuffle(int currentIndex) async {

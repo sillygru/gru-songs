@@ -19,12 +19,13 @@ jobs:
       - name: Update pubspec.yaml
         run: |
           COMMIT_COUNT=$(git rev-list --count HEAD)
+          BUILD_NUMBER=$((COMMIT_COUNT + 1))
           # Extract the base version (everything before the +)
           # Matches 'version: 1.2.3-beta+456' -> '1.2.3-beta'
           VERSION_BASE=$(grep '^version: ' pubspec.yaml | sed -E 's/version: ([^+]+).*/\1/')
           
-          echo "New version: $VERSION_BASE+$COMMIT_COUNT"
-          sed -i "s/^version: .*/version: $VERSION_BASE+$COMMIT_COUNT/" pubspec.yaml
+          echo "New version: $VERSION_BASE+$BUILD_NUMBER"
+          sed -i "s/^version: .*/version: $VERSION_BASE+$BUILD_NUMBER/" pubspec.yaml
 
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5

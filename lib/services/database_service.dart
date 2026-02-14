@@ -162,6 +162,60 @@ class DatabaseService {
         .delete('playevent', where: 'session_id = ?', whereArgs: [sessionId]);
   }
 
+  // ==========================================================================
+  // SESSION HISTORY QUERIES
+  // ==========================================================================
+
+  /// Gets all play sessions ordered by start time (newest first)
+  /// Filters out sessions shorter than minDurationSeconds
+  Future<List<Map<String, dynamic>>> getPlaySessions(
+      {int minDurationSeconds = 30}) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return [];
+
+    try {
+      final results = await _statsDatabase!.rawQuery('''
+        SELECT 
+          ps.id,
+          ps.start_time,
+          ps.end_time,
+          ps.platform,
+          COUNT(pe.id) as song_count,
+          SUM(pe.duration_played) as total_duration
+        FROM playsession ps
+        LEFT JOIN playevent pe ON ps.id = pe.session_id
+        GROUP BY ps.id
+        HAVING (ps.end_time - ps.start_time) >= ? OR song_count > 0
+        ORDER BY ps.start_time DESC
+      ''', [minDurationSeconds]);
+
+      return results;
+    } catch (e) {
+      debugPrint('Error getting play sessions: $e');
+      return [];
+    }
+  }
+
+  /// Gets all play events for a specific session, ordered by timestamp (oldest first)
+  Future<List<Map<String, dynamic>>> getPlayEventsForSession(
+      String sessionId) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return [];
+
+    try {
+      final results = await _statsDatabase!.query(
+        'playevent',
+        where: 'session_id = ?',
+        whereArgs: [sessionId],
+        orderBy: 'timestamp ASC',
+      );
+      return results;
+    } catch (e) {
+      debugPrint('Error getting play events for session: $e');
+      return [];
+    }
+  }
+
   /// Clears all play events and sessions
   Future<void> clearStats() async {
     await _ensureInitialized();

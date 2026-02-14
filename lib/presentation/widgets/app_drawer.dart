@@ -9,6 +9,7 @@ import '../screens/song_list_screen.dart';
 import '../screens/playlists_screen.dart';
 import '../screens/artists_screen.dart';
 import '../screens/albums_screen.dart';
+import '../screens/session_history_screen.dart';
 
 class AppDrawer extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -188,6 +189,14 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                               color: Colors.purple,
                               onTap: () =>
                                   _navigateTo(const PlayHistoryScreen()),
+                            ),
+                            _buildNavItem(
+                              context,
+                              icon: Icons.queue_play_next,
+                              label: 'Session History',
+                              color: Colors.teal,
+                              onTap: () =>
+                                  _navigateTo(const SessionHistoryScreen()),
                             ),
                             const Divider(
                                 height: 32, indent: 16, endIndent: 16),
