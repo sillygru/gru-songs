@@ -17,18 +17,33 @@ jobs:
           fetch-depth: 0
 
       - name: Update pubspec.yaml
+        id: update_version
         run: |
           COMMIT_COUNT=$(git rev-list --count HEAD)
           BUILD_NUMBER=$((COMMIT_COUNT + 1))
-          # Extract the base version (everything before the +)
-          # Matches 'version: 1.2.3-beta+456' -> '1.2.3-beta'
-          VERSION_BASE=$(grep '^version: ' pubspec.yaml | sed -E 's/version: ([^+]+).*/\1/')
+          VERSION_BASE=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
+          NEW_VERSION="$VERSION_BASE+$BUILD_NUMBER"
+          CURRENT_VERSION=$(sed -n 's/^version: \(.*\)/\1/p' pubspec.yaml)
           
-          echo "New version: $VERSION_BASE+$BUILD_NUMBER"
-          sed -i "s/^version: .*/version: $VERSION_BASE+$BUILD_NUMBER/" pubspec.yaml
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+            echo "Version already correct. Skipping."
+            echo "should_commit=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version: $NEW_VERSION"
+            sed -i "s|^version: .*|version: $NEW_VERSION|" pubspec.yaml
+            echo "should_commit=true" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: update version to reflect commit count [skip ci]"
-          file_pattern: 'pubspec.yaml'
+      - name: Amend previous commit
+        if: steps.update_version.outputs.should_commit == 'true'
+        run: |
+          AUTHOR_NAME=$(git log -1 --format='%an')
+          AUTHOR_EMAIL=$(git log -1 --format='%ae')
+          git config --local user.name "$AUTHOR_NAME"
+          git config --local user.email "$AUTHOR_EMAIL"
+          git add pubspec.yaml
+          git commit --amend --no-edit
+
+      - name: Force push
+        if: steps.update_version.outputs.should_commit == 'true'
+        run: git push origin ${{ github.ref_name }} --force
