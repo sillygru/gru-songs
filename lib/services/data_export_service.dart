@@ -51,7 +51,12 @@ class DataExportService {
       encoder.close();
 
       // 4. Share
-      final xFile = XFile(zipPath);
+      final bytes = await File(zipPath).readAsBytes();
+      final xFile = XFile.fromData(
+        bytes,
+        name: basename(zipPath),
+        mimeType: 'application/zip',
+      );
       await Share.shareXFiles([xFile], text: 'Wispie Backup for $username');
     } finally {
       // Cleanup

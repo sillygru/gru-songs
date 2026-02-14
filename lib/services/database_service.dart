@@ -44,6 +44,7 @@ class DatabaseService {
           await _openDatabase('${username}_data.db', _userDataSchema);
 
       // --- AUTO-MIGRATION: Ensure tables and columns exist ---
+      await _ensureStatsTables(_statsDatabase!);
       await _ensureTablesAndColumns(_userDataDatabase!);
 
       _initCompleter!.complete();
@@ -52,6 +53,32 @@ class DatabaseService {
       _initCompleter!.completeError(e);
       rethrow;
     }
+  }
+
+  Future<void> _ensureStatsTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS playsession (
+        id TEXT PRIMARY KEY,
+        start_time REAL,
+        end_time REAL,
+        platform TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS playevent (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        song_filename TEXT,
+        event_type TEXT,
+        timestamp REAL,
+        duration_played REAL,
+        total_length REAL,
+        play_ratio REAL,
+        foreground_duration REAL,
+        background_duration REAL,
+        FOREIGN KEY (session_id) REFERENCES playsession (id)
+      )
+    ''');
   }
 
   Future<void> _ensureTablesAndColumns(Database db) async {
@@ -1794,5 +1821,18 @@ class DatabaseService {
   void dispose() {
     _statsDatabase?.close();
     _userDataDatabase?.close();
+    _statsDatabase = null;
+    _userDataDatabase = null;
+    _currentUsername = null;
+    _initCompleter = null;
+  }
+
+  Future<void> close() async {
+    await _statsDatabase?.close();
+    await _userDataDatabase?.close();
+    _statsDatabase = null;
+    _userDataDatabase = null;
+    _currentUsername = null;
+    _initCompleter = null;
   }
 }

@@ -286,6 +286,16 @@ class BackupService {
 
         final appDir = await getApplicationDocumentsDirectory();
 
+        // Close and delete existing databases to ensure a clean slate
+        await DatabaseService.instance.close();
+        final dbSuffixes = ['', '-journal', '-wal', '-shm'];
+        for (final suffix in dbSuffixes) {
+          final statsFile = File(p.join(appDir.path, '${username}_stats.db$suffix'));
+          final dataFile = File(p.join(appDir.path, '${username}_data.db$suffix'));
+          if (await statsFile.exists()) await statsFile.delete();
+          if (await dataFile.exists()) await dataFile.delete();
+        }
+
         // Restore databases - check both direct and in subdirectory
         final statsDbFile = File(p.join(tempDir.path, '${username}_stats.db'));
         final statsDbFileInDir = File(
@@ -307,6 +317,10 @@ class BackupService {
           await dataDbFileInDir
               .copy(p.join(appDir.path, '${username}_data.db'));
         }
+
+        // Reinitialize database service early to ensure tables are created
+        // and stats DB is ready for queries.
+        await DatabaseService.instance.initForUser(username);
 
         // Restore JSON data - check both direct and in subdirectory
         final storage = StorageService();
@@ -373,13 +387,8 @@ class BackupService {
               }
             }
           }
-          // Reinitialize database service first to ensure it's open
-          await DatabaseService.instance.initForUser(username);
           await DatabaseService.instance.setMergedGroups(groups);
         });
-
-        // Reinitialize database service to pick up new data
-        await DatabaseService.instance.initForUser(username);
 
         // Delete any existing search index (it will be rebuilt on next scan)
         try {
