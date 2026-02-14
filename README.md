@@ -1,13 +1,9 @@
-# Wispie
+# Wispie [Beta]
 
 ## What is Wispie?
 Wispie is a simple local music player app built with Flutter.
 
 [Features](#features) | [Additional Features](#additional-features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
-
-## Important
-- This is still in development, it's a beta version. It is considerably stable and usable but there are still features yet to be implemented and lots of UI improvements/polish to be made.
-
 
 ## Features
 - **Shuffle personalities:** Multiple shuffle personalities such as consistent and explorer with the hability to make your own

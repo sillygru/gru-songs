@@ -6,8 +6,32 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../domain/services/search_service.dart';
 import '../models/song.dart';
-import '../services/storage_service.dart';
 import '../services/scanner_service.dart';
+import '../services/database_service.dart';
+
+/// Available optimization types for database maintenance
+enum OptimizationType {
+  shuffleState,
+  statsDatabase,
+  userDataDatabase,
+  coverCache,
+  searchIndex,
+}
+
+/// Configuration for selective database optimization
+class OptimizationOptions {
+  final bool automaticMode;
+  final Set<OptimizationType> selectedTypes;
+
+  const OptimizationOptions({
+    this.automaticMode = true,
+    this.selectedTypes = const {},
+  });
+
+  bool isEnabled(OptimizationType type) {
+    return automaticMode || selectedTypes.contains(type);
+  }
+}
 
 /// Result of a database optimization operation
 class OptimizationResult {
@@ -41,9 +65,10 @@ class DatabaseOptimizerService {
   factory DatabaseOptimizerService() => _instance;
   DatabaseOptimizerService._internal();
 
-  /// Analyzes and optimizes all database files for a user
+  /// Analyzes and optimizes database files for a user based on selected options
   Future<OptimizationResult> optimizeDatabases(
     String username, {
+    OptimizationOptions options = const OptimizationOptions(),
     void Function(String message, double progress)? onProgress,
   }) async {
     final issuesFound = <String>[];
@@ -55,84 +80,139 @@ class DatabaseOptimizerService {
       final statsDbPath = join(docDir.path, '${username}_stats.db');
       final userDataDbPath = join(docDir.path, '${username}_data.db');
 
+      // Calculate total steps and progress increments
+      final enabledTypes = <OptimizationType>[];
+      if (options.isEnabled(OptimizationType.shuffleState)) {
+        enabledTypes.add(OptimizationType.shuffleState);
+      }
+      if (options.isEnabled(OptimizationType.statsDatabase)) {
+        enabledTypes.add(OptimizationType.statsDatabase);
+      }
+      if (options.isEnabled(OptimizationType.userDataDatabase)) {
+        enabledTypes.add(OptimizationType.userDataDatabase);
+      }
+      if (options.isEnabled(OptimizationType.coverCache)) {
+        enabledTypes.add(OptimizationType.coverCache);
+      }
+      if (options.isEnabled(OptimizationType.searchIndex)) {
+        enabledTypes.add(OptimizationType.searchIndex);
+      }
+
+      if (enabledTypes.isEmpty) {
+        return OptimizationResult(
+          success: true,
+          message: 'No optimizations selected.',
+          details: details,
+          issuesFound: issuesFound,
+          fixesApplied: fixesApplied,
+        );
+      }
+
+      final totalSteps = enabledTypes.length;
+      var currentStep = 0;
+
       // Clean up shuffle state JSON (remove history data)
-      onProgress?.call('Cleaning up shuffle state...', 0.05);
-      final shuffleCleanupResult = await _cleanupShuffleStateJson(username);
-      issuesFound.addAll(shuffleCleanupResult['issues'] as List<String>);
-      fixesApplied.addAll(shuffleCleanupResult['fixes'] as List<String>);
-      details['shuffle_state_cleanup'] = shuffleCleanupResult['details'];
+      if (options.isEnabled(OptimizationType.shuffleState)) {
+        currentStep++;
+        final progress = currentStep / totalSteps;
+        onProgress?.call('Cleaning up shuffle state...', progress);
+        final shuffleCleanupResult = await _cleanupShuffleStateJson(username);
+        issuesFound.addAll(shuffleCleanupResult['issues'] as List<String>);
+        fixesApplied.addAll(shuffleCleanupResult['fixes'] as List<String>);
+        details['shuffle_state_cleanup'] = shuffleCleanupResult['details'];
+      }
 
       // Optimize stats database (fix event types, vacuum)
-      onProgress?.call('Optimizing stats database...', 0.1);
-      final statsResult = await _optimizeStatsDatabase(statsDbPath);
-      issuesFound.addAll(statsResult['issues'] as List<String>);
-      fixesApplied.addAll(statsResult['fixes'] as List<String>);
-      details['stats_db'] = statsResult['details'];
+      if (options.isEnabled(OptimizationType.statsDatabase)) {
+        currentStep++;
+        final progress = currentStep / totalSteps;
+        onProgress?.call('Optimizing stats database...', progress);
+        final statsResult = await _optimizeStatsDatabase(statsDbPath);
+        issuesFound.addAll(statsResult['issues'] as List<String>);
+        fixesApplied.addAll(statsResult['fixes'] as List<String>);
+        details['stats_db'] = statsResult['details'];
+      }
 
       // Optimize user data database (fix schema, orphans, duplicates)
-      onProgress?.call('Optimizing user data database...', 0.2);
-      final userDataResult = await _optimizeUserDataDatabase(userDataDbPath);
-      issuesFound.addAll(userDataResult['issues'] as List<String>);
-      fixesApplied.addAll(userDataResult['fixes'] as List<String>);
-      details['user_data_db'] = userDataResult['details'];
+      if (options.isEnabled(OptimizationType.userDataDatabase)) {
+        currentStep++;
+        final progress = currentStep / totalSteps;
+        onProgress?.call('Optimizing user data database...', progress);
+        final userDataResult = await _optimizeUserDataDatabase(userDataDbPath);
+        issuesFound.addAll(userDataResult['issues'] as List<String>);
+        fixesApplied.addAll(userDataResult['fixes'] as List<String>);
+        details['user_data_db'] = userDataResult['details'];
+      }
 
       // Rebuild cover caches
-      onProgress?.call('Preparing to rebuild cover cache...', 0.3);
-      try {
-        final storage = StorageService();
-        final songs = await storage.loadSongs(username);
+      if (options.isEnabled(OptimizationType.coverCache)) {
+        currentStep++;
+        var progress = currentStep / totalSteps;
+        onProgress?.call('Preparing to rebuild cover cache...', progress);
+        try {
+          final songs = await DatabaseService.instance.getAllSongs();
 
-        if (songs.isNotEmpty) {
-          final scanner = ScannerService();
-          final coverMap =
-              await scanner.rebuildCoverCache(songs, onProgress: (p) {
-            onProgress?.call(
-                'Rebuilding covers... ${(p * 100).toInt()}%', 0.3 + (p * 0.5));
-          });
+          if (songs.isNotEmpty) {
+            final scanner = ScannerService();
+            // Force rebuild when not in automatic mode
+            final coverMap = await scanner.rebuildCoverCache(
+              songs,
+              onProgress: (p) {
+                onProgress?.call('Rebuilding covers... ${(p * 100).toInt()}%',
+                    progress + (p * (1 / totalSteps)));
+              },
+              force: !options.automaticMode,
+            );
 
-          // Update stored songs with the actual cover URLs from the rebuild
-          onProgress?.call('Updating song cover references...', 0.8);
-          int coversUpdated = 0;
-          final updatedSongs = songs.map((song) {
-            final newCoverUrl = coverMap[song.url];
-            if (newCoverUrl != song.coverUrl) {
-              coversUpdated++;
-              return Song(
-                title: song.title,
-                artist: song.artist,
-                album: song.album,
-                filename: song.filename,
-                url: song.url,
-                coverUrl: newCoverUrl,
-                hasLyrics: song.hasLyrics,
-                playCount: song.playCount,
-                duration: song.duration,
-                mtime: song.mtime,
-              );
+            // Update stored songs with the actual cover URLs from the rebuild
+            onProgress?.call('Updating song cover references...',
+                progress + (0.8 * (1 / totalSteps)));
+            int coversUpdated = 0;
+            final updatedSongs = songs.map((song) {
+              final newCoverUrl = coverMap[song.url];
+              if (newCoverUrl != song.coverUrl) {
+                coversUpdated++;
+                return Song(
+                  title: song.title,
+                  artist: song.artist,
+                  album: song.album,
+                  filename: song.filename,
+                  url: song.url,
+                  coverUrl: newCoverUrl,
+                  hasLyrics: song.hasLyrics,
+                  playCount: song.playCount,
+                  duration: song.duration,
+                  mtime: song.mtime,
+                );
+              }
+              return song;
+            }).toList();
+
+            await DatabaseService.instance.insertSongsBatch(updatedSongs);
+
+            fixesApplied.add('Rebuilt cover cache for ${songs.length} songs');
+            if (coversUpdated > 0) {
+              fixesApplied.add('Updated $coversUpdated song cover references');
             }
-            return song;
-          }).toList();
-
-          await storage.saveSongs(username, updatedSongs);
-
-          fixesApplied.add('Rebuilt cover cache for ${songs.length} songs');
-          if (coversUpdated > 0) {
-            fixesApplied.add('Updated $coversUpdated song cover references');
+            details['covers_rebuilt'] = songs.length;
+            details['covers_updated'] = coversUpdated;
           }
-          details['covers_rebuilt'] = songs.length;
-          details['covers_updated'] = coversUpdated;
+        } catch (e) {
+          issuesFound.add('Error rebuilding covers: $e');
+          debugPrint('Error rebuilding covers: $e');
         }
-      } catch (e) {
-        issuesFound.add('Error rebuilding covers: $e');
-        debugPrint('Error rebuilding covers: $e');
       }
 
       // Optimize/rebuild search index
-      onProgress?.call('Optimizing search index...', 0.9);
-      final searchIndexResult = await _optimizeSearchIndex(username);
-      issuesFound.addAll(searchIndexResult['issues'] as List<String>);
-      fixesApplied.addAll(searchIndexResult['fixes'] as List<String>);
-      details['search_index'] = searchIndexResult['details'];
+      if (options.isEnabled(OptimizationType.searchIndex)) {
+        currentStep++;
+        final progress = currentStep / totalSteps;
+        onProgress?.call('Optimizing search index...', progress);
+        final searchIndexResult = await _optimizeSearchIndex(username);
+        issuesFound.addAll(searchIndexResult['issues'] as List<String>);
+        fixesApplied.addAll(searchIndexResult['fixes'] as List<String>);
+        details['search_index'] = searchIndexResult['details'];
+      }
 
       onProgress?.call('Finalizing...', 1.0);
 
@@ -203,7 +283,7 @@ class DatabaseOptimizerService {
   }
 
   /// Optimizes the stats database (playevent table)
-  /// Only vacuums - doesn't modify schema to avoid data loss
+  /// Uses DatabaseService singleton for operations, separate connection only for VACUUM
   Future<Map<String, dynamic>> _optimizeStatsDatabase(String dbPath) async {
     final issues = <String>[];
     final fixes = <String>[];
@@ -211,42 +291,125 @@ class DatabaseOptimizerService {
 
     final dbFile = File(dbPath);
     if (!await dbFile.exists()) {
-      // Stats database doesn't exist yet, nothing to optimize
       details['exists'] = false;
       return {'issues': issues, 'fixes': fixes, 'details': details};
     }
 
     try {
-      final db = await openDatabase(dbPath);
-
-      // Run integrity check
-      final integrityCheck = await db.rawQuery('PRAGMA integrity_check');
-      final isOk = integrityCheck.first.values.first == 'ok';
-
-      if (!isOk) {
-        issues.add('Stats database integrity check failed');
-        fixes.add(
-            'Stats database integrity issues detected (manual intervention may be needed)');
+      // Ensure DatabaseService is initialized before proceeding
+      try {
+        await DatabaseService.instance.ensureInitializedForCurrentUser();
+      } catch (e) {
+        issues.add('DatabaseService not initialized: $e');
+        return {'issues': issues, 'fixes': fixes, 'details': details};
       }
 
-      // Fix Event Types categorization
-      final fixResult = await _fixEventTypes(db);
+      // Run integrity check via separate connection (safer for diagnostics)
+      Database? checkDb;
+      try {
+        checkDb = await openDatabase(dbPath, singleInstance: false);
+        final integrityCheck = await checkDb.rawQuery('PRAGMA integrity_check');
+        final isOk = integrityCheck.first.values.first == 'ok';
+
+        if (!isOk) {
+          issues.add('Stats database integrity check failed');
+          fixes.add(
+              'Stats database integrity issues detected (manual intervention may be needed)');
+        }
+        await checkDb.close();
+        checkDb = null;
+      } catch (e) {
+        issues.add('Could not check database integrity: $e');
+        await checkDb?.close();
+      }
+
+      // Fix Event Types using DatabaseService's connection
+      final fixResult = await _fixEventTypesViaService();
       if (fixResult['fixed'] > 0) {
         fixes.add('Fixed ${fixResult['fixed']} event type categorizations');
       }
       details['event_fixes'] = fixResult;
 
-      // Vacuum to reclaim space
-      await db.execute('VACUUM');
-      fixes.add('Vacuumed stats database');
-
-      await db.close();
-      details['vacuumed'] = true;
+      // Vacuum requires exclusive access - use separate connection
+      Database? vacuumDb;
+      try {
+        vacuumDb = await openDatabase(dbPath, singleInstance: false);
+        await vacuumDb.execute('VACUUM');
+        fixes.add('Vacuumed stats database');
+        details['vacuumed'] = true;
+      } catch (e) {
+        issues.add('Error vacuuming stats database: $e');
+        details['vacuumed'] = false;
+      } finally {
+        await vacuumDb?.close();
+      }
     } catch (e) {
       issues.add('Error optimizing stats database: $e');
     }
 
     return {'issues': issues, 'fixes': fixes, 'details': details};
+  }
+
+  /// Fixes event type categorization using DatabaseService singleton
+  /// Uses raw query execution through the singleton's database
+  Future<Map<String, dynamic>> _fixEventTypesViaService() async {
+    int fixedCount = 0;
+    final details = <String, dynamic>{};
+
+    try {
+      // Access the stats database through DatabaseService
+      final statsDb = DatabaseService.instance.getStatsDatabase();
+      if (statsDb == null) {
+        details['error'] = 'Stats database not available';
+        return {'fixed': fixedCount, 'details': details};
+      }
+
+      // Step 1: Fix events with ratio < 0.10 to 'skip'
+      final lowRatioToSkip = await statsDb.rawUpdate('''
+        UPDATE playevent
+        SET event_type = 'skip'
+        WHERE event_type IN ('listen', 'complete')
+        AND total_length > 0
+        AND play_ratio < 0.10
+      ''');
+      fixedCount += lowRatioToSkip;
+      details['low_ratio_to_skip'] = lowRatioToSkip;
+
+      // Step 2: Fix 'skip'/'listen' that should be 'complete'
+      final toComplete = await statsDb.rawUpdate('''
+        UPDATE playevent
+        SET event_type = 'complete'
+        WHERE event_type IN ('skip', 'listen')
+        AND total_length > 0
+        AND play_ratio >= 0.10
+        AND (total_length - duration_played <= 10.0 OR duration_played >= total_length)
+      ''');
+      fixedCount += toComplete;
+      details['to_complete'] = toComplete;
+
+      // Step 3: Fix 'listen' that should be 'skip'
+      final toSkip = await statsDb.rawUpdate('''
+        UPDATE playevent
+        SET event_type = 'skip'
+        WHERE event_type = 'listen'
+        AND play_ratio >= 0.10
+        AND id IN (
+          SELECT p1.id FROM playevent p1
+          WHERE EXISTS (
+            SELECT 1 FROM playevent p2
+            WHERE p2.session_id = p1.session_id
+            AND p2.timestamp > p1.timestamp
+          )
+        )
+      ''');
+      fixedCount += toSkip;
+      details['listen_to_skip'] = toSkip;
+    } catch (e) {
+      debugPrint('Error fixing event types via service: $e');
+      details['error'] = e.toString();
+    }
+
+    return {'fixed': fixedCount, 'details': details};
   }
 
   /// Fixes event type categorization based on new rules with priority hierarchy:
@@ -264,124 +427,80 @@ class DatabaseOptimizerService {
   /// PRIORITY 3: Session context → 'skip'
   ///   - If 'listen' event has later events in same session, change to 'skip'
   ///   - 'listen' should only be the absolute last event of a session
-  ///   - Excludes events already marked skip by Priority 1
-  ///
-  /// Returns: Map with 'fixed' count and 'details' breakdown by category
-  Future<Map<String, dynamic>> _fixEventTypes(Database db) async {
-    int fixedCount = 0;
-    final details = <String, dynamic>{};
-
-    try {
-      // Step 1: Fix events with ratio < 0.10 (less than 10% played) to 'skip'
-      // This is the HIGHEST PRIORITY rule
-      final lowRatioToSkip = await db.rawUpdate('''
-        UPDATE playevent
-        SET event_type = 'skip'
-        WHERE event_type IN ('listen', 'complete')
-        AND total_length > 0
-        AND play_ratio < 0.10
-      ''');
-      fixedCount += lowRatioToSkip;
-      details['low_ratio_to_skip'] = lowRatioToSkip;
-
-      // Step 2: Fix 'skip'/'listen' that should be 'complete'
-      // We look for events where (total_length - duration_played <= 10) OR (duration_played >= total_length)
-      // But exclude events with ratio < 0.10 (already marked as skip)
-      final toComplete = await db.rawUpdate('''
-        UPDATE playevent
-        SET event_type = 'complete'
-        WHERE event_type IN ('skip', 'listen')
-        AND total_length > 0
-        AND play_ratio >= 0.10
-        AND (total_length - duration_played <= 10.0 OR duration_played >= total_length)
-      ''');
-      fixedCount += toComplete;
-      details['to_complete'] = toComplete;
-
-      // Step 3: Fix 'listen' that should be 'skip'
-      // A 'listen' event should be 'skip' if there is another event with the same session_id
-      // but a later timestamp. 'listen' is only for the absolute last event of a session.
-      // But exclude events with ratio < 0.10 (already marked as skip)
-      final toSkip = await db.rawUpdate('''
-        UPDATE playevent
-        SET event_type = 'skip'
-        WHERE event_type = 'listen'
-        AND play_ratio >= 0.10
-        AND id IN (
-          SELECT p1.id FROM playevent p1
-          WHERE EXISTS (
-            SELECT 1 FROM playevent p2
-            WHERE p2.session_id = p1.session_id
-            AND p2.timestamp > p1.timestamp
-          )
-        )
-      ''');
-      fixedCount += toSkip;
-      details['listen_to_skip'] = toSkip;
-    } catch (e) {
-      debugPrint('Error fixing event types: $e');
-    }
-
-    return {'fixed': fixedCount, 'details': details};
-  }
-
   /// Optimizes the user data database
-  /// Fixes schema issues, removes orphans and duplicates
+  /// Uses DatabaseService singleton for operations, separate connection only for integrity check and VACUUM
   Future<Map<String, dynamic>> _optimizeUserDataDatabase(String dbPath) async {
     final issues = <String>[];
     final fixes = <String>[];
     final details = <String, dynamic>{};
 
-    // Check if database file exists
+    // Ensure DatabaseService is initialized
+    try {
+      await DatabaseService.instance.ensureInitializedForCurrentUser();
+    } catch (e) {
+      issues.add('DatabaseService not initialized: $e');
+      return {'issues': issues, 'fixes': fixes, 'details': details};
+    }
+
     final dbFile = File(dbPath);
     if (!await dbFile.exists()) {
-      // Create new database with proper schema
-      final db = await openDatabase(dbPath, version: 1);
-      await _createUserDataSchema(db);
-      await db.close();
-      fixes.add('Created new user data database with proper schema');
+      // Database doesn't exist - DatabaseService will create it on init
+      fixes.add('User data database will be created by DatabaseService');
       details['created_new'] = true;
       return {'issues': issues, 'fixes': fixes, 'details': details};
     }
 
-    Database? db;
+    // Run integrity check via separate connection (safer for diagnostics)
+    Database? checkDb;
     try {
-      db = await openDatabase(dbPath);
-
-      // Run integrity check
-      final integrityCheck = await db.rawQuery('PRAGMA integrity_check');
+      checkDb = await openDatabase(dbPath, singleInstance: false);
+      final integrityCheck = await checkDb.rawQuery('PRAGMA integrity_check');
       final isOk = integrityCheck.first.values.first == 'ok';
 
       if (!isOk) {
         issues.add('User data database integrity check failed');
-        await db.close();
+        await checkDb.close();
         // Recover by backing up and creating new
         await _recoverCorruptedUserDataDatabase(dbPath);
         fixes.add('Recovered corrupted user data database (backup created)');
         details['recovered'] = true;
         return {'issues': issues, 'fixes': fixes, 'details': details};
       }
+      await checkDb.close();
+      checkDb = null;
+    } catch (e) {
+      issues.add('Could not check database integrity: $e');
+      await checkDb?.close();
+    }
+
+    try {
+      // Get the user data database from the singleton
+      final userDataDb = DatabaseService.instance.getUserDataDatabase();
+      if (userDataDb == null) {
+        issues.add('User data database not available through DatabaseService');
+        return {'issues': issues, 'fixes': fixes, 'details': details};
+      }
 
       // Step 1: Ensure all tables exist (create missing ones)
-      final tableResult = await _ensureUserDataTables(db);
+      final tableResult = await _ensureUserDataTables(userDataDb);
       issues.addAll(tableResult['issues'] as List<String>);
       fixes.addAll(tableResult['fixes'] as List<String>);
       details['tables'] = tableResult['details'];
 
       // Step 2: Ensure all columns exist (add missing ones)
-      final columnResult = await _ensureUserDataColumns(db);
+      final columnResult = await _ensureUserDataColumns(userDataDb);
       issues.addAll(columnResult['issues'] as List<String>);
       fixes.addAll(columnResult['fixes'] as List<String>);
       details['columns'] = columnResult['details'];
 
       // Step 3: Create indexes (after tables are guaranteed to exist)
-      final indexResult = await _ensureUserDataIndexes(db);
+      final indexResult = await _ensureUserDataIndexes(userDataDb);
       issues.addAll(indexResult['issues'] as List<String>);
       fixes.addAll(indexResult['fixes'] as List<String>);
       details['indexes'] = indexResult['details'];
 
       // Step 4: Fix orphaned records
-      final orphanResult = await _fixOrphanedRecords(db);
+      final orphanResult = await _fixOrphanedRecordsViaService();
       if (orphanResult['issuesFound'] > 0) {
         issues.add('Found ${orphanResult['issuesFound']} orphaned records');
         fixes.add('Removed ${orphanResult['issuesFixed']} orphaned records');
@@ -389,7 +508,7 @@ class DatabaseOptimizerService {
       details['orphaned_records'] = orphanResult;
 
       // Step 5: Fix duplicate entries
-      final duplicateResult = await _fixDuplicates(db);
+      final duplicateResult = await _fixDuplicatesViaService();
       if (duplicateResult['issuesFound'] > 0) {
         issues.add('Found ${duplicateResult['issuesFound']} duplicate entries');
         fixes
@@ -397,16 +516,21 @@ class DatabaseOptimizerService {
       }
       details['duplicates'] = duplicateResult;
 
-      // Step 6: Vacuum
-      await db.execute('VACUUM');
-      fixes.add('Vacuumed user data database');
-
-      await db.close();
+      // Step 6: Vacuum requires exclusive access - use separate connection
+      Database? vacuumDb;
+      try {
+        vacuumDb = await openDatabase(dbPath, singleInstance: false);
+        await vacuumDb.execute('VACUUM');
+        fixes.add('Vacuumed user data database');
+        details['vacuumed'] = true;
+      } catch (e) {
+        issues.add('Error vacuuming user data database: $e');
+        details['vacuumed'] = false;
+      } finally {
+        await vacuumDb?.close();
+      }
     } catch (e) {
       issues.add('Error optimizing user data database: $e');
-      try {
-        await db?.close();
-      } catch (_) {}
     }
 
     return {'issues': issues, 'fixes': fixes, 'details': details};
@@ -670,14 +794,19 @@ class DatabaseOptimizerService {
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
-  /// Fixes orphaned records
-  Future<Map<String, dynamic>> _fixOrphanedRecords(Database db) async {
+  /// Fixes orphaned records using DatabaseService singleton
+  Future<Map<String, dynamic>> _fixOrphanedRecordsViaService() async {
     int issuesFound = 0;
     int issuesFixed = 0;
 
     try {
+      final userDataDb = DatabaseService.instance.getUserDataDatabase();
+      if (userDataDb == null) {
+        return {'issuesFound': 0, 'issuesFixed': 0};
+      }
+
       // Check for orphaned playlist_song records
-      final orphanedSongs = await db.rawQuery('''
+      final orphanedSongs = await userDataDb.rawQuery('''
         SELECT ps.id FROM playlist_song ps
         LEFT JOIN playlist p ON ps.playlist_id = p.id
         WHERE p.id IS NULL
@@ -687,13 +816,14 @@ class DatabaseOptimizerService {
         issuesFound += orphanedSongs.length;
         for (final row in orphanedSongs) {
           final id = row['id'];
-          await db.delete('playlist_song', where: 'id = ?', whereArgs: [id]);
+          await userDataDb
+              .delete('playlist_song', where: 'id = ?', whereArgs: [id]);
         }
         issuesFixed += orphanedSongs.length;
       }
 
       // Check for orphaned merged_song records
-      final orphanedMerged = await db.rawQuery('''
+      final orphanedMerged = await userDataDb.rawQuery('''
         SELECT ms.filename FROM merged_song ms
         LEFT JOIN merged_song_group msg ON ms.group_id = msg.id
         WHERE msg.id IS NULL
@@ -703,13 +833,13 @@ class DatabaseOptimizerService {
         issuesFound += orphanedMerged.length;
         for (final row in orphanedMerged) {
           final filename = row['filename'] as String;
-          await db.delete('merged_song',
+          await userDataDb.delete('merged_song',
               where: 'filename = ?', whereArgs: [filename]);
         }
         issuesFixed += orphanedMerged.length;
       }
     } catch (e) {
-      debugPrint('Error fixing orphaned records: $e');
+      debugPrint('Error fixing orphaned records via service: $e');
     }
 
     return {
@@ -718,14 +848,19 @@ class DatabaseOptimizerService {
     };
   }
 
-  /// Fixes duplicate entries
-  Future<Map<String, dynamic>> _fixDuplicates(Database db) async {
+  /// Fixes duplicate entries using DatabaseService singleton
+  Future<Map<String, dynamic>> _fixDuplicatesViaService() async {
     int issuesFound = 0;
     int issuesFixed = 0;
 
     try {
+      final userDataDb = DatabaseService.instance.getUserDataDatabase();
+      if (userDataDb == null) {
+        return {'issuesFound': 0, 'issuesFixed': 0};
+      }
+
       // Fix duplicate favorites (keep most recent)
-      final dupFavorites = await db.rawQuery('''
+      final dupFavorites = await userDataDb.rawQuery('''
         SELECT filename, COUNT(*) as cnt, MAX(added_at) as max_time
         FROM favorite
         GROUP BY filename
@@ -737,19 +872,19 @@ class DatabaseOptimizerService {
         final maxTime = dup['max_time'] as double?;
 
         if (maxTime != null) {
-          final deleted = await db.delete(
+          final deleted = await userDataDb.delete(
             'favorite',
             where: 'filename = ? AND added_at < ?',
             whereArgs: [filename, maxTime],
           );
 
-          issuesFound += (dup['cnt'] as int) - 1;
+          issuesFound += ((dup['cnt'] as num) - 1).toInt();
           issuesFixed += deleted;
         }
       }
 
       // Fix duplicate suggestless entries
-      final dupSuggestless = await db.rawQuery('''
+      final dupSuggestless = await userDataDb.rawQuery('''
         SELECT filename, COUNT(*) as cnt, MAX(added_at) as max_time
         FROM suggestless
         GROUP BY filename
@@ -761,18 +896,18 @@ class DatabaseOptimizerService {
         final maxTime = dup['max_time'] as double?;
 
         if (maxTime != null) {
-          final deleted = await db.delete(
+          final deleted = await userDataDb.delete(
             'suggestless',
             where: 'filename = ? AND added_at < ?',
             whereArgs: [filename, maxTime],
           );
 
-          issuesFound += (dup['cnt'] as int) - 1;
+          issuesFound += ((dup['cnt'] as num) - 1).toInt();
           issuesFixed += deleted;
         }
       }
     } catch (e) {
-      debugPrint('Error fixing duplicates: $e');
+      debugPrint('Error fixing duplicates via service: $e');
     }
 
     return {
@@ -804,9 +939,17 @@ class DatabaseOptimizerService {
     final details = <String, dynamic>{};
 
     try {
+      // Ensure DatabaseService is initialized before loading songs
+      try {
+        await DatabaseService.instance.ensureInitializedForCurrentUser();
+      } catch (e) {
+        issues.add(
+            'DatabaseService not initialized when optimizing search index: $e');
+        return {'issues': issues, 'fixes': fixes, 'details': details};
+      }
+
       // Load cached songs
-      final storage = StorageService();
-      final songs = await storage.loadSongs(username);
+      final songs = await DatabaseService.instance.getAllSongs();
 
       if (songs.isEmpty) {
         issues.add('No songs found to build search index');
@@ -818,22 +961,29 @@ class DatabaseOptimizerService {
 
       // Initialize and rebuild search index
       final searchService = SearchService();
-      await searchService.initForUser(username);
+      try {
+        await searchService.initForUser(username);
 
-      final startTime = DateTime.now();
-      await searchService.rebuildIndex(songs);
-      final duration = DateTime.now().difference(startTime);
+        final startTime = DateTime.now();
+        await searchService.rebuildIndex(songs);
+        final duration = DateTime.now().difference(startTime);
 
-      // Get stats after rebuild
-      final stats = await searchService.getIndexStats();
+        // Get stats after rebuild before disposing
+        final stats = await searchService.getIndexStats();
 
-      fixes.add(
-          'Rebuilt search index with ${songs.length} songs in ${duration.inMilliseconds}ms');
-      details['index_entries'] = stats.totalEntries;
-      details['entries_with_lyrics'] = stats.entriesWithLyrics;
-      details['rebuild_duration_ms'] = duration.inMilliseconds;
-
-      await searchService.dispose();
+        fixes.add(
+            'Rebuilt search index with ${songs.length} songs in ${duration.inMilliseconds}ms');
+        details['index_entries'] = stats.totalEntries;
+        details['entries_with_lyrics'] = stats.entriesWithLyrics;
+        details['rebuild_duration_ms'] = duration.inMilliseconds;
+      } finally {
+        // Always dispose, but don't let disposal errors mask other errors
+        try {
+          await searchService.dispose();
+        } catch (disposeError) {
+          debugPrint('Warning: Error disposing search service: $disposeError');
+        }
+      }
     } catch (e) {
       issues.add('Error optimizing search index: $e');
       debugPrint('Error optimizing search index: $e');

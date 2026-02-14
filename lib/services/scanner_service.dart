@@ -39,12 +39,14 @@ class _RebuildParams {
   final String coversDirPath;
   final String lockDirPath;
   final SendPort sendPort;
+  final bool force;
 
   _RebuildParams({
     required this.songs,
     required this.coversDirPath,
     required this.lockDirPath,
     required this.sendPort,
+    this.force = false,
   });
 }
 
@@ -121,46 +123,33 @@ class ScannerService {
     await Isolate.spawn(_isolateScan, params);
 
     final completer = Completer<List<Song>>();
+    final List<Song> allScannedSongs = [];
 
     receivePort.listen((message) async {
       if (message is double) {
         onProgress?.call(message);
       } else if (message is List<Song>) {
+        allScannedSongs.addAll(message);
+        // Incremental DB insert to save memory and keep UI responsive
+        await DatabaseService.instance.insertSongsBatch(message);
+      } else if (message == 'done') {
         if (username != null) {
           try {
             final searchService = SearchService();
             await searchService.initForUser(username);
-            await searchService.rebuildIndex(message);
-            debugPrint('Search index rebuilt with ${message.length} songs');
+            await searchService.rebuildIndex(allScannedSongs);
+            debugPrint(
+                'Search index rebuilt with ${allScannedSongs.length} songs');
           } catch (e) {
             debugPrint('Error rebuilding search index: $e');
           }
         }
-        onComplete?.call(message);
-        completer.complete(message);
+        onComplete?.call(allScannedSongs);
+        completer.complete(allScannedSongs);
         receivePort.close();
-      } else if (message is List) {
-        try {
-          final songs = message.cast<Song>();
-          if (username != null) {
-            try {
-              final searchService = SearchService();
-              await searchService.initForUser(username);
-              await searchService.rebuildIndex(songs);
-              debugPrint('Search index rebuilt with ${songs.length} songs');
-            } catch (e) {
-              debugPrint('Error rebuilding search index: $e');
-            }
-          }
-          onComplete?.call(songs);
-          completer.complete(songs);
-        } catch (e) {
-          completer.completeError("Failed to cast result to List<Song>");
-        }
+      } else if (message is String && message.startsWith('error:')) {
         receivePort.close();
-      } else {
-        receivePort.close();
-        completer.completeError("Unknown message from isolate: $message");
+        completer.completeError(message);
       }
     }, onError: (e) {
       receivePort.close();
@@ -254,49 +243,34 @@ class ScannerService {
     await Isolate.spawn(_isolateScan, params);
 
     final completer = Completer<List<Song>>();
+    final List<Song> allScannedSongs = [];
 
     receivePort.listen((message) async {
       if (message is double) {
         onProgress?.call(message);
       } else if (message is List<Song>) {
+        allScannedSongs.addAll(message);
+        // Incremental DB insert
+        await DatabaseService.instance.insertSongsBatch(message);
+      } else if (message == 'done') {
         // Rebuild search index after scanning
         if (username != null) {
           try {
             final searchService = SearchService();
             await searchService.initForUser(username);
-            await searchService.rebuildIndex(message);
-            debugPrint('Search index rebuilt with ${message.length} songs');
+            await searchService.rebuildIndex(allScannedSongs);
+            debugPrint(
+                'Search index rebuilt with ${allScannedSongs.length} songs');
           } catch (e) {
             debugPrint('Error rebuilding search index: $e');
           }
         }
-        onComplete?.call(message);
-        completer.complete(message);
+        onComplete?.call(allScannedSongs);
+        completer.complete(allScannedSongs);
         receivePort.close();
-      } else if (message is List) {
-        // Handle explicit typing issue if passed as dynamic list
-        try {
-          final songs = message.cast<Song>();
-          // Rebuild search index after scanning
-          if (username != null) {
-            try {
-              final searchService = SearchService();
-              await searchService.initForUser(username);
-              await searchService.rebuildIndex(songs);
-              debugPrint('Search index rebuilt with ${songs.length} songs');
-            } catch (e) {
-              debugPrint('Error rebuilding search index: $e');
-            }
-          }
-          onComplete?.call(songs);
-          completer.complete(songs);
-        } catch (e) {
-          completer.completeError("Failed to cast result to List<Song>");
-        }
+      } else if (message is String && message.startsWith('error:')) {
         receivePort.close();
-      } else {
-        receivePort.close();
-        completer.completeError("Unknown message from isolate: $message");
+        completer.completeError(message);
       }
     }, onError: (e) {
       receivePort.close();
@@ -369,6 +343,7 @@ class ScannerService {
   Future<Map<String, String?>> rebuildCoverCache(
     List<Song> songs, {
     void Function(double progress)? onProgress,
+    bool force = false,
   }) async {
     final supportDir = await getApplicationSupportDirectory();
     final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
@@ -389,6 +364,7 @@ class ScannerService {
           coversDirPath: coversDir.path,
           lockDirPath: lockDir.path,
           sendPort: receivePort.sendPort,
+          force: force,
         ));
 
     final completer = Completer<Map<String, String?>>();
@@ -431,17 +407,19 @@ class ScannerService {
 
           final hash = md5.convert(utf8.encode(file.path)).toString();
 
-          // Check if already exists - preserve existing covers to avoid overwriting manual changes
-          for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
-            final cachedFile =
-                File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-            if (await cachedFile.exists()) {
-              resolvedCoverUrl = cachedFile.path;
-              break;
+          // Check if already exists - unless force is true
+          if (!params.force) {
+            for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
+              final cachedFile =
+                  File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+              if (await cachedFile.exists()) {
+                resolvedCoverUrl = cachedFile.path;
+                break;
+              }
             }
           }
 
-          if (resolvedCoverUrl == null) {
+          if (resolvedCoverUrl == null || params.force) {
             // Try metadata extraction first
             try {
               final metadata = amr.readMetadata(file);
@@ -581,12 +559,25 @@ class ScannerService {
         if (i % 10 == 0) {
           params.sendPort.send((i + 1) / audioFiles.length);
         }
+
+        // Send chunks of 200 songs to keep memory usage low in the isolate
+        // and allow the main isolate to start processing/indexing sooner.
+        if (songs.length >= 200) {
+          params.sendPort.send(List<Song>.from(songs));
+          songs.clear();
+        }
       }
 
-      params.sendPort.send(songs);
+      // Send remaining songs
+      if (songs.isNotEmpty) {
+        params.sendPort.send(songs);
+      }
+
+      // Signal completion
+      params.sendPort.send('done');
     } catch (e) {
       debugPrint('Error in scanner isolate: $e');
-      params.sendPort.send(<Song>[]);
+      params.sendPort.send('error: $e');
     }
   }
 

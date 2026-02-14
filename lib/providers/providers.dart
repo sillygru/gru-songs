@@ -193,36 +193,33 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final userData = ref.watch(userDataProvider);
     final auth = ref.watch(authProvider);
 
-    // 1. Load instantly from cache
-    final cached = await storage.loadSongs(auth.username);
-    if (cached.isNotEmpty) {
-      // De-duplicate by filename to avoid Hero tag conflicts and UI glitches
-      final seenFilenames = <String>{};
-      final uniqueCached = cached.where((s) {
-        if (seenFilenames.contains(s.filename)) return false;
-        seenFilenames.add(s.filename);
-        return true;
-      }).toList();
+    // 1. Check for legacy JSON cache and handle migration
+    final legacyFile = await storage.getSongsFile(auth.username);
+    if (await legacyFile.exists()) {
+      debugPrint(
+          'Found legacy JSON cache, deleting and triggering fresh scan...');
+      try {
+        await legacyFile.delete();
+      } catch (e) {
+        debugPrint('Error deleting legacy file: $e');
+      }
+      await DatabaseService.instance.clearSongs();
+      return _performFullScan();
+    }
 
+    // 2. Load from SQLite
+    final cached = await DatabaseService.instance.getAllSongs();
+    if (cached.isNotEmpty) {
       final filtered =
-          uniqueCached.where((s) => !userData.isHidden(s.filename)).toList();
+          cached.where((s) => !userData.isHidden(s.filename)).toList();
       // Trigger background scan on startup to ensure library is up to date
-      // Don't show indicator for background scan to avoid UI flicker
-      _scheduleBackgroundScanUpdate(uniqueCached, showIndicator: false);
+      _scheduleBackgroundScanUpdate(cached, showIndicator: false);
       return filtered;
     }
 
-    // 2. If no cache, perform initial scan
+    // 3. If no cache, perform initial scan
     final scanned = await _performFullScan();
-
-    final seenFilenames = <String>{};
-    final uniqueScanned = scanned.where((s) {
-      if (seenFilenames.contains(s.filename)) return false;
-      seenFilenames.add(s.filename);
-      return true;
-    }).toList();
-
-    return uniqueScanned.where((s) => !userData.isHidden(s.filename)).toList();
+    return scanned.where((s) => !userData.isHidden(s.filename)).toList();
   }
 
   void _scheduleBackgroundScanUpdate(List<Song> existingSongs,
@@ -239,7 +236,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       bool showIndicator = false}) async {
     final storage = ref.read(storageServiceProvider);
     final scanner = ref.read(scannerServiceProvider);
-    final auth = ref.read(authProvider);
 
     final musicFolders = await storage.getMusicFolders();
 
@@ -285,7 +281,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         return true;
       }).toList();
 
-      await storage.saveSongs(auth.username, uniqueSongs);
+      await DatabaseService.instance.insertSongsBatch(uniqueSongs);
 
       // Return all songs from scan, build() will filter them
       return uniqueSongs;
@@ -410,8 +406,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     if (!state.hasValue) return;
 
     final playCounts = await DatabaseService.instance.getPlayCounts();
-    final auth = ref.read(authProvider);
-    final storage = ref.read(storageServiceProvider);
 
     final updatedSongs = state.value!.map((s) {
       final newCount = playCounts[s.filename] ?? 0;
@@ -434,7 +428,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     // Update player manager and cache
     ref.read(audioPlayerManagerProvider).refreshSongs(updatedSongs);
-    await storage.saveSongs(auth.username, updatedSongs);
+    await DatabaseService.instance.insertSongsBatch(updatedSongs);
   }
 
   Future<void> hideSong(Song song) async {
@@ -925,6 +919,18 @@ final playCountsProvider = FutureProvider<Map<String, int>>((ref) async {
   // Watch userData to refresh when stats might have changed or synced
   ref.watch(userDataProvider);
   return DatabaseService.instance.getPlayCounts();
+});
+
+final artistListProvider = FutureProvider<List<String>>((ref) async {
+  // Watch songsProvider to refresh when library changes
+  ref.watch(songsProvider);
+  return DatabaseService.instance.getArtists();
+});
+
+final albumListProvider = FutureProvider<List<String>>((ref) async {
+  // Watch songsProvider to refresh when library changes
+  ref.watch(songsProvider);
+  return DatabaseService.instance.getAlbums();
 });
 
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(() {

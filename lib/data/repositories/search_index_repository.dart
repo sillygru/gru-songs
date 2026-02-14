@@ -85,24 +85,67 @@ class SearchIndexRepository {
     ''');
   }
 
-  /// Rebuilds the entire search index from a list of songs
+  /// Rebuilds the entire search index from a list of songs incrementally
   Future<void> rebuildIndex(List<Song> songs) async {
     if (_database == null) {
       throw StateError(
           'SearchIndexRepository not initialized. Call initForUser first.');
     }
 
-    await _database!.transaction((txn) async {
-      // Clear existing index
-      await txn.delete(_tableName);
-      await txn.delete(_metadataTable);
+    // 1. Fetch existing index state to determine what needs updating
+    final List<Map<String, dynamic>> existingEntries = await _database!.query(
+      _tableName,
+      columns: ['filename', 'last_modified', 'lyrics_content'],
+    );
 
-      // Batch insert all songs
+    final Map<String, Map<String, dynamic>> existingMap = {
+      for (final entry in existingEntries) entry['filename'] as String: entry
+    };
+
+    await _database!.transaction((txn) async {
+      final Set<String> newFilenames = songs.map((s) => s.filename).toSet();
+      final List<String> toRemove = existingMap.keys
+          .where((filename) => !newFilenames.contains(filename))
+          .toList();
+
+      // Remove songs no longer in the library
+      if (toRemove.isNotEmpty) {
+        for (int i = 0; i < toRemove.length; i += 999) {
+          final chunk =
+              toRemove.sublist(i, (i + 999).clamp(0, toRemove.length));
+          await txn.delete(
+            _tableName,
+            where: 'filename IN (${chunk.map((_) => '?').join(',')})',
+            whereArgs: chunk,
+          );
+        }
+      }
+
+      // Batch update/insert all songs
       final batch = txn.batch();
+      int updateCount = 0;
+
       for (final song in songs) {
-        // Read embedded lyrics from audio file if available
+        final existing = existingMap[song.filename];
+        final int songMtime =
+            (song.mtime != null) ? (song.mtime! * 1000).round() : 0;
+        final int existingMtime = (existing?['last_modified'] as int?) ?? -1;
+
         String? lyricsContent;
-        if (song.hasLyrics) {
+
+        // Optimization: Skip extraction if file hasn't changed OR reuse cached lyrics
+        if (existing != null && songMtime == existingMtime) {
+          // Metadata and mtime match, we can skip this entirely unless we want to ensure
+          // lyrics are still there. But for speed, we skip.
+          continue;
+        }
+
+        updateCount++;
+
+        // Reuse lyrics if available, otherwise extract if song has them
+        if (existing != null && existing['lyrics_content'] != null) {
+          lyricsContent = existing['lyrics_content'] as String;
+        } else if (song.hasLyrics) {
           try {
             final lyrics = await _ffmpegService.getLyrics(song.url);
             if (lyrics != null && lyrics.isNotEmpty) {
@@ -125,41 +168,62 @@ class SearchIndexRepository {
             'artist_length': song.artist.length,
             'album_length': song.album.length,
             'lyrics_length': lyricsContent?.length ?? 0,
-            'last_modified': DateTime.now().millisecondsSinceEpoch,
+            'last_modified': songMtime,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
-      await batch.commit(noResult: true);
+
+      if (updateCount > 0) {
+        await batch.commit(noResult: true);
+      }
 
       // Update metadata
-      await txn.insert(_metadataTable, {
-        'key': 'last_updated',
-        'value': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
-      await txn.insert(_metadataTable, {
-        'key': 'total_entries',
-        'value': songs.length.toString(),
-      });
+      await txn.insert(
+        _metadataTable,
+        {
+          'key': 'last_updated',
+          'value': DateTime.now().millisecondsSinceEpoch.toString(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.insert(
+        _metadataTable,
+        {
+          'key': 'total_entries',
+          'value': songs.length.toString(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     });
 
-    // Vacuum to optimize space
-    await _database!.execute('VACUUM');
+    // Only vacuum if significant changes occurred (e.g. library cleared or many removals)
+    // VACUUM is expensive and shouldn't run on every refresh.
   }
 
   /// Updates or inserts a single song into the index
   Future<void> upsertSong(Song song) async {
     if (_database == null) return;
 
-    String? lyricsContent;
-    int lyricsLength = 0;
+    final int songMtime =
+        (song.mtime != null) ? (song.mtime! * 1000).round() : 0;
 
-    if (song.hasLyrics) {
+    // Check if we already have lyrics for this file to avoid re-extraction
+    String? lyricsContent;
+    final existing = await _database!.query(
+      _tableName,
+      columns: ['lyrics_content'],
+      where: 'filename = ?',
+      whereArgs: [song.filename],
+    );
+
+    if (existing.isNotEmpty && existing.first['lyrics_content'] != null) {
+      lyricsContent = existing.first['lyrics_content'] as String;
+    } else if (song.hasLyrics) {
       try {
         final lyrics = await _ffmpegService.getLyrics(song.url);
         if (lyrics != null && lyrics.isNotEmpty) {
           lyricsContent = LyricLine.extractPlainText(lyrics).toLowerCase();
-          lyricsLength = lyrics.length;
         }
       } catch (e) {
         debugPrint('Error reading lyrics for ${song.filename}: $e');
@@ -177,8 +241,8 @@ class SearchIndexRepository {
         'title_length': song.title.length,
         'artist_length': song.artist.length,
         'album_length': song.album.length,
-        'lyrics_length': lyricsLength,
-        'last_modified': DateTime.now().millisecondsSinceEpoch,
+        'lyrics_length': lyricsContent?.length ?? 0,
+        'last_modified': songMtime,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );

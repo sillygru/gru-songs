@@ -18,29 +18,20 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Run initialization in parallel for faster startup
+  // Parallel initialization
   await Future.wait([
-    // Initialize MetadataGod early to prevent flutter_rust_bridge initialization errors
     _initializeMetadataGod(),
-    // Initialize Cache V3 and cleanup legacy caches
     CacheService.instance.init(),
-    // Setup audio session
     _setupAudioSession(),
-    // Setup JustAudioBackground
     _setupJustAudioBackground(),
   ], eagerError: false);
 
-  // Limit image cache to save RAM
-  PaintingBinding.instance.imageCache.maximumSize =
-      250; // Increased count for thumbnails
-  PaintingBinding.instance.imageCache.maximumSizeBytes =
-      40 * 1024 * 1024; // Balanced 40MB limit
+  PaintingBinding.instance.imageCache.maximumSize = 250;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 40 * 1024 * 1024;
 
-  // Check setup status
   final storage = StorageService();
   bool isSetupComplete = await storage.getIsSetupComplete();
 
-  // Initialize local-only state
   final prefs = await SharedPreferences.getInstance();
   final username = prefs.getString('username');
 
@@ -50,14 +41,11 @@ Future<void> main() async {
     await storage.setSetupComplete(false);
   }
 
-  // Set local mode by default
   if (isSetupComplete) {
     await storage.setIsLocalMode(true);
   }
 
   if (isSetupComplete && username != null) {
-    // Initialize database service for the user to start background coalescing
-    // Don't block app startup for this
     unawaited(DatabaseService.instance.initForUser(username));
   }
 

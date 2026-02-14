@@ -18,7 +18,6 @@ import 'color_extraction_service.dart';
 import '../providers/theme_provider.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/providers.dart';
 import '../providers/settings_provider.dart';
 
 class AudioPlayerManager extends WidgetsBindingObserver {
@@ -35,9 +34,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // Flag to restrict auto-generation to original queue (e.g. for folder shuffle)
   bool _isRestrictedToOriginal = false;
-
-  // Sync State
-  Timer? _syncTimer;
 
   // User data for weighting (Fallback / Offline)
   List<String> _favorites = [];
@@ -566,12 +562,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (eventType == 'skip' || eventType == 'complete') {
       _playStartTime = null;
 
-      // Trigger background sync on play events as requested
-      if (_ref != null) {
-        Future.delayed(const Duration(seconds: 1), () {
-          _ref!.read(songsProvider.notifier).refresh(isBackground: true);
-        });
-      }
+      // Ensure stats are committed to DB immediately on song end/skip
+      // This prevents data loss without needing an expensive full library scan.
+      _statsService.flush();
     } else {
       if (_playStartTime != null) _playStartTime = DateTime.now();
     }
@@ -1625,7 +1618,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _fadeTimer?.cancel();
     _player.dispose();
     shuffleNotifier.dispose();
-    _syncTimer?.cancel();
   }
 }
 

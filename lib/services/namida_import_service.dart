@@ -7,7 +7,6 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'database_service.dart';
-import 'storage_service.dart';
 import '../models/playlist.dart';
 
 /// Represents the type of import operation
@@ -213,7 +212,7 @@ class NamidaImportService {
       }
 
       // Load all local songs for smarter path mapping
-      final localSongs = await StorageService().loadSongs(username);
+      final localSongs = await DatabaseService.instance.getAllSongs();
       final Map<String, String> basenameToFullPath = {
         for (var s in localSongs) basename(s.filename): s.filename
       };

@@ -2,7 +2,7 @@
 
 This file provides a structured overview of the `gru-songs` codebase to help agentic LLMs understand the architecture, key components, and development workflows.
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 The project follows a **Local-First** approach, functioning as a fully offline music player. It uses Flutter with a clean MVVM/Repository pattern and Riverpod for state management.
 
@@ -14,7 +14,7 @@ The project follows a **Local-First** approach, functioning as a fully offline m
 - **Metadata**: `metadata_god`, `audio_metadata_reader`, and `ffmpeg_kit_flutter_new_min`
 - **Processing**: `FFmpegService` for lyrics extraction and audio manipulations.
 
-## 📁 Directory Structure & Key Files
+## Directory Structure & Key Files
 
 ### Core Logic (`lib/`)
 - `lib/services/`: **Primary logic layer.**
@@ -40,7 +40,7 @@ The project follows a **Local-First** approach, functioning as a fully offline m
 - `test/test_helpers.dart`: Contains mocks and setup for unit tests.
 - `test/selection_sync_test.dart`: Validates selection logic.
 
-## 🔍 How to Search This Repo
+## How to Search This Repo
 
 1.  **Playback & Shuffle**: `lib/services/audio_player_manager.dart` is the heart of playback.
 2.  **Library State**: `lib/providers/providers.dart` -> `songsProvider`. This is where file scanning and library modifications (delete/rename/metadata) are orchestrated.
@@ -79,15 +79,16 @@ The shuffle algorithm is highly sophisticated and uses "Personalities" (`Shuffle
 
 Always run `test/shuffle_logic_test.dart` and `test/personality_logic_test.dart` after modifications.
 
-## ⚠️ Critical Constraints for Agents
+## Critical Constraints for Agents
 
 - **Offline Only**: Do not add features that require an internet connection unless explicitly requested.
 - **File-Based Identity**: User data (stats, favorites) is linked to filenames. Do not change this unless explicitly told to.
 - **Provider Decoupling**: Avoid circular dependencies. `AudioPlayerManager` and `UserDataNotifier` are intentionally kept separate; updates should be pushed, not pulled via cross-injection.
 - **No git commits**: You are only allowed to use git commands to *READ*, you are *NOT* allowed to make git commits.
 - **Comments**: Keep comments minimal. Explain *why*, not *what*. Do not talk to yourself during comments. Do not add LLM specific comments such as "// added this line" or "// per user request", do not add too many comments per function, explain function at beginning then fully implement it with no more comments.
+- **Emojis**: Do *NOT* *EVER* use emojis in code, code comments or messages.
 
-## 🧩 Established Patterns
+## Established Patterns
 
 - **Initialization**: App initialization logic (cache setup, database init) is in `lib/main.dart`.
 - **Platform Specifics**: Check `AndroidManifest.xml` (Android) and `Info.plist` (iOS/macOS) for permissions.

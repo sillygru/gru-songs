@@ -1,17 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/database_service.dart';
-import '../services/storage_service.dart';
-import '../providers/auth_provider.dart';
 import '../domain/models/play_session.dart';
 
 /// Provider for loading all play sessions
 final sessionHistoryProvider = FutureProvider<List<PlaySession>>((ref) async {
-  final authState = ref.watch(authProvider);
   final dbSessions =
       await DatabaseService.instance.getPlaySessions(minDurationSeconds: 30);
 
   // Get all songs to match with session events
-  final songs = await StorageService().loadSongs(authState.username);
+  final songs = await DatabaseService.instance.getAllSongs();
   final songMap = {for (var s in songs) s.filename: s};
 
   final sessions = <PlaySession>[];

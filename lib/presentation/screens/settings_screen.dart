@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import 'storage_management_screen.dart';
 import 'folder_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
+import '../widgets/optimization_options_dialog.dart';
 import '../../services/data_export_service.dart';
 import '../../services/telemetry_service.dart';
 import '../../services/database_optimizer_service.dart';
@@ -788,32 +789,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final username = authState.username;
     if (username == null) return;
 
-    // Show backup warning first
-    final proceed = await showDialog<bool>(
+    // Show optimization options dialog
+    final options = await showDialog<OptimizationOptions>(
       context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded,
-            color: Colors.orange, size: 48),
-        title: const Text('Backup Recommended'),
-        content: const Text(
-          'Database optimization will check for and fix missing tables, corrupted data, orphaned records, and duplicates.\n\n'
-          'While this process is generally safe, it is recommended to create a backup first.\n\n'
-          'Would you like to proceed?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Proceed'),
-          ),
-        ],
-      ),
+      builder: (context) => const OptimizationOptionsDialog(),
     );
 
-    if (proceed != true || !mounted) return;
+    if (options == null || !mounted) return;
 
     final progressNotifier = ValueNotifier<double>(0.0);
     final messageNotifier = ValueNotifier<String>('Starting optimization...');
@@ -846,6 +828,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final optimizer = DatabaseOptimizerService();
       final result = await optimizer.optimizeDatabases(
         username,
+        options: options,
         onProgress: (message, progress) {
           messageNotifier.value = message;
           progressNotifier.value = progress;

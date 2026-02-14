@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/song.dart';
 
 class StorageService {
   static const String _musicFolderKey = 'music_folder_path';
@@ -21,7 +20,7 @@ class StorageService {
     return directory.path;
   }
 
-  Future<File> _getSongsFile(String? username) async {
+  Future<File> getSongsFile(String? username) async {
     final path = await _localPath;
     final suffix = username != null ? '_$username' : '';
     return File('$path/cached_songs$suffix.json');
@@ -224,31 +223,6 @@ class StorageService {
   Future<void> setLastLibraryFolder(String folder) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastLibraryFolderKey, folder);
-  }
-
-  Future<void> saveSongs(String? username, List<Song> songs) async {
-    try {
-      final file = await _getSongsFile(username);
-      final jsonList = songs.map((s) => s.toJson()).toList();
-      await file.writeAsString(jsonEncode(jsonList));
-    } catch (e) {
-      // Ignore errors during cache write
-      debugPrint('Error saving songs cache: $e');
-    }
-  }
-
-  Future<List<Song>> loadSongs(String? username) async {
-    try {
-      final file = await _getSongsFile(username);
-      if (!await file.exists()) return [];
-
-      final content = await file.readAsString();
-      final List<dynamic> jsonList = jsonDecode(content);
-      return jsonList.map((json) => Song.fromJson(json)).toList();
-    } catch (e) {
-      debugPrint('Error loading songs cache: $e');
-      return [];
-    }
   }
 
   Future<void> saveUserData(String username, Map<String, dynamic> data) async {

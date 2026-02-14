@@ -6,7 +6,6 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:gru_songs/services/namida_import_service.dart';
 import 'package:gru_songs/services/database_service.dart';
-import 'package:gru_songs/services/storage_service.dart';
 import 'package:gru_songs/models/playlist.dart';
 import 'package:gru_songs/models/song.dart';
 
@@ -445,7 +444,7 @@ void main() {
 
         // 4. Save this song to our cache so the smart mapper can find it
 
-        await StorageService().saveSongs('test_user', [
+        await DatabaseService.instance.insertSongsBatch([
           Song(
             filename: localPath,
             url: localPath,

@@ -456,154 +456,168 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildArtistsView(BuildContext context, List<Song> allSongs) {
-    final artistMap = LibraryLogic.groupByArtist(allSongs);
-    final sortedArtists = artistMap.keys.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final artistsAsync = ref.watch(artistListProvider);
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 0.85,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-      ),
-      shrinkWrap: true,
-      itemCount: sortedArtists.length,
-      itemBuilder: (context, index) {
-        final artist = sortedArtists[index];
-        final artistSongs = artistMap[artist]!;
+    return artistsAsync.when(
+      data: (artists) {
+        final artistMap = LibraryLogic.groupByArtist(allSongs);
 
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SongListScreen(
-                  title: artist,
-                  songs: artistSongs,
-                ),
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.85,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+          ),
+          shrinkWrap: true,
+          itemCount: artists.length,
+          itemBuilder: (context, index) {
+            final artist = artists[index];
+            final artistSongs = artistMap[artist] ?? [];
+            if (artistSongs.isEmpty) return const SizedBox.shrink();
+
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SongListScreen(
+                      title: artist,
+                      songs: artistSongs,
+                    ),
+                  ),
+                );
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      clipBehavior: Clip.antiAlias,
+                      child: FolderGridImage(
+                        songs: artistSongs,
+                        isGridItem: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    artist,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  CollectionDurationDisplay(
+                    songs: artistSongs,
+                    showSongCount: true,
+                    compact: true,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
               ),
             );
           },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  clipBehavior: Clip.antiAlias,
-                  child: FolderGridImage(
-                    songs: artistSongs,
-                    isGridItem: true,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                artist,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              CollectionDurationDisplay(
-                songs: artistSongs,
-                showSongCount: true,
-                compact: true,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
         );
       },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, s) => Center(child: Text('Error: $e')),
     );
   }
 
   Widget _buildAlbumsView(BuildContext context, List<Song> allSongs) {
-    final albumMap = LibraryLogic.groupByAlbum(allSongs);
-    final sortedAlbums = albumMap.keys.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final albumsAsync = ref.watch(albumListProvider);
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 0.85,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-      ),
-      shrinkWrap: true,
-      itemCount: sortedAlbums.length,
-      itemBuilder: (context, index) {
-        final album = sortedAlbums[index];
-        final albumSongs = albumMap[album]!;
-        final artist =
-            albumSongs.isNotEmpty ? albumSongs[0].artist : 'Unknown Artist';
+    return albumsAsync.when(
+      data: (albums) {
+        final albumMap = LibraryLogic.groupByAlbum(allSongs);
 
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SongListScreen(
-                  title: album,
-                  songs: albumSongs,
-                ),
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.85,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+          ),
+          shrinkWrap: true,
+          itemCount: albums.length,
+          itemBuilder: (context, index) {
+            final album = albums[index];
+            final albumSongs = albumMap[album] ?? [];
+            if (albumSongs.isEmpty) return const SizedBox.shrink();
+            final artist =
+                albumSongs.isNotEmpty ? albumSongs[0].artist : 'Unknown Artist';
+
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SongListScreen(
+                      title: album,
+                      songs: albumSongs,
+                    ),
+                  ),
+                );
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      clipBehavior: Clip.antiAlias,
+                      child: FolderGridImage(
+                        songs: albumSongs,
+                        isGridItem: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    album,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  CollectionDurationDisplay(
+                    songs: albumSongs,
+                    showSongCount: true,
+                    compact: true,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: 0.7),
+                        ),
+                  ),
+                ],
               ),
             );
           },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  clipBehavior: Clip.antiAlias,
-                  child: FolderGridImage(
-                    songs: albumSongs,
-                    isGridItem: true,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                album,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(
-                artist,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              CollectionDurationDisplay(
-                songs: albumSongs,
-                showSongCount: true,
-                compact: true,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant
-                          .withValues(alpha: 0.7),
-                    ),
-              ),
-            ],
-          ),
         );
       },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, s) => Center(child: Text('Error: $e')),
     );
   }
 }

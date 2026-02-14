@@ -1,7 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-/// Represents a single entry in the search index
-/// This is stored in SQLite for fast full-text search capabilities
+/// Stored in SQLite for fast full-text search
 class SearchIndexEntry extends Equatable {
   final String filename;
   final String title;
@@ -72,7 +71,7 @@ class SearchIndexEntry extends Equatable {
       ];
 }
 
-/// Statistics about the search index
+/// Index metadata for monitoring and optimization
 class SearchIndexStats extends Equatable {
   final int totalEntries;
   final int entriesWithLyrics;

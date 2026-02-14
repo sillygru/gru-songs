@@ -74,22 +74,46 @@ class CacheService {
 
   Future<int> getCacheSize() async {
     await init();
+
+    // We use compute to run the heavy filesystem iteration in a background isolate
+    // to prevent UI jank while calculating size for thousands of covers.
+    return compute(_calculateCacheSizeInIsolate, {
+      'v3Path': _v3Dir.path,
+      'docPath': (await getApplicationDocumentsDirectory()).path,
+      'supportPath': (await getApplicationSupportDirectory()).path,
+    });
+  }
+
+  static Future<int> _calculateCacheSizeInIsolate(
+      Map<String, String> paths) async {
     int total = 0;
 
     // 1. V3 Internal Directory Size
-    if (_v3Dir.existsSync()) {
+    final v3Dir = Directory(paths['v3Path']!);
+    if (v3Dir.existsSync()) {
       try {
-        await for (var file in _v3Dir.list(recursive: true)) {
-          if (file is File) total += await file.length();
+        for (var file in v3Dir.listSync(recursive: true)) {
+          if (file is File) total += file.lengthSync();
         }
       } catch (_) {}
     }
 
-    // 2. Mirrored Sync Data in Documents Directory
-    try {
-      final docDir = await getApplicationDocumentsDirectory();
-      if (await docDir.exists()) {
-        await for (var entity in docDir.list()) {
+    // 2. Extracted Covers Size (Application Support)
+    final supportDir = Directory(paths['supportPath']!);
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+    if (coversDir.existsSync()) {
+      try {
+        for (var file in coversDir.listSync(recursive: true)) {
+          if (file is File) total += file.lengthSync();
+        }
+      } catch (_) {}
+    }
+
+    // 3. Mirrored Sync Data in Documents Directory
+    final docDir = Directory(paths['docPath']!);
+    if (docDir.existsSync()) {
+      try {
+        for (var entity in docDir.listSync()) {
           if (entity is File) {
             final name = p.basename(entity.path);
             // Count databases, stats, and cached sync metadata
@@ -97,12 +121,12 @@ class CacheService {
                 name.endsWith('.json') ||
                 name.contains('_stats') ||
                 name.contains('_data')) {
-              total += await entity.length();
+              total += entity.lengthSync();
             }
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     return total;
   }

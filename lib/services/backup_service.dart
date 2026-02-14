@@ -172,14 +172,14 @@ class BackupService {
 
         // Export user data to JSON
         final storage = StorageService();
-        final songs = await storage.loadSongs(username);
+        final database = DatabaseService.instance;
+        await database.initForUser(username);
+        final songs = await database.getAllSongs();
         final userData = await storage.loadUserData(username);
         final shuffleState = await storage.loadShuffleState(username);
         final playbackState = await storage.loadPlaybackState(username);
 
         // Create final stats JSON
-        final database = DatabaseService.instance;
-        await database.initForUser(username);
         final funStats = await database.getFunStats();
 
         // Get merged song groups
@@ -333,7 +333,7 @@ class BackupService {
         await restoreJsonFile('songs.json', (data) async {
           final songs =
               (data as List).map((json) => Song.fromJson(json)).toList();
-          await storage.saveSongs(username, songs);
+          await DatabaseService.instance.insertSongsBatch(songs);
         });
 
         // Restore user data

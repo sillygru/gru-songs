@@ -4,8 +4,9 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
-import 'storage_service.dart';
 import '../models/playlist.dart';
+
+import '../models/song.dart';
 
 /// DatabaseService handles local SQLite storage.
 class DatabaseService {
@@ -62,6 +63,20 @@ class DatabaseService {
     await db.execute(
         'CREATE TABLE IF NOT EXISTS hidden (filename TEXT PRIMARY KEY, hidden_at REAL)');
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS song (
+          filename TEXT PRIMARY KEY,
+          title TEXT,
+          artist TEXT,
+          album TEXT,
+          url TEXT,
+          cover_url TEXT,
+          has_lyrics INTEGER,
+          play_count INTEGER,
+          duration_ms INTEGER,
+          mtime REAL
+        )
+    ''');
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS playlist (
           id TEXT PRIMARY KEY,
           name TEXT,
@@ -97,6 +112,14 @@ class DatabaseService {
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
     await _addColumnIfNotExists(
         db, 'merged_song_group', 'priority_filename', 'TEXT');
+
+    // 3. Create indexes for the song table
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_song_artist ON song(artist)');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_song_album ON song(album)');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_song_mtime ON song(mtime)');
   }
 
   // ignore: unused_element
@@ -120,6 +143,29 @@ class DatabaseService {
           'DatabaseService not initialized. Call initForUser first.');
     }
     return _initCompleter!.future;
+  }
+
+  /// Ensures the database is initialized and returns the current username
+  /// Throws if not initialized
+  Future<String> ensureInitializedForCurrentUser() async {
+    await _ensureInitialized();
+    if (_currentUsername == null) {
+      throw Exception(
+          'DatabaseService not initialized. Call initForUser first.');
+    }
+    return _currentUsername!;
+  }
+
+  /// Gets the stats database for direct raw queries
+  /// Returns null if not initialized
+  Database? getStatsDatabase() {
+    return _statsDatabase;
+  }
+
+  /// Gets the user data database for direct raw queries
+  /// Returns null if not initialized
+  Database? getUserDataDatabase() {
+    return _userDataDatabase;
   }
 
   Future<Database> _openDatabase(String name, String schema) async {
@@ -226,6 +272,111 @@ class DatabaseService {
       await txn.delete('playsession');
     });
     debugPrint('Cleared all play stats and sessions');
+  }
+
+  // ==========================================================================
+  // SONG QUERIES
+  // ==========================================================================
+
+  Future<void> insertSongsBatch(List<Song> songs) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final song in songs) {
+        batch.insert(
+          'song',
+          {
+            'filename': song.filename,
+            'title': song.title,
+            'artist': song.artist,
+            'album': song.album,
+            'url': song.url,
+            'cover_url': song.coverUrl,
+            'has_lyrics': song.hasLyrics ? 1 : 0,
+            'play_count': song.playCount,
+            'duration_ms': song.duration?.inMilliseconds,
+            'mtime': song.mtime,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<List<Song>> getAllSongs() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    final results = await _userDataDatabase!.query('song');
+    return results.map((r) => _mapToSong(r)).toList();
+  }
+
+  Future<List<Song>> getSongs(
+      {int? limit,
+      int? offset,
+      String? orderBy,
+      String? where,
+      List<Object?>? whereArgs}) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    final results = await _userDataDatabase!.query(
+      'song',
+      limit: limit,
+      offset: offset,
+      orderBy: orderBy,
+      where: where,
+      whereArgs: whereArgs,
+    );
+    return results.map((r) => _mapToSong(r)).toList();
+  }
+
+  Future<int> getSongCount() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return 0;
+    final result =
+        await _userDataDatabase!.rawQuery('SELECT COUNT(*) as count FROM song');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<void> clearSongs() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    await _userDataDatabase!.delete('song');
+  }
+
+  Future<List<String>> getArtists() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    final results = await _userDataDatabase!.rawQuery(
+        'SELECT DISTINCT artist FROM song ORDER BY artist COLLATE NOCASE');
+    return results.map((r) => r['artist'] as String).toList();
+  }
+
+  Future<List<String>> getAlbums() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    final results = await _userDataDatabase!.rawQuery(
+        'SELECT DISTINCT album FROM song ORDER BY album COLLATE NOCASE');
+    return results.map((r) => r['album'] as String).toList();
+  }
+
+  Song _mapToSong(Map<String, dynamic> r) {
+    return Song(
+      title: r['title'] as String,
+      artist: r['artist'] as String,
+      album: r['album'] as String,
+      filename: r['filename'] as String,
+      url: r['url'] as String,
+      coverUrl: r['cover_url'] as String?,
+      hasLyrics: (r['has_lyrics'] as int) == 1,
+      playCount: r['play_count'] as int,
+      duration: r['duration_ms'] != null
+          ? Duration(milliseconds: r['duration_ms'] as int)
+          : null,
+      mtime: (r['mtime'] as num?)?.toDouble(),
+    );
   }
 
   // ==========================================================================
@@ -553,8 +704,12 @@ class DatabaseService {
     await _ensureInitialized();
     if (_statsDatabase == null || _userDataDatabase == null) return;
 
-    // 1. Update User Data DB (Favorites, SuggestLess, Hidden, Merged Songs)
+    // 1. Update User Data DB (Songs, Favorites, SuggestLess, Hidden, Merged Songs)
     await _userDataDatabase!.transaction((txn) async {
+      // Update Song table
+      await txn.update('song', {'filename': newFilename},
+          where: 'filename = ?', whereArgs: [oldFilename]);
+
       // For favorites/suggestless/hidden, if target exists, we just delete the old one
       // (effectively "merging" the fact that it is a favorite/suggestless/hidden)
 
@@ -634,14 +789,17 @@ class DatabaseService {
   }
 
   /// Deletes a file from user data tables only.
-  /// Removes the file from favorites, suggestless, hidden, merged songs, and playlists.
+  /// Removes the file from songs, favorites, suggestless, hidden, merged songs, and playlists.
   /// Preserves play events to maintain statistics.
   Future<void> deleteFile(String filename) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
 
-    // Update User Data DB (Favorites, SuggestLess, Hidden, Merged Songs, Playlists)
+    // Update User Data DB (Songs, Favorites, SuggestLess, Hidden, Merged Songs, Playlists)
     await _userDataDatabase!.transaction((txn) async {
+      // Remove from songs
+      await txn.delete('song', where: 'filename = ?', whereArgs: [filename]);
+
       // Remove from favorites
       await txn
           .delete('favorite', where: 'filename = ?', whereArgs: [filename]);
@@ -1167,7 +1325,7 @@ class DatabaseService {
 
       // Load metadata from song cache
 
-      final songs = await StorageService().loadSongs(_currentUsername);
+      final songs = await getAllSongs();
 
       final metadataMap = {for (var s in songs) s.filename: s};
 
