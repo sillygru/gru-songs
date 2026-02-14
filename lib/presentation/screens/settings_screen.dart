@@ -1,41 +1,22 @@
-import 'dart:io';
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
-import '../../providers/settings_provider.dart';
-import '../../providers/auth_provider.dart';
-import 'storage_management_screen.dart';
-import 'folder_management_screen.dart';
 import '../widgets/scanning_progress_bar.dart';
-import '../widgets/optimization_options_dialog.dart';
-import '../../services/data_export_service.dart';
-import '../../services/telemetry_service.dart';
-import '../../services/database_optimizer_service.dart';
-import 'theme_selection_screen.dart';
-import 'namida_import_screen.dart';
+import 'folder_management_screen.dart';
+import 'storage_management_screen.dart';
+import 'playback_settings_screen.dart';
+import 'appearance_settings_screen.dart';
+import 'data_management_settings_screen.dart';
+import 'misc_settings_screen.dart';
 
-class SettingsScreen extends ConsumerStatefulWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (ref.watch(isScanningProvider)) {
       return const ScanningProgressBar();
     }
-
-    final settings = ref.watch(settingsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -43,13 +24,144 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         centerTitle: true,
       ),
       body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildCategoryTile(
+            context: context,
+            icon: Icons.library_music_outlined,
+            title: 'Library',
+            subtitle: 'Music folders, scanning, storage',
+            color: Colors.blue,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LibrarySettingsScreen()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryTile(
+            context: context,
+            icon: Icons.play_circle_outline,
+            title: 'Playback',
+            subtitle: 'Audio settings, transitions',
+            color: Colors.green,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PlaybackSettingsScreen()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryTile(
+            context: context,
+            icon: Icons.palette_outlined,
+            title: 'Appearance',
+            subtitle: 'Theme, display options',
+            color: Colors.purple,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const AppearanceSettingsScreen()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryTile(
+            context: context,
+            icon: Icons.settings_backup_restore_rounded,
+            title: 'Data Management',
+            subtitle: 'Backup, restore, optimize, re-index',
+            color: Colors.teal,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const DataManagementSettingsScreen()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryTile(
+            context: context,
+            icon: Icons.miscellaneous_services_outlined,
+            title: 'Misc',
+            subtitle: 'Privacy, behavior',
+            color: Colors.grey,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MiscSettingsScreen()),
+            ),
+          ),
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryTile({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: Theme.of(context)
+          .colorScheme
+          .surfaceContainerHighest
+          .withValues(alpha: 0.3),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 28),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 13,
+          ),
+        ),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class LibrarySettingsScreen extends StatelessWidget {
+  const LibrarySettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Library"),
+        centerTitle: true,
+      ),
+      body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         children: [
           _buildSettingsGroup(
-            title: 'Library & Storage',
+            context: context,
+            title: 'Library',
             icon: Icons.library_music_outlined,
             children: [
               _buildListTile(
+                context: context,
                 icon: Icons.folder_outlined,
                 title: 'Music Folders',
                 subtitle: 'Manage music library folders',
@@ -63,25 +175,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               _buildListTile(
+                context: context,
                 icon: Icons.refresh_rounded,
                 title: 'Re-scan Library Now',
                 subtitle: 'Manually refresh all songs from disk',
                 onTap: () {
-                  ref.read(songsProvider.notifier).forceFullScan();
-
-                  TelemetryService.instance.trackEvent(
-                      'library_action',
-                      {
-                        'action': 'force_full_scan',
-                      },
-                      requiredLevel: 2);
-
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Scanning library...")),
                   );
                 },
               ),
               _buildListTile(
+                context: context,
                 icon: Icons.storage_outlined,
                 title: 'Manage Storage',
                 subtitle: 'Disk usage and data management',
@@ -95,257 +200,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          _buildSettingsGroup(
-            title: 'Playback & Audio',
-            icon: Icons.play_circle_outline,
-            children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.waves_rounded),
-                title: const Text('Audio Visualizer'),
-                subtitle: const Text('Show animated wave while playing'),
-                value: settings.visualizerEnabled,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setVisualizerEnabled(val);
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.volume_off_rounded),
-                title: const Text('Auto-Pause on Mute'),
-                subtitle:
-                    const Text('Automatically pause playback when volume is 0'),
-                value: settings.autoPauseOnVolumeZero,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setAutoPauseOnVolumeZero(val);
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.volume_up_rounded),
-                title: const Text('Auto-Resume on Unmute'),
-                subtitle: const Text(
-                    'Automatically resume playback when volume is restored'),
-                value: settings.autoResumeOnVolumeRestore,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setAutoResumeOnVolumeRestore(val);
-                },
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                child: Text(
-                  'Song Transitions',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-              ),
-              _buildDurationSlider(
-                icon: Icons.volume_down_rounded,
-                title: 'Fade Out',
-                value: settings.fadeOutDuration,
-                onChanged: (val) =>
-                    ref.read(settingsProvider.notifier).setFadeOutDuration(val),
-              ),
-              _buildDurationSlider(
-                icon: Icons.volume_up_rounded,
-                title: 'Fade In',
-                value: settings.fadeInDuration,
-                onChanged: (val) =>
-                    ref.read(settingsProvider.notifier).setFadeInDuration(val),
-              ),
-              _buildDurationSlider(
-                icon: Icons.hourglass_empty_rounded,
-                title: 'Gap / Delay',
-                value: settings.delayDuration,
-                onChanged: (val) =>
-                    ref.read(settingsProvider.notifier).setDelayDuration(val),
-              ),
-            ],
-          ),
-          _buildSettingsGroup(
-            title: 'Appearance',
-            icon: Icons.palette_outlined,
-            children: [
-              _buildListTile(
-                icon: Icons.color_lens_outlined,
-                title: 'App Theme',
-                subtitle: 'Choose your visual style',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const ThemeSelectionScreen()),
-                  );
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.timer_outlined),
-                title: const Text('Show Song Duration'),
-                subtitle: const Text('Display duration in song lists'),
-                value: settings.showSongDuration,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setShowSongDuration(val);
-                },
-              ),
-            ],
-          ),
-          _buildDataManagementSettings(),
-          _buildSettingsGroup(
-            title: 'Privacy & Others',
-            icon: Icons.security_outlined,
-            children: [
-              _buildTelemetryWidget(),
-              _buildPullToRefreshTile(),
-            ],
-          ),
           const SizedBox(height: 32),
         ],
       ),
     );
   }
 
-  Widget _buildDataManagementSettings() {
-    return _buildSettingsGroup(
-      title: 'Data Management',
-      icon: Icons.settings_backup_restore_rounded,
-      children: [
-        _buildListTile(
-          icon: Icons.upload_file_rounded,
-          title: 'Export App Data',
-          subtitle: 'Backup your stats, favorites, and playlists',
-          onTap: () async {
-            try {
-              final exportService = DataExportService();
-              await exportService.exportUserData();
-
-              TelemetryService.instance.trackEvent(
-                  'data_management',
-                  {
-                    'action': 'export_data',
-                  },
-                  requiredLevel: 2);
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Export failed: $e")),
-                );
-              }
-            }
-          },
-        ),
-        _buildListTile(
-          icon: Icons.download_for_offline_rounded,
-          title: 'Import App Data',
-          subtitle: 'Restore or merge data from a backup',
-          onTap: () => _handleImport(),
-        ),
-        _buildListTile(
-          icon: Icons.download_rounded,
-          title: 'Import from Namida',
-          subtitle: 'Import playlists and favorites from Namida',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NamidaImportScreen()),
-            );
-          },
-        ),
-        _buildListTile(
-          icon: Icons.build_rounded,
-          title: 'Optimize Database',
-          subtitle: 'Check and fix database issues',
-          onTap: () => _showOptimizeDatabaseDialog(),
-        ),
-        _buildListTile(
-          icon: Icons.search_rounded,
-          title: 'Re-index All',
-          subtitle: 'Rebuild search index only',
-          onTap: () => _showReindexDialog(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTelemetryWidget() {
-    final settings = ref.watch(settingsProvider);
-    final levels = [
-      'Level 0',
-      'Level 1',
-      'Level 2',
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.analytics_outlined,
-                  size: 20,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-              const SizedBox(width: 12),
-              const Text(
-                'Telemetry Level',
-                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
-              ),
-              const Spacer(),
-              Text(
-                levels[settings.telemetryLevel.clamp(0, 2)],
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Slider(
-            value: settings.telemetryLevel.toDouble().clamp(0, 2),
-            min: 0,
-            max: 2,
-            divisions: 2,
-            label: levels[settings.telemetryLevel.clamp(0, 2)],
-            onChanged: (val) {
-              ref
-                  .read(settingsProvider.notifier)
-                  .setTelemetryLevel(val.toInt());
-            },
-          ),
-          _buildLevelExplanation(settings.telemetryLevel.clamp(0, 2)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLevelExplanation(int level) {
-    final explanations = [
-      '• No data will be shared with developers.',
-      '• Basic app information (version, platform).\n• App startup notification.',
-      '• Everything in level 1.\n• Anonymous usage events (settings changed).\n• Library rescans and data management (import/export).',
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        explanations[level],
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-    );
-  }
-
   Widget _buildSettingsGroup({
+    required BuildContext context,
     required String title,
     required List<Widget> children,
-    IconData? icon,
+    required IconData icon,
   }) {
     final theme = Theme.of(context);
     final List<Widget> childrenWithDividers = [];
@@ -371,10 +236,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
           child: Row(
             children: [
-              if (icon != null) ...[
-                Icon(icon, size: 16, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-              ],
+              Icon(icon, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
               Text(
                 title.toUpperCase(),
                 style: TextStyle(
@@ -402,527 +265,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Widget _buildPullToRefreshTile() {
-    return FutureBuilder<bool>(
-      future: ref.read(storageServiceProvider).getPullToRefreshEnabled(),
-      builder: (context, snapshot) {
-        return SwitchListTile(
-          secondary: const Icon(Icons.touch_app_outlined),
-          title: const Text('Pull to Refresh'),
-          subtitle: const Text('Swipe down to refresh library'),
-          value: snapshot.data ?? true,
-          onChanged: (val) async {
-            await ref.read(storageServiceProvider).setPullToRefreshEnabled(val);
-
-            await TelemetryService.instance.trackEvent(
-                'setting_changed',
-                {
-                  'setting': 'pull_to_refresh_enabled',
-                  'value': val,
-                },
-                requiredLevel: 2);
-
-            setState(() {});
-          },
-        );
-      },
-    );
-  }
-
   Widget _buildListTile({
+    required BuildContext context,
     required IconData icon,
     required String title,
     String? subtitle,
     required VoidCallback onTap,
-    Color? textColor,
-    Color? iconColor,
   }) {
     return ListTile(
-      leading: Icon(icon,
-          color: iconColor ?? Theme.of(context).colorScheme.onSurfaceVariant),
-      title: Text(title,
-          style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+      leading:
+          Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: subtitle != null
           ? Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)
           : null,
       trailing: const Icon(Icons.chevron_right, size: 20),
       onTap: onTap,
     );
-  }
-
-  Widget _buildDurationSlider({
-    required IconData icon,
-    required String title,
-    required double value,
-    required ValueChanged<double> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon,
-                  size: 20,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-              const SizedBox(width: 12),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-              const Spacer(),
-              Text(
-                '${value.toStringAsFixed(1)}s',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          Slider(
-            value: value,
-            min: 0,
-            max: 12,
-            divisions: 24,
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _handleImport() async {
-    try {
-      final exportService = DataExportService();
-      final validation = await exportService.validateBackup();
-
-      if (validation == null) return; // Picked nothing
-
-      if (!validation['valid']) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text("Invalid Backup"),
-              content: Text(validation['error']),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("OK"),
-                ),
-              ],
-            ),
-          );
-        }
-        return;
-      }
-
-      // Valid backup, ask for merge strategy
-      if (mounted) {
-        final strategy = await showDialog<String>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("Import Strategy"),
-            content: const Text(
-                "How would you like to import this data?\n\nAdditive: Add to your existing stats and data without duplicates.\n\nReplace: Wipe your current stats and data and replace them with the backup."),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, "additive"),
-                child: const Text("ADDITIVE"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, "replace"),
-                child: const Text("REPLACE STATS"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("CANCEL"),
-              ),
-            ],
-          ),
-        );
-
-        if (strategy == null) return;
-
-        final additive = strategy == "additive";
-
-        // Show loading
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) =>
-                const Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        await exportService.performImport(
-          statsDbPath: validation['statsDbPath'],
-          dataDbPath: validation['dataDbPath'],
-          additive: additive,
-        );
-
-        TelemetryService.instance.trackEvent(
-            'data_management',
-            {
-              'action': 'import_data',
-              'strategy': strategy,
-            },
-            requiredLevel: 2);
-
-        if (mounted) {
-          Navigator.pop(context); // Pop loading
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Import successful!")),
-          );
-          // Invalidate providers to refresh data
-          ref.invalidate(userDataProvider);
-          ref.invalidate(songsProvider);
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        // Try to pop loading if it's there
-        if (Navigator.canPop(context)) Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Import failed: $e")),
-        );
-      }
-    }
-  }
-
-  Future<void> _showRestartDialog() async {
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.restart_alt, color: Colors.blue, size: 48),
-        title: const Text('Restart Required'),
-        content: const Text(
-          'Database optimization has been completed successfully.\n\n'
-          'The app needs to restart to apply all changes properly.',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _restartApp();
-            },
-            child: const Text('Restart Now'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _restartApp() async {
-    // For Android, we can use a platform channel to restart the app
-    // For other platforms, we just exit and let the user relaunch
-    if (Platform.isAndroid) {
-      try {
-        const platform = MethodChannel('gru_songs/app');
-        await platform.invokeMethod('restartApp');
-      } catch (e) {
-        // If platform method fails, just exit
-        exit(0);
-      }
-    } else {
-      // On other platforms, just exit
-      exit(0);
-    }
-  }
-
-  Future<void> _showReindexDialog() async {
-    // Show confirmation dialog
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.search_rounded, color: Colors.blue, size: 48),
-        title: const Text('Re-index Search Data'),
-        content: const Text(
-          'This will rebuild the search index from your cached songs.\n\n'
-          'This operation is faster than full database optimization and only affects search functionality.\n\n'
-          'Would you like to proceed?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Re-index'),
-          ),
-        ],
-      ),
-    );
-
-    if (proceed != true || !mounted) return;
-
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Text('Re-indexing search data...'),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      final optimizer = DatabaseOptimizerService();
-      final result = await optimizer.reindexSearchOnly();
-
-      if (mounted) {
-        Navigator.pop(context); // Pop loading
-
-        // Show results
-        await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: Icon(
-              result.success ? Icons.check_circle : Icons.error,
-              color: result.success ? Colors.green : Colors.red,
-              size: 48,
-            ),
-            title: Text(
-                result.success ? 'Re-indexing Complete' : 'Re-indexing Issues'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(result.message),
-                  if (result.issuesFound.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Issues Found:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.issuesFound.map((issue) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('• '),
-                              Expanded(child: Text(issue)),
-                            ],
-                          ),
-                        )),
-                  ],
-                  if (result.fixesApplied.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Operations Performed:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.fixesApplied.map((fix) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.check,
-                                  size: 16, color: Colors.green),
-                              const SizedBox(width: 4),
-                              Expanded(child: Text(fix)),
-                            ],
-                          ),
-                        )),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context); // Pop loading
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: const Icon(Icons.error, color: Colors.red, size: 48),
-            title: const Text('Re-indexing Failed'),
-            content: Text('An error occurred during re-indexing: $e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _showOptimizeDatabaseDialog() async {
-    // Show optimization options dialog
-    final options = await showDialog<OptimizationOptions>(
-      context: context,
-      builder: (context) => const OptimizationOptionsDialog(),
-    );
-
-    if (options == null || !mounted) return;
-
-    final progressNotifier = ValueNotifier<double>(0.0);
-    final messageNotifier = ValueNotifier<String>('Starting optimization...');
-
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ValueListenableBuilder<String>(
-              valueListenable: messageNotifier,
-              builder: (context, message, _) =>
-                  Text(message, textAlign: TextAlign.center),
-            ),
-            const SizedBox(height: 20),
-            ValueListenableBuilder<double>(
-              valueListenable: progressNotifier,
-              builder: (context, progress, _) =>
-                  LinearProgressIndicator(value: progress),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      final optimizer = DatabaseOptimizerService();
-      final result = await optimizer.optimizeDatabases(
-        options: options,
-        onProgress: (message, progress) {
-          messageNotifier.value = message;
-          progressNotifier.value = progress;
-        },
-      );
-
-      if (mounted) {
-        Navigator.pop(context); // Pop loading
-
-        // Show results
-        await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: Icon(
-              result.success ? Icons.check_circle : Icons.error,
-              color: result.success ? Colors.green : Colors.red,
-              size: 48,
-            ),
-            title: Text(result.success
-                ? 'Optimization Complete'
-                : 'Optimization Issues'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(result.message),
-                  if (result.issuesFound.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Issues Found:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.issuesFound.map((issue) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('• '),
-                              Expanded(child: Text(issue)),
-                            ],
-                          ),
-                        )),
-                  ],
-                  if (result.fixesApplied.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Fixes Applied:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.fixesApplied.map((fix) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.check,
-                                  size: 16, color: Colors.green),
-                              const SizedBox(width: 4),
-                              Expanded(child: Text(fix)),
-                            ],
-                          ),
-                        )),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-
-        // Refresh providers if fixes were applied
-        if (result.fixesApplied.isNotEmpty) {
-          ref.invalidate(userDataProvider);
-
-          // Show restart dialog after a brief delay
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted) {
-              _showRestartDialog();
-            }
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context); // Pop loading
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: const Icon(Icons.error, color: Colors.red, size: 48),
-            title: const Text('Optimization Failed'),
-            content: Text('An error occurred during optimization: $e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    }
   }
 }

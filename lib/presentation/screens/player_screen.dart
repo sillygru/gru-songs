@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/album_art_image.dart';
 import 'package:rxdart/rxdart.dart';
@@ -17,6 +18,7 @@ import '../../providers/providers.dart';
 import '../widgets/heart_context_menu.dart';
 import '../widgets/next_up_sheet.dart';
 import '../widgets/waveform_progress_bar.dart';
+import '../widgets/basic_progress_bar.dart';
 import 'song_list_screen.dart';
 
 class PositionData {
@@ -910,15 +912,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                   return const SizedBox.shrink();
                                 }
                                 final positionData = snapshot.data;
-                                return WaveformProgressBar(
-                                  filename: metadata.id,
-                                  path: metadata.extras?['audioPath'] ?? '',
-                                  progress:
-                                      positionData?.position ?? Duration.zero,
-                                  total:
-                                      positionData?.duration ?? Duration.zero,
-                                  onSeek: player.seek,
-                                );
+                                final showWaveform =
+                                    ref.watch(settingsProvider).showWaveform;
+
+                                if (showWaveform) {
+                                  return WaveformProgressBar(
+                                    filename: metadata.id,
+                                    path: metadata.extras?['audioPath'] ?? '',
+                                    progress:
+                                        positionData?.position ?? Duration.zero,
+                                    total:
+                                        positionData?.duration ?? Duration.zero,
+                                    onSeek: player.seek,
+                                  );
+                                } else {
+                                  return BasicProgressBar(
+                                    progress:
+                                        positionData?.position ?? Duration.zero,
+                                    total:
+                                        positionData?.duration ?? Duration.zero,
+                                    onSeek: player.seek,
+                                  );
+                                }
                               },
                             ),
                           ),

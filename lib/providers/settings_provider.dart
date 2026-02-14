@@ -11,6 +11,7 @@ class SettingsState {
   final SongSortOrder sortOrder;
   final bool showSongDuration;
   final bool animatedSoundWaveEnabled;
+  final bool showWaveform;
   final double fadeOutDuration;
   final double fadeInDuration;
   final double delayDuration;
@@ -23,6 +24,7 @@ class SettingsState {
     this.sortOrder = SongSortOrder.title,
     this.showSongDuration = false,
     this.animatedSoundWaveEnabled = true,
+    this.showWaveform = true,
     this.fadeOutDuration = 0.0,
     this.fadeInDuration = 0.0,
     this.delayDuration = 0.0,
@@ -36,6 +38,7 @@ class SettingsState {
     SongSortOrder? sortOrder,
     bool? showSongDuration,
     bool? animatedSoundWaveEnabled,
+    bool? showWaveform,
     double? fadeOutDuration,
     double? fadeInDuration,
     double? delayDuration,
@@ -51,6 +54,7 @@ class SettingsState {
       showSongDuration: showSongDuration ?? this.showSongDuration,
       animatedSoundWaveEnabled:
           animatedSoundWaveEnabled ?? this.animatedSoundWaveEnabled,
+      showWaveform: showWaveform ?? this.showWaveform,
       fadeOutDuration: fadeOutDuration ?? this.fadeOutDuration,
       fadeInDuration: fadeInDuration ?? this.fadeInDuration,
       delayDuration: delayDuration ?? this.delayDuration,
@@ -66,6 +70,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keySortOrder = 'sort_order';
   static const _keyShowSongDuration = 'show_song_duration';
   static const _keyAnimatedSoundWaveEnabled = 'animated_sound_wave_enabled';
+  static const _keyShowWaveform = 'show_waveform';
   static const _keyFadeOutDuration = 'fade_out_duration';
   static const _keyFadeInDuration = 'fade_in_duration';
   static const _keyDelayDuration = 'delay_duration';
@@ -91,6 +96,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       showSongDuration: prefs.getBool(_keyShowSongDuration) ?? false,
       animatedSoundWaveEnabled:
           prefs.getBool(_keyAnimatedSoundWaveEnabled) ?? true,
+      showWaveform: prefs.getBool(_keyShowWaveform) ?? true,
       fadeOutDuration: prefs.getDouble(_keyFadeOutDuration) ?? 0.0,
       fadeInDuration: prefs.getDouble(_keyFadeInDuration) ?? 0.0,
       delayDuration: prefs.getDouble(_keyDelayDuration) ?? 0.0,
@@ -208,6 +214,20 @@ class SettingsNotifier extends Notifier<SettingsState> {
         'setting_changed',
         {
           'setting': 'animated_sound_wave_enabled',
+          'value': enabled,
+        },
+        requiredLevel: 2);
+  }
+
+  Future<void> setShowWaveform(bool enabled) async {
+    state = state.copyWith(showWaveform: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShowWaveform, enabled);
+
+    await TelemetryService.instance.trackEvent(
+        'setting_changed',
+        {
+          'setting': 'show_waveform',
           'value': enabled,
         },
         requiredLevel: 2);
