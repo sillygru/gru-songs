@@ -104,8 +104,7 @@ void main() {
         sizeBytes: 2000,
       );
 
-      final diff =
-          await backupService.compareBackups('test_user', oldBackup, newBackup);
+      final diff = await backupService.compareBackups(oldBackup, newBackup);
 
       expect(diff.songCountDiff, equals(5));
       expect(diff.statsRowsDiff, equals(3));
@@ -136,8 +135,7 @@ void main() {
           file: zipFile,
           sizeBytes: 100);
 
-      final diff = await backupService.compareBackups(
-          'test_user', backupInfo, backupInfo);
+      final diff = await backupService.compareBackups(backupInfo, backupInfo);
 
       expect(diff.songCountDiff, 0);
       expect(diff.statsRowsDiff, 0);

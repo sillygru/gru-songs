@@ -20,13 +20,6 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
   NamidaImportMode _importMode = NamidaImportMode.additive;
 
   Future<void> _selectAndImport() async {
-    final authState = ref.read(authProvider);
-    final username = authState.username;
-    if (username == null) {
-      _showError('Not logged in');
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _statusMessage = 'Validating backup file...';
@@ -92,7 +85,6 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
       // Perform the import
       final result = await NamidaImportService().performImport(
         importPath: importPath,
-        username: username,
         mode: _importMode,
         pathMapper: (namidaPath) => NamidaImportService.defaultPathMapper(
           namidaPath,

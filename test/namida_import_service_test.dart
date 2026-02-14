@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gru_songs/services/namida_import_service.dart';
 import 'package:gru_songs/services/database_service.dart';
 import 'package:gru_songs/models/playlist.dart';
@@ -17,6 +18,7 @@ void setupTestDatabase() {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
   setupTestDatabase();
 
   // Mock path provider
@@ -91,7 +93,7 @@ void main() {
         final testDb = DatabaseService.forTest();
         DatabaseService.instance = testDb;
         dbService = testDb;
-        await dbService.initForUser('test_user');
+        await dbService.init();
       });
 
       tearDown(() async {
@@ -140,7 +142,6 @@ void main() {
         // Perform import
         final result = await importService.performImport(
           importPath: importDir.path,
-          username: 'test_user',
           mode: NamidaImportMode.additive,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -170,7 +171,6 @@ void main() {
 
         final result = await importService.performImport(
           importPath: importDir.path,
-          username: 'test_user',
           mode: NamidaImportMode.additive,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -185,7 +185,6 @@ void main() {
       test('returns error for non-existent directory', () async {
         final result = await importService.performImport(
           importPath: '/non/existent/path',
-          username: 'test_user',
           mode: NamidaImportMode.additive,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -215,7 +214,6 @@ void main() {
         // Import with additive mode
         final result = await importService.performImport(
           importPath: importDir.path,
-          username: 'test_user',
           mode: NamidaImportMode.additive,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -251,7 +249,6 @@ void main() {
         // Import with replace mode
         final result = await importService.performImport(
           importPath: importDir.path,
-          username: 'test_user',
           mode: NamidaImportMode.replace,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -294,7 +291,6 @@ void main() {
 
         final result = await importService.performImport(
           importPath: importDir.path,
-          username: 'test_user',
           mode: NamidaImportMode.additive,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -343,7 +339,6 @@ void main() {
 
         final result = await importService.performImport(
           importPath: importDir.path,
-          username: 'test_user',
           mode: NamidaImportMode.additive,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -385,7 +380,6 @@ void main() {
 
         final result = await importService.performImport(
           importPath: importDir.path,
-          username: 'test_user',
           mode: NamidaImportMode.additive,
           pathMapper: (path) =>
               NamidaImportService.defaultPathMapper(path, musicFolder),
@@ -459,8 +453,6 @@ void main() {
 
         final result = await importService.performImport(
           importPath: importDir.path,
-
-          username: 'test_user',
 
           mode: NamidaImportMode.additive,
 

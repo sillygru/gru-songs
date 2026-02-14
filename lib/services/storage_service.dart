@@ -20,40 +20,38 @@ class StorageService {
     return directory.path;
   }
 
-  Future<File> getSongsFile(String? username) async {
+  Future<File> getSongsFile() async {
     final path = await _localPath;
-    final suffix = username != null ? '_$username' : '';
-    return File('$path/cached_songs$suffix.json');
+    return File('$path/cached_songs.json');
   }
 
-  Future<File> _getUserDataFile(String username) async {
+  Future<File> _getUserDataFile() async {
     final path = await _localPath;
-    return File('$path/user_data_$username.json');
+    return File('$path/user_data.json');
   }
 
-  Future<File> _getShuffleStateFile(String username) async {
+  Future<File> _getShuffleStateFile() async {
     final path = await _localPath;
-    return File('$path/shuffle_state_$username.json');
+    return File('$path/shuffle_state.json');
   }
 
-  Future<File> _getPlaybackStateFile(String username) async {
+  Future<File> _getPlaybackStateFile() async {
     final path = await _localPath;
-    return File('$path/playback_state_$username.json');
+    return File('$path/playback_state.json');
   }
 
-  Future<void> savePlaybackState(
-      String username, Map<String, dynamic> state) async {
+  Future<void> savePlaybackState(Map<String, dynamic> state) async {
     try {
-      final file = await _getPlaybackStateFile(username);
+      final file = await _getPlaybackStateFile();
       await file.writeAsString(jsonEncode(state));
     } catch (e) {
       debugPrint('Error saving playback state: $e');
     }
   }
 
-  Future<Map<String, dynamic>?> loadPlaybackState(String username) async {
+  Future<Map<String, dynamic>?> loadPlaybackState() async {
     try {
-      final file = await _getPlaybackStateFile(username);
+      final file = await _getPlaybackStateFile();
       if (!await file.exists()) return null;
 
       final content = await file.readAsString();
@@ -225,18 +223,18 @@ class StorageService {
     await prefs.setString(_lastLibraryFolderKey, folder);
   }
 
-  Future<void> saveUserData(String username, Map<String, dynamic> data) async {
+  Future<void> saveUserData(Map<String, dynamic> data) async {
     try {
-      final file = await _getUserDataFile(username);
+      final file = await _getUserDataFile();
       await file.writeAsString(jsonEncode(data));
     } catch (e) {
       debugPrint('Error saving user data cache: $e');
     }
   }
 
-  Future<Map<String, dynamic>?> loadUserData(String username) async {
+  Future<Map<String, dynamic>?> loadUserData() async {
     try {
-      final file = await _getUserDataFile(username);
+      final file = await _getUserDataFile();
       if (!await file.exists()) return null;
 
       final content = await file.readAsString();
@@ -247,19 +245,18 @@ class StorageService {
     }
   }
 
-  Future<void> saveShuffleState(
-      String username, Map<String, dynamic> state) async {
+  Future<void> saveShuffleState(Map<String, dynamic> state) async {
     try {
-      final file = await _getShuffleStateFile(username);
+      final file = await _getShuffleStateFile();
       await file.writeAsString(jsonEncode(state));
     } catch (e) {
       debugPrint('Error saving shuffle state: $e');
     }
   }
 
-  Future<Map<String, dynamic>?> loadShuffleState(String username) async {
+  Future<Map<String, dynamic>?> loadShuffleState() async {
     try {
-      final file = await _getShuffleStateFile(username);
+      final file = await _getShuffleStateFile();
       if (!await file.exists()) return null;
 
       final content = await file.readAsString();

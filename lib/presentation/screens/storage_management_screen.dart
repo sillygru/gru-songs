@@ -35,34 +35,28 @@ class _StorageManagementScreenState
     setState(() => _isLoading = true);
 
     try {
-      final username = ref.read(authProvider).username;
-      if (username != null) {
-        final dbSize =
-            await StorageAnalysisService.instance.getDatabaseSize(username);
-        final coversSize =
-            await StorageAnalysisService.instance.getCoversCacheSize();
-        final backupsSize =
-            await StorageAnalysisService.instance.getBackupsSize();
-        final libSize =
-            await StorageAnalysisService.instance.getLibraryCacheSize();
-        final searchSize =
-            await StorageAnalysisService.instance.getSearchIndexSize(username);
-        final waveformSize =
-            await StorageAnalysisService.instance.getWaveformCacheSize();
+      final dbSize = await StorageAnalysisService.instance.getDatabaseSize();
+      final coversSize =
+          await StorageAnalysisService.instance.getCoversCacheSize();
+      final backupsSize =
+          await StorageAnalysisService.instance.getBackupsSize();
+      final libSize =
+          await StorageAnalysisService.instance.getLibraryCacheSize();
+      final searchSize =
+          await StorageAnalysisService.instance.getSearchIndexSize();
+      final waveformSize =
+          await StorageAnalysisService.instance.getWaveformCacheSize();
 
-        if (mounted) {
-          setState(() {
-            _databaseSize = dbSize;
-            _coversSize = coversSize;
-            _backupsSize = backupsSize;
-            _libraryCacheSize = libSize;
-            _searchIndexSize = searchSize;
-            _waveformCacheSize = waveformSize;
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _databaseSize = dbSize;
+          _coversSize = coversSize;
+          _backupsSize = backupsSize;
+          _libraryCacheSize = libSize;
+          _searchIndexSize = searchSize;
+          _waveformCacheSize = waveformSize;
+          _isLoading = false;
+        });
       }
     } catch (e) {
       debugPrint('Error loading storage sizes: $e');
@@ -181,7 +175,7 @@ class _StorageManagementScreenState
           '• Favorites and hidden songs\n'
           '• Playback statistics\n'
           '• App settings and preferences\n\n'
-          'You will be logged out immediately. This action cannot be undone.',
+          'The app will reset. This action cannot be undone.',
       confirmText: 'Clear Database',
       confirmColor: Colors.red,
       requireTextInput: true,
@@ -193,17 +187,13 @@ class _StorageManagementScreenState
     setState(() => _isClearing = true);
 
     try {
-      final username = ref.read(authProvider).username;
-      if (username != null) {
-        await StorageAnalysisService.instance.clearDatabase(username);
-      }
+      await StorageAnalysisService.instance.clearDatabase();
 
-      // Logout and Reset
+      // Reset
       if (mounted) {
         final storage = ref.read(storageServiceProvider);
         await storage.setSetupComplete(false);
         ref.read(setupProvider.notifier).setComplete(false);
-        await ref.read(authProvider.notifier).logout();
       }
     } catch (e) {
       if (mounted) {
@@ -325,10 +315,7 @@ class _StorageManagementScreenState
     setState(() => _isClearing = true);
 
     try {
-      final username = ref.read(authProvider).username;
-      if (username != null) {
-        await StorageAnalysisService.instance.clearSearchIndex(username);
-      }
+      await StorageAnalysisService.instance.clearSearchIndex();
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
@@ -380,7 +367,7 @@ class _StorageManagementScreenState
 
   Future<void> _handleDangerousClear() async {
     final confirmed = await _showConfirmationDialog(
-      title: 'Clear All User Data?',
+      title: 'Clear All App Data?',
       content: 'This action is dangerous and cannot be undone.\n\n'
           'It will permanently delete:\n'
           '• All your preferences and settings\n'
@@ -390,7 +377,7 @@ class _StorageManagementScreenState
           '• Library cache\n'
           '• Search index\n'
           '• Waveform cache\n\n'
-          'You will be logged out immediately.',
+          'The app will reset.',
       confirmText: 'Clear Everything',
       confirmColor: Colors.red,
       requireTextInput: true,
@@ -402,17 +389,13 @@ class _StorageManagementScreenState
     setState(() => _isClearing = true);
 
     try {
-      final username = ref.read(authProvider).username;
-      if (username != null) {
-        await StorageAnalysisService.instance.clearAllUserData(username);
-      }
+      await StorageAnalysisService.instance.clearAllUserData();
 
-      // Logout and Reset
+      // Reset
       if (mounted) {
         final storage = ref.read(storageServiceProvider);
         await storage.setSetupComplete(false);
         ref.read(setupProvider.notifier).setComplete(false);
-        await ref.read(authProvider.notifier).logout();
       }
     } catch (e) {
       if (mounted) {

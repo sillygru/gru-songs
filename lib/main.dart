@@ -4,15 +4,16 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:metadata_god/metadata_god.dart';
 import 'dart:async';
+import 'dart:io';
 import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/setup_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'providers/setup_provider.dart';
+import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'services/cache_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'providers/setup_provider.dart';
-import 'providers/theme_provider.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -35,18 +36,20 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final username = prefs.getString('username');
 
-  if (isSetupComplete && username == null) {
-    debugPrint("Setup complete but no user found. Resetting...");
-    isSetupComplete = false;
-    await storage.setSetupComplete(false);
+  // Single user mode: always init database
+  final migrated = await DatabaseService.instance.init();
+
+  if (migrated) {
+    debugPrint("Data migrated to single-user format. Restarting app...");
+    // Direct exit to force restart/relaunch with new state
+    exit(0);
   }
 
-  if (isSetupComplete) {
-    await storage.setIsLocalMode(true);
-  }
+  // Set local mode by default
+  await storage.setIsLocalMode(true);
 
-  if (isSetupComplete && username != null) {
-    unawaited(DatabaseService.instance.initForUser(username));
+  if (!isSetupComplete) {
+    // If setup not complete, we might need migration check or fresh start
   }
 
   runApp(ProviderScope(

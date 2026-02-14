@@ -24,7 +24,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
   final StatsService _statsService;
   final StorageService _storageService;
-  final String? _username;
   final Ref? _ref;
 
   List<QueueItem> _originalQueue = [];
@@ -78,12 +77,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
   final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
 
-  AudioPlayerManager(this._statsService, this._storageService, this._username,
-      [this._ref]) {
+  AudioPlayerManager(this._statsService, this._storageService, [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
-    if (_username != null) {
-      DatabaseService.instance.initForUser(_username!);
-    }
+    // DatabaseService is global now, initialized in main or providers
     _initStatsListeners();
     _initPersistence();
     _initVolumeMonitoring();
@@ -208,7 +204,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   void _initStatsListeners() {
     _player.playerStateStream.listen((state) {
-      if (_username == null) return;
       if (state.playing) {
         _playStartTime ??= DateTime.now();
       } else if (_playStartTime != null) {
@@ -309,8 +304,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> _initPersistence() async {
-    if (_username == null) return;
-    final localStateData = await _storageService.loadShuffleState(_username!);
+    final localStateData = await _storageService.loadShuffleState();
     if (localStateData != null) {
       _shuffleState = ShuffleState.fromJson(localStateData);
       shuffleNotifier.value = _shuffleState.config.enabled;
@@ -471,14 +465,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> _saveShuffleState() async {
-    if (_username == null) return;
-    await _storageService.saveShuffleState(_username!, _shuffleState.toJson());
+    await _storageService.saveShuffleState(_shuffleState.toJson());
     // _statsService.updateShuffleState removed - strictly local
   }
 
   Future<void> _savePlaybackState() async {
-    if (_username == null) return;
-
     final currentIndex = _player.currentIndex;
     final currentSong =
         (currentIndex != null && currentIndex < _effectiveQueue.length)
@@ -493,7 +484,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       'is_restricted_to_original': _isRestrictedToOriginal,
     };
 
-    await _storageService.savePlaybackState(_username!, state);
+    await _storageService.savePlaybackState(state);
   }
 
   void _updateDurations() {
@@ -509,7 +500,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _flushStats({required String eventType}) {
-    if (_username == null || _currentSongFilename == null) return;
+    if (_currentSongFilename == null) return;
     if (_playStartTime != null) _updateDurations();
 
     final song = _songMap[_currentSongFilename!];
@@ -543,7 +534,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     if (finalDuration > 0.5) {
       _statsService.trackStats({
-        'username': _username!,
         'song_filename': _currentSongFilename!,
         'duration_played': finalDuration,
         'event_type': finalEventType,
@@ -609,14 +599,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _isRestrictedToOriginal = false;
     await _player.setShuffleModeEnabled(false);
 
-    if (_username != null) {
-      await DatabaseService.instance.initForUser(_username!);
-    }
+    await DatabaseService.instance.init();
 
     // 1. Fallback to Local Storage (Always local-first now)
-    final savedState = _username != null
-        ? await _storageService.loadPlaybackState(_username!)
-        : null;
+    final savedState = await _storageService.loadPlaybackState();
 
     if (savedState != null) {
       try {

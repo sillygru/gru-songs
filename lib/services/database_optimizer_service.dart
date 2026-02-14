@@ -65,9 +65,8 @@ class DatabaseOptimizerService {
   factory DatabaseOptimizerService() => _instance;
   DatabaseOptimizerService._internal();
 
-  /// Analyzes and optimizes database files for a user based on selected options
-  Future<OptimizationResult> optimizeDatabases(
-    String username, {
+  /// Analyzes and optimizes database files based on selected options
+  Future<OptimizationResult> optimizeDatabases({
     OptimizationOptions options = const OptimizationOptions(),
     void Function(String message, double progress)? onProgress,
   }) async {
@@ -77,8 +76,8 @@ class DatabaseOptimizerService {
 
     try {
       final docDir = await getApplicationDocumentsDirectory();
-      final statsDbPath = join(docDir.path, '${username}_stats.db');
-      final userDataDbPath = join(docDir.path, '${username}_data.db');
+      final statsDbPath = join(docDir.path, 'wispie_stats.db');
+      final userDataDbPath = join(docDir.path, 'wispie_data.db');
 
       // Calculate total steps and progress increments
       final enabledTypes = <OptimizationType>[];
@@ -116,7 +115,7 @@ class DatabaseOptimizerService {
         currentStep++;
         final progress = currentStep / totalSteps;
         onProgress?.call('Cleaning up shuffle state...', progress);
-        final shuffleCleanupResult = await _cleanupShuffleStateJson(username);
+        final shuffleCleanupResult = await _cleanupShuffleStateJson();
         issuesFound.addAll(shuffleCleanupResult['issues'] as List<String>);
         fixesApplied.addAll(shuffleCleanupResult['fixes'] as List<String>);
         details['shuffle_state_cleanup'] = shuffleCleanupResult['details'];
@@ -208,7 +207,7 @@ class DatabaseOptimizerService {
         currentStep++;
         final progress = currentStep / totalSteps;
         onProgress?.call('Optimizing search index...', progress);
-        final searchIndexResult = await _optimizeSearchIndex(username);
+        final searchIndexResult = await _optimizeSearchIndex();
         issuesFound.addAll(searchIndexResult['issues'] as List<String>);
         fixesApplied.addAll(searchIndexResult['fixes'] as List<String>);
         details['search_index'] = searchIndexResult['details'];
@@ -241,15 +240,14 @@ class DatabaseOptimizerService {
 
   /// Cleans up shuffle state JSON file by removing obsolete history data
   /// History is now read directly from the stats database
-  Future<Map<String, dynamic>> _cleanupShuffleStateJson(String username) async {
+  Future<Map<String, dynamic>> _cleanupShuffleStateJson() async {
     final issues = <String>[];
     final fixes = <String>[];
     final details = <String, dynamic>{};
 
     try {
       final docDir = await getApplicationDocumentsDirectory();
-      final shuffleStateFile =
-          File(join(docDir.path, 'shuffle_state_$username.json'));
+      final shuffleStateFile = File(join(docDir.path, 'shuffle_state.json'));
 
       if (await shuffleStateFile.exists()) {
         final content = await shuffleStateFile.readAsString();
@@ -298,7 +296,7 @@ class DatabaseOptimizerService {
     try {
       // Ensure DatabaseService is initialized before proceeding
       try {
-        await DatabaseService.instance.ensureInitializedForCurrentUser();
+        await DatabaseService.instance.ensureInitialized();
       } catch (e) {
         issues.add('DatabaseService not initialized: $e');
         return {'issues': issues, 'fixes': fixes, 'details': details};
@@ -436,7 +434,7 @@ class DatabaseOptimizerService {
 
     // Ensure DatabaseService is initialized
     try {
-      await DatabaseService.instance.ensureInitializedForCurrentUser();
+      await DatabaseService.instance.ensureInitialized();
     } catch (e) {
       issues.add('DatabaseService not initialized: $e');
       return {'issues': issues, 'fixes': fixes, 'details': details};
@@ -933,7 +931,7 @@ class DatabaseOptimizerService {
   }
 
   /// Optimizes the search index by rebuilding it from cached songs
-  Future<Map<String, dynamic>> _optimizeSearchIndex(String username) async {
+  Future<Map<String, dynamic>> _optimizeSearchIndex() async {
     final issues = <String>[];
     final fixes = <String>[];
     final details = <String, dynamic>{};
@@ -941,7 +939,7 @@ class DatabaseOptimizerService {
     try {
       // Ensure DatabaseService is initialized before loading songs
       try {
-        await DatabaseService.instance.ensureInitializedForCurrentUser();
+        await DatabaseService.instance.ensureInitialized();
       } catch (e) {
         issues.add(
             'DatabaseService not initialized when optimizing search index: $e');
@@ -962,7 +960,7 @@ class DatabaseOptimizerService {
       // Initialize and rebuild search index
       final searchService = SearchService();
       try {
-        await searchService.initForUser(username);
+        await searchService.init();
 
         final startTime = DateTime.now();
         await searchService.rebuildIndex(songs);
@@ -993,14 +991,14 @@ class DatabaseOptimizerService {
   }
 
   /// Re-index all search data without full database optimization
-  Future<OptimizationResult> reindexSearchOnly(String username) async {
+  Future<OptimizationResult> reindexSearchOnly() async {
     final issuesFound = <String>[];
     final fixesApplied = <String>[];
     final details = <String, dynamic>{};
 
     try {
       // Only rebuild search index
-      final searchIndexResult = await _optimizeSearchIndex(username);
+      final searchIndexResult = await _optimizeSearchIndex();
       issuesFound.addAll(searchIndexResult['issues'] as List<String>);
       fixesApplied.addAll(searchIndexResult['fixes'] as List<String>);
       details['search_index'] = searchIndexResult['details'];

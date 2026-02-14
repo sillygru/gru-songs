@@ -116,34 +116,21 @@ class UserDataState {
 
 /// UserDataNotifier implements local-only data management:
 class UserDataNotifier extends Notifier<UserDataState> {
-  String? _username;
   bool _initialized = false;
 
   @override
   UserDataState build() {
-    final authState = ref.watch(authProvider);
-    final newUsername = authState.username;
-
-    if (newUsername != null) {
-      if (!_initialized || newUsername != _username) {
-        _username = newUsername;
-        _initialized = true;
-        Future.microtask(() => _initLocal());
-        return UserDataState(isLoading: true);
-      }
-      return state;
-    } else {
-      _username = null;
-      _initialized = false;
-      return UserDataState();
+    if (!_initialized) {
+      _initialized = true;
+      Future.microtask(() => _initLocal());
+      return UserDataState(isLoading: true);
     }
+    return state;
   }
 
   Future<void> _initLocal() async {
-    if (_username == null) return;
-
-    // Initialize local database
-    await DatabaseService.instance.initForUser(_username!);
+    // Initialize local database (single user mode)
+    await DatabaseService.instance.init();
 
     // Load from local database
     try {
@@ -188,8 +175,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   /// Manual refresh - just reload from local database
   Future<void> refresh({bool force = true}) async {
-    if (_username == null) return;
-
     if (force) {
       state = state.copyWith(isLoading: true);
     }
@@ -199,8 +184,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   /// Toggle favorite (local-only)
   Future<void> toggleFavorite(String songFilename, {bool sync = false}) async {
-    if (_username == null) return;
-
     final isFav = state.isFavorite(songFilename);
     final isSL = state.isSuggestLess(songFilename);
 
@@ -247,8 +230,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   /// Toggle suggestLess (local-only)
   Future<void> toggleSuggestLess(String songFilename) async {
-    if (_username == null) return;
-
     final isSL = state.isSuggestLess(songFilename);
 
     // Find actual match
@@ -280,8 +261,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   /// Toggle hidden (local-only)
   Future<void> toggleHidden(String songFilename) async {
-    if (_username == null) return;
-
     final isHidden = state.isHidden(songFilename);
 
     // Find actual match
@@ -312,8 +291,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   Future<void> bulkToggleFavorite(List<String> filenames, bool favorite) async {
-    if (_username == null) return;
-
     final newFavs = List<String>.from(state.favorites);
     final newSL = List<String>.from(state.suggestLess);
 
@@ -353,8 +330,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   Future<void> bulkHide(List<String> filenames, bool hide) async {
-    if (_username == null) return;
-
     final newHidden = List<String>.from(state.hidden);
 
     for (final filename in filenames) {
@@ -382,8 +357,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   // --- Playlist Management ---
 
   Future<void> createPlaylist(String name, [String? firstSong]) async {
-    if (_username == null) return;
-
     final id = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
     final playlist = Playlist(
@@ -405,8 +378,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> addSongToPlaylist(String playlistId, String songFilename,
       {bool sync = false}) async {
-    if (_username == null) return;
-
     // Update local database
     await DatabaseService.instance.addSongToPlaylist(playlistId, songFilename);
 
@@ -429,8 +400,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> bulkAddSongsToPlaylist(
       String playlistId, List<String> filenames) async {
-    if (_username == null) return;
-
     await DatabaseService.instance
         .bulkAddSongsToPlaylist(playlistId, filenames);
 
@@ -454,8 +423,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> bulkRemoveSongsFromPlaylist(
       String playlistId, List<String> filenames) async {
-    if (_username == null) return;
-
     await DatabaseService.instance
         .bulkRemoveSongsFromPlaylist(playlistId, filenames);
 
@@ -474,8 +441,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> removeSongFromPlaylist(String playlistId, String songFilename,
       {bool sync = false}) async {
-    if (_username == null) return;
-
     // Update local database
     await DatabaseService.instance
         .removeSongFromPlaylist(playlistId, songFilename);
@@ -495,8 +460,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   Future<void> deletePlaylist(String playlistId) async {
-    if (_username == null) return;
-
     // Update local database
     await DatabaseService.instance.deletePlaylist(playlistId);
     final newPlaylists =
@@ -505,8 +468,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   Future<void> updatePlaylistName(String playlistId, String newName) async {
-    if (_username == null) return;
-
     // Update local database
     await DatabaseService.instance.updatePlaylistName(playlistId, newName);
 
@@ -527,7 +488,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   /// [priorityFilename] is the song to prioritize during shuffle
   Future<String> createMergedGroup(List<String> filenames,
       {String? priorityFilename}) async {
-    if (_username == null) throw Exception('Not logged in');
     if (filenames.length < 2) {
       throw Exception('Need at least 2 songs to merge');
     }
@@ -552,8 +512,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   /// Sets the priority song for a merge group
   Future<void> setMergedGroupPriority(
       String groupId, String? priorityFilename) async {
-    if (_username == null) return;
-
     await DatabaseService.instance
         .setMergedGroupPriority(groupId, priorityFilename);
 
@@ -568,8 +526,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   /// Adds songs to an existing merge group
   Future<void> addSongsToMergedGroup(
       String groupId, List<String> filenames) async {
-    if (_username == null) return;
-
     await DatabaseService.instance.addSongsToMergedGroup(groupId, filenames);
 
     // Update state
@@ -582,8 +538,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   /// Removes a song from its merge group
   Future<void> unmergeSong(String filename) async {
-    if (_username == null) return;
-
     // Find the group and check if we're removing the priority song
     for (final entry in state.mergedGroups.entries) {
       if (entry.value.contains(filename)) {
@@ -624,8 +578,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   /// Deletes an entire merge group
   Future<void> deleteMergedGroup(String groupId) async {
-    if (_username == null) return;
-
     await DatabaseService.instance.deleteMergedGroup(groupId);
 
     // Update state

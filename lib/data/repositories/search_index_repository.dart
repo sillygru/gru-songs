@@ -17,23 +17,19 @@ class SearchIndexRepository {
   static const String _metadataTable = 'search_metadata';
 
   Database? _database;
-  String? _currentUsername;
   final FFmpegService _ffmpegService = FFmpegService();
 
-  /// Gets the database file path for a given username
-  Future<String> _getDbPath(String username) async {
+  /// Gets the database file path
+  Future<String> _getDbPath() async {
     final docDir = await getApplicationDocumentsDirectory();
-    return join(docDir.path, '${username}_search_index.db');
+    return join(docDir.path, 'wispie_search_index.db');
   }
 
-  /// Initializes the search index database for a user
-  Future<void> initForUser(String username) async {
-    if (_currentUsername == username && _database != null) return;
+  /// Initializes the search index database
+  Future<void> init() async {
+    if (_database != null) return;
 
-    await close();
-
-    final dbPath = await _getDbPath(username);
-    _currentUsername = username;
+    final dbPath = await _getDbPath();
 
     _database = await openDatabase(
       dbPath,
@@ -88,8 +84,7 @@ class SearchIndexRepository {
   /// Rebuilds the entire search index from a list of songs incrementally
   Future<void> rebuildIndex(List<Song> songs) async {
     if (_database == null) {
-      throw StateError(
-          'SearchIndexRepository not initialized. Call initForUser first.');
+      await init();
     }
 
     // 1. Fetch existing index state to determine what needs updating
@@ -461,8 +456,8 @@ class SearchIndexRepository {
   }
 
   /// Gets the database file path (for backup exclusion)
-  Future<String?> getDatabaseFilePath(String username) async {
-    final path = await _getDbPath(username);
+  Future<String?> getDatabaseFilePath() async {
+    final path = await _getDbPath();
     final file = File(path);
     if (await file.exists()) {
       return path;
@@ -471,8 +466,8 @@ class SearchIndexRepository {
   }
 
   /// Deletes the search index database file
-  Future<void> deleteDatabaseFile(String username) async {
-    final path = await _getDbPath(username);
+  Future<void> deleteDatabaseFile() async {
+    final path = await _getDbPath();
     final file = File(path);
     if (await file.exists()) {
       await file.delete();

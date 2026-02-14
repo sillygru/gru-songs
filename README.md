@@ -7,19 +7,19 @@ Wispie is a simple local music player app built with Flutter.
 
 ## Features
 - **Shuffle personalities:** Multiple shuffle personalities such as consistent and explorer with the hability to make your own
-- **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists.
+- **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists
 - **Metadata Editing:** Built-in editor for modifying song metadata (title, artist, album, filename, lyrics)
-- **Lyrics:** Support for embedded lyrics with synchronized scrolling.
-- **Merged Songs:** Combine multiple versions of a track (remixes, live, etc.) into a single group for shuffle, keeping individual favorites and settings.
-- **Sleep timer** Sleep timer with customizable duration and features.
+- **Lyrics:** Support for embedded lyrics with synchronized scrolling
+- **Merged Songs:** Combine multiple versions of a track (remixes, live, etc.) into a single group for shuffle, keeping individual favorites and settings
+- **Sleep timer:** Sleep timer with customizable duration and features.
+- **Cross fade:** Crossfade between songs alongside option to delay song playing
 
 ## Additional Features
 - **Backups:** Backup management system
 - **Data Export:** Export user data and databases for backup and migration purposes
-- **Volume Monitoring:** Auto-pause playback when volume is muted and resume when restored
-- **Theme Selection:** Multiple theme options
+- **Auto pause on mute:** Auto-pause playback when volume is muted and resume when restored
+- **Dynamic themes:** You can optionally sync your theme with the cover art of the currently playing song
 - **Statistics Tracking:** Collects stats (real)
-- **User Profiles:** Multi-user support with individual profiles and settings (who tf would use ts)
 - **Smart indexing for search:** When searching, song lyrics, albums and artists are all indexed for quick searches
 
 ## Getting Started
@@ -41,8 +41,8 @@ User data in Wispie is tied to the music file's name. If you rename a file outsi
 
 ## Others
 ### *"Don't mind half broken features"*
-This is a vibe coded project, if features are half-broken, that is... unfortunate.
-This was originally a personal side project, so there might be leftovers of pre-configured stuff of when this was only meant for my personal use.
+This is a vibe coded project, if features are half-broken, that is... unfortunate. - Will try to keep it stable tho.
+This was originally a personal side project, so there might be leftovers of old features or configurations that are no longer relevant.
 
 ## For developers
 ### Run the app

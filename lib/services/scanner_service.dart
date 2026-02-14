@@ -72,7 +72,6 @@ class ScannerService {
     String? lyricsPath,
     Map<String, int>? playCounts,
     void Function(double progress)? onProgress,
-    String? username,
     void Function(List<Song>)? onComplete,
   }) async {
     // Check for storage permission
@@ -133,16 +132,14 @@ class ScannerService {
         // Incremental DB insert to save memory and keep UI responsive
         await DatabaseService.instance.insertSongsBatch(message);
       } else if (message == 'done') {
-        if (username != null) {
-          try {
-            final searchService = SearchService();
-            await searchService.initForUser(username);
-            await searchService.rebuildIndex(allScannedSongs);
-            debugPrint(
-                'Search index rebuilt with ${allScannedSongs.length} songs');
-          } catch (e) {
-            debugPrint('Error rebuilding search index: $e');
-          }
+        try {
+          final searchService = SearchService();
+          await searchService.init();
+          await searchService.rebuildIndex(allScannedSongs);
+          debugPrint(
+              'Search index rebuilt with ${allScannedSongs.length} songs');
+        } catch (e) {
+          debugPrint('Error rebuilding search index: $e');
         }
         onComplete?.call(allScannedSongs);
         completer.complete(allScannedSongs);
@@ -165,7 +162,6 @@ class ScannerService {
     List<Map<String, String>>? lyricsFolders,
     Map<String, int>? playCounts,
     void Function(double progress)? onProgress,
-    String? username,
     void Function(List<Song>)? onComplete,
   }) async {
     // Check for all files access permission
@@ -254,16 +250,14 @@ class ScannerService {
         await DatabaseService.instance.insertSongsBatch(message);
       } else if (message == 'done') {
         // Rebuild search index after scanning
-        if (username != null) {
-          try {
-            final searchService = SearchService();
-            await searchService.initForUser(username);
-            await searchService.rebuildIndex(allScannedSongs);
-            debugPrint(
-                'Search index rebuilt with ${allScannedSongs.length} songs');
-          } catch (e) {
-            debugPrint('Error rebuilding search index: $e');
-          }
+        try {
+          final searchService = SearchService();
+          await searchService.init();
+          await searchService.rebuildIndex(allScannedSongs);
+          debugPrint(
+              'Search index rebuilt with ${allScannedSongs.length} songs');
+        } catch (e) {
+          debugPrint('Error rebuilding search index: $e');
         }
         onComplete?.call(allScannedSongs);
         completer.complete(allScannedSongs);

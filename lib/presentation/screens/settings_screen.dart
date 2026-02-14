@@ -205,9 +205,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildDataManagementSettings() {
-    final authState = ref.watch(authProvider);
-    final username = authState.username;
-
     return _buildSettingsGroup(
       title: 'Data Management',
       icon: Icons.settings_backup_restore_rounded,
@@ -217,10 +214,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: 'Export App Data',
           subtitle: 'Backup your stats, favorites, and playlists',
           onTap: () async {
-            if (username == null) return;
             try {
               final exportService = DataExportService();
-              await exportService.exportUserData(username);
+              await exportService.exportUserData();
 
               TelemetryService.instance.trackEvent(
                   'data_management',
@@ -495,13 +491,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _handleImport() async {
-    final authState = ref.watch(authProvider);
-    final username = authState.username;
-    if (username == null) return;
-
     try {
       final exportService = DataExportService();
-      final validation = await exportService.validateBackup(username);
+      final validation = await exportService.validateBackup();
 
       if (validation == null) return; // Picked nothing
 
@@ -564,8 +556,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         }
 
         await exportService.performImport(
-          username: username,
-          importPath: validation['importPath'],
+          statsDbPath: validation['statsDbPath'],
+          dataDbPath: validation['dataDbPath'],
           additive: additive,
         );
 
@@ -640,10 +632,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showReindexDialog() async {
-    final authState = ref.read(authProvider);
-    final username = authState.username;
-    if (username == null) return;
-
     // Show confirmation dialog
     final proceed = await showDialog<bool>(
       context: context,
@@ -687,7 +675,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       final optimizer = DatabaseOptimizerService();
-      final result = await optimizer.reindexSearchOnly(username);
+      final result = await optimizer.reindexSearchOnly();
 
       if (mounted) {
         Navigator.pop(context); // Pop loading
@@ -785,10 +773,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showOptimizeDatabaseDialog() async {
-    final authState = ref.read(authProvider);
-    final username = authState.username;
-    if (username == null) return;
-
     // Show optimization options dialog
     final options = await showDialog<OptimizationOptions>(
       context: context,
@@ -827,7 +811,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final optimizer = DatabaseOptimizerService();
       final result = await optimizer.optimizeDatabases(
-        username,
         options: options,
         onProgress: (message, progress) {
           messageNotifier.value = message;

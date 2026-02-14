@@ -51,17 +51,12 @@ class _BackupManagementScreenState
   }
 
   Future<void> _createBackup() async {
-    final authState = ref.read(authProvider);
-    final username = authState.username;
-    if (username == null) return;
-
     setState(() {
       _isCreatingBackup = true;
     });
 
     try {
-      final backupFilename =
-          await BackupService.instance.createBackup(username);
+      final backupFilename = await BackupService.instance.createBackup();
       await _loadBackups();
 
       if (mounted) {
@@ -83,10 +78,6 @@ class _BackupManagementScreenState
   }
 
   Future<void> _restoreBackup(BackupInfo backupInfo) async {
-    final authState = ref.read(authProvider);
-    final username = authState.username;
-    if (username == null) return;
-
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
@@ -154,7 +145,7 @@ class _BackupManagementScreenState
     }
 
     try {
-      await BackupService.instance.restoreFromBackup(username, backupInfo);
+      await BackupService.instance.restoreFromBackup(backupInfo);
 
       // Refresh data without full scan
       await ref.read(userDataProvider.notifier).refresh();
@@ -257,10 +248,6 @@ class _BackupManagementScreenState
   }
 
   Future<void> _compareBackup(BackupInfo backupInfo) async {
-    final authState = ref.read(authProvider);
-    final username = authState.username;
-    if (username == null) return;
-
     // Find previous backup (older)
     // _backups is sorted by number descending.
     final index = _backups.indexOf(backupInfo);
@@ -293,7 +280,6 @@ class _BackupManagementScreenState
 
     try {
       final diff = await BackupService.instance.compareBackups(
-        username,
         oldBackup,
         backupInfo,
       );

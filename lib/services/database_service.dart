@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/playlist.dart';
 
 import '../models/song.dart';
@@ -18,7 +20,6 @@ class DatabaseService {
 
   Database? _statsDatabase;
   Database? _userDataDatabase;
-  String? _currentUsername;
   Completer<void>? _initCompleter;
 
   DatabaseService._init();
@@ -26,33 +27,143 @@ class DatabaseService {
   @visibleForTesting
   DatabaseService.forTest();
 
-  Future<void> initForUser(String username) async {
-    if (_currentUsername == username && _statsDatabase != null) return;
-
+  Future<bool> init() async {
     if (_initCompleter != null && !_initCompleter!.isCompleted) {
-      return _initCompleter!.future;
+      await _initCompleter!.future;
+      return false;
     }
 
     _initCompleter = Completer<void>();
-    _currentUsername = username;
+    bool migrated = false;
 
     try {
+      // --- MIGRATION LOGIC ---
+      migrated = await _performMigrationIfNeeded();
+
       // Open local databases (create schema if needed)
-      _statsDatabase =
-          await _openDatabase('${username}_stats.db', _statsSchema);
+      _statsDatabase = await _openDatabase('wispie_stats.db', _statsSchema);
       _userDataDatabase =
-          await _openDatabase('${username}_data.db', _userDataSchema);
+          await _openDatabase('wispie_data.db', _userDataSchema);
 
       // --- AUTO-MIGRATION: Ensure tables and columns exist ---
       await _ensureStatsTables(_statsDatabase!);
       await _ensureTablesAndColumns(_userDataDatabase!);
 
       _initCompleter!.complete();
+      return migrated;
     } catch (e) {
       debugPrint('Database initialization failed: $e');
       _initCompleter!.completeError(e);
       rethrow;
     }
+  }
+
+  Future<bool> _performMigrationIfNeeded() async {
+    final docDir = await getApplicationDocumentsDirectory();
+    final newDataDb = File(join(docDir.path, 'wispie_data.db'));
+
+    // If new DB already exists, migration is done.
+    if (await newDataDb.exists()) return false;
+
+    bool migrated = false;
+    // Check for old user to migrate
+    final prefs = await SharedPreferences.getInstance();
+    // Try 'local_username' first (from StorageService), then 'username' (legacy Auth)
+    final username =
+        prefs.getString('local_username') ?? prefs.getString('username');
+
+    if (username != null) {
+      debugPrint('Migrating data for user: $username');
+      final oldDataDb = File(join(docDir.path, '${username}_data.db'));
+      final oldStatsDb = File(join(docDir.path, '${username}_stats.db'));
+
+      if (await oldDataDb.exists()) {
+        await oldDataDb.rename(newDataDb.path);
+        debugPrint('Migrated data DB');
+        migrated = true;
+      }
+
+      if (await oldStatsDb.exists()) {
+        await oldStatsDb.rename(join(docDir.path, 'wispie_stats.db'));
+        debugPrint('Migrated stats DB');
+        migrated = true;
+      }
+
+      // Rename JSON caches
+      final oldSongsJson =
+          File(join(docDir.path, 'cached_songs_$username.json'));
+      if (await oldSongsJson.exists()) {
+        await oldSongsJson.rename(join(docDir.path, 'cached_songs.json'));
+        migrated = true;
+      }
+
+      final oldUserDataJson =
+          File(join(docDir.path, 'user_data_$username.json'));
+      if (await oldUserDataJson.exists()) {
+        await oldUserDataJson.rename(join(docDir.path, 'user_data.json'));
+        migrated = true;
+      }
+
+      final oldShuffleJson =
+          File(join(docDir.path, 'shuffle_state_$username.json'));
+      if (await oldShuffleJson.exists()) {
+        await oldShuffleJson.rename(join(docDir.path, 'shuffle_state.json'));
+        migrated = true;
+      }
+
+      final oldPlaybackJson =
+          File(join(docDir.path, 'playback_state_$username.json'));
+      if (await oldPlaybackJson.exists()) {
+        await oldPlaybackJson.rename(join(docDir.path, 'playback_state.json'));
+        migrated = true;
+      }
+    }
+
+    // Cleanup: Delete ALL old user DBs and JSONs (for all users, including the one we just migrated from if copy failed/renamed, or others)
+
+    // Actually, since we renamed, the old files for the current user are gone (if rename worked).
+
+    // Now we just delete anything that looks like a user DB but isn't wispie_*.
+
+    try {
+      if (await docDir.exists()) {
+        final entities = docDir.listSync();
+
+        for (final entity in entities) {
+          if (entity is File) {
+            final name = basename(entity.path);
+
+            // Delete old DBs
+
+            if ((name.endsWith('_data.db') || name.endsWith('_stats.db')) &&
+                !name.startsWith('wispie_')) {
+              debugPrint('Deleting old DB: $name');
+
+              try {
+                await entity.delete();
+              } catch (_) {}
+            }
+
+            // Delete old JSONs
+
+            if ((name.startsWith('cached_songs_') ||
+                    name.startsWith('user_data_') ||
+                    name.startsWith('shuffle_state_') ||
+                    name.startsWith('playback_state_')) &&
+                name.endsWith('.json')) {
+              debugPrint('Deleting old JSON: $name');
+
+              try {
+                await entity.delete();
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error cleaning up old files: $e');
+    }
+    return migrated;
   }
 
   Future<void> _ensureStatsTables(Database db) async {
@@ -166,21 +277,15 @@ class DatabaseService {
 
   Future<void> _ensureInitialized() async {
     if (_initCompleter == null) {
-      throw Exception(
-          'DatabaseService not initialized. Call initForUser first.');
+      throw Exception('DatabaseService not initialized. Call init() first.');
     }
     return _initCompleter!.future;
   }
 
-  /// Ensures the database is initialized and returns the current username
+  /// Ensures the database is initialized
   /// Throws if not initialized
-  Future<String> ensureInitializedForCurrentUser() async {
+  Future<void> ensureInitialized() async {
     await _ensureInitialized();
-    if (_currentUsername == null) {
-      throw Exception(
-          'DatabaseService not initialized. Call initForUser first.');
-    }
-    return _currentUsername!;
   }
 
   /// Gets the stats database for direct raw queries
@@ -1340,7 +1445,7 @@ class DatabaseService {
   Future<Map<String, dynamic>> getFunStats() async {
     await _ensureInitialized();
 
-    if (_statsDatabase == null || _currentUsername == null) {
+    if (_statsDatabase == null) {
       return {"stats": []};
     }
 
@@ -1823,7 +1928,6 @@ class DatabaseService {
     _userDataDatabase?.close();
     _statsDatabase = null;
     _userDataDatabase = null;
-    _currentUsername = null;
     _initCompleter = null;
   }
 
@@ -1832,7 +1936,6 @@ class DatabaseService {
     await _userDataDatabase?.close();
     _statsDatabase = null;
     _userDataDatabase = null;
-    _currentUsername = null;
     _initCompleter = null;
   }
 }

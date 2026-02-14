@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'database_service.dart';
@@ -10,20 +10,20 @@ import 'database_service.dart';
 class DataExportService {
   static const String _metadataFile = 'metadata.json';
 
-  Future<void> exportUserData(String username) async {
+  Future<void> exportUserData() async {
     final docDir = await getApplicationDocumentsDirectory();
     final tempDir = await getTemporaryDirectory();
-    final exportDir = Directory(join(tempDir.path,
-        'export_${username}_${DateTime.now().millisecondsSinceEpoch}'));
+    final exportDir = Directory(p.join(
+        tempDir.path, 'export_${DateTime.now().millisecondsSinceEpoch}'));
     await exportDir.create(recursive: true);
 
     try {
       // 1. Prepare files
-      final statsDbName = '${username}_stats.db';
-      final dataDbName = '${username}_data.db';
+      final statsDbName = 'wispie_stats.db';
+      final dataDbName = 'wispie_data.db';
 
-      final statsDbPath = join(docDir.path, statsDbName);
-      final dataDbPath = join(docDir.path, dataDbName);
+      final statsDbPath = p.join(docDir.path, statsDbName);
+      final dataDbPath = p.join(docDir.path, dataDbName);
 
       if (!await File(statsDbPath).exists() ||
           !await File(dataDbPath).exists()) {
@@ -31,21 +31,20 @@ class DataExportService {
       }
 
       // Copy to temp export dir
-      await File(statsDbPath).copy(join(exportDir.path, statsDbName));
-      await File(dataDbPath).copy(join(exportDir.path, dataDbName));
+      await File(statsDbPath).copy(p.join(exportDir.path, statsDbName));
+      await File(dataDbPath).copy(p.join(exportDir.path, dataDbName));
 
       // 2. Create metadata
       final metadata = {
-        'username': username,
         'export_date': DateTime.now().toIso8601String(),
         'version': '1.0',
       };
-      await File(join(exportDir.path, _metadataFile))
+      await File(p.join(exportDir.path, _metadataFile))
           .writeAsString(jsonEncode(metadata));
 
       // 3. Zip it up
       final encoder = ZipFileEncoder();
-      final zipPath = join(tempDir.path, 'wispie_backup_$username.zip');
+      final zipPath = p.join(tempDir.path, 'wispie_backup.zip');
       encoder.create(zipPath);
       encoder.addDirectory(exportDir);
       encoder.close();
@@ -54,10 +53,10 @@ class DataExportService {
       final bytes = await File(zipPath).readAsBytes();
       final xFile = XFile.fromData(
         bytes,
-        name: basename(zipPath),
+        name: p.basename(zipPath),
         mimeType: 'application/zip',
       );
-      await Share.shareXFiles([xFile], text: 'Wispie Backup for $username');
+      await Share.shareXFiles([xFile], text: 'Wispie Backup');
     } finally {
       // Cleanup
       if (await exportDir.exists()) {
@@ -66,7 +65,7 @@ class DataExportService {
     }
   }
 
-  Future<Map<String, dynamic>?> validateBackup(String currentUsername) async {
+  Future<Map<String, dynamic>?> validateBackup() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['zip'],
@@ -76,8 +75,8 @@ class DataExportService {
 
     final file = File(result.files.first.path!);
     final tempDir = await getTemporaryDirectory();
-    final decodeDir = Directory(
-        join(tempDir.path, 'import_${DateTime.now().millisecondsSinceEpoch}'));
+    final decodeDir = Directory(p.join(
+        tempDir.path, 'import_${DateTime.now().millisecondsSinceEpoch}'));
     await decodeDir.create(recursive: true);
 
     try {
@@ -88,7 +87,7 @@ class DataExportService {
         final filename = file.name;
         if (file.isFile) {
           final data = file.content as List<int>;
-          File(join(decodeDir.path, filename))
+          File(p.join(decodeDir.path, filename))
             ..createSync(recursive: true)
             ..writeAsBytesSync(data);
         }
@@ -104,27 +103,37 @@ class DataExportService {
         contentPath = entities.first.path;
       }
 
-      metadataFile = File(join(contentPath, _metadataFile));
+      metadataFile = File(p.join(contentPath, _metadataFile));
 
       if (!await metadataFile.exists()) {
         throw Exception('Invalid backup: metadata.json missing');
       }
 
       final metadata = jsonDecode(await metadataFile.readAsString());
-      if (metadata['username'] != currentUsername) {
-        return {
-          'valid': false,
-          'error':
-              'Account mismatch. Backup is for "${metadata['username']}", but you are "$currentUsername".',
-          'importPath': contentPath,
-        };
-      }
 
       // Check for DB files
-      final statsDbName = '${currentUsername}_stats.db';
-      final dataDbName = '${currentUsername}_data.db';
-      if (!await File(join(contentPath, statsDbName)).exists() ||
-          !await File(join(contentPath, dataDbName)).exists()) {
+      // Try both wispie_ and legacy prefixes
+      File? foundStats;
+      File? foundData;
+
+      final statsDbName = 'wispie_stats.db';
+      final dataDbName = 'wispie_data.db';
+
+      await for (final entity in Directory(contentPath).list(recursive: true)) {
+        if (entity is File) {
+          final name = p.basename(entity.path);
+          if (name == statsDbName ||
+              (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
+            foundStats = entity;
+          }
+          if (name == dataDbName ||
+              (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
+            foundData = entity;
+          }
+        }
+      }
+
+      if (foundStats == null || foundData == null) {
         throw Exception('Invalid backup: Database files missing');
       }
 
@@ -132,6 +141,8 @@ class DataExportService {
         'valid': true,
         'metadata': metadata,
         'importPath': contentPath,
+        'statsDbPath': foundStats.path,
+        'dataDbPath': foundData.path,
       };
     } catch (e) {
       if (await decodeDir.exists()) await decodeDir.delete(recursive: true);
@@ -140,30 +151,27 @@ class DataExportService {
   }
 
   Future<void> performImport({
-    required String username,
-    required String importPath,
+    required String statsDbPath,
+    required String dataDbPath,
     required bool additive,
   }) async {
-    final statsDbName = '${username}_stats.db';
-    final dataDbName = '${username}_data.db';
-
-    final importedStatsDbPath = join(importPath, statsDbName);
-    final importedDataDbPath = join(importPath, dataDbName);
-
     await DatabaseService.instance.importData(
-      statsDbPath: importedStatsDbPath,
-      dataDbPath: importedDataDbPath,
+      statsDbPath: statsDbPath,
+      dataDbPath: dataDbPath,
       additive: additive,
     );
 
-    // Cleanup import path
-    final importDir = Directory(importPath);
-    // Note: importPath might be a subdirectory of the actual temp import dir
-    // but we can just delete the parent if it matches our pattern.
-    if (importDir.parent.path.contains('import_')) {
-      await importDir.parent.delete(recursive: true);
-    } else {
-      await importDir.delete(recursive: true);
+    // Cleanup import dir - logic to find the temp root
+    final importDir = Directory(p.dirname(statsDbPath));
+    // Find the one containing "import_"
+    Directory? toDelete = importDir;
+    while (toDelete != null && !p.basename(toDelete.path).contains('import_')) {
+      if (toDelete.path == toDelete.parent.path) break;
+      toDelete = toDelete.parent;
+    }
+
+    if (toDelete != null && p.basename(toDelete.path).contains('import_')) {
+      await toDelete.delete(recursive: true);
     }
   }
 }

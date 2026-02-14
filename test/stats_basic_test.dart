@@ -16,7 +16,7 @@ void main() {
       debugPrint('StatsService instantiated successfully');
     });
 
-    test('trackStats handles missing username gracefully', () async {
+    test('trackStats works correctly', () async {
       final statsService = StatsService();
 
       // This should not throw an error even without proper database setup
@@ -29,7 +29,7 @@ void main() {
           'background_duration': 0.0,
           'total_length': 180.0,
         });
-        debugPrint('trackStats handled missing username gracefully');
+        debugPrint('trackStats completed successfully');
       } catch (e) {
         debugPrint('trackStats failed: $e');
         rethrow;

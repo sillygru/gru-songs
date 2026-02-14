@@ -1,8 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gru_songs/services/backup_service.dart';
+import 'test_helpers.dart';
 import 'dart:io';
 
 void main() {
+  setUpAll(() {
+    setUpMockPlugins();
+  });
+
   group('BackupService Tests', () {
     late BackupService backupService;
 

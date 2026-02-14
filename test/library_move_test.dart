@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:gru_songs/services/library_logic.dart';
 
 class MockPathProviderPlatform extends PathProviderPlatform
@@ -28,6 +29,8 @@ class MockPathProviderPlatform extends PathProviderPlatform
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
   SharedPreferences.setMockInitialValues({});
 
   group('LibraryLogic Tests', () {

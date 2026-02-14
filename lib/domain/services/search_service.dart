@@ -13,9 +13,9 @@ class SearchService {
   SearchService({SearchIndexRepository? indexRepository})
       : _indexRepository = indexRepository ?? SearchIndexRepository();
 
-  /// Initializes the search service for a user
-  Future<void> initForUser(String username) async {
-    await _indexRepository.initForUser(username);
+  /// Initializes the search service
+  Future<void> init() async {
+    await _indexRepository.init();
   }
 
   /// Performs a search with the given query and filter state

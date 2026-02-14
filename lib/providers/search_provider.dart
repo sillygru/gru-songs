@@ -57,8 +57,7 @@ final searchResultsProvider =
   }
 
   // Initialize search service for the current user
-  final username = authState.username ?? 'local';
-  await searchService.initForUser(username);
+  await searchService.init();
 
   return songsAsync.when(
     data: (songs) async {
@@ -94,10 +93,9 @@ class DebouncedSearchNotifier extends Notifier<String> {
 /// Provider for search index stats
 final searchIndexStatsProvider = FutureProvider<SearchIndexStats>((ref) async {
   final searchService = ref.watch(searchServiceProvider);
-  final authState = ref.watch(authProvider);
+  // final authState = ref.watch(authProvider); // Unused now
 
-  final username = authState.username ?? 'local';
-  await searchService.initForUser(username);
+  await searchService.init();
 
   final stats = await searchService.getIndexStats();
   return SearchIndexStats(

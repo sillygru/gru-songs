@@ -169,11 +169,9 @@ final songRepositoryProvider = Provider<SongRepository>((ref) {
 });
 
 final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
-  final authState = ref.watch(authProvider);
   final manager = AudioPlayerManager(
     ref.watch(statsServiceProvider),
     ref.watch(storageServiceProvider),
-    authState.username,
     ref,
   );
 
@@ -191,21 +189,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   Future<List<Song>> build() async {
     final storage = ref.watch(storageServiceProvider);
     final userData = ref.watch(userDataProvider);
-    final auth = ref.watch(authProvider);
-
-    // 1. Check for legacy JSON cache and handle migration
-    final legacyFile = await storage.getSongsFile(auth.username);
-    if (await legacyFile.exists()) {
-      debugPrint(
-          'Found legacy JSON cache, deleting and triggering fresh scan...');
-      try {
-        await legacyFile.delete();
-      } catch (e) {
-        debugPrint('Error deleting legacy file: $e');
-      }
-      await DatabaseService.instance.clearSongs();
-      return _performFullScan();
-    }
 
     // 2. Load from SQLite
     final cached = await DatabaseService.instance.getAllSongs();

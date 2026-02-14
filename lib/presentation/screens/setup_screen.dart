@@ -79,8 +79,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       TextField(
                         controller: _usernameController,
                         decoration: const InputDecoration(
-                          labelText: 'Username',
-                          hintText: 'Enter your username',
+                          labelText: 'Display Name',
+                          hintText: 'What should we call you?',
                           prefixIcon: Icon(Icons.person_outline),
                           border: OutlineInputBorder(),
                         ),
@@ -90,7 +90,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Login Button
+                      // Start Button
                       FilledButton(
                         onPressed: _isLoading ? null : _handleLogin,
                         style: FilledButton.styleFrom(
@@ -103,7 +103,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                                 child:
                                     CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text('Start Listening',
+                            : const Text('Continue',
                                 style: TextStyle(fontSize: 16)),
                       ),
                     ] else ...[
@@ -223,11 +223,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       // Set up local mode
       final storage = StorageService();
       await storage.setIsLocalMode(true);
-      await storage.setLocalUsername(username);
       await storage.setSetupComplete(true);
 
-      // Log in as local user
-      await ref.read(authProvider.notifier).localLogin(username);
+      // Set display name
+      await ref.read(authProvider.notifier).setDisplayName(username);
 
       // Track first startup (always sent regardless of level)
       final settings = ref.read(settingsProvider);

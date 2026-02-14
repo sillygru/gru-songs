@@ -138,7 +138,7 @@ class BackupService {
     return backups.first.number + 1;
   }
 
-  Future<String> createBackup(String username) async {
+  Future<String> createBackup() async {
     try {
       final backupsDir = await _backupsDir;
       final backupNumber = await _getNextBackupNumber();
@@ -151,33 +151,32 @@ class BackupService {
 
       // Create a temporary directory for gathering files
       final tempDir = await Directory.systemTemp.createTemp('gru_backup_');
-      final usernameDataDir =
-          Directory(p.join(tempDir.path, '${username}_data'));
-      await usernameDataDir.create(recursive: true);
+      final dataDir = Directory(p.join(tempDir.path, 'data'));
+      await dataDir.create(recursive: true);
 
       try {
         // Copy database files
         final appDir = await getApplicationDocumentsDirectory();
-        final statsDb = File(p.join(appDir.path, '${username}_stats.db'));
-        final dataDb = File(p.join(appDir.path, '${username}_data.db'));
+        final statsDb = File(p.join(appDir.path, 'wispie_stats.db'));
+        final dataDb = File(p.join(appDir.path, 'wispie_data.db'));
 
         if (await statsDb.exists()) {
-          await statsDb
-              .copy(p.join(usernameDataDir.path, '${username}_stats.db'));
+          await statsDb.copy(p.join(dataDir.path, 'wispie_stats.db'));
         }
         if (await dataDb.exists()) {
-          await dataDb
-              .copy(p.join(usernameDataDir.path, '${username}_data.db'));
+          await dataDb.copy(p.join(dataDir.path, 'wispie_data.db'));
         }
 
         // Export user data to JSON
         final storage = StorageService();
         final database = DatabaseService.instance;
-        await database.initForUser(username);
+        // Ensure initialized
+        await database.init();
+
         final songs = await database.getAllSongs();
-        final userData = await storage.loadUserData(username);
-        final shuffleState = await storage.loadShuffleState(username);
-        final playbackState = await storage.loadPlaybackState(username);
+        final userData = await storage.loadUserData();
+        final shuffleState = await storage.loadShuffleState();
+        final playbackState = await storage.loadPlaybackState();
 
         // Create final stats JSON
         final funStats = await database.getFunStats();
@@ -187,55 +186,50 @@ class BackupService {
 
         // Save JSON files
         final songsJson = songs.map((s) => s.toJson()).toList();
-        await File(p.join(usernameDataDir.path, 'songs.json'))
+        await File(p.join(dataDir.path, 'songs.json'))
             .writeAsString(encodeJson(songsJson));
 
         if (userData != null) {
-          await File(p.join(usernameDataDir.path, 'user_data.json'))
+          await File(p.join(dataDir.path, 'user_data.json'))
               .writeAsString(encodeJson(userData));
         }
 
         if (shuffleState != null) {
-          await File(p.join(usernameDataDir.path, 'shuffle_state.json'))
+          await File(p.join(dataDir.path, 'shuffle_state.json'))
               .writeAsString(encodeJson(shuffleState));
         }
 
         if (playbackState != null) {
-          await File(p.join(usernameDataDir.path, 'playback_state.json'))
+          await File(p.join(dataDir.path, 'playback_state.json'))
               .writeAsString(encodeJson(playbackState));
         }
 
-        // Save merged song groups - convert Record objects to JSON-serializable format
+        // Save merged song groups
         final mergedGroupsJson = mergedGroups.map((groupId, groupData) {
           return MapEntry(groupId, {
             'filenames': groupData.filenames,
             'priorityFilename': groupData.priorityFilename,
           });
         });
-        await File(p.join(usernameDataDir.path, 'merged_groups.json'))
+        await File(p.join(dataDir.path, 'merged_groups.json'))
             .writeAsString(encodeJson(mergedGroupsJson));
 
-        await File(p.join(usernameDataDir.path, '${username}_final_stats.json'))
+        await File(p.join(dataDir.path, 'final_stats.json'))
             .writeAsString(encodeJson(funStats));
 
         // Create ZIP file
         final zipFile = File(backupPath);
         final archive = Archive();
 
-        // Add all files from the temp directory to the archive
-        // NOTE: Search index database is explicitly excluded from backups
-        // as it will be rebuilt when the library is scanned
-        await for (final entity in usernameDataDir.list(recursive: true)) {
+        await for (final entity in dataDir.list(recursive: true)) {
           if (entity is File) {
             // Skip search index database files
             final filename = p.basename(entity.path);
             if (filename.contains('_search_index.db')) {
-              debugPrint('Excluding search index from backup: $filename');
               continue;
             }
 
-            final relativePath =
-                p.relative(entity.path, from: usernameDataDir.path);
+            final relativePath = p.relative(entity.path, from: dataDir.path);
             final bytes = await entity.readAsBytes();
             final file = ArchiveFile(relativePath, bytes.length, bytes);
             archive.addFile(file);
@@ -260,7 +254,7 @@ class BackupService {
     }
   }
 
-  Future<void> restoreFromBackup(String username, BackupInfo backupInfo) async {
+  Future<void> restoreFromBackup(BackupInfo backupInfo) async {
     try {
       final backupFile = backupInfo.file;
 
@@ -286,87 +280,96 @@ class BackupService {
 
         final appDir = await getApplicationDocumentsDirectory();
 
-        // Close and delete existing databases to ensure a clean slate
+        // Close and delete existing databases
         await DatabaseService.instance.close();
         final dbSuffixes = ['', '-journal', '-wal', '-shm'];
         for (final suffix in dbSuffixes) {
-          final statsFile = File(p.join(appDir.path, '${username}_stats.db$suffix'));
-          final dataFile = File(p.join(appDir.path, '${username}_data.db$suffix'));
+          final statsFile = File(p.join(appDir.path, 'wispie_stats.db$suffix'));
+          final dataFile = File(p.join(appDir.path, 'wispie_data.db$suffix'));
           if (await statsFile.exists()) await statsFile.delete();
           if (await dataFile.exists()) await dataFile.delete();
         }
 
-        // Restore databases - check both direct and in subdirectory
-        final statsDbFile = File(p.join(tempDir.path, '${username}_stats.db'));
-        final statsDbFileInDir = File(
-            p.join(tempDir.path, '${username}_data', '${username}_stats.db'));
-        final dataDbFile = File(p.join(tempDir.path, '${username}_data.db'));
-        final dataDbFileInDir = File(
-            p.join(tempDir.path, '${username}_data', '${username}_data.db'));
+        // Restore databases - look for wispie_* or any legacy *_stats.db
+        // We'll search recursively in tempDir
+        File? foundStatsDb;
+        File? foundDataDb;
+        File? foundSongsJson;
+        File? foundUserDataJson;
+        File? foundShuffleStateJson;
+        File? foundPlaybackStateJson;
+        File? foundMergedGroupsJson;
 
-        if (await statsDbFile.exists()) {
-          await statsDbFile.copy(p.join(appDir.path, '${username}_stats.db'));
-        } else if (await statsDbFileInDir.exists()) {
-          await statsDbFileInDir
-              .copy(p.join(appDir.path, '${username}_stats.db'));
-        }
-
-        if (await dataDbFile.exists()) {
-          await dataDbFile.copy(p.join(appDir.path, '${username}_data.db'));
-        } else if (await dataDbFileInDir.exists()) {
-          await dataDbFileInDir
-              .copy(p.join(appDir.path, '${username}_data.db'));
-        }
-
-        // Reinitialize database service early to ensure tables are created
-        // and stats DB is ready for queries.
-        await DatabaseService.instance.initForUser(username);
-
-        // Restore JSON data - check both direct and in subdirectory
-        final storage = StorageService();
-
-        // Helper function to find and restore JSON files
-        Future<void> restoreJsonFile(
-            String filename, Future<void> Function(dynamic) restoreFunc) async {
-          final directFile = File(p.join(tempDir.path, filename));
-          final subDirFile =
-              File(p.join(tempDir.path, '${username}_data', filename));
-
-          if (await directFile.exists()) {
-            final content = await directFile.readAsString();
-            final data = decodeJson(content);
-            await restoreFunc(data);
-          } else if (await subDirFile.exists()) {
-            final content = await subDirFile.readAsString();
-            final data = decodeJson(content);
-            await restoreFunc(data);
+        await for (final entity in tempDir.list(recursive: true)) {
+          if (entity is File) {
+            final name = p.basename(entity.path);
+            if (name == 'wispie_stats.db' ||
+                (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
+              foundStatsDb = entity;
+            }
+            if (name == 'wispie_data.db' ||
+                (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
+              foundDataDb = entity;
+            }
+            if (name == 'songs.json') foundSongsJson = entity;
+            if (name == 'user_data.json' || name.startsWith('user_data_'))
+              foundUserDataJson = entity;
+            if (name == 'shuffle_state.json' ||
+                name.startsWith('shuffle_state_'))
+              foundShuffleStateJson = entity;
+            if (name == 'playback_state.json' ||
+                name.startsWith('playback_state_'))
+              foundPlaybackStateJson = entity;
+            if (name == 'merged_groups.json') foundMergedGroupsJson = entity;
           }
         }
 
+        if (foundStatsDb != null) {
+          await foundStatsDb.copy(p.join(appDir.path, 'wispie_stats.db'));
+        }
+        if (foundDataDb != null) {
+          await foundDataDb.copy(p.join(appDir.path, 'wispie_data.db'));
+        }
+
+        // 4. Re-init database
+        await DatabaseService.instance.init();
+
+        final storage = StorageService();
+
         // Restore songs
-        await restoreJsonFile('songs.json', (data) async {
+        if (foundSongsJson != null) {
+          final content = await foundSongsJson.readAsString();
+          final data = decodeJson(content);
           final songs =
               (data as List).map((json) => Song.fromJson(json)).toList();
           await DatabaseService.instance.insertSongsBatch(songs);
-        });
+        }
 
         // Restore user data
-        await restoreJsonFile('user_data.json', (data) async {
-          await storage.saveUserData(username, data);
-        });
+        if (foundUserDataJson != null) {
+          final content = await foundUserDataJson.readAsString();
+          final data = decodeJson(content);
+          await storage.saveUserData(data);
+        }
 
         // Restore shuffle state
-        await restoreJsonFile('shuffle_state.json', (data) async {
-          await storage.saveShuffleState(username, data);
-        });
+        if (foundShuffleStateJson != null) {
+          final content = await foundShuffleStateJson.readAsString();
+          final data = decodeJson(content);
+          await storage.saveShuffleState(data);
+        }
 
         // Restore playback state
-        await restoreJsonFile('playback_state.json', (data) async {
-          await storage.savePlaybackState(username, data);
-        });
+        if (foundPlaybackStateJson != null) {
+          final content = await foundPlaybackStateJson.readAsString();
+          final data = decodeJson(content);
+          await storage.savePlaybackState(data);
+        }
 
         // Restore merged song groups
-        await restoreJsonFile('merged_groups.json', (data) async {
+        if (foundMergedGroupsJson != null) {
+          final content = await foundMergedGroupsJson.readAsString();
+          final data = decodeJson(content);
           final groups =
               <String, ({List<String> filenames, String? priorityFilename})>{};
           if (data is Map) {
@@ -374,33 +377,28 @@ class BackupService {
               final key = entry.key as String;
               final value = entry.value;
               if (value is Map) {
-                // New format with priority
                 final filenames =
                     (value['filenames'] as List?)?.cast<String>() ?? [];
                 final priority = value['priorityFilename'] as String?;
                 groups[key] =
                     (filenames: filenames, priorityFilename: priority);
               } else if (value is List) {
-                // Legacy format without priority
                 groups[key] =
                     (filenames: value.cast<String>(), priorityFilename: null);
               }
             }
           }
           await DatabaseService.instance.setMergedGroups(groups);
-        });
+        }
 
-        // Delete any existing search index (it will be rebuilt on next scan)
+        // Delete any existing search index
         try {
           final searchIndexRepo = SearchIndexRepository();
-          await searchIndexRepo.deleteDatabaseFile(username);
-          debugPrint(
-              'Deleted old search index after restore - will be rebuilt on next scan');
+          await searchIndexRepo.deleteDatabaseFile();
         } catch (e) {
           debugPrint('Note: Could not delete search index: $e');
         }
       } finally {
-        // Clean up temp directory
         if (await tempDir.exists()) {
           await tempDir.delete(recursive: true);
         }
@@ -423,7 +421,7 @@ class BackupService {
   }
 
   Future<BackupDiff> compareBackups(
-      String username, BackupInfo oldBackup, BackupInfo newBackup) async {
+      BackupInfo oldBackup, BackupInfo newBackup) async {
     final tempDir = await Directory.systemTemp.createTemp('gru_compare_');
     try {
       // Helper to get stats from a backup
@@ -436,18 +434,23 @@ class BackupService {
         int statsRows = 0;
 
         // Find and extract songs.json
-        final songsFile = archive.findFile('songs.json') ??
-            archive.findFile('${username}_data/songs.json');
+        ArchiveFile? songsFile;
+        ArchiveFile? statsFile;
+
+        for (final file in archive) {
+          final name = p.basename(file.name);
+          if (name == 'songs.json') songsFile = file;
+          if (name == 'wispie_stats.db' ||
+              (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
+            statsFile = file;
+          }
+        }
 
         if (songsFile != null) {
           final content = utf8.decode(songsFile.content as List<int>);
           final List data = jsonDecode(content);
           songCount = data.length;
         }
-
-        // Find and extract stats db
-        final statsFile = archive.findFile('${username}_stats.db') ??
-            archive.findFile('${username}_data/${username}_stats.db');
 
         if (statsFile != null) {
           final dbPath = p.join(tempDir.path, '${info.filename}_stats.db');

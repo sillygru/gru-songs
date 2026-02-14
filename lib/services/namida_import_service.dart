@@ -191,10 +191,9 @@ class NamidaImportService {
     }
   }
 
-  /// Performs the import of Namida data into the current user's database
+  /// Performs the import of Namida data into the database
   Future<NamidaImportResult> performImport({
     required String importPath,
-    required String username,
     required NamidaImportMode mode,
     required String? Function(String namidaPath) pathMapper,
   }) async {

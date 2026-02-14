@@ -8,20 +8,20 @@ class StorageAnalysisService {
   static final StorageAnalysisService instance = StorageAnalysisService._();
   StorageAnalysisService._();
 
-  Future<int> getDatabaseSize(String username) async {
+  Future<int> getDatabaseSize() async {
     int total = 0;
     try {
       final docDir = await getApplicationDocumentsDirectory();
       final files = [
-        File(p.join(docDir.path, '${username}_stats.db')),
-        File(p.join(docDir.path, '${username}_data.db')),
+        File(p.join(docDir.path, 'wispie_stats.db')),
+        File(p.join(docDir.path, 'wispie_data.db')),
         // Include journal files if they exist
-        File(p.join(docDir.path, '${username}_stats.db-journal')),
-        File(p.join(docDir.path, '${username}_data.db-journal')),
-        File(p.join(docDir.path, '${username}_stats.db-wal')),
-        File(p.join(docDir.path, '${username}_data.db-wal')),
-        File(p.join(docDir.path, '${username}_stats.db-shm')),
-        File(p.join(docDir.path, '${username}_data.db-shm')),
+        File(p.join(docDir.path, 'wispie_stats.db-journal')),
+        File(p.join(docDir.path, 'wispie_data.db-journal')),
+        File(p.join(docDir.path, 'wispie_stats.db-wal')),
+        File(p.join(docDir.path, 'wispie_data.db-wal')),
+        File(p.join(docDir.path, 'wispie_stats.db-shm')),
+        File(p.join(docDir.path, 'wispie_data.db-shm')),
       ];
 
       for (var f in files) {
@@ -93,11 +93,11 @@ class StorageAnalysisService {
     return 0;
   }
 
-  Future<int> getSearchIndexSize(String username) async {
+  Future<int> getSearchIndexSize() async {
     try {
       final docDir = await getApplicationDocumentsDirectory();
       final searchIndexFile =
-          File(p.join(docDir.path, '${username}_search_index.db'));
+          File(p.join(docDir.path, 'wispie_search_index.db'));
       if (await searchIndexFile.exists()) {
         return await searchIndexFile.length();
       }
@@ -144,19 +144,19 @@ class StorageAnalysisService {
     return total;
   }
 
-  /// Clears only the database files for a user
-  Future<void> clearDatabase(String username) async {
+  /// Clears only the database files
+  Future<void> clearDatabase() async {
     try {
       final docDir = await getApplicationDocumentsDirectory();
       final dbFiles = [
-        File(p.join(docDir.path, '${username}_stats.db')),
-        File(p.join(docDir.path, '${username}_data.db')),
-        File(p.join(docDir.path, '${username}_stats.db-journal')),
-        File(p.join(docDir.path, '${username}_data.db-journal')),
-        File(p.join(docDir.path, '${username}_stats.db-wal')),
-        File(p.join(docDir.path, '${username}_data.db-wal')),
-        File(p.join(docDir.path, '${username}_stats.db-shm')),
-        File(p.join(docDir.path, '${username}_data.db-shm')),
+        File(p.join(docDir.path, 'wispie_stats.db')),
+        File(p.join(docDir.path, 'wispie_data.db')),
+        File(p.join(docDir.path, 'wispie_stats.db-journal')),
+        File(p.join(docDir.path, 'wispie_data.db-journal')),
+        File(p.join(docDir.path, 'wispie_stats.db-wal')),
+        File(p.join(docDir.path, 'wispie_data.db-wal')),
+        File(p.join(docDir.path, 'wispie_stats.db-shm')),
+        File(p.join(docDir.path, 'wispie_data.db-shm')),
       ];
       for (var f in dbFiles) {
         if (await f.exists()) await f.delete();
@@ -222,11 +222,10 @@ class StorageAnalysisService {
   }
 
   /// Clears only the search index
-  Future<void> clearSearchIndex(String username) async {
+  Future<void> clearSearchIndex() async {
     try {
       final docDir = await getApplicationDocumentsDirectory();
-      final searchIndex =
-          File(p.join(docDir.path, '${username}_search_index.db'));
+      final searchIndex = File(p.join(docDir.path, 'wispie_search_index.db'));
       if (await searchIndex.exists()) await searchIndex.delete();
     } catch (e) {
       debugPrint('Error clearing search index: $e');
@@ -256,10 +255,10 @@ class StorageAnalysisService {
     }
   }
 
-  Future<void> clearAllUserData(String username) async {
+  Future<void> clearAllUserData() async {
     try {
       // 1. Delete Database Files
-      await clearDatabase(username);
+      await clearDatabase();
 
       // 2. Delete Song Covers
       await clearCoversCache();
@@ -271,12 +270,12 @@ class StorageAnalysisService {
       await clearLibraryCache();
 
       // 5. Delete Search Index (if exists)
-      await clearSearchIndex(username);
+      await clearSearchIndex();
 
       // 6. Delete Waveform Cache
       await clearWaveformCache();
 
-      // 7. Clear Shared Preferences (except maybe some global flags if needed, but "all associated user data" implies full wipe)
+      // 7. Clear Shared Preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
     } catch (e) {

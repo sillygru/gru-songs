@@ -60,11 +60,7 @@ class StatsService {
 
   Future<void> _writeSingle(Map<String, dynamic> event) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString('username');
-      if (username == null) return;
-
-      await DatabaseService.instance.initForUser(username);
+      await DatabaseService.instance.init();
       await DatabaseService.instance.insertPlayEvent(event);
     } catch (e) {
       debugPrint('Error writing single stat: $e');
@@ -82,11 +78,7 @@ class StatsService {
     _pendingStats.clear();
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString('username');
-      if (username == null) return;
-
-      await DatabaseService.instance.initForUser(username);
+      await DatabaseService.instance.init();
       await DatabaseService.instance.insertPlayEventsBatch(batch);
 
       debugPrint('Flushed ${batch.length} batched stats events.');
@@ -102,11 +94,7 @@ class StatsService {
   Future<Map<String, dynamic>> getFunStats() async {
     // Get stats from local database
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString('username');
-      if (username == null) return {};
-
-      await DatabaseService.instance.initForUser(username);
+      await DatabaseService.instance.init();
       return await DatabaseService.instance.getFunStats();
     } catch (e) {
       debugPrint('Error getting fun stats: $e');

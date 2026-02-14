@@ -40,11 +40,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Change Username'),
+        title: const Text('Change Display Name'),
         content: TextField(
           controller: _newUsernameController,
           decoration: const InputDecoration(
-            labelText: 'New Username',
+            labelText: 'New Name',
             border: OutlineInputBorder(),
           ),
         ),
@@ -58,11 +58,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               try {
                 await ref
                     .read(authProvider.notifier)
-                    .updateUsername(_newUsernameController.text.trim());
+                    .setDisplayName(_newUsernameController.text.trim());
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Username updated")));
+                      const SnackBar(content: Text("Name updated")));
                   _newUsernameController.clear();
                 }
               } catch (e) {
@@ -126,7 +126,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         radius: 40,
                         backgroundColor: Theme.of(context).colorScheme.primary,
                         child: Text(
-                          (authState.username ?? "?")
+                          (authState.username ?? "U")
                               .substring(0, 1)
                               .toUpperCase(),
                           style: const TextStyle(
@@ -268,10 +268,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    _buildSectionTitle('Account'),
+                    _buildSectionTitle('Profile'),
                     _buildListTile(
                       icon: Icons.person_outline,
-                      title: 'Change Username',
+                      title: 'Change Display Name',
                       subtitle: 'Current: ${authState.username}',
                       onTap: _showChangeUsernameDialog,
                     ),
@@ -301,20 +301,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           MaterialPageRoute(
                               builder: (_) => const SettingsScreen()),
                         );
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionTitle('Actions'),
-                    _buildListTile(
-                      icon: Icons.logout,
-                      title: 'Logout',
-                      textColor: Colors.red,
-                      iconColor: Colors.red,
-                      onTap: () async {
-                        final storage = ref.read(storageServiceProvider);
-                        await storage.setSetupComplete(false);
-                        ref.read(setupProvider.notifier).setComplete(false);
-                        await ref.read(authProvider.notifier).logout();
                       },
                     ),
                     const SizedBox(height: 24),
