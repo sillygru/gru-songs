@@ -189,38 +189,15 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             child: LayoutBuilder(
               builder: (context, constraints) {
                 if (_isLoading) {
-                  final totalBars = (constraints.maxWidth / 3).floor();
-                  final currentProgress = _getCurrentProgress();
-                  final progressBarIndex = (currentProgress * totalBars);
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    mainAxisSize: MainAxisSize.max,
-                    children: List.generate(totalBars, (index) {
-                      final distanceFromProgress =
-                          (index - progressBarIndex).abs();
-                      final isActive = index < progressBarIndex;
-                      double colorIntensity = 1.0;
-                      if (distanceFromProgress < 2) {
-                        colorIntensity =
-                            isActive ? 1.0 : (2 - distanceFromProgress) / 2;
-                      } else {
-                        colorIntensity = isActive ? 1.0 : 0.0;
-                      }
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        curve: Curves.easeOut,
-                        height: constraints.maxHeight * 0.05,
-                        width: 2.0,
-                        decoration: BoxDecoration(
-                          color: Color.lerp(
-                            Colors.white.withValues(alpha: 0.15),
-                            Theme.of(context).colorScheme.primary,
-                            colorIntensity,
-                          ),
-                          borderRadius: BorderRadius.circular(1.0),
-                        ),
-                      );
-                    }),
+                  return CustomPaint(
+                    size: Size(constraints.maxWidth, constraints.maxHeight),
+                    painter: WaveformPainter(
+                      peaks: null,
+                      progress: _getCurrentProgress(),
+                      color: Theme.of(context).colorScheme.primary,
+                      animationValue: 1.0,
+                      isLoading: true,
+                    ),
                   );
                 }
 
@@ -243,52 +220,15 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
                   builder: (context, child) {
                     final totalBars = (constraints.maxWidth / 3).floor();
                     final displayPeaks = _downsample(_peaks!, totalBars);
-                    final currentProgress = _getCurrentProgress();
 
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      mainAxisSize: MainAxisSize.max,
-                      children: displayPeaks.asMap().entries.map((entry) {
-                        final i = entry.key;
-                        final v = entry.value;
-                        final progressBarIndex =
-                            (currentProgress * displayPeaks.length);
-
-                        final distanceFromProgress =
-                            (i - progressBarIndex).abs();
-                        final isActive = i < progressBarIndex;
-
-                        double colorIntensity = 1.0;
-                        if (distanceFromProgress < 2) {
-                          colorIntensity =
-                              isActive ? 1.0 : (2 - distanceFromProgress) / 2;
-                        } else {
-                          colorIntensity = isActive ? 1.0 : 0.0;
-                        }
-
-                        final targetHeight = (v * constraints.maxHeight * 35)
-                            .clamp(3.0, constraints.maxHeight * 0.9);
-
-                        final animatedHeight =
-                            targetHeight * _barAnimation.value;
-
-                        return AnimatedContainer(
-                          duration: _isDragging
-                              ? Duration.zero
-                              : const Duration(milliseconds: 150),
-                          curve: Curves.easeOut,
-                          height: animatedHeight,
-                          width: 2.0,
-                          decoration: BoxDecoration(
-                            color: Color.lerp(
-                              Colors.white.withValues(alpha: 0.1),
-                              Theme.of(context).colorScheme.primary,
-                              colorIntensity,
-                            ),
-                            borderRadius: BorderRadius.circular(1.0),
-                          ),
-                        );
-                      }).toList(),
+                    return CustomPaint(
+                      size: Size(constraints.maxWidth, constraints.maxHeight),
+                      painter: WaveformPainter(
+                        peaks: displayPeaks,
+                        progress: _getCurrentProgress(),
+                        color: Theme.of(context).colorScheme.primary,
+                        animationValue: _barAnimation.value,
+                      ),
                     );
                   },
                 );
@@ -346,5 +286,113 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       result.add(max);
     }
     return result;
+  }
+}
+
+class WaveformPainter extends CustomPainter {
+  final List<double>? peaks;
+  final double progress;
+  final Color color;
+  final double animationValue;
+  final bool isLoading;
+
+  WaveformPainter({
+    required this.peaks,
+    required this.progress,
+    required this.color,
+    required this.animationValue,
+    this.isLoading = false,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final barWidth = 2.0;
+    final spacing = 1.0;
+    final totalBars = (size.width / (barWidth + spacing)).floor();
+
+    final paint = Paint()
+      ..style = PaintingStyle.fill
+      ..strokeCap = StrokeCap.round;
+
+    if (isLoading) {
+      final progressBarIndex = progress * totalBars;
+      for (int i = 0; i < totalBars; i++) {
+        final distanceFromProgress = (i - progressBarIndex).abs();
+        final isActive = i < progressBarIndex;
+
+        double colorIntensity = 1.0;
+        if (distanceFromProgress < 2) {
+          colorIntensity = isActive ? 1.0 : (2 - distanceFromProgress) / 2;
+        } else {
+          colorIntensity = isActive ? 1.0 : 0.0;
+        }
+
+        paint.color = Color.lerp(
+          Colors.white.withValues(alpha: 0.15),
+          color,
+          colorIntensity,
+        )!;
+
+        final x = i * (barWidth + spacing) + spacing / 2;
+        final barHeight = size.height * 0.05;
+        final y = (size.height - barHeight) / 2;
+
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, y, barWidth, barHeight),
+            const Radius.circular(1.0),
+          ),
+          paint,
+        );
+      }
+      return;
+    }
+
+    if (peaks == null || peaks!.isEmpty) return;
+
+    final actualPeaks = peaks!;
+    final progressBarIndex = progress * actualPeaks.length;
+
+    for (int i = 0; i < actualPeaks.length; i++) {
+      final v = actualPeaks[i];
+      final distanceFromProgress = (i - progressBarIndex).abs();
+      final isActive = i < progressBarIndex;
+
+      double colorIntensity = 1.0;
+      if (distanceFromProgress < 2) {
+        colorIntensity = isActive ? 1.0 : (2 - distanceFromProgress) / 2;
+      } else {
+        colorIntensity = isActive ? 1.0 : 0.0;
+      }
+
+      paint.color = Color.lerp(
+        Colors.white.withValues(alpha: 0.1),
+        color,
+        colorIntensity,
+      )!;
+
+      final targetHeight = (v * size.height * 35).clamp(3.0, size.height * 0.9);
+      final animatedHeight = targetHeight * animationValue;
+
+      final x = i * (barWidth + spacing) + spacing / 2;
+      final y = (size.height - animatedHeight) / 2;
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, y, barWidth, animatedHeight),
+          const Radius.circular(1.0),
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant WaveformPainter oldDelegate) {
+    return oldDelegate.peaks != peaks ||
+        oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.animationValue != animationValue ||
+        oldDelegate.isLoading != isLoading;
   }
 }

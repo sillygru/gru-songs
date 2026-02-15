@@ -52,9 +52,9 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
 
     if (effectiveMemCacheWidth == null && effectiveMemCacheHeight == null) {
       if (widget.width != null && widget.width! < 400) {
-        effectiveMemCacheWidth = (widget.width! * 4.0).toInt();
+        effectiveMemCacheWidth = (widget.width! * 2.5).toInt();
       } else if (widget.height != null && widget.height! < 400) {
-        effectiveMemCacheHeight = (widget.height! * 4.0).toInt();
+        effectiveMemCacheHeight = (widget.height! * 2.5).toInt();
       }
     }
 

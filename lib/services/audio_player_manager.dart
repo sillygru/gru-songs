@@ -172,6 +172,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _player.setShuffleModeEnabled(false);
     _currentPlaylistId = playlistId;
 
+    // Automatically disable shuffle if forceLinear is requested
+    if (forceLinear && _shuffleState.config.enabled) {
+      _shuffleState = _shuffleState.copyWith(
+        config: _shuffleState.config.copyWith(enabled: false),
+      );
+      shuffleStateNotifier.value = _shuffleState;
+      shuffleNotifier.value = false;
+      await _saveShuffleState();
+    }
+
     // 1. Setup Local Queue (Optimistic)
     if (contextQueue != null) {
       _originalQueue = contextQueue.map((s) => QueueItem(song: s)).toList();
@@ -981,6 +991,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (forceLinear) {
       _resetFading();
       await _player.setShuffleModeEnabled(false);
+
+      // Automatically disable shuffle if forceLinear is requested
+      if (_shuffleState.config.enabled) {
+        _shuffleState = _shuffleState.copyWith(
+          config: _shuffleState.config.copyWith(enabled: false),
+        );
+        shuffleStateNotifier.value = _shuffleState;
+        shuffleNotifier.value = false;
+        await _saveShuffleState();
+      }
+
       _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
       _isRestrictedToOriginal = true;
       _effectiveQueue = List.from(_originalQueue);

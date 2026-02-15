@@ -40,7 +40,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     with SingleTickerProviderStateMixin {
   bool _showLyrics = false;
   List<LyricLine>? _lyrics;
-  List<GlobalKey>? _lyricKeys;
   bool _loadingLyrics = false;
   bool _autoScrollEnabled = true;
   String? _lastSongId;
@@ -75,7 +74,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           setState(() {
             _lastSongId = songId;
             _lyrics = null;
-            _lyricKeys = null;
             _showLyrics = false;
             _loadingLyrics = false;
             _autoScrollEnabled = true;
@@ -137,49 +135,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _checkAndReenableAutoScroll() {
     if (_currentLyricIndexNotifier.value == -1 ||
-        _lyricKeys == null ||
+        _lyricOffsets == null ||
         !_showLyrics) {
       return;
     }
 
-    final key = _lyricKeys![_currentLyricIndexNotifier.value];
-    final context = key.currentContext;
-    final containerContext = _lyricsContainerKey.currentContext;
+    final currentScroll = _lyricsScrollController.offset;
+    final targetScroll =
+        _lyricOffsets![_currentLyricIndexNotifier.value] - 120; // 120 is padding
 
-    if (context != null && containerContext != null) {
-      final RenderBox box = context.findRenderObject() as RenderBox;
-      final RenderBox containerBox =
-          containerContext.findRenderObject() as RenderBox;
-
-      final lyricOffset =
-          box.localToGlobal(Offset.zero, ancestor: containerBox).dy;
-      final viewportHeight = containerBox.size.height;
-      final lyricCenter = lyricOffset + box.size.height / 2;
-      final viewportCenter = viewportHeight / 2;
-
-      // If current lyric center is within 150px of viewport center, re-enable sync
-      if ((lyricCenter - viewportCenter).abs() < 150) {
-        if (mounted && !_autoScrollEnabled) {
-          setState(() => _autoScrollEnabled = true);
-          _scrollToCurrentLyric();
-        }
+    // If current scroll is within 150px of target, re-enable sync
+    if ((currentScroll - targetScroll).abs() < 150) {
+      if (mounted && !_autoScrollEnabled) {
+        setState(() => _autoScrollEnabled = true);
+        _scrollToCurrentLyric();
       }
     }
   }
 
   void _scrollToCurrentLyric() {
-    if (_lyricKeys != null &&
+    if (_lyricOffsets != null &&
         _currentLyricIndexNotifier.value >= 0 &&
-        _currentLyricIndexNotifier.value < _lyricKeys!.length) {
-      final key = _lyricKeys![_currentLyricIndexNotifier.value];
-      if (key.currentContext != null) {
-        Scrollable.ensureVisible(
-          key.currentContext!,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          alignment: 0.5,
-        );
-      }
+        _currentLyricIndexNotifier.value < _lyricOffsets!.length) {
+      final targetOffset =
+          (_lyricOffsets![_currentLyricIndexNotifier.value] - 120)
+              .clamp(0.0, _lyricsScrollController.position.maxScrollExtent);
+
+      _lyricsScrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
   }
 
@@ -194,6 +180,45 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _artistRecognizer.dispose();
     _albumRecognizer.dispose();
     super.dispose();
+  }
+
+  List<double>? _lyricOffsets;
+
+  void _calculateLyricOffsets() {
+    if (_lyrics == null || _lyrics!.isEmpty) return;
+
+    final containerContext = _lyricsContainerKey.currentContext;
+    if (containerContext == null) return;
+
+    final RenderBox containerBox =
+        containerContext.findRenderObject() as RenderBox;
+    final maxWidth = containerBox.size.width;
+
+    double currentOffset = 0;
+    final List<double> offsets = [];
+
+    for (final line in _lyrics!) {
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: line.text,
+          style: const TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w500,
+            height: 1.3,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      )..layout(maxWidth: maxWidth - 48);
+
+      final height = textPainter.size.height + 24; // 12 * 2 padding
+      offsets.add(currentOffset + height / 2);
+      currentOffset += height;
+    }
+
+    setState(() {
+      _lyricOffsets = offsets;
+    });
   }
 
   void _toggleLyrics() async {
@@ -228,15 +253,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 : <LyricLine>[];
             setState(() {
               _lyrics = parsedLyrics;
-              _lyricKeys =
-                  List.generate(parsedLyrics.length, (index) => GlobalKey());
               _loadingLyrics = false;
             });
 
             // Find current position and scroll after first build
             _updateCurrentLyricIndex(player.position);
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _showLyrics) _scrollToCurrentLyric();
+              if (mounted && _showLyrics) {
+                _calculateLyricOffsets();
+                _scrollToCurrentLyric();
+              }
             });
           }
         } else {
@@ -249,7 +275,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // Already loaded, just scroll to current
       _updateCurrentLyricIndex(player.position);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _showLyrics) _scrollToCurrentLyric();
+        if (mounted && _showLyrics) {
+          if (_lyricOffsets == null) _calculateLyricOffsets();
+          _scrollToCurrentLyric();
+        }
       });
     }
   }
@@ -440,37 +469,45 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 return Stack(
                   children: [
                     // Immersive Background for the whole screen
-                    if (metadata != null) ...[
+                    if (metadata != null)
                       Positioned.fill(
                         child: RepaintBoundary(
-                          child: AlbumArtImage(
-                            url: metadata.artUri?.toString() ?? '',
-                            filename: metadata.id,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.black.withValues(alpha: 0.6),
-                                  Colors.black.withValues(alpha: 0.85),
-                                ],
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: AlbumArtImage(
+                                  url: metadata.artUri?.toString() ?? '',
+                                  filename: metadata.id,
+                                  fit: BoxFit.cover,
+                                  memCacheWidth: 600,
+                                ),
                               ),
-                            ),
+                              Positioned.fill(
+                                child: BackdropFilter(
+                                  filter:
+                                      ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Colors.black.withValues(alpha: 0.6),
+                                          Colors.black.withValues(alpha: 0.85),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
 
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
+                    RepaintBoundary(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -687,63 +724,63 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                 }
                                                                 return false;
                                                               },
-                                                              child:
-                                                                  ValueListenableBuilder<
-                                                                      int>(
-                                                                valueListenable:
-                                                                    _currentLyricIndexNotifier,
-                                                                builder: (context,
-                                                                    currentIndex,
-                                                                    child) {
-                                                                  return ListView
-                                                                      .builder(
-                                                                    key:
-                                                                        _lyricsContainerKey,
-                                                                    controller:
-                                                                        _lyricsScrollController,
-                                                                    padding: const EdgeInsets
-                                                                        .symmetric(
-                                                                        vertical:
-                                                                            120),
-                                                                    itemCount:
-                                                                        _lyrics!
-                                                                            .length,
-                                                                    itemBuilder:
-                                                                        (context,
-                                                                            index) {
-                                                                      final isCurrent =
-                                                                          index ==
-                                                                              currentIndex;
-                                                                      final hasTime = _lyrics![index]
+                                                              child: ListView.builder(
+                                                                key:
+                                                                    _lyricsContainerKey,
+                                                                controller:
+                                                                    _lyricsScrollController,
+                                                                padding: const EdgeInsets
+                                                                    .symmetric(
+                                                                    vertical:
+                                                                        120),
+                                                                itemCount:
+                                                                    _lyrics!
+                                                                        .length,
+                                                                itemBuilder:
+                                                                    (context,
+                                                                        index) {
+                                                                  final hasTime =
+                                                                      _lyrics![index]
                                                                               .time !=
                                                                           Duration
                                                                               .zero;
-                                                                      return InkWell(
-                                                                        key: _lyricKeys?[
-                                                                            index],
-                                                                        onTap: hasTime
-                                                                            ? () {
-                                                                                player.seek(_lyrics![index].time);
-                                                                                setState(() => _autoScrollEnabled = true);
-                                                                              }
-                                                                            : null,
+                                                                  return ValueListenableBuilder<
+                                                                      int>(
+                                                                    valueListenable:
+                                                                        _currentLyricIndexNotifier,
+                                                                    builder: (context,
+                                                                        currentIndex,
+                                                                        child) {
+                                                                      final isCurrent =
+                                                                          index ==
+                                                                              currentIndex;
+                                                                      return RepaintBoundary(
                                                                         child:
-                                                                            Padding(
-                                                                          padding: const EdgeInsets
-                                                                              .symmetric(
-                                                                              horizontal: 24,
-                                                                              vertical: 12),
+                                                                            InkWell(
+                                                                          onTap: hasTime
+                                                                              ? () {
+                                                                                  player.seek(_lyrics![index].time);
+                                                                                  setState(() => _autoScrollEnabled = true);
+                                                                                }
+                                                                              : null,
                                                                           child:
-                                                                              Text(
-                                                                            _lyrics![index].text,
-                                                                            textAlign:
-                                                                                TextAlign.center,
-                                                                            style:
-                                                                                TextStyle(
-                                                                              fontSize: 26,
-                                                                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
-                                                                              color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.3),
-                                                                              height: 1.3,
+                                                                              Padding(
+                                                                            padding: const EdgeInsets
+                                                                                .symmetric(
+                                                                                horizontal: 24,
+                                                                                vertical: 12),
+                                                                            child:
+                                                                                Text(
+                                                                              _lyrics![index].text,
+                                                                              textAlign:
+                                                                                  TextAlign.center,
+                                                                              style:
+                                                                                  TextStyle(
+                                                                                fontSize: 26,
+                                                                                fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                                                                                color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.3),
+                                                                                height: 1.3,
+                                                                              ),
                                                                             ),
                                                                           ),
                                                                         ),
@@ -805,102 +842,105 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                 }),
                               ),
                             ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        metadata.title,
-                                        style: const TextStyle(
-                                            fontSize: 26,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: -0.5),
-                                        textAlign: TextAlign.left,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      RichText(
-                                        textAlign: TextAlign.left,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        text: TextSpan(
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w500,
-                                            fontFamily: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium
-                                                ?.fontFamily,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant
-                                                .withValues(alpha: 0.7),
-                                          ),
-                                          children: [
-                                            TextSpan(
-                                              text: metadata.artist ??
-                                                  'Unknown Artist',
-                                              recognizer: _artistRecognizer
-                                                ..onTap = () =>
-                                                    _navigateToArtist(
-                                                        metadata.artist ??
-                                                            'Unknown Artist'),
-                                            ),
-                                            const TextSpan(text: ' • '),
-                                            TextSpan(
-                                              text: metadata.album ??
-                                                  'Unknown Album',
-                                              recognizer: _albumRecognizer
-                                                ..onTap = () =>
-                                                    _navigateToAlbum(
-                                                        metadata.album ??
-                                                            'Unknown Album'),
-                                            ),
-                                          ],
+                            RepaintBoundary(
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          metadata.title,
+                                          style: const TextStyle(
+                                              fontSize: 26,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: -0.5),
+                                          textAlign: TextAlign.left,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 4),
+                                        RichText(
+                                          textAlign: TextAlign.left,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          text: TextSpan(
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w500,
+                                              fontFamily: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.fontFamily,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant
+                                                  .withValues(alpha: 0.7),
+                                            ),
+                                            children: [
+                                              TextSpan(
+                                                text: metadata.artist ??
+                                                    'Unknown Artist',
+                                                recognizer: _artistRecognizer
+                                                  ..onTap = () =>
+                                                      _navigateToArtist(
+                                                          metadata.artist ??
+                                                              'Unknown Artist'),
+                                              ),
+                                              const TextSpan(text: ' • '),
+                                              TextSpan(
+                                                text: metadata.album ??
+                                                    'Unknown Album',
+                                                recognizer: _albumRecognizer
+                                                  ..onTap = () =>
+                                                      _navigateToAlbum(
+                                                          metadata.album ??
+                                                              'Unknown Album'),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Consumer(
-                                  builder: (context, ref, child) {
-                                    final isFav = ref.watch(
-                                        userDataProvider.select(
-                                            (s) => s.isFavorite(metadata.id)));
-                                    return GestureDetector(
-                                      onLongPress: () {
-                                        showHeartContextMenu(
-                                          context: context,
-                                          ref: ref,
-                                          songFilename: metadata.id,
-                                          songTitle: metadata.title,
-                                        );
-                                      },
-                                      child: IconButton(
-                                        icon: Icon(isFav
-                                            ? Icons.favorite
-                                            : Icons.favorite_border),
-                                        color: isFav
-                                            ? Colors.redAccent
-                                            : Colors.white,
-                                        onPressed: () {
-                                          ref
-                                              .read(userDataProvider.notifier)
-                                              .toggleFavorite(metadata.id);
+                                  const SizedBox(width: 16),
+                                  Consumer(
+                                    builder: (context, ref, child) {
+                                      final isFav = ref.watch(
+                                          userDataProvider.select((s) =>
+                                              s.isFavorite(metadata.id)));
+                                      return GestureDetector(
+                                        onLongPress: () {
+                                          showHeartContextMenu(
+                                            context: context,
+                                            ref: ref,
+                                            songFilename: metadata.id,
+                                            songTitle: metadata.title,
+                                          );
                                         },
-                                        iconSize: 28,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
+                                        child: IconButton(
+                                          icon: Icon(isFav
+                                              ? Icons.favorite
+                                              : Icons.favorite_border),
+                                          color: isFav
+                                              ? Colors.redAccent
+                                              : Colors.white,
+                                          onPressed: () {
+                                            ref
+                                                .read(userDataProvider.notifier)
+                                                .toggleFavorite(metadata.id);
+                                          },
+                                          iconSize: 28,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
 
@@ -1127,8 +1167,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ],
                       ),
                     ),
-                  ],
-                );
+                  ),
+                ],
+              );
               },
             ),
           ),
