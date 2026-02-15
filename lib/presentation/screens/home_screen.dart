@@ -54,13 +54,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.invalidate(songsProvider);
   }
 
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  }
-
   Widget _buildQuickPickTile(
       Song song, ThemeData theme, AudioPlayerManager audioManager) {
     return GestureDetector(
@@ -463,115 +456,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                SliverAppBar(
-                  expandedHeight: 120,
-                  collapsedHeight: 80,
-                  floating: true,
-                  pinned: false,
-                  backgroundColor: Colors.transparent,
-                  flexibleSpace: FlexibleSpaceBar(
-                    titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                    title: Text(
-                      'Wispie',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        color: Colors.white,
-                      ),
-                    ),
-                    centerTitle: false,
-                  ),
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.shuffle_rounded),
-                      onPressed: () {
-                        if (songs.isNotEmpty) {
-                          audioManager.shuffleAndPlay(songs,
-                              isRestricted: false);
-                        }
-                      },
-                      tooltip: 'Shuffle All',
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.search_rounded),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const SearchScreen()),
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    padding: EdgeInsets.fromLTRB(
+                        20, MediaQuery.of(context).padding.top + 16, 20, 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        Text(
+                          'Wispie',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _getGreeting(),
-                                  style:
-                                      theme.textTheme.headlineMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
+                            IconButton(
+                              icon: Icon(Icons.shuffle_rounded,
+                                  color: theme.colorScheme.primary),
+                              onPressed: () {
+                                if (songs.isNotEmpty) {
+                                  audioManager.shuffleAndPlay(songs,
+                                      isRestricted: false);
+                                }
+                              },
                             ),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary
-                                    .withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: IconButton(
-                                icon: Icon(Icons.shuffle_rounded,
-                                    color: theme.colorScheme.primary),
-                                iconSize: 28,
-                                onPressed: () {
-                                  if (songs.isNotEmpty) {
-                                    audioManager.shuffleAndPlay(songs,
-                                        isRestricted: false);
-                                  }
-                                },
-                              ),
+                            IconButton(
+                              icon: const Icon(Icons.search_rounded),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const SearchScreen()),
+                                );
+                              },
                             ),
                           ],
                         ),
-                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         if (topRecommendations.isNotEmpty) ...[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Quick Picks',
-                                style: theme.textTheme.titleLarge,
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => SongListScreen(
-                                        title: 'Quick Picks',
-                                        songs: topRecommendations,
-                                        playlistId: 'quick_picks',
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: const Text('See all'),
-                              ),
-                            ],
+                          Text(
+                            'Quick Picks',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 12),
                           GridView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),

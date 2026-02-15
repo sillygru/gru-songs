@@ -1,22 +1,16 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
-import '../../services/stats_service.dart';
 
 class FunStatsView extends ConsumerWidget {
   const FunStatsView({super.key});
-
-  static Future<Map<String, dynamic>> _fetchStats(StatsService service) async {
-    return await service.getFunStats();
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statsService = ref.watch(statsServiceProvider);
 
     return FutureBuilder<Map<String, dynamic>>(
-      future: compute(_fetchStats, statsService),
+      future: statsService.getFunStats(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -472,19 +473,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                   url: metadata.artUri?.toString() ?? '',
                                   filename: metadata.id,
                                   fit: BoxFit.cover,
-                                  memCacheWidth: 100,
                                 ),
                               ),
                               Positioned.fill(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        Colors.black.withValues(alpha: 0.5),
-                                        Colors.black.withValues(alpha: 0.8),
-                                      ],
+                                child: BackdropFilter(
+                                  filter:
+                                      ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Colors.black.withValues(alpha: 0.5),
+                                          Colors.black.withValues(alpha: 0.8),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
