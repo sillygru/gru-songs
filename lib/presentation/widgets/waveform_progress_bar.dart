@@ -351,7 +351,11 @@ class WaveformPainter extends CustomPainter {
     if (peaks == null || peaks!.isEmpty) return;
 
     final actualPeaks = peaks!;
-    final progressBarIndex = progress * actualPeaks.length;
+    // Compensate for audio buffer latency (~150ms typical on mobile)
+    // by shifting progress backward so waveform aligns with actual audio output
+    final barOffset = 2.35 / actualPeaks.length;
+    final adjustedProgress = (progress - barOffset).clamp(0.0, 1.0);
+    final progressBarIndex = adjustedProgress * actualPeaks.length;
 
     for (int i = 0; i < actualPeaks.length; i++) {
       final v = actualPeaks[i];

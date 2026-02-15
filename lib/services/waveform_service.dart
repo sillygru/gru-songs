@@ -38,50 +38,13 @@ class WaveformService {
   }
 
   Future<List<double>> _extractWaveformFast(String path) async {
-    try {
-      final supportDir = await getApplicationSupportDirectory();
-      final tempDir = Directory(p.join(supportDir.path, 'waveform_temp'));
-      if (!await tempDir.exists()) {
-        await tempDir.create(recursive: true);
-      }
-      final outputPath = p.join(tempDir.path,
-          'waveform_${DateTime.now().millisecondsSinceEpoch}.csv');
-
-      const targetSamples = 2000;
-
-      // Optimized FFmpeg command for faster waveform extraction
-      // -vn: no video, -ac 1: mono, -f csv: output as CSV
-      // -af: audio filter to generate peak waveform data with reduced sample rate
-      final command = '-i "$path" '
-          '-vn -ac 1 -f csv '
-          '-af "compand,astats=metadata=1:reset=1,selectivecolor=color=white,ametadata=select=key:file=$outputPath" '
-          '-y "$outputPath"';
-      await FFmpegKit.executeAsync(command);
-
-      if (!await File(outputPath).exists()) {
-        // Fallback to a faster raw extraction method if the advanced method fails
-        return await _extractWaveformUltraFast(path, targetSamples);
-      }
-
-      final content = await File(outputPath).readAsString();
-      await File(outputPath).delete(); // Clean up
-
-      // Parse the CSV output to extract amplitude values
-      final samples = _parseCsvWaveformData(content, targetSamples);
-      if (samples.isNotEmpty) {
-        return samples;
-      }
-
-      // If CSV parsing fails, fall back to ultra-fast method
-      return await _extractWaveformUltraFast(path, targetSamples);
-    } catch (e) {
-      debugPrint('Error extracting waveform with FFmpeg for $path: $e');
-      return _generatePlaceholderSamples(2000);
-    }
+    // Direct PCM extraction without filters that introduce delay/lookahead
+    return await _extractWaveformDirect(path, 2000);
   }
 
-  /// Ultra-fast waveform extraction using minimal processing
-  Future<List<double>> _extractWaveformUltraFast(
+  /// Direct waveform extraction without delay-inducing filters.
+  /// Uses raw PCM output with no audio filters to ensure sample-accurate alignment.
+  Future<List<double>> _extractWaveformDirect(
       String path, int targetSamples) async {
     try {
       final supportDir = await getApplicationSupportDirectory();
@@ -92,21 +55,30 @@ class WaveformService {
       final outputPath = p.join(tempDir.path,
           'waveform_${DateTime.now().millisecondsSinceEpoch}.raw');
 
-      await FFmpegKit.executeWithArguments([
+      // Use direct PCM extraction without any filters that introduce lookahead/delay.
+      // -ac 1: Convert to mono (simple averaging, no delay)
+      // -ar 8000: Downsample to 8kHz for manageable data size
+      // -f f32le: 32-bit float little-endian PCM (no compression/processing)
+      // No -af filters: Avoid compand, volumedetect, astats which add lookahead
+      final session = await FFmpegKit.executeWithArguments([
         '-i',
         path,
         '-vn',
         '-ac',
         '1',
         '-ar',
-        '4000',
+        '8000',
         '-f',
         'f32le',
-        '-af',
-        'volumedetect',
         '-y',
         outputPath
       ]);
+
+      final returnCode = await session.getReturnCode();
+      if (returnCode == null || !returnCode.isValueSuccess()) {
+        debugPrint('FFmpeg failed to extract waveform');
+        return _generatePlaceholderSamples(targetSamples);
+      }
 
       final file = File(outputPath);
       if (!await file.exists()) {
@@ -116,13 +88,20 @@ class WaveformService {
       final bytes = await file.readAsBytes();
       await file.delete();
 
-      // Extract peaks from raw data more efficiently
+      // Extract peaks directly from raw PCM data
       final samples = _extractPeaksFromPcm(bytes, targetSamples);
       return samples;
     } catch (e) {
-      debugPrint('Error in ultra-fast waveform extraction: $e');
+      debugPrint('Error in direct waveform extraction: $e');
       return _generatePlaceholderSamples(targetSamples);
     }
+  }
+
+  /// Ultra-fast waveform extraction using minimal processing
+  Future<List<double>> _extractWaveformUltraFast(
+      String path, int targetSamples) async {
+    // Use the same direct extraction method for consistency
+    return await _extractWaveformDirect(path, targetSamples);
   }
 
   /// Alternative ultra-fast method using stat-based approach
