@@ -108,6 +108,7 @@ class NextUpSheet extends ConsumerWidget {
                           )
                         : ReorderableListView.builder(
                             itemCount: upcomingQueue.length,
+                            itemExtent: 72,
                             padding: const EdgeInsets.only(bottom: 24, top: 8),
                             onReorder: (oldIndex, newIndex) {
                               // Adjust indices for the full queue
@@ -145,6 +146,8 @@ class NextUpSheet extends ConsumerWidget {
                                           width: 48,
                                           height: 48,
                                           fit: BoxFit.cover,
+                                          memCacheWidth: 100,
+                                          memCacheHeight: 100,
                                         ),
                                       ),
                                       title: Text(

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
@@ -82,21 +81,21 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final songsAsync = ref.watch(songsProvider);
-    final userData = ref.watch(userDataProvider);
+    final songCount = ref.watch(songsProvider.select((s) => s.when(
+          data: (songs) => songs.length,
+          loading: () => 0,
+          error: (_, __) => 0,
+        )));
 
     return Stack(
       children: [
-        // Backdrop Blur
+        // Backdrop overlay
         GestureDetector(
           onTap: _closeDrawer,
           child: FadeTransition(
             opacity: _fadeAnimation,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.4),
-              ),
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -128,7 +127,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(context, colorScheme, songsAsync),
+                  _buildHeader(context, colorScheme, songCount),
                   const SizedBox(height: 12),
                   Expanded(
                     child: FadeTransition(
@@ -142,21 +141,20 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                             icon: Icons.favorite_rounded,
                             label: 'Favorites',
                             color: Colors.redAccent,
-                            onTap: () {
-                              songsAsync.when(
-                                data: (songs) {
-                                  final favSongs = songs
-                                      .where((s) =>
-                                          userData.isFavorite(s.filename))
-                                      .toList();
-                                  _navigateTo(SongListScreen(
-                                    title: 'Favorites',
-                                    songs: favSongs,
-                                  ));
-                                },
-                                loading: () {},
-                                error: (_, __) {},
-                              );
+                            onTap: () async {
+                              final songs =
+                                  await ref.read(songsProvider.future);
+                              final userDataState = ref.read(userDataProvider);
+                              final favSongs = songs
+                                  .where((s) =>
+                                      userDataState.isFavorite(s.filename))
+                                  .toList();
+                              if (context.mounted) {
+                                _navigateTo(SongListScreen(
+                                  title: 'Favorites',
+                                  songs: favSongs,
+                                ));
+                              }
                             },
                           ),
                           _buildNavItem(
@@ -231,14 +229,8 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
     );
   }
 
-  Widget _buildHeader(BuildContext context, ColorScheme colorScheme,
-      AsyncValue<List<Song>> songsAsync) {
-    final songCount = songsAsync.when(
-      data: (songs) => songs.length,
-      loading: () => 0,
-      error: (_, __) => 0,
-    );
-
+  Widget _buildHeader(
+      BuildContext context, ColorScheme colorScheme, int songCount) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
       child: Column(

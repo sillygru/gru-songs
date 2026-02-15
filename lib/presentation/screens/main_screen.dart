@@ -134,6 +134,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
   static const double _edgeDragWidth = 60.0;
   static const double _minDragDistance = 30.0;
 
+  // Track which screens have been built to enable lazy loading
+  final Set<int> _builtScreens = {0};
+
   final List<Widget> _screens = [
     const HomeScreen(),
     const LibraryScreen(),
@@ -149,6 +152,13 @@ class _MainScreenState extends ConsumerState<MainScreen>
   void _closeDrawer() {
     setState(() {
       _isDrawerOpen = false;
+    });
+  }
+
+  void _onTabSelected(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _builtScreens.add(index);
     });
   }
 
@@ -202,14 +212,15 @@ class _MainScreenState extends ConsumerState<MainScreen>
     final theme = Theme.of(context);
     final topPadding = MediaQuery.of(context).padding.top;
 
-    final selectionState = ref.watch(selectionProvider);
+    final isSelectionMode =
+        ref.watch(selectionProvider.select((s) => s.isSelectionMode));
 
     return Scaffold(
       body: PopScope(
-        canPop: !selectionState.isSelectionMode,
+        canPop: !isSelectionMode,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
-          if (selectionState.isSelectionMode) {
+          if (isSelectionMode) {
             ref.read(selectionProvider.notifier).exitSelectionMode();
           }
         },
@@ -221,9 +232,22 @@ class _MainScreenState extends ConsumerState<MainScreen>
           child: Stack(
             children: [
               ImmersiveBackground(
-                child: IndexedStack(
-                  index: _selectedIndex,
-                  children: _screens,
+                child: Stack(
+                  children: _screens.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final screen = entry.value;
+                    // Only build if this screen has been selected before
+                    if (!_builtScreens.contains(index)) {
+                      return const SizedBox.shrink();
+                    }
+                    return Offstage(
+                      offstage: index != _selectedIndex,
+                      child: TickerMode(
+                        enabled: index == _selectedIndex,
+                        child: screen,
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
               Positioned(
@@ -236,7 +260,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: selectionState.isSelectionMode
+                child: isSelectionMode
                     ? const BulkSelectionBar()
                     : const NowPlayingBar(),
               ),
@@ -249,17 +273,13 @@ class _MainScreenState extends ConsumerState<MainScreen>
           ),
         ),
       ),
-      bottomNavigationBar: selectionState.isSelectionMode
+      bottomNavigationBar: isSelectionMode
           ? null
           : Container(
               padding: const EdgeInsets.only(bottom: 8),
               child: NavigationBar(
                 selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) {
-                  setState(() {
-                    _selectedIndex = index;
-                  });
-                },
+                onDestinationSelected: _onTabSelected,
                 indicatorColor:
                     theme.colorScheme.primary.withValues(alpha: 0.1),
                 destinations: const [
