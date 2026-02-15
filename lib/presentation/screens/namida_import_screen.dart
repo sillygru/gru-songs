@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/namida_import_service.dart';
 import '../../services/storage_service.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
 
 /// Screen for importing data from Namida backup files

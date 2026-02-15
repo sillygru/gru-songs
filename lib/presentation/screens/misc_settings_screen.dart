@@ -44,7 +44,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
     );
   }
 
-  Widget _buildTelemetryWidget(settings) {
+  Widget _buildTelemetryWidget(SettingsState settings) {
     final levels = [
       'Level 0',
       'Level 1',

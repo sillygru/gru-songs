@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -15,7 +14,6 @@ import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
-import '../providers/auth_provider.dart';
 import 'user_data_provider.dart';
 
 enum SyncStatus { idle }
@@ -187,7 +185,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
   @override
   Future<List<Song>> build() async {
-    final storage = ref.watch(storageServiceProvider);
     final userData = ref.watch(userDataProvider);
 
     // 2. Load from SQLite
@@ -851,52 +848,30 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 final songsProvider =
     AsyncNotifierProvider<SongsNotifier, List<Song>>(SongsNotifier.new);
 
-class RecommendationsNotifier extends Notifier<List<Song>> {
-  @override
-  List<Song> build() {
+final recommendationsProvider = Provider<List<Song>>((ref) {
+  final userData = ref.watch(userDataProvider);
+  final songsAsync = ref.watch(songsProvider);
+
+  if (songsAsync is! AsyncData || songsAsync.value == null) {
     return [];
   }
 
-  void generate(List<Song> songs, UserDataState userData) {
-    if (songs.isEmpty) {
-      state = [];
-      return;
-    }
+  final allSongs = songsAsync.value!;
+  final quickPicks = userData.playlists
+      .where((p) => p.id == 'quick_picks' && p.isRecommendation)
+      .firstOrNull;
 
-    final random = Random();
-    final recommendations = List<Song>.from(songs);
+  if (quickPicks == null) return [];
 
-    recommendations.sort((a, b) {
-      double score(Song s) {
-        // Base score from play count
-        double val = log(s.playCount + 1.5) * 2.0;
-
-        // Boost for favorites
-        if (userData.isFavorite(s.filename)) {
-          val += 5.0;
-        }
-
-        // Heavy penalty for suggest-less (but not absolute block)
-        if (userData.isSuggestLess(s.filename)) {
-          val -= 10.0;
-        }
-
-        // Add randomness
-        val += random.nextDouble() * 4.0;
-
-        return val;
-      }
-
-      return score(b).compareTo(score(a));
-    });
-
-    state = recommendations.take(10).toList();
+  final result = <Song>[];
+  for (final ps in quickPicks.songs) {
+    final song =
+        allSongs.where((s) => s.filename == ps.songFilename).firstOrNull;
+    if (song != null) result.add(song);
   }
-}
 
-final recommendationsProvider =
-    NotifierProvider<RecommendationsNotifier, List<Song>>(
-        RecommendationsNotifier.new);
+  return result;
+});
 
 final playCountsProvider = FutureProvider<Map<String, int>>((ref) async {
   // Watch userData to refresh when stats might have changed or synced

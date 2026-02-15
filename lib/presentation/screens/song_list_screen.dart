@@ -164,7 +164,8 @@ class SongListScreen extends ConsumerWidget {
                       heroTagPrefix: 'song_list_$title',
                       playlistId: playlistId,
                       onTap: () {
-                        audioManager.playSong(song, contextQueue: sortedSongs);
+                        audioManager.playSong(song,
+                            contextQueue: sortedSongs, playlistId: playlistId);
                       },
                     );
                   },

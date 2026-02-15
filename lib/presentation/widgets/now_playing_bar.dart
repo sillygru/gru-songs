@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -21,12 +22,8 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
   String? _lastSongId;
 
   @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final player = ref.watch(audioPlayerManagerProvider).player;
     final settings = ref.watch(settingsProvider);
     final isDesktop =
@@ -58,52 +55,48 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
             );
           },
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Container(
-              height: (isDesktop || isIPad) ? 90 : 66,
-              decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surface
-                    .withValues(alpha: 0.95),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  width: 0.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(
+                  height: (isDesktop || isIPad) ? 90 : 72,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Stack(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
                           children: [
                             Hero(
                               tag: 'now_playing_art_${metadata.id}',
                               child: Container(
+                                width: 48,
+                                height: 48,
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(
                                       color:
-                                          Colors.black.withValues(alpha: 0.2),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
+                                          Colors.black.withValues(alpha: 0.3),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
                                     ),
                                   ],
                                 ),
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(12),
                                   child: Stack(
                                     children: [
                                       AlbumArtImage(
@@ -111,8 +104,8 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                             'now_playing_art_${metadata.id}'),
                                         url: metadata.artUri?.toString() ?? '',
                                         filename: metadata.id,
-                                        width: 44,
-                                        height: 44,
+                                        width: 48,
+                                        height: 48,
                                         fit: BoxFit.cover,
                                       ),
                                       StreamBuilder<PlayerState>(
@@ -132,15 +125,15 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                                 child:
                                                     settings.visualizerEnabled
                                                         ? const AudioVisualizer(
-                                                            width: 20,
-                                                            height: 20,
+                                                            width: 24,
+                                                            height: 24,
                                                             color: Colors.white,
                                                             isPlaying: true,
                                                           )
                                                         : const Icon(
                                                             Icons.graphic_eq,
                                                             color: Colors.white,
-                                                            size: 18),
+                                                            size: 20),
                                               ),
                                             ),
                                           );
@@ -151,7 +144,7 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 16),
                             Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -162,26 +155,27 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        letterSpacing: -0.2),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 16,
+                                        letterSpacing: -0.5),
                                   ),
                                   Text(
                                     metadata.artist ?? 'Unknown Artist',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                        fontSize: 12),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.6),
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13),
                                   ),
                                 ],
                               ),
                             ),
                             const SizedBox(width: 8),
                             if (isDesktop || isIPad) ...[
-                              const Icon(Icons.volume_down, size: 18),
+                              const Icon(Icons.volume_down,
+                                  size: 18, color: Colors.white60),
                               SizedBox(
                                 width: 100,
                                 child: StreamBuilder<double>(
@@ -189,13 +183,15 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                   builder: (context, snapshot) {
                                     return Slider(
                                       value: snapshot.data ?? 1.0,
+                                      activeColor: theme.colorScheme.primary,
                                       onChanged: player.setVolume,
                                     );
                                   },
                                 ),
                               ),
-                              const Icon(Icons.volume_up, size: 18),
-                              const SizedBox(width: 8),
+                              const Icon(Icons.volume_up,
+                                  size: 18, color: Colors.white60),
+                              const SizedBox(width: 12),
                             ],
                             Row(
                               mainAxisSize: MainAxisSize.min,
@@ -214,10 +210,11 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                       return const Padding(
                                         padding: EdgeInsets.all(8.0),
                                         child: SizedBox(
-                                            width: 20,
-                                            height: 20,
+                                            width: 24,
+                                            height: 24,
                                             child: CircularProgressIndicator(
-                                                strokeWidth: 2)),
+                                                strokeWidth: 2,
+                                                color: Colors.white)),
                                       );
                                     }
 
@@ -226,9 +223,10 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                       padding: const EdgeInsets.all(8),
                                       icon: Icon(
                                           playing
-                                              ? Icons.pause
-                                              : Icons.play_arrow,
-                                          size: 30),
+                                              ? Icons.pause_rounded
+                                              : Icons.play_arrow_rounded,
+                                          size: 34,
+                                          color: Colors.white),
                                       onPressed:
                                           playing ? player.pause : player.play,
                                     );
@@ -237,7 +235,8 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                 IconButton(
                                   constraints: const BoxConstraints(),
                                   padding: const EdgeInsets.all(8),
-                                  icon: const Icon(Icons.skip_next, size: 26),
+                                  icon: const Icon(Icons.skip_next_rounded,
+                                      size: 30, color: Colors.white),
                                   onPressed:
                                       player.hasNext ? player.seekToNext : null,
                                 ),
@@ -246,25 +245,32 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                           ],
                         ),
                       ),
-                    ),
-                    StreamBuilder<Duration>(
-                      stream: player.positionStream,
-                      builder: (context, snapshot) {
-                        final position = snapshot.data ?? Duration.zero;
-                        final duration = player.duration ?? Duration.zero;
-                        final progress = duration.inMilliseconds > 0
-                            ? position.inMilliseconds / duration.inMilliseconds
-                            : 0.0;
-                        return LinearProgressIndicator(
-                          value: progress.clamp(0.0, 1.0),
-                          minHeight: 2.5,
-                          backgroundColor: Colors.white.withValues(alpha: 0.05),
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).colorScheme.primary),
-                        );
-                      },
-                    ),
-                  ],
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: StreamBuilder<Duration>(
+                          stream: player.positionStream,
+                          builder: (context, snapshot) {
+                            final position = snapshot.data ?? Duration.zero;
+                            final duration = player.duration ?? Duration.zero;
+                            final progress = duration.inMilliseconds > 0
+                                ? position.inMilliseconds /
+                                    duration.inMilliseconds
+                                : 0.0;
+                            return LinearProgressIndicator(
+                              value: progress.clamp(0.0, 1.0),
+                              minHeight: 3,
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.1),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.primary),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

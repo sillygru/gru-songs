@@ -99,7 +99,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               },
               requiredLevel: 2);
 
-          await ref.read(userDataProvider.notifier).refresh();
+          await ref.read(userDataProvider.notifier).refresh(force: true);
         },
         child: CustomScrollView(
           slivers: [
@@ -158,6 +158,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       children: [
                         _buildStatColumn(
                             'Favorites', userData.favorites.length.toString()),
+                        _buildStatColumn(
+                            'Playlists', userData.playlists.length.toString()),
+                        _buildStatColumn(
+                            'Hidden', userData.hidden.length.toString()),
+                        _buildStatColumn('Suggest-less',
+                            userData.suggestLess.length.toString()),
                       ],
                     ),
                     const SizedBox(height: 24),

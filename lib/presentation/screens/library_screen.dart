@@ -62,6 +62,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
@@ -69,8 +70,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 floating: true,
                 snap: true,
                 pinned: true,
-                title: const Text('Library',
-                    style: TextStyle(fontWeight: FontWeight.w900)),
+                backgroundColor: Colors.transparent,
+                title: const Text('Library'),
                 actions: [
                   songsAsyncValue.when(
                     data: (songs) => Row(
@@ -78,7 +79,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       children: [
                         const SortMenu(),
                         IconButton(
-                          icon: const Icon(Icons.shuffle),
+                          icon: const Icon(Icons.shuffle_rounded),
                           onPressed: () {
                             if (songs.isNotEmpty) {
                               audioManager.shuffleAndPlay(songs,
@@ -93,8 +94,28 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     error: (_, __) => const SizedBox.shrink(),
                   ),
                 ],
-                bottom: const TabBar(
-                  tabs: [
+                bottom: TabBar(
+                  dividerColor: Colors.transparent,
+                  indicatorSize: TabBarIndicatorSize.label,
+                  indicatorWeight: 4,
+                  indicator: UnderlineTabIndicator(
+                    borderSide: BorderSide(
+                      width: 4,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  labelStyle: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    letterSpacing: -0.5,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    letterSpacing: -0.5,
+                  ),
+                  tabs: const [
                     Tab(text: 'Folders'),
                     Tab(text: 'Artists'),
                     Tab(text: 'Albums'),
@@ -161,7 +182,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         final sortedSubFolders = content.subFolders;
         final immediateSongs = content.immediateSongs;
         final isRoot = widget.relativePath == null;
-        final playlists = userData.playlists;
+        final playlists =
+            userData.playlists.where((p) => !p.isRecommendation).toList();
 
         Widget folderIndexBuilder(BuildContext context, int index) {
           int offset = 0;
@@ -421,17 +443,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           );
         } else {
           return Scaffold(
+            backgroundColor: Colors.transparent,
             body: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
               slivers: [
                 SliverAppBar(
                   floating: true,
                   snap: true,
+                  backgroundColor: Colors.transparent,
                   title: Text(widget.relativePath ?? 'Library'),
                   actions: [
                     const SortMenu(),
                     if (content.allSongsInFolder.isNotEmpty)
                       IconButton(
-                        icon: const Icon(Icons.shuffle),
+                        icon: const Icon(Icons.shuffle_rounded),
                         onPressed: () {
                           audioManager.shuffleAndPlay(content.allSongsInFolder,
                               isRestricted: true);

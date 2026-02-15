@@ -1,7 +1,7 @@
 name: gru_songs
 description: "A feature packed local music player."
 publish_to: "none"
-version: 3.13.4-beta+189
+version: 3.14.0-beta+190
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

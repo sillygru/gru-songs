@@ -9,9 +9,11 @@ import '../../providers/providers.dart';
 import '../../providers/selection_provider.dart';
 import '../../services/telemetry_service.dart';
 import '../widgets/bulk_selection_bar.dart';
+import '../widgets/immersive_background.dart';
 
 class SyncIndicator extends ConsumerWidget {
   const SyncIndicator({super.key});
+// ... (SyncIndicator implementation remains the same)
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -197,6 +199,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final topPadding = MediaQuery.of(context).padding.top;
 
     final selectionState = ref.watch(selectionProvider);
@@ -217,9 +220,11 @@ class _MainScreenState extends ConsumerState<MainScreen>
           behavior: HitTestBehavior.translucent,
           child: Stack(
             children: [
-              IndexedStack(
-                index: _selectedIndex,
-                children: _screens,
+              ImmersiveBackground(
+                child: IndexedStack(
+                  index: _selectedIndex,
+                  children: _screens,
+                ),
               ),
               Positioned(
                 top: topPadding,
@@ -246,30 +251,35 @@ class _MainScreenState extends ConsumerState<MainScreen>
       ),
       bottomNavigationBar: selectionState.isSelectionMode
           ? null
-          : NavigationBar(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-              },
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home),
-                  label: 'Home',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.library_music_outlined),
-                  selectedIcon: Icon(Icons.library_music),
-                  label: 'Library',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.person_outline),
-                  selectedIcon: Icon(Icons.person),
-                  label: 'Profile',
-                ),
-              ],
+          : Container(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: NavigationBar(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (index) {
+                  setState(() {
+                    _selectedIndex = index;
+                  });
+                },
+                indicatorColor:
+                    theme.colorScheme.primary.withValues(alpha: 0.1),
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home_rounded),
+                    label: 'Home',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.library_music_outlined),
+                    selectedIcon: Icon(Icons.library_music_rounded),
+                    label: 'Library',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.person_outline),
+                    selectedIcon: Icon(Icons.person_rounded),
+                    label: 'Profile',
+                  ),
+                ],
+              ),
             ),
     );
   }

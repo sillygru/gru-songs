@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../services/backup_service.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
 
 class BackupManagementScreen extends ConsumerStatefulWidget {

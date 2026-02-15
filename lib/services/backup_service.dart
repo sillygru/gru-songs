@@ -286,8 +286,12 @@ class BackupService {
         for (final suffix in dbSuffixes) {
           final statsFile = File(p.join(appDir.path, 'wispie_stats.db$suffix'));
           final dataFile = File(p.join(appDir.path, 'wispie_data.db$suffix'));
-          if (await statsFile.exists()) await statsFile.delete();
-          if (await dataFile.exists()) await dataFile.delete();
+          if (await statsFile.exists()) {
+            await statsFile.delete();
+          }
+          if (await dataFile.exists()) {
+            await dataFile.delete();
+          }
         }
 
         // Restore databases - look for wispie_* or any legacy *_stats.db
@@ -311,16 +315,23 @@ class BackupService {
                 (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
               foundDataDb = entity;
             }
-            if (name == 'songs.json') foundSongsJson = entity;
-            if (name == 'user_data.json' || name.startsWith('user_data_'))
+            if (name == 'songs.json') {
+              foundSongsJson = entity;
+            }
+            if (name == 'user_data.json' || name.startsWith('user_data_')) {
               foundUserDataJson = entity;
+            }
             if (name == 'shuffle_state.json' ||
-                name.startsWith('shuffle_state_'))
+                name.startsWith('shuffle_state_')) {
               foundShuffleStateJson = entity;
+            }
             if (name == 'playback_state.json' ||
-                name.startsWith('playback_state_'))
+                name.startsWith('playback_state_')) {
               foundPlaybackStateJson = entity;
-            if (name == 'merged_groups.json') foundMergedGroupsJson = entity;
+            }
+            if (name == 'merged_groups.json') {
+              foundMergedGroupsJson = entity;
+            }
           }
         }
 
@@ -439,7 +450,9 @@ class BackupService {
 
         for (final file in archive) {
           final name = p.basename(file.name);
-          if (name == 'songs.json') songsFile = file;
+          if (name == 'songs.json') {
+            songsFile = file;
+          }
           if (name == 'wispie_stats.db' ||
               (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
             statsFile = file;

@@ -60,3 +60,4 @@ android/build/reports/problems/problems-report.html
 /macos
 /temp
 /.gemini
+setup-project-ramdisk.sh

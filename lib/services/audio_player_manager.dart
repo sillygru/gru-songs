@@ -47,6 +47,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // Stats tracking state
   String? _currentSongFilename;
+  String? _currentPlaylistId;
   DateTime? _playStartTime;
   bool _isCompleting = false;
 
@@ -87,6 +88,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   AudioPlayer get player => _player;
+  String? get currentPlaylistId => _currentPlaylistId;
 
   Future<bool> stopIfCurrentSong(String fileUrl) async {
     final current = currentSongNotifier.value;
@@ -162,9 +164,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> playSong(Song song,
-      {List<Song>? contextQueue, bool startPlaying = true}) async {
+      {List<Song>? contextQueue,
+      String? playlistId,
+      bool startPlaying = true,
+      bool forceLinear = false}) async {
     _resetFading();
     await _player.setShuffleModeEnabled(false);
+    _currentPlaylistId = playlistId;
 
     // 1. Setup Local Queue (Optimistic)
     if (contextQueue != null) {
@@ -186,7 +192,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final selectedItem = _originalQueue[originalIdx];
 
-    if (_shuffleState.config.enabled) {
+    if (_shuffleState.config.enabled && !forceLinear) {
       final otherItems = List<QueueItem>.from(_originalQueue)
         ..removeAt(originalIdx);
       final shuffledOthers =
@@ -482,6 +488,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       'last_original_queue': _originalQueue.map((e) => e.toJson()).toList(),
       'last_position_ms': _player.position.inMilliseconds,
       'is_restricted_to_original': _isRestrictedToOriginal,
+      'current_playlist_id': _currentPlaylistId,
     };
 
     await _storageService.savePlaybackState(state);
@@ -666,6 +673,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         } else {
           _isRestrictedToOriginal =
               savedState['is_restricted_to_original'] ?? false;
+          _currentPlaylistId = savedState['current_playlist_id'];
 
           final savedPositionMs = savedState['last_position_ms'] ?? 0;
           final lastSongFilename = savedState['last_song_filename'];
@@ -960,13 +968,27 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     updateShuffleConfig(_shuffleState.config); // Re-uses logic
   }
 
-  /// Replaces the queue with new songs while keeping the current song playing.
-  /// If the currently playing song is the first song in the new queue, it is skipped.
-  Future<void> replaceQueue(List<Song> songs) async {
+  /// Replaces the current queue with a new set of songs.
+  /// If [forceLinear] is true, it replaces everything and starts from the first song.
+  Future<void> replaceQueue(List<Song> songs,
+      {String? playlistId, bool forceLinear = false}) async {
     if (songs.isEmpty) return;
+    _currentPlaylistId = playlistId;
 
     final currentSong = currentSongNotifier.value;
     final isPlaying = _player.playing;
+
+    if (forceLinear) {
+      _resetFading();
+      await _player.setShuffleModeEnabled(false);
+      _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
+      _isRestrictedToOriginal = true;
+      _effectiveQueue = List.from(_originalQueue);
+      await _rebuildQueue(initialIndex: 0, startPlaying: true);
+      _savePlaybackState();
+      _updateQueueNotifier();
+      return;
+    }
 
     // Filter out the currently playing song if it's first in the list
     List<Song> queueSongs = List.from(songs);
@@ -986,7 +1008,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _originalQueue = queueSongs.map((s) => QueueItem(song: s)).toList();
     _isRestrictedToOriginal = true;
 
-    if (_shuffleState.config.enabled) {
+    if (_shuffleState.config.enabled && !forceLinear) {
       // If shuffle is enabled, we need to shuffle the remaining songs
       final shuffledItems = await _weightedShuffle(
         _originalQueue.map((item) => QueueItem(song: item.song)).toList(),

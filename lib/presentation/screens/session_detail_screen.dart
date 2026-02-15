@@ -30,7 +30,7 @@ class SessionDetailScreen extends ConsumerWidget {
           Expanded(
             child: events.isEmpty
                 ? _buildNoSongsState(colorScheme)
-                : _buildSongsList(events, colorScheme),
+                : _buildSongsList(ref, events, colorScheme),
           ),
           if (events.isNotEmpty)
             _buildRepeatQueueButton(context, ref, events, colorScheme),
@@ -233,18 +233,24 @@ class SessionDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSongsList(List<SessionEvent> events, ColorScheme colorScheme) {
+  Widget _buildSongsList(
+      WidgetRef ref, List<SessionEvent> events, ColorScheme colorScheme) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: events.length,
       itemBuilder: (context, index) {
         final event = events[index];
-        return _buildSongItem(context, event, index, colorScheme);
+        return _buildSongItem(ref, events, context, event, index, colorScheme);
       },
     );
   }
 
-  Widget _buildSongItem(BuildContext context, SessionEvent event, int index,
+  Widget _buildSongItem(
+      WidgetRef ref,
+      List<SessionEvent> events,
+      BuildContext context,
+      SessionEvent event,
+      int index,
       ColorScheme colorScheme) {
     final song = event.song;
     final timeStr =
@@ -274,6 +280,24 @@ class SessionDetailScreen extends ConsumerWidget {
         ),
       ),
       child: ListTile(
+        onTap: () {
+          if (song != null) {
+            final allSongs = events
+                .where((e) => e.song != null)
+                .map((e) => e.song!)
+                .toList();
+            ref.read(audioPlayerManagerProvider).playSong(
+                  song,
+                  contextQueue: allSongs,
+                  playlistId: session.id,
+                  forceLinear: true,
+                );
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PlayerScreen()),
+            );
+          }
+        },
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Container(
           width: 36,
@@ -402,14 +426,15 @@ class SessionDetailScreen extends ConsumerWidget {
 
     // Replace queue - the audio manager will handle skipping the first song
     // if it's currently playing
-    await audioManager.replaceQueue(songs);
+    await audioManager.replaceQueue(songs,
+        playlistId: session.id, forceLinear: true);
 
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-            'Added ${songs.length} ${songs.length == 1 ? 'song' : 'songs'} to queue'),
+            'Playing ${songs.length} ${songs.length == 1 ? 'song' : 'songs'} from session'),
         action: SnackBarAction(
           label: 'Open Player',
           onPressed: () {

@@ -218,6 +218,8 @@ class DatabaseService {
         CREATE TABLE IF NOT EXISTS playlist (
           id TEXT PRIMARY KEY,
           name TEXT,
+          description TEXT,
+          is_recommendation INTEGER DEFAULT 0,
           created_at REAL,
           updated_at REAL
         )
@@ -246,10 +248,27 @@ class DatabaseService {
           FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
         )
     ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS recommendation_preference (
+          id TEXT PRIMARY KEY,
+          custom_title TEXT,
+          is_pinned INTEGER DEFAULT 0,
+          updated_at REAL
+        )
+    ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS recommendation_removal (
+          id TEXT PRIMARY KEY,
+          removed_at REAL
+        )
+    ''');
 
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
     await _addColumnIfNotExists(
         db, 'merged_song_group', 'priority_filename', 'TEXT');
+    await _addColumnIfNotExists(db, 'playlist', 'description', 'TEXT');
+    await _addColumnIfNotExists(
+        db, 'playlist', 'is_recommendation', 'INTEGER DEFAULT 0');
 
     // 3. Create indexes for the song table
     await db
@@ -672,6 +691,8 @@ class DatabaseService {
         playlists.add(Playlist(
           id: id,
           name: plMap['name'] as String,
+          description: plMap['description'] as String?,
+          isRecommendation: (plMap['is_recommendation'] as int? ?? 0) == 1,
           createdAt: plMap['created_at'] as double,
           updatedAt: plMap['updated_at'] as double,
           songs: songs.map((s) => PlaylistSong.fromJson(s)).toList(),
@@ -695,6 +716,8 @@ class DatabaseService {
         {
           'id': playlist.id,
           'name': playlist.name,
+          'description': playlist.description,
+          'is_recommendation': playlist.isRecommendation ? 1 : 0,
           'created_at': playlist.createdAt,
           'updated_at': playlist.updatedAt,
         },
@@ -1221,6 +1244,89 @@ class DatabaseService {
     });
 
     debugPrint('Deleted merged group $groupId');
+  }
+
+  // ==========================================================================
+  // RECOMMENDATION PREFERENCE QUERIES
+  // ==========================================================================
+
+  Future<Map<String, ({String? customTitle, bool isPinned})>>
+      getRecommendationPreferences() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return {};
+
+    try {
+      final results =
+          await _userDataDatabase!.query('recommendation_preference');
+      final prefs = <String, ({String? customTitle, bool isPinned})>{};
+      for (final row in results) {
+        prefs[row['id'] as String] = (
+          customTitle: row['custom_title'] as String?,
+          isPinned: (row['is_pinned'] as int) == 1,
+        );
+      }
+      return prefs;
+    } catch (e) {
+      debugPrint('Error getting recommendation preferences: $e');
+      return {};
+    }
+  }
+
+  Future<void> saveRecommendationPreference(String id,
+      {String? customTitle, bool? isPinned}) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final Map<String, dynamic> values = {'updated_at': now};
+    if (customTitle != null) values['custom_title'] = customTitle;
+    if (isPinned != null) values['is_pinned'] = isPinned ? 1 : 0;
+
+    await _userDataDatabase!.transaction((txn) async {
+      final existing = await txn
+          .query('recommendation_preference', where: 'id = ?', whereArgs: [id]);
+      if (existing.isEmpty) {
+        await txn.insert('recommendation_preference', {'id': id, ...values});
+      } else {
+        await txn.update('recommendation_preference', values,
+            where: 'id = ?', whereArgs: [id]);
+      }
+    });
+  }
+
+  Future<List<String>> getRemovedRecommendations() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+
+    try {
+      final results = await _userDataDatabase!.query('recommendation_removal');
+      return results.map((r) => r['id'] as String).toList();
+    } catch (e) {
+      debugPrint('Error getting removed recommendations: $e');
+      return [];
+    }
+  }
+
+  Future<void> addRecommendationRemoval(String id) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.insert(
+      'recommendation_removal',
+      {
+        'id': id,
+        'removed_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> removeRecommendationRemoval(String id) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!
+        .delete('recommendation_removal', where: 'id = ?', whereArgs: [id]);
   }
 
   /// Replaces all merged groups with the given data (used for import/restore)
@@ -1801,6 +1907,8 @@ class DatabaseService {
     CREATE TABLE IF NOT EXISTS playlist (
       id TEXT PRIMARY KEY,
       name TEXT,
+      description TEXT,
+      is_recommendation INTEGER DEFAULT 0,
       created_at REAL,
       updated_at REAL
     );

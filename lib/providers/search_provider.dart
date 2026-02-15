@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/models/search_filter.dart';
 import '../domain/models/search_result.dart';
 import '../domain/services/search_service.dart';
-import 'auth_provider.dart';
 import 'providers.dart';
 
 /// Provider for the search service
@@ -50,7 +49,6 @@ final searchResultsProvider =
   final filterState = ref.watch(searchFilterProvider);
   final songsAsync = ref.watch(songsProvider);
   final searchService = ref.watch(searchServiceProvider);
-  final authState = ref.watch(authProvider);
 
   if (query.isEmpty) {
     return [];
@@ -93,7 +91,6 @@ class DebouncedSearchNotifier extends Notifier<String> {
 /// Provider for search index stats
 final searchIndexStatsProvider = FutureProvider<SearchIndexStats>((ref) async {
   final searchService = ref.watch(searchServiceProvider);
-  // final authState = ref.watch(authProvider); // Unused now
 
   await searchService.init();
 

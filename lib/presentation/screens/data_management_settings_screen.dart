@@ -39,6 +39,7 @@ class _DataManagementSettingsScreenState
                 title: 'Export App Data',
                 subtitle: 'Backup your stats, favorites, and playlists',
                 onTap: () async {
+                  final messenger = ScaffoldMessenger.of(context);
                   try {
                     final exportService = DataExportService();
                     await exportService.exportUserData();
@@ -51,7 +52,7 @@ class _DataManagementSettingsScreenState
                         requiredLevel: 2);
                   } catch (e) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         SnackBar(content: Text("Export failed: $e")),
                       );
                     }

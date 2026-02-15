@@ -8,7 +8,6 @@ import '../../providers/settings_provider.dart';
 import '../../providers/selection_provider.dart';
 import 'album_art_image.dart';
 import 'song_options_menu.dart';
-import 'heart_context_menu.dart';
 import 'audio_visualizer.dart';
 import 'duration_display.dart';
 
@@ -52,35 +51,25 @@ class SongListItem extends ConsumerWidget {
             isPlaying ?? (currentSong?.filename == song.filename);
 
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
           decoration: BoxDecoration(
             color: isSelected
-                ? Theme.of(context)
-                    .colorScheme
-                    .primaryContainer
-                    .withValues(alpha: 0.3)
-                : Theme.of(context).cardTheme.color,
-            borderRadius: BorderRadius.circular(12),
-            border: isSelected
-                ? Border.all(
-                    color: Theme.of(context).colorScheme.primary,
-                    width: 2,
-                  )
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
                 : (effectiveIsPlaying
-                    ? Border.all(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.5),
-                        width: 1.5)
-                    : null),
+                    ? Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.05)
+                    : Colors.transparent),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Material(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(20),
             child: InkWell(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(20),
               onTap: selectionState.isSelectionMode
                   ? () => ref
                       .read(selectionProvider.notifier)
@@ -98,7 +87,7 @@ class SongListItem extends ConsumerWidget {
                 }
               },
               child: Padding(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(10.0),
                 child: Row(
                   children: [
                     Stack(
@@ -106,18 +95,18 @@ class SongListItem extends ConsumerWidget {
                         Hero(
                           tag: heroTag,
                           child: AnimatedScale(
-                            duration: const Duration(milliseconds: 200),
-                            scale: isSelected ? 0.8 : 1.0,
+                            duration: const Duration(milliseconds: 300),
+                            scale: isSelected ? 0.85 : 1.0,
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(14),
                               child: AlbumArtImage(
                                 url: song.coverUrl ?? '',
                                 filename: song.filename,
-                                width: 56,
-                                height: 56,
+                                width: 52,
+                                height: 52,
                                 fit: BoxFit.cover,
-                                memCacheWidth: 112,
-                                memCacheHeight: 112,
+                                memCacheWidth: 104,
+                                memCacheHeight: 104,
                               ),
                             ),
                           ),
@@ -129,13 +118,13 @@ class SongListItem extends ConsumerWidget {
                                 color: Theme.of(context)
                                     .colorScheme
                                     .primary
-                                    .withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(8),
+                                    .withValues(alpha: 0.7),
+                                borderRadius: BorderRadius.circular(14),
                               ),
                               child: const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 32,
+                                Icons.check_rounded,
+                                color: Colors.black,
+                                size: 28,
                               ),
                             ),
                           )
@@ -155,7 +144,7 @@ class SongListItem extends ConsumerWidget {
                                 return Container(
                                   decoration: BoxDecoration(
                                     color: Colors.black.withValues(alpha: 0.4),
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
                                   child: Center(
                                     child: settings.visualizerEnabled
@@ -165,7 +154,7 @@ class SongListItem extends ConsumerWidget {
                                             height: 24,
                                             isPlaying: true,
                                           )
-                                        : const Icon(Icons.graphic_eq,
+                                        : const Icon(Icons.graphic_eq_rounded,
                                             color: Colors.white, size: 24),
                                   ),
                                 );
@@ -174,7 +163,7 @@ class SongListItem extends ConsumerWidget {
                           ),
                       ],
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,16 +173,17 @@ class SongListItem extends ConsumerWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w800,
                               fontSize: 16,
+                              letterSpacing: -0.3,
                               color: effectiveIsPlaying
                                   ? Theme.of(context).colorScheme.primary
                                   : (isSuggestLess
                                       ? Theme.of(context)
                                           .colorScheme
                                           .onSurface
-                                          .withValues(alpha: 0.5)
-                                      : null),
+                                          .withValues(alpha: 0.4)
+                                      : Colors.white),
                               decoration: isSuggestLess
                                   ? TextDecoration.lineThrough
                                   : null,
@@ -208,12 +198,13 @@ class SongListItem extends ConsumerWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
                                     color: Theme.of(context)
                                         .colorScheme
                                         .onSurfaceVariant
                                         .withValues(
-                                            alpha: isSuggestLess ? 0.5 : 1.0),
+                                            alpha: isSuggestLess ? 0.4 : 0.7),
                                   ),
                                 ),
                               ),
@@ -224,7 +215,7 @@ class SongListItem extends ConsumerWidget {
                                 DurationBadge(
                                   duration: song.duration,
                                   isSubtle: true,
-                                  showIcon: true,
+                                  showIcon: false,
                                 ),
                               ],
                             ],
@@ -234,71 +225,54 @@ class SongListItem extends ConsumerWidget {
                     ),
                     if (showMenu && !selectionState.isSelectionMode) ...[
                       const SizedBox(width: 8),
-                      const SizedBox(width: 8),
                       if (song.playCount > 0)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: Theme.of(context)
                                 .colorScheme
-                                .surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
+                                .primary
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             "${song.playCount}",
                             style: TextStyle(
                               fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              fontWeight: FontWeight.w900,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                         ),
-                      GestureDetector(
-                        onLongPress: () {
-                          showHeartContextMenu(
-                            context: context,
-                            ref: ref,
-                            songFilename: song.filename,
-                            songTitle: song.title,
-                          );
-                        },
-                        child: IconButton(
-                          icon: Icon(
-                            isFavorite
-                                ? Icons.favorite
-                                : (isSuggestLess
-                                    ? Icons.heart_broken
-                                    : Icons.favorite_border),
-                            color: isFavorite
-                                ? Theme.of(context).colorScheme.primary
-                                : (isSuggestLess
-                                    ? Colors.grey
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant
-                                        .withValues(alpha: 0.5)),
-                          ),
-                          onPressed: () {
-                            ref
-                                .read(userDataProvider.notifier)
-                                .toggleFavorite(song.filename);
-                          },
-                          iconSize: 18,
-                          visualDensity: VisualDensity.compact,
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(
+                          isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: isFavorite
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.4),
                         ),
+                        onPressed: () {
+                          ref
+                              .read(userDataProvider.notifier)
+                              .toggleFavorite(song.filename);
+                        },
+                        iconSize: 20,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.more_vert),
+                        icon: const Icon(Icons.more_vert_rounded),
                         onPressed: () {
                           showSongOptionsMenu(
                               context, ref, song.filename, song.title,
                               song: song, playlistId: playlistId);
                         },
                         iconSize: 20,
-                        visualDensity: VisualDensity.compact,
                       ),
                     ],
                   ],

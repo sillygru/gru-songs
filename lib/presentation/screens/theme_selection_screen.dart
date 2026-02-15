@@ -36,6 +36,8 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
     switch (mode) {
       case AppThemeMode.defaultTheme:
         return "DEFAULT";
+      case AppThemeMode.lightBlue:
+        return "LIGHT BLUE";
       case AppThemeMode.oled:
         return "OLED";
       case AppThemeMode.matchCover:

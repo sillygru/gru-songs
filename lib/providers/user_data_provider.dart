@@ -1,11 +1,15 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
-import 'auth_provider.dart';
+
 import 'providers.dart';
+import 'session_history_provider.dart';
 import '../services/database_service.dart';
 import '../models/playlist.dart';
+import '../models/song.dart';
+import '../domain/models/play_session.dart';
 
 class UserDataState {
   final List<String> favorites;
@@ -14,6 +18,9 @@ class UserDataState {
   final List<Playlist> playlists;
   final Map<String, List<String>> mergedGroups;
   final Map<String, String?> mergedGroupPriorities;
+  final Map<String, ({String? customTitle, bool isPinned})>
+      recommendationPreferences;
+  final List<String> removedRecommendations;
   final bool isLoading;
 
   UserDataState({
@@ -23,6 +30,8 @@ class UserDataState {
     this.playlists = const [],
     this.mergedGroups = const {},
     this.mergedGroupPriorities = const {},
+    this.recommendationPreferences = const {},
+    this.removedRecommendations = const [],
     this.isLoading = false,
   });
 
@@ -99,6 +108,9 @@ class UserDataState {
     List<Playlist>? playlists,
     Map<String, List<String>>? mergedGroups,
     Map<String, String?>? mergedGroupPriorities,
+    Map<String, ({String? customTitle, bool isPinned})>?
+        recommendationPreferences,
+    List<String>? removedRecommendations,
     bool? isLoading,
   }) {
     return UserDataState(
@@ -109,6 +121,10 @@ class UserDataState {
       mergedGroups: mergedGroups ?? this.mergedGroups,
       mergedGroupPriorities:
           mergedGroupPriorities ?? this.mergedGroupPriorities,
+      recommendationPreferences:
+          recommendationPreferences ?? this.recommendationPreferences,
+      removedRecommendations:
+          removedRecommendations ?? this.removedRecommendations,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -120,6 +136,15 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   @override
   UserDataState build() {
+    // Listen to songsProvider to trigger recommendation updates when songs are ready.
+    // This ensures that even if updateRecommendationPlaylists was called too early during init,
+    // it will run as soon as we have songs to generate from.
+    ref.listen(songsProvider, (previous, next) {
+      if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
+        updateRecommendationPlaylists();
+      }
+    });
+
     if (!_initialized) {
       _initialized = true;
       Future.microtask(() => _initLocal());
@@ -140,6 +165,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final localPlaylists = await DatabaseService.instance.getPlaylists();
       final localMergedGroups =
           await DatabaseService.instance.getMergedSongGroups();
+      final localRecommendationPrefs =
+          await DatabaseService.instance.getRecommendationPreferences();
+      final localRemovedRecommendations =
+          await DatabaseService.instance.getRemovedRecommendations();
 
       // Extract groups and priorities from the new format
       final groups = <String, List<String>>{};
@@ -156,9 +185,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
         playlists: localPlaylists,
         mergedGroups: groups,
         mergedGroupPriorities: priorities,
+        recommendationPreferences: localRecommendationPrefs,
+        removedRecommendations: localRemovedRecommendations,
         isLoading: false,
       );
       _updateManager();
+
+      // Try to update recommendations if they are old or missing
+      await updateRecommendationPlaylists();
     } catch (e) {
       debugPrint('Error loading local user data: $e');
     }
@@ -180,6 +214,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
 
     await _initLocal();
+    await updateRecommendationPlaylists(force: force);
   }
 
   /// Toggle favorite (local-only)
@@ -589,5 +624,288 @@ class UserDataNotifier extends Notifier<UserDataState> {
     state = state.copyWith(
         mergedGroups: newGroups, mergedGroupPriorities: newPriorities);
     _updateManager();
+  }
+
+  // --- Recommendation Management ---
+
+  Future<void> pinRecommendation(String id, bool pinned,
+      {List<Song>? songs, String? title, String? description}) async {
+    await DatabaseService.instance
+        .saveRecommendationPreference(id, isPinned: pinned);
+
+    if (pinned && songs != null) {
+      final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+      final playlist = Playlist(
+        id: id,
+        name: title ?? id,
+        description: description,
+        isRecommendation: true,
+        createdAt: now,
+        updatedAt: now,
+        songs: songs
+            .map((s) => PlaylistSong(songFilename: s.filename, addedAt: now))
+            .toList(),
+      );
+      await DatabaseService.instance.savePlaylist(playlist);
+
+      // Add to local state
+      final newPlaylists = List<Playlist>.from(state.playlists)
+        ..removeWhere((p) => p.id == id)
+        ..add(playlist);
+      state = state.copyWith(playlists: newPlaylists);
+    } else if (!pinned) {
+      await DatabaseService.instance.deletePlaylist(id);
+
+      // Remove from local state
+      final newPlaylists = state.playlists.where((p) => p.id != id).toList();
+      state = state.copyWith(playlists: newPlaylists);
+    }
+
+    final newPrefs = Map<String, ({String? customTitle, bool isPinned})>.from(
+        state.recommendationPreferences);
+    final current =
+        newPrefs[id] ?? (customTitle: null as String?, isPinned: false);
+    newPrefs[id] = (customTitle: current.customTitle, isPinned: pinned);
+
+    state = state.copyWith(recommendationPreferences: newPrefs);
+  }
+
+  Future<void> renameRecommendation(String id, String newName,
+      {List<Song>? songs, String? description}) async {
+    // If recommendation is renamed it automatically becomes pinned
+    await DatabaseService.instance
+        .saveRecommendationPreference(id, customTitle: newName, isPinned: true);
+
+    if (songs != null) {
+      final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+      final playlist = Playlist(
+        id: id,
+        name: newName,
+        description: description,
+        isRecommendation: true,
+        createdAt: now,
+        updatedAt: now,
+        songs: songs
+            .map((s) => PlaylistSong(songFilename: s.filename, addedAt: now))
+            .toList(),
+      );
+      await DatabaseService.instance.savePlaylist(playlist);
+
+      // Add to local state
+      final newPlaylists = List<Playlist>.from(state.playlists)
+        ..removeWhere((p) => p.id == id)
+        ..add(playlist);
+      state = state.copyWith(playlists: newPlaylists);
+    } else {
+      // Update name of existing frozen playlist if it exists
+      final existingIndex = state.playlists.indexWhere((p) => p.id == id);
+      if (existingIndex != -1) {
+        final updated = state.playlists[existingIndex].copyWith(name: newName);
+        await DatabaseService.instance.savePlaylist(updated);
+
+        final newPlaylists = List<Playlist>.from(state.playlists);
+        newPlaylists[existingIndex] = updated;
+        state = state.copyWith(playlists: newPlaylists);
+      }
+    }
+
+    final newPrefs = Map<String, ({String? customTitle, bool isPinned})>.from(
+        state.recommendationPreferences);
+    newPrefs[id] = (customTitle: newName, isPinned: true);
+
+    state = state.copyWith(recommendationPreferences: newPrefs);
+  }
+
+  Future<void> removeRecommendation(String id) async {
+    await DatabaseService.instance.addRecommendationRemoval(id);
+
+    final newRemoved = List<String>.from(state.removedRecommendations)..add(id);
+    state = state.copyWith(removedRecommendations: newRemoved);
+  }
+
+  Future<void> restoreRecommendation(String id) async {
+    await DatabaseService.instance.removeRecommendationRemoval(id);
+
+    final newRemoved = List<String>.from(state.removedRecommendations)
+      ..remove(id);
+    state = state.copyWith(removedRecommendations: newRemoved);
+  }
+
+  // --- Recommendation Playlist Logic ---
+
+  List<Song> _generateSongsForRecommendation(
+    String id,
+    List<Song> allSongs,
+    Map<String, int> playCounts,
+    List<PlaySession> sessions,
+  ) {
+    if (allSongs.isEmpty) return [];
+    final random = Random();
+
+    switch (id) {
+      case 'quick_picks':
+        final recommendations = List<Song>.from(allSongs);
+        recommendations.sort((a, b) {
+          double score(Song s) {
+            double val = log((playCounts[s.filename] ?? 0) + 1.5) * 2.0;
+            if (state.isFavorite(s.filename)) val += 5.0;
+            if (state.isSuggestLess(s.filename)) val -= 10.0;
+            val += random.nextDouble() * 4.0;
+            return val;
+          }
+
+          return score(b).compareTo(score(a));
+        });
+        return recommendations.take(10).toList();
+
+      case 'top_hits':
+        final list = List<Song>.from(allSongs);
+        list.sort((a, b) => (playCounts[b.filename] ?? 0)
+            .compareTo(playCounts[a.filename] ?? 0));
+        return list.take(20).toList();
+
+      case 'fresh_finds':
+        final list = List<Song>.from(allSongs);
+        list.sort((a, b) => (b.mtime ?? 0).compareTo(a.mtime ?? 0));
+        return list.take(20).toList();
+
+      case 'forgotten_favorites':
+        final recentFilenames = sessions
+            .take(5)
+            .expand((s) => s.events ?? [])
+            .map((e) => e.songFilename)
+            .toSet();
+        final forgotten = allSongs.where((s) {
+          final isFav = state.isFavorite(s.filename);
+          final count = playCounts[s.filename] ?? 0;
+          return (isFav || count > 10) && !recentFilenames.contains(s.filename);
+        }).toList();
+        if (forgotten.isEmpty) return [];
+        return (forgotten..shuffle()).take(20).toList();
+
+      case 'quick_refresh':
+        final unplayed =
+            allSongs.where((s) => (playCounts[s.filename] ?? 0) < 3).toList();
+        if (unplayed.isEmpty) return [];
+        return (unplayed..shuffle()).take(20).toList();
+
+      case 'artist_mix':
+        if (sessions.isEmpty) return [];
+        final artistCounts = <String, int>{};
+        for (final session in sessions.take(10)) {
+          for (final event in session.events ?? []) {
+            if (event.song != null) {
+              artistCounts[event.song!.artist] =
+                  (artistCounts[event.song!.artist] ?? 0) + 1;
+            }
+          }
+        }
+        if (artistCounts.isEmpty) return [];
+        final topArtist = artistCounts.entries
+            .reduce((a, b) => a.value > b.value ? a : b)
+            .key;
+        final artistSongs =
+            allSongs.where((s) => s.artist == topArtist).toList();
+        if (artistSongs.length < 3) return [];
+        return (artistSongs..shuffle()).take(20).toList();
+
+      default:
+        return [];
+    }
+  }
+
+  Future<void> updateRecommendationPlaylists({bool force = false}) async {
+    final songsAsync = ref.read(songsProvider);
+
+    if (songsAsync is! AsyncData || songsAsync.value == null) return;
+    final allSongs = songsAsync.value!;
+
+    // Await stats to ensure good recommendations
+    final playCounts = await ref.read(playCountsProvider.future);
+    final sessions = await ref.read(sessionHistoryProvider.future);
+
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final audioManager = ref.read(audioPlayerManagerProvider);
+    final currentPlaylistId = audioManager.currentPlaylistId;
+
+    final recommendationTypes = [
+      (
+        id: 'quick_picks',
+        title: 'Quick Picks',
+        desc: 'Personalized for you right now.'
+      ),
+      (id: 'top_hits', title: 'Top Hits', desc: 'Your all-time favorites.'),
+      (
+        id: 'fresh_finds',
+        title: 'Fresh Finds',
+        desc: 'Newly added to your library.'
+      ),
+      (
+        id: 'forgotten_favorites',
+        title: 'Forgotten Favorites',
+        desc: 'Songs you haven\'t heard in a while.'
+      ),
+      (
+        id: 'quick_refresh',
+        title: 'Quick Refresh',
+        desc: 'Give these tracks another spin.'
+      ),
+      (
+        id: 'artist_mix',
+        title: 'Artist Mix',
+        desc: 'A collection of tracks from your favorite artist.'
+      ),
+    ];
+
+    final updatedPlaylists = List<Playlist>.from(state.playlists);
+    bool changed = false;
+
+    for (final type in recommendationTypes) {
+      if (state.removedRecommendations.contains(type.id)) continue;
+
+      final existing =
+          updatedPlaylists.where((p) => p.id == type.id).firstOrNull;
+      final pref = state.recommendationPreferences[type.id];
+      final isPinned = pref?.isPinned ?? false;
+
+      // DO NOT update if it's currently playing OR if it's pinned (pinned ones are kept)
+      if (type.id == currentPlaylistId || isPinned) continue;
+
+      bool shouldUpdate = force || existing == null;
+      if (!shouldUpdate) {
+        // Update if older than 24 hours
+        if (now - existing.updatedAt > 86400) {
+          shouldUpdate = true;
+        }
+      }
+
+      if (shouldUpdate) {
+        final songs = _generateSongsForRecommendation(
+            type.id, allSongs, playCounts, sessions);
+        if (songs.isNotEmpty) {
+          final playlist = Playlist(
+            id: type.id,
+            name: pref?.customTitle ?? (existing?.name ?? type.title),
+            description: existing?.description ?? type.desc,
+            isRecommendation: true,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            songs: songs
+                .map(
+                    (s) => PlaylistSong(songFilename: s.filename, addedAt: now))
+                .toList(),
+          );
+
+          await DatabaseService.instance.savePlaylist(playlist);
+          updatedPlaylists.removeWhere((p) => p.id == type.id);
+          updatedPlaylists.add(playlist);
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      state = state.copyWith(playlists: updatedPlaylists);
+    }
   }
 }
