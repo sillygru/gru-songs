@@ -21,6 +21,7 @@ class _StorageManagementScreenState
   int _libraryCacheSize = 0;
   int _searchIndexSize = 0;
   int _waveformCacheSize = 0;
+  int _colorCacheSize = 0;
   bool _isClearing = false;
 
   @override
@@ -45,6 +46,8 @@ class _StorageManagementScreenState
           await StorageAnalysisService.instance.getSearchIndexSize();
       final waveformSize =
           await StorageAnalysisService.instance.getWaveformCacheSize();
+      final colorSize =
+          await StorageAnalysisService.instance.getColorCacheSize();
 
       if (mounted) {
         setState(() {
@@ -54,6 +57,7 @@ class _StorageManagementScreenState
           _libraryCacheSize = libSize;
           _searchIndexSize = searchSize;
           _waveformCacheSize = waveformSize;
+          _colorCacheSize = colorSize;
           _isLoading = false;
         });
       }
@@ -364,6 +368,38 @@ class _StorageManagementScreenState
     }
   }
 
+  Future<void> _handleClearColorCache() async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Clear Color Cache?',
+      content: 'This will delete all cached theme colors.\n\n'
+          'Colors will be re-extracted from album art the next time songs are played.',
+      confirmText: 'Clear Cache',
+      confirmColor: Colors.orange,
+    );
+
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isClearing = true);
+
+    try {
+      await StorageAnalysisService.instance.clearColorCache();
+      await _loadSizes();
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Color cache cleared successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error clearing color cache: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _handleDangerousClear() async {
     final confirmed = await _showConfirmationDialog(
       title: 'Clear All App Data?',
@@ -470,6 +506,16 @@ class _StorageManagementScreenState
                     color: Colors.cyan,
                     onClear: _waveformCacheSize > 0
                         ? _handleClearWaveformCache
+                        : null,
+                  ),
+                  _buildStorageCard(
+                    title: 'Color Cache',
+                    subtitle: 'Cached theme colors from album art',
+                    size: _colorCacheSize,
+                    icon: Icons.palette_rounded,
+                    color: Colors.pink,
+                    onClear: _colorCacheSize > 0
+                        ? _handleClearColorCache
                         : null,
                   ),
                   const SizedBox(height: 24),

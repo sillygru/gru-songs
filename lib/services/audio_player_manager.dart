@@ -335,6 +335,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             ColorExtractionService.extractColor(song.coverUrl).then((color) {
               _ref!.read(themeProvider.notifier).updateExtractedColor(color);
             });
+            _preExtractNextColor();
           }
         }
       }
@@ -777,6 +778,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   // ==================== STATS & SHUFFLE ====================
+
+  void _preExtractNextColor() {
+    final currentIndex = _player.currentIndex;
+    if (currentIndex == null || _effectiveQueue.isEmpty) return;
+    
+    final nextIndex = currentIndex + 1;
+    if (nextIndex >= _effectiveQueue.length) return;
+    
+    final nextSong = _effectiveQueue[nextIndex].song;
+    if (nextSong.coverUrl != null) {
+      ColorExtractionService.extractColor(nextSong.coverUrl);
+    }
+  }
 
   Future<ShuffleState?> syncShuffleState() async {
     return _shuffleState;

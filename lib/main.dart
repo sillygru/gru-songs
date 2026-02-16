@@ -14,6 +14,7 @@ import 'providers/auth_provider.dart';
 import 'services/cache_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
+import 'services/color_extraction_service.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -23,6 +24,7 @@ Future<void> main() async {
   await Future.wait([
     _initializeMetadataGod(),
     CacheService.instance.init(),
+    ColorExtractionService.init(),
     _setupAudioSession(),
     _setupJustAudioBackground(),
   ], eagerError: false);

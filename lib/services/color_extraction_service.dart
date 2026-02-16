@@ -1,94 +1,146 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:palette_generator/palette_generator.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:image/image.dart' as img;
 
 class ColorExtractionService {
   static const double _minSaturation = 0.15;
   static const double _minLightness = 0.10;
   static const double _maxLightness = 0.90;
 
+  static Map<String, int> _colorCache = {};
+  static File? _cacheFile;
+  static bool _initialized = false;
+
+  static Future<void> init() async {
+    if (_initialized) return;
+    try {
+      final appSupportDir = await getApplicationSupportDirectory();
+      _cacheFile = File(p.join(appSupportDir.path, 'color_cache.json'));
+
+      if (await _cacheFile!.exists()) {
+        final jsonString = await _cacheFile!.readAsString();
+        final Map<String, dynamic> json = jsonDecode(jsonString);
+        _colorCache = json.map((key, value) => MapEntry(key, value as int));
+        debugPrint('ColorExtractionService: Loaded ${_colorCache.length} cached colors');
+      }
+      _initialized = true;
+    } catch (e) {
+      debugPrint('ColorExtractionService init error: $e');
+      _initialized = true;
+    }
+  }
+
   static Future<Color?> extractColor(String? imagePath) async {
     if (imagePath == null || imagePath.isEmpty) return null;
+
+    await init();
+
+    if (_colorCache.containsKey(imagePath)) {
+      return Color(_colorCache[imagePath]!);
+    }
 
     try {
       final file = File(imagePath);
       if (!await file.exists()) return null;
 
-      final imageProvider = FileImage(file);
+      final imageBytes = await file.readAsBytes();
+      final colorInt = await compute(_extractColorInIsolate, imageBytes);
 
-      final paletteGenerator = await PaletteGenerator.fromImageProvider(
-        imageProvider,
-        maximumColorCount: 18,
-      );
-
-      // 1. Priority: Vibrant Colors (The "Subject")
-      // The Palette library is designed to put subject/accent colors
-      // into the 'Vibrant' slots. We check these first.
-      final vibrantCandidates = <PaletteColor>[
-        if (paletteGenerator.vibrantColor != null)
-          paletteGenerator.vibrantColor!,
-        if (paletteGenerator.darkVibrantColor != null)
-          paletteGenerator.darkVibrantColor!,
-        if (paletteGenerator.lightVibrantColor != null)
-          paletteGenerator.lightVibrantColor!,
-      ];
-
-      final validVibrant = vibrantCandidates.where(_isValidColor).toList();
-
-      if (validVibrant.isNotEmpty) {
-        // If we found vibrant colors, pick the most saturated one immediately.
-        // We do NOT compare population here, preventing the large background
-        // from winning just because it's bigger.
-        validVibrant.sort((a, b) {
-          final satA = HSLColor.fromColor(a.color).saturation;
-          final satB = HSLColor.fromColor(b.color).saturation;
-          return satB.compareTo(satA);
-        });
-        return validVibrant.first.color;
+      if (colorInt != null) {
+        _colorCache[imagePath] = colorInt;
+        await _saveCacheToDisk();
+        return Color(colorInt);
       }
-
-      // 2. Fallback: Dominant Color (The "Background")
-      // Only use the dominant (largest area) color if no vibrant subject was found.
-      if (paletteGenerator.dominantColor != null &&
-          _isValidColor(paletteGenerator.dominantColor!)) {
-        return paletteGenerator.dominantColor!.color;
-      }
-
-      // 3. Last Resort: Score all colors
-      return _findBestColorFromAll(paletteGenerator.paletteColors);
+      return null;
     } catch (e) {
       debugPrint('Error extracting color: $e');
       return null;
     }
   }
 
-  static bool _isValidColor(PaletteColor paletteColor) {
-    final color = paletteColor.color;
-    final hsl = HSLColor.fromColor(color);
-    return hsl.saturation >= _minSaturation &&
-        hsl.lightness >= _minLightness &&
-        hsl.lightness <= _maxLightness;
+  static Future<void> _saveCacheToDisk() async {
+    if (_cacheFile == null) return;
+    try {
+      final jsonString = jsonEncode(_colorCache);
+      await _cacheFile!.writeAsString(jsonString);
+    } catch (e) {
+      debugPrint('Error saving color cache: $e');
+    }
   }
 
-  static double _calculateColorScore(PaletteColor paletteColor) {
-    final color = paletteColor.color;
-    final hsl = HSLColor.fromColor(color);
-    final population = paletteColor.population;
-
-    final saturationScore = hsl.saturation;
-    // Cap population influence at 5000 pixels.
-    // This stops massive backgrounds from getting an infinitely high score.
-    final populationNormalized = math.min(population / 5000.0, 1.0);
-
-    // New Weighting: 80% Saturation, 20% Population.
-    // This heavily favors "colorfulness" over "size".
-    return (saturationScore * 0.8) + (populationNormalized * 0.2);
+  static Future<void> clearCache() async {
+    _colorCache.clear();
+    if (_cacheFile != null && await _cacheFile!.exists()) {
+      await _cacheFile!.delete();
+    }
   }
 
-  static Color? _findBestColorFromAll(List<PaletteColor> paletteColors) {
-    final validColors = paletteColors.where(_isValidColor).toList();
+  static Future<int> getCacheSize() async {
+    if (_cacheFile == null || !await _cacheFile!.exists()) return 0;
+    return await _cacheFile!.length();
+  }
+}
 
+class _ColorCandidate {
+  final int color;
+  final int population;
+
+  _ColorCandidate(this.color, this.population);
+}
+
+int? _extractColorInIsolate(Uint8List imageBytes) {
+  try {
+    final image = img.decodeImage(imageBytes);
+    if (image == null) return null;
+
+    final resized = img.copyResize(image, width: 64, height: 64);
+
+    final Map<int, int> colorCounts = {};
+    for (int y = 0; y < resized.height; y++) {
+      for (int x = 0; x < resized.width; x++) {
+        final pixel = resized.getPixel(x, y);
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+        final colorInt = (0xFF << 24) | (r << 16) | (g << 8) | b;
+        colorCounts[colorInt] = (colorCounts[colorInt] ?? 0) + 1;
+      }
+    }
+
+    final candidates = colorCounts.entries
+        .map((e) => _ColorCandidate(e.key, e.value))
+        .toList();
+
+    final vibrantCandidates = candidates.where((c) {
+      final color = Color(c.color);
+      final hsl = HSLColor.fromColor(color);
+      return hsl.saturation >= 0.3 && 
+             hsl.lightness >= 0.2 && 
+             hsl.lightness <= 0.8;
+    }).toList();
+
+    if (vibrantCandidates.isNotEmpty) {
+      vibrantCandidates.sort((a, b) {
+        final satA = HSLColor.fromColor(Color(a.color)).saturation;
+        final satB = HSLColor.fromColor(Color(b.color)).saturation;
+        return satB.compareTo(satA);
+      });
+      return vibrantCandidates.first.color;
+    }
+
+    candidates.sort((a, b) => b.population.compareTo(a.population));
+    final dominant = candidates.firstOrNull;
+    if (dominant != null && _isValidColorInt(dominant.color)) {
+      return dominant.color;
+    }
+
+    final validColors = candidates.where((c) => _isValidColorInt(c.color)).toList();
     if (validColors.isEmpty) return null;
 
     validColors.sort((a, b) {
@@ -98,5 +150,24 @@ class ColorExtractionService {
     });
 
     return validColors.first.color;
+  } catch (e) {
+    debugPrint('Error in isolate color extraction: $e');
+    return null;
   }
+}
+
+bool _isValidColorInt(int colorInt) {
+  final color = Color(colorInt);
+  final hsl = HSLColor.fromColor(color);
+  return hsl.saturation >= ColorExtractionService._minSaturation &&
+      hsl.lightness >= ColorExtractionService._minLightness &&
+      hsl.lightness <= ColorExtractionService._maxLightness;
+}
+
+double _calculateColorScore(_ColorCandidate candidate) {
+  final color = Color(candidate.color);
+  final hsl = HSLColor.fromColor(color);
+  final saturationScore = hsl.saturation;
+  final populationNormalized = math.min(candidate.population / 500.0, 1.0);
+  return (saturationScore * 0.8) + (populationNormalized * 0.2);
 }

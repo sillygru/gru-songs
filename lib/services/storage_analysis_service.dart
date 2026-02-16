@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'color_extraction_service.dart';
 
 class StorageAnalysisService {
   static final StorageAnalysisService instance = StorageAnalysisService._();
@@ -130,6 +131,19 @@ class StorageAnalysisService {
     return 0;
   }
 
+  Future<int> getColorCacheSize() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final colorCacheFile = File(p.join(supportDir.path, 'color_cache.json'));
+      if (await colorCacheFile.exists()) {
+        return await colorCacheFile.length();
+      }
+    } catch (e) {
+      debugPrint('Error calculating color cache size: $e');
+    }
+    return 0;
+  }
+
   Future<int> _getDirSize(Directory dir) async {
     int total = 0;
     try {
@@ -251,6 +265,16 @@ class StorageAnalysisService {
       }
     } catch (e) {
       debugPrint('Error clearing waveform cache: $e');
+      rethrow;
+    }
+  }
+
+  /// Clears only the color cache
+  Future<void> clearColorCache() async {
+    try {
+      await ColorExtractionService.clearCache();
+    } catch (e) {
+      debugPrint('Error clearing color cache: $e');
       rethrow;
     }
   }

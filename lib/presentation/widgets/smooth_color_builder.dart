@@ -10,8 +10,8 @@ class SmoothColorBuilder extends StatefulWidget {
     super.key,
     required this.targetColor,
     required this.builder,
-    this.duration = const Duration(milliseconds: 500),
-    this.curve = Curves.easeInOut,
+    this.duration = const Duration(milliseconds: 1420),
+    this.curve = Curves.easeInOutCubic,
   });
 
   @override
