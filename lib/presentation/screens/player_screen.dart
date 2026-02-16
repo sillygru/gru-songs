@@ -19,6 +19,7 @@ import '../widgets/heart_context_menu.dart';
 import '../widgets/next_up_sheet.dart';
 import '../widgets/waveform_progress_bar.dart';
 import '../widgets/basic_progress_bar.dart';
+import '../widgets/smooth_color_builder.dart';
 import 'song_list_screen.dart';
 
 class PositionData {
@@ -627,19 +628,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                               bottom: 12,
                                                               left: 12,
                                                               child:
-                                                                  _buildOverlayButton(
-                                                                icon: const Icon(
-                                                                    Icons
-                                                                        .lyrics_outlined),
-                                                                color: _showLyrics
+                                                                  SmoothColorBuilder(
+                                                                targetColor: _showLyrics
                                                                     ? Theme.of(
                                                                             context)
                                                                         .colorScheme
                                                                         .primary
                                                                     : Colors
                                                                         .white,
-                                                                onPressed:
-                                                                    _toggleLyrics,
+                                                                builder:
+                                                                    (context,
+                                                                        color) {
+                                                                  return _buildOverlayButton(
+                                                                    icon: const Icon(
+                                                                        Icons
+                                                                            .lyrics_outlined),
+                                                                    color:
+                                                                        color,
+                                                                    onPressed:
+                                                                        _toggleLyrics,
+                                                                  );
+                                                                },
                                                               ),
                                                             ),
                                                           Positioned(
@@ -663,10 +672,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                         themeState,
                                                                         themeState
                                                                             .extractedColor),
-                                                                    duration:
-                                                                        const Duration(
-                                                                            milliseconds:
-                                                                                500),
+                                                                    duration: const Duration(
+                                                                        milliseconds:
+                                                                            500),
                                                                     curve: Curves
                                                                         .easeInOut,
                                                                     child:
@@ -801,15 +809,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                         bottom: 12,
                                                         left: 12,
                                                         child:
-                                                            _buildOverlayButton(
-                                                          icon: const Icon(Icons
-                                                              .lyrics_outlined),
-                                                          color:
+                                                            SmoothColorBuilder(
+                                                          targetColor:
                                                               Theme.of(context)
                                                                   .colorScheme
                                                                   .primary,
-                                                          onPressed:
-                                                              _toggleLyrics,
+                                                          builder:
+                                                              (context, color) {
+                                                            return _buildOverlayButton(
+                                                              icon: const Icon(Icons
+                                                                  .lyrics_outlined),
+                                                              color: color,
+                                                              onPressed:
+                                                                  _toggleLyrics,
+                                                            );
+                                                          },
                                                         ),
                                                       ),
                                                     Positioned(
@@ -825,19 +839,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                             backgroundColor:
                                                                 Colors
                                                                     .transparent,
-                                                            builder:
-                                                                (context) =>
-                                                                    AnimatedTheme(
-                                                                  data: AppTheme.getPlayerTheme(
+                                                            builder: (context) =>
+                                                                AnimatedTheme(
+                                                              data: AppTheme
+                                                                  .getPlayerTheme(
                                                                       themeState,
                                                                       themeState
                                                                           .extractedColor),
-                                                                  duration:
-                                                                      const Duration(
-                                                                          milliseconds:
-                                                                              500),
-                                                                  curve: Curves
-                                                                      .easeInOut,
+                                                              duration:
+                                                                  const Duration(
+                                                                      milliseconds:
+                                                                          500),
+                                                              curve: Curves
+                                                                  .easeInOut,
                                                               child:
                                                                   const NextUpSheet(),
                                                             ),
@@ -991,28 +1005,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             ),
                             if (isDesktop || isIPad) ...[
                               const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  const Icon(Icons.volume_down,
-                                      size: 20, color: Colors.white60),
-                                  Expanded(
-                                    child: StreamBuilder<double>(
-                                      stream: player.volumeStream,
-                                      builder: (context, snapshot) {
-                                        return Slider(
-                                          value: snapshot.data ?? 1.0,
-                                          activeColor: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
-                                          inactiveColor: Colors.white10,
-                                          onChanged: player.setVolume,
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  const Icon(Icons.volume_up,
-                                      size: 20, color: Colors.white60),
-                                ],
+                              SmoothColorBuilder(
+                                targetColor:
+                                    Theme.of(context).colorScheme.primary,
+                                builder: (context, sliderColor) {
+                                  return Row(
+                                    children: [
+                                      const Icon(Icons.volume_down,
+                                          size: 20, color: Colors.white60),
+                                      Expanded(
+                                        child: StreamBuilder<double>(
+                                          stream: player.volumeStream,
+                                          builder: (context, snapshot) {
+                                            return Slider(
+                                              value: snapshot.data ?? 1.0,
+                                              activeColor: sliderColor,
+                                              inactiveColor: Colors.white10,
+                                              onChanged: player.setVolume,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      const Icon(Icons.volume_up,
+                                          size: 20, color: Colors.white60),
+                                    ],
+                                  );
+                                },
                               ),
                             ],
                             const SizedBox(height: 32),
@@ -1029,128 +1047,134 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                       final loopMode =
                                           snapshot.data ?? LoopMode.off;
                                       IconData iconData = Icons.repeat;
-                                      Color color = Colors.white60;
-                                      if (loopMode == LoopMode.one) {
-                                        iconData = Icons.repeat_one;
-                                        color = Theme.of(context)
-                                            .colorScheme
-                                            .primary;
-                                      } else if (loopMode == LoopMode.all) {
-                                        iconData = Icons.repeat;
-                                        color = Theme.of(context)
-                                            .colorScheme
-                                            .primary;
-                                      }
-                                      return IconButton(
-                                        icon: Icon(iconData,
-                                            color: color, size: 24),
-                                        onPressed: () {
-                                          final nextMode = LoopMode.values[
-                                              (loopMode.index + 1) %
-                                                  LoopMode.values.length];
-                                          player.setLoopMode(nextMode);
+                                      final bool isActive =
+                                          loopMode == LoopMode.one ||
+                                              loopMode == LoopMode.all;
+                                      return SmoothColorBuilder(
+                                        targetColor: isActive
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                            : Colors.white60,
+                                        builder: (context, color) {
+                                          if (loopMode == LoopMode.one) {
+                                            iconData = Icons.repeat_one;
+                                          }
+                                          return IconButton(
+                                            icon: Icon(iconData,
+                                                color: color, size: 24),
+                                            onPressed: () {
+                                              final nextMode = LoopMode.values[
+                                                  (loopMode.index + 1) %
+                                                      LoopMode.values.length];
+                                              player.setLoopMode(nextMode);
+                                            },
+                                          );
                                         },
                                       );
                                     },
                                   ),
 
                                   // Control Cluster (Rewind, Play, Next)
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      // Previous
-                                      Container(
-                                        height: 55,
-                                        width: 55,
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                              .withValues(alpha: 0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                        ),
-                                        child: IconButton(
-                                          icon: const Icon(
-                                              Icons.skip_previous_rounded,
-                                              size: 26),
-                                          color: Colors.white,
-                                          onPressed: () {
-                                            if (player.position.inSeconds > 3) {
-                                              player.seek(Duration.zero);
-                                            } else {
-                                              player.seekToPrevious();
-                                            }
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      // Play/Pause
-                                      StreamBuilder<PlayerState>(
-                                        stream: player.playerStateStream,
-                                        builder: (context, snapshot) {
-                                          final playerState = snapshot.data;
-                                          final playing =
-                                              playerState?.playing ?? false;
-                                          return Container(
-                                            height: 75,
-                                            width: 100,
+                                  SmoothColorBuilder(
+                                    targetColor:
+                                        Theme.of(context).colorScheme.primary,
+                                    builder: (context, buttonColor) {
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // Previous
+                                          Container(
+                                            height: 55,
+                                            width: 55,
                                             decoration: BoxDecoration(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary
-                                                  .withValues(alpha: 0.8),
+                                              color: buttonColor.withValues(
+                                                  alpha: 0.15),
                                               borderRadius:
-                                                  BorderRadius.circular(20),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primary
-                                                      .withValues(alpha: 0.3),
-                                                  blurRadius: 15,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ],
+                                                  BorderRadius.circular(16),
                                             ),
                                             child: IconButton(
-                                              icon: AnimatedIcon(
-                                                icon: AnimatedIcons.play_pause,
-                                                progress: _playPauseController,
-                                                size: 42,
-                                                color: Colors.white,
-                                              ),
-                                              onPressed: playing
-                                                  ? player.pause
-                                                  : player.play,
+                                              icon: const Icon(
+                                                  Icons.skip_previous_rounded,
+                                                  size: 26),
+                                              color: Colors.white,
+                                              onPressed: () {
+                                                if (player.position.inSeconds >
+                                                    3) {
+                                                  player.seek(Duration.zero);
+                                                } else {
+                                                  player.seekToPrevious();
+                                                }
+                                              },
                                             ),
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(width: 12),
-                                      // Next
-                                      Container(
-                                        height: 55,
-                                        width: 55,
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                              .withValues(alpha: 0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                        ),
-                                        child: IconButton(
-                                          icon: const Icon(
-                                              Icons.skip_next_rounded,
-                                              size: 26),
-                                          color: Colors.white,
-                                          onPressed: player.hasNext
-                                              ? player.seekToNext
-                                              : null,
-                                        ),
-                                      ),
-                                    ],
+                                          ),
+                                          const SizedBox(width: 12),
+                                          // Play/Pause
+                                          StreamBuilder<PlayerState>(
+                                            stream: player.playerStateStream,
+                                            builder: (context, snapshot) {
+                                              final playerState = snapshot.data;
+                                              final playing =
+                                                  playerState?.playing ?? false;
+                                              return Container(
+                                                height: 75,
+                                                width: 100,
+                                                decoration: BoxDecoration(
+                                                  color: buttonColor.withValues(
+                                                      alpha: 0.8),
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: buttonColor
+                                                          .withValues(
+                                                              alpha: 0.3),
+                                                      blurRadius: 15,
+                                                      offset:
+                                                          const Offset(0, 4),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: IconButton(
+                                                  icon: AnimatedIcon(
+                                                    icon: AnimatedIcons
+                                                        .play_pause,
+                                                    progress:
+                                                        _playPauseController,
+                                                    size: 42,
+                                                    color: Colors.white,
+                                                  ),
+                                                  onPressed: playing
+                                                      ? player.pause
+                                                      : player.play,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                          const SizedBox(width: 12),
+                                          // Next
+                                          Container(
+                                            height: 55,
+                                            width: 55,
+                                            decoration: BoxDecoration(
+                                              color: buttonColor.withValues(
+                                                  alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                            child: IconButton(
+                                              icon: const Icon(
+                                                  Icons.skip_next_rounded,
+                                                  size: 26),
+                                              color: Colors.white,
+                                              onPressed: player.hasNext
+                                                  ? player.seekToNext
+                                                  : null,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    },
                                   ),
 
                                   // Shuffle
@@ -1159,20 +1183,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                         .read(audioPlayerManagerProvider)
                                         .shuffleNotifier,
                                     builder: (context, isShuffled, child) {
-                                      return IconButton(
-                                        icon: Icon(Icons.shuffle,
-                                            size: 24,
-                                            color: isShuffled
-                                                ? Theme.of(context)
-                                                    .colorScheme
-                                                    .primary
-                                                : Colors.white60),
-                                        onLongPress: () =>
-                                            _showShuffleSettings(context, ref),
-                                        onPressed: () async {
-                                          await ref
-                                              .read(audioPlayerManagerProvider)
-                                              .toggleShuffle();
+                                      return SmoothColorBuilder(
+                                        targetColor: isShuffled
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                            : Colors.white60,
+                                        builder: (context, color) {
+                                          return IconButton(
+                                            icon: Icon(Icons.shuffle,
+                                                size: 24, color: color),
+                                            onLongPress: () =>
+                                                _showShuffleSettings(
+                                                    context, ref),
+                                            onPressed: () async {
+                                              await ref
+                                                  .read(
+                                                      audioPlayerManagerProvider)
+                                                  .toggleShuffle();
+                                            },
+                                          );
                                         },
                                       );
                                     },

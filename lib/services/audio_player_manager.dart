@@ -67,6 +67,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   bool _isFadingIn = false;
   bool _isFadingOut = false;
   bool _isInGap = false;
+  bool _pausedByGap = false;
   String? _lastFadedFilename;
   String? _currentGapSongId;
   Timer? _fadeTimer;
@@ -244,13 +245,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _player.playerStateStream.listen((state) {
       // Detect manual pause (user pressed pause button)
       // Don't cancel transitions if we are in a gap (expected pause)
-      if (wasPlaying && !state.playing && !_isInGap) {
+      if (wasPlaying && !state.playing && !_isInGap && !_pausedByGap) {
         _handleManualIntervention();
       }
 
       // Handle user pressing play during gap - cancel the gap timer
       if (_isInGap && state.playing) {
         _cancelGap();
+      }
+
+      // Reset pausedByGap after the state settles
+      if (!wasPlaying && !state.playing) {
+        _pausedByGap = false;
       }
 
       wasPlaying = state.playing;
@@ -437,7 +443,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       final remaining = totalDuration - position;
 
-      // Handle fade mode only (gap is handled on completion, not by position)
+      // Handle gap mode - pause before end, resume after delay
+      if (settings.delayDuration > 0 && !_isInGap && _player.playing) {
+        _handleGapTrigger(
+          remaining: remaining,
+          delayDuration: settings.delayDuration,
+        );
+      }
+
+      // Handle fade mode
       if ((settings.fadeOutDuration > 0 || settings.fadeInDuration > 0) &&
           _player.playing) {
         _handleFadeMode(
@@ -469,8 +483,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         final newFilename = currentItem.id;
         if (_lastFadedFilename != newFilename) {
           _lastFadedFilename = newFilename;
-          // Don't reset gap state here - gap completes after song ends,
-          // and sequence state changes when next song starts
+          // Reset gap state on new song
+          _isInGap = false;
+          _currentGapSongId = null;
+          _gapTimer?.cancel();
           _isFadingOut = false;
 
           // Always reset volume on song change
@@ -484,69 +500,67 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     });
 
-    // Handle completion - trigger gap AFTER song completes
+    // Handle completion - just ensure volume is reset
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         _setVolumeWithSafety(1.0);
         _isFadingOut = false;
-
-        // Handle gap mode on completion (between songs)
-        if (_ref != null && !_isInGap) {
-          final settings = _ref!.read(settingsProvider);
-          if (settings.delayDuration > 0) {
-            _triggerGapOnCompletion(delayDuration: settings.delayDuration);
-          }
-        }
       }
     });
   }
 
-  void _triggerGapOnCompletion({required double delayDuration}) {
-    if (_currentGapSongId != null) return;
+  void _handleGapTrigger({
+    required Duration remaining,
+    required double delayDuration,
+  }) {
+    // Trigger gap when 1 second remains
+    if (remaining.inMilliseconds <= 1000 && remaining.inMilliseconds > 0) {
+      _triggerSimpleGap(delayDuration: delayDuration);
+    }
+  }
+
+  void _triggerSimpleGap({required double delayDuration}) {
+    if (_isInGap) return;
 
     final currentItem = _player.sequenceState?.currentSource?.tag;
     if (currentItem is! MediaItem) return;
 
     _currentGapSongId = currentItem.id;
     _isInGap = true;
-    _gapStartTime = DateTime.now();
+    _pausedByGap = true;
 
-    // Persist gap state for background safety
-    _persistGapState(
-      songId: _currentGapSongId!,
-      delayMs: (delayDuration * 1000).toInt(),
-    );
+    // Pause playback (1 second before end)
+    _player.pause();
 
-    // Player is already paused due to completion, schedule advance
+    // Schedule resume after gap duration
     final delayMs = (delayDuration * 1000).toInt();
     _gapTimer = Timer(Duration(milliseconds: delayMs), () {
-      _completeGapAndAdvance();
+      _resumeAfterGap(expectedSongId: currentItem.id);
     });
   }
 
-  void _completeGapAndAdvance() {
+  void _resumeAfterGap({required String expectedSongId}) {
     if (!_isInGap) return;
 
-    final gapSongId = _currentGapSongId;
-
-    // Clear gap state first
+    // Clear gap state
     _isInGap = false;
+    _pausedByGap = false;
     _currentGapSongId = null;
-    _gapStartTime = null;
     _gapTimer = null;
-    _clearGapState();
 
-    // Verify we still have the same song (user didn't skip during gap)
+    // Verify we're still on the same song
     final currentItem = _player.sequenceState?.currentSource?.tag;
-    if (currentItem is MediaItem && currentItem.id == gapSongId) {
-      // Manually advance to next song
-      if (_player.hasNext) {
-        _player.seekToNext().then((_) {
-          if (!_wasPausedByMute) {
-            _player.play();
-          }
-        });
-      }
+    if (currentItem is! MediaItem || currentItem.id != expectedSongId) {
+      // User skipped/changed song during gap
+      return;
+    }
+
+    // Skip to next song after gap
+    if (_player.hasNext) {
+      _player.seekToNext();
+    }
+    if (!_wasPausedByMute) {
+      _player.play();
     }
   }
 
@@ -652,6 +666,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   void _cancelGap() {
     _isInGap = false;
+    _pausedByGap = false;
     _currentGapSongId = null;
     _gapStartTime = null;
     _gapTimer?.cancel();
@@ -728,9 +743,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _currentGapSongId = songId;
       _isInGap = true;
 
-      // Schedule completion - advance to next song after gap
+      // Schedule resume - just_audio will auto-advance to next song
       _gapTimer = Timer(Duration(milliseconds: remainingMs), () {
-        _completeGapAndAdvance();
+        _resumeAfterGap(expectedSongId: songId);
       });
     } catch (e) {
       debugPrint('AudioPlayerManager: Failed to restore gap state: $e');
