@@ -27,7 +27,8 @@ class ColorExtractionService {
         final jsonString = await _cacheFile!.readAsString();
         final Map<String, dynamic> json = jsonDecode(jsonString);
         _colorCache = json.map((key, value) => MapEntry(key, value as int));
-        debugPrint('ColorExtractionService: Loaded ${_colorCache.length} cached colors');
+        debugPrint(
+            'ColorExtractionService: Loaded ${_colorCache.length} cached colors');
       }
       _initialized = true;
     } catch (e) {
@@ -120,9 +121,9 @@ int? _extractColorInIsolate(Uint8List imageBytes) {
     final vibrantCandidates = candidates.where((c) {
       final color = Color(c.color);
       final hsl = HSLColor.fromColor(color);
-      return hsl.saturation >= 0.3 && 
-             hsl.lightness >= 0.2 && 
-             hsl.lightness <= 0.8;
+      return hsl.saturation >= 0.3 &&
+          hsl.lightness >= 0.2 &&
+          hsl.lightness <= 0.8;
     }).toList();
 
     if (vibrantCandidates.isNotEmpty) {
@@ -140,7 +141,8 @@ int? _extractColorInIsolate(Uint8List imageBytes) {
       return dominant.color;
     }
 
-    final validColors = candidates.where((c) => _isValidColorInt(c.color)).toList();
+    final validColors =
+        candidates.where((c) => _isValidColorInt(c.color)).toList();
     if (validColors.isEmpty) return null;
 
     validColors.sort((a, b) {

@@ -29,42 +29,53 @@ class ImmersiveBackground extends StatelessWidget {
           ),
         ),
         Positioned(
-          top: -200,
-          left: -100,
+          top: -250,
+          left: -150,
+          child: Container(
+            width: 600,
+            height: 600,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  baseColor.withValues(alpha: 0.2),
+                  baseColor.withValues(alpha: 0.1),
+                  Colors.transparent,
+                ],
+                stops: const [0.2, 0.5, 1.0],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: -150,
+          right: -150,
           child: Container(
             width: 500,
             height: 500,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: baseColor.withValues(alpha: 0.15),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: -100,
-          right: -100,
-          child: Container(
-            width: 400,
-            height: 400,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: baseColor.withValues(alpha: 0.1),
+              gradient: RadialGradient(
+                colors: [
+                  baseColor.withValues(alpha: 0.15),
+                  baseColor.withValues(alpha: 0.05),
+                  Colors.transparent,
+                ],
+                stops: const [0.2, 0.5, 1.0],
+              ),
             ),
           ),
         ),
         Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    theme.scaffoldBackgroundColor.withValues(alpha: 0.3),
-                    theme.scaffoldBackgroundColor,
-                  ],
-                ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  theme.scaffoldBackgroundColor.withValues(alpha: 0.3),
+                  theme.scaffoldBackgroundColor,
+                ],
               ),
             ),
           ),

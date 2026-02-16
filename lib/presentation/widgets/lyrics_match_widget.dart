@@ -45,8 +45,6 @@ class LyricsMatchWidget extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -139,8 +137,6 @@ class CompactLyricsMatchWidget extends StatelessWidget {
                 color:
                     theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

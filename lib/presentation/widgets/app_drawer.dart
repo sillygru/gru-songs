@@ -33,7 +33,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 250),
     );
 
     _slideAnimation = Tween<double>(
@@ -41,7 +41,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
       end: 0.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeOutQuart,
+      curve: Curves.easeOutCubic,
     ));
 
     _fadeAnimation = Tween<double>(

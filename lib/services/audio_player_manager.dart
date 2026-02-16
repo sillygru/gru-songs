@@ -101,7 +101,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _initStatsListeners();
     _initPersistence();
     _initVolumeMonitoring();
-    _initFadingListeners();
     _restoreGapStateIfNeeded();
   }
 
@@ -274,8 +273,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     });
 
-    // Listen for seek operations to cancel fade out
-    _player.positionStream.listen((position) {
+    // Merged position stream listener (handles both seek detection and fade logic)
+    _positionSubscription = _player.positionStream.listen((position) {
+      // Seek detection for fade cancellation
       if (_isFadingOut) {
         final totalDuration = _player.duration;
         if (totalDuration != null && _ref != null) {
@@ -284,14 +284,53 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           final fadeOutDuration = settings.fadeOutDuration;
           if (fadeOutDuration > 0 &&
               remaining.inMilliseconds > fadeOutDuration * 1000 + 500) {
-            // User seeked back, cancel fade
             _cancelTransitions();
+          }
+        }
+      }
+
+      // Fade and gap logic (skip if backgrounded to save CPU)
+      if (_ref != null && _appLifecycleState == AppLifecycleState.resumed) {
+        final settings = _ref!.read(settingsProvider);
+        final totalDuration = _player.duration;
+        if (totalDuration == null || totalDuration.inSeconds < 30) return;
+
+        final remaining = totalDuration - position;
+
+        // Handle gap mode
+        if (settings.delayDuration > 0 && !_isInGap && _player.playing) {
+          _handleGapTrigger(
+            remaining: remaining,
+            delayDuration: settings.delayDuration,
+          );
+        }
+
+        // Handle fade mode
+        if ((settings.fadeOutDuration > 0 || settings.fadeInDuration > 0) &&
+            _player.playing) {
+          _handleFadeMode(
+            remaining: remaining,
+            position: position,
+            totalDuration: totalDuration,
+            fadeOutDuration: settings.fadeOutDuration,
+          );
+        }
+
+        // Reset fade if user seeks back
+        if (_isFadingOut) {
+          final fadeOutMs = settings.fadeOutDuration * 1000;
+          if (remaining.inMilliseconds > fadeOutMs) {
+            _isFadingOut = false;
+            if (!_isFadingIn) {
+              _setVolumeWithSafety(1.0);
+            }
           }
         }
       }
     });
 
-    _player.sequenceStateStream.listen((state) {
+    // Merged sequence state stream listener (handles both stats and fading)
+    _sequenceSubscription = _player.sequenceStateStream.listen((state) async {
       final currentItem = state.currentSource?.tag;
 
       // Pre-fetch logic
@@ -306,10 +345,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       if (currentItem is MediaItem) {
         final newFilename = currentItem.id;
+
+        // Stats tracking logic
         if (_currentSongFilename != null &&
             _currentSongFilename != newFilename) {
           if (!_isCompleting) {
-            // Check if this is a quick skip of a resumed song from previous session
             final shouldIgnore = _isResumedFromPreviousSession &&
                 _currentSongFilename == _previousSessionSongFilename &&
                 _foregroundDuration + _backgroundDuration <= 10.0;
@@ -319,6 +359,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             }
           }
         }
+
         if (_currentSongFilename != newFilename) {
           _isCompleting = false;
           _currentSongFilename = newFilename;
@@ -337,7 +378,34 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             });
             _preExtractNextColor();
           }
+
+          // Fading logic (skip if backgrounded)
+          if (_ref != null && _appLifecycleState == AppLifecycleState.resumed) {
+            final settings = _ref!.read(settingsProvider);
+
+            if (_lastFadedFilename != newFilename) {
+              _lastFadedFilename = newFilename;
+              _isInGap = false;
+              _currentGapSongId = null;
+              _gapTimer?.cancel();
+              _isFadingOut = false;
+
+              _setVolumeWithSafety(1.0);
+
+              if (settings.fadeInDuration > 0) {
+                _startFadeIn(settings.fadeInDuration);
+              }
+            }
+          }
         }
+      }
+    });
+
+    // Handle completion - just ensure volume is reset
+    _player.processingStateStream.listen((state) {
+      if (state == ProcessingState.completed) {
+        _setVolumeWithSafety(1.0);
+        _isFadingOut = false;
       }
     });
   }
@@ -427,87 +495,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         initialSettings.autoPauseOnVolumeZero,
       );
     }
-  }
-
-  // ==================== FADE AND GAP LOGIC ====================
-
-  void _initFadingListeners() {
-    _positionSubscription = _player.positionStream.listen((position) {
-      if (_ref == null) return;
-      final settings = _ref!.read(settingsProvider);
-
-      final totalDuration = _player.duration;
-      if (totalDuration == null) return;
-
-      // Minimum 30 second song for any transitions
-      if (totalDuration.inSeconds < 30) return;
-
-      final remaining = totalDuration - position;
-
-      // Handle gap mode - pause before end, resume after delay
-      if (settings.delayDuration > 0 && !_isInGap && _player.playing) {
-        _handleGapTrigger(
-          remaining: remaining,
-          delayDuration: settings.delayDuration,
-        );
-      }
-
-      // Handle fade mode
-      if ((settings.fadeOutDuration > 0 || settings.fadeInDuration > 0) &&
-          _player.playing) {
-        _handleFadeMode(
-          remaining: remaining,
-          position: position,
-          totalDuration: totalDuration,
-          fadeOutDuration: settings.fadeOutDuration,
-        );
-      }
-
-      // Reset fade if user seeks back
-      if (_isFadingOut) {
-        final fadeOutMs = settings.fadeOutDuration * 1000;
-        if (remaining.inMilliseconds > fadeOutMs) {
-          _isFadingOut = false;
-          if (!_isFadingIn) {
-            _setVolumeWithSafety(1.0);
-          }
-        }
-      }
-    });
-
-    _sequenceSubscription = _player.sequenceStateStream.listen((state) async {
-      if (_ref == null) return;
-      final settings = _ref!.read(settingsProvider);
-
-      final currentItem = state.currentSource?.tag;
-      if (currentItem is MediaItem) {
-        final newFilename = currentItem.id;
-        if (_lastFadedFilename != newFilename) {
-          _lastFadedFilename = newFilename;
-          // Reset gap state on new song
-          _isInGap = false;
-          _currentGapSongId = null;
-          _gapTimer?.cancel();
-          _isFadingOut = false;
-
-          // Always reset volume on song change
-          _setVolumeWithSafety(1.0);
-
-          // Handle fade in for new song
-          if (settings.fadeInDuration > 0) {
-            _startFadeIn(settings.fadeInDuration);
-          }
-        }
-      }
-    });
-
-    // Handle completion - just ensure volume is reset
-    _player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed) {
-        _setVolumeWithSafety(1.0);
-        _isFadingOut = false;
-      }
-    });
   }
 
   void _handleGapTrigger({
@@ -782,10 +769,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _preExtractNextColor() {
     final currentIndex = _player.currentIndex;
     if (currentIndex == null || _effectiveQueue.isEmpty) return;
-    
+
     final nextIndex = currentIndex + 1;
     if (nextIndex >= _effectiveQueue.length) return;
-    
+
     final nextSong = _effectiveQueue[nextIndex].song;
     if (nextSong.coverUrl != null) {
       ColorExtractionService.extractColor(nextSong.coverUrl);
@@ -1631,6 +1618,48 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<void> removeFromQueue(int index) async {
     _effectiveQueue.removeAt(index);
     await _player.removeAudioSourceAt(index);
+    _updateQueueNotifier();
+    _savePlaybackState();
+  }
+
+  Future<void> clearUpcoming() async {
+    final currentIndex = _player.currentIndex ?? -1;
+    if (currentIndex < 0) return;
+
+    if (currentIndex >= _effectiveQueue.length - 1) return;
+
+    // Remove items from the end to avoid index shifts
+    for (int i = _effectiveQueue.length - 1; i > currentIndex; i--) {
+      _effectiveQueue.removeAt(i);
+      await _player.removeAudioSourceAt(i);
+    }
+
+    _updateQueueNotifier();
+    _savePlaybackState();
+  }
+
+  Future<void> togglePriority(int index) async {
+    if (index < 0 || index >= _effectiveQueue.length) return;
+
+    final item = _effectiveQueue[index];
+    final newValue = !item.isPriority;
+    final updatedItem = item.copyWith(isPriority: newValue);
+
+    // Always remove first to prepare for move/update
+    _effectiveQueue.removeAt(index);
+    await _player.removeAudioSourceAt(index);
+
+    int targetIndex = index;
+    if (newValue) {
+      // Pinning: Move to the very next position in queue
+      final currentIndex = _player.currentIndex ?? -1;
+      targetIndex = currentIndex + 1;
+    }
+
+    _effectiveQueue.insert(targetIndex, updatedItem);
+    final source = await _createAudioSource(updatedItem);
+    await _player.insertAudioSource(targetIndex, source);
+
     _updateQueueNotifier();
     _savePlaybackState();
   }

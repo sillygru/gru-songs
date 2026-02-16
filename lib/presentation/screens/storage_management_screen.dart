@@ -514,9 +514,8 @@ class _StorageManagementScreenState
                     size: _colorCacheSize,
                     icon: Icons.palette_rounded,
                     color: Colors.pink,
-                    onClear: _colorCacheSize > 0
-                        ? _handleClearColorCache
-                        : null,
+                    onClear:
+                        _colorCacheSize > 0 ? _handleClearColorCache : null,
                   ),
                   const SizedBox(height: 24),
                   const Divider(),
