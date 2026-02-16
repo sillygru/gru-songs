@@ -99,6 +99,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   AudioPlayerManager(this._statsService, this._storageService, [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
     _initStatsListeners();
+    _initFadingListeners();
     _initPersistence();
     _initVolumeMonitoring();
     _restoreGapStateIfNeeded();
@@ -273,9 +274,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     });
 
-    // Merged position stream listener (handles both seek detection and fade logic)
-    _positionSubscription = _player.positionStream.listen((position) {
-      // Seek detection for fade cancellation
+    // Listen for seek operations to cancel fade out
+    _player.positionStream.listen((position) {
       if (_isFadingOut) {
         final totalDuration = _player.duration;
         if (totalDuration != null && _ref != null) {
@@ -284,53 +284,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           final fadeOutDuration = settings.fadeOutDuration;
           if (fadeOutDuration > 0 &&
               remaining.inMilliseconds > fadeOutDuration * 1000 + 500) {
+            // User seeked back, cancel fade
             _cancelTransitions();
-          }
-        }
-      }
-
-      // Fade and gap logic (skip if backgrounded to save CPU)
-      if (_ref != null && _appLifecycleState == AppLifecycleState.resumed) {
-        final settings = _ref!.read(settingsProvider);
-        final totalDuration = _player.duration;
-        if (totalDuration == null || totalDuration.inSeconds < 30) return;
-
-        final remaining = totalDuration - position;
-
-        // Handle gap mode
-        if (settings.delayDuration > 0 && !_isInGap && _player.playing) {
-          _handleGapTrigger(
-            remaining: remaining,
-            delayDuration: settings.delayDuration,
-          );
-        }
-
-        // Handle fade mode
-        if ((settings.fadeOutDuration > 0 || settings.fadeInDuration > 0) &&
-            _player.playing) {
-          _handleFadeMode(
-            remaining: remaining,
-            position: position,
-            totalDuration: totalDuration,
-            fadeOutDuration: settings.fadeOutDuration,
-          );
-        }
-
-        // Reset fade if user seeks back
-        if (_isFadingOut) {
-          final fadeOutMs = settings.fadeOutDuration * 1000;
-          if (remaining.inMilliseconds > fadeOutMs) {
-            _isFadingOut = false;
-            if (!_isFadingIn) {
-              _setVolumeWithSafety(1.0);
-            }
           }
         }
       }
     });
 
-    // Merged sequence state stream listener (handles both stats and fading)
-    _sequenceSubscription = _player.sequenceStateStream.listen((state) async {
+    _player.sequenceStateStream.listen((state) {
       final currentItem = state.currentSource?.tag;
 
       // Pre-fetch logic
@@ -346,7 +307,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       if (currentItem is MediaItem) {
         final newFilename = currentItem.id;
 
-        // Stats tracking logic
+        // Stats tracking
         if (_currentSongFilename != null &&
             _currentSongFilename != newFilename) {
           if (!_isCompleting) {
@@ -378,24 +339,78 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             });
             _preExtractNextColor();
           }
+        }
+      }
+    });
+  }
 
-          // Fading logic (skip if backgrounded)
-          if (_ref != null && _appLifecycleState == AppLifecycleState.resumed) {
-            final settings = _ref!.read(settingsProvider);
+  // ==================== FADE AND GAP LOGIC ====================
 
-            if (_lastFadedFilename != newFilename) {
-              _lastFadedFilename = newFilename;
-              _isInGap = false;
-              _currentGapSongId = null;
-              _gapTimer?.cancel();
-              _isFadingOut = false;
+  void _initFadingListeners() {
+    _positionSubscription = _player.positionStream.listen((position) {
+      if (_ref == null) return;
+      final settings = _ref!.read(settingsProvider);
 
-              _setVolumeWithSafety(1.0);
+      final totalDuration = _player.duration;
+      if (totalDuration == null) return;
 
-              if (settings.fadeInDuration > 0) {
-                _startFadeIn(settings.fadeInDuration);
-              }
-            }
+      // Minimum 30 second song for any transitions
+      if (totalDuration.inSeconds < 30) return;
+
+      final remaining = totalDuration - position;
+
+      // Handle gap mode - pause before end, resume after delay
+      if (settings.delayDuration > 0 && !_isInGap && _player.playing) {
+        _handleGapTrigger(
+          remaining: remaining,
+          delayDuration: settings.delayDuration,
+        );
+      }
+
+      // Handle fade mode
+      if ((settings.fadeOutDuration > 0 || settings.fadeInDuration > 0) &&
+          _player.playing) {
+        _handleFadeMode(
+          remaining: remaining,
+          position: position,
+          totalDuration: totalDuration,
+          fadeOutDuration: settings.fadeOutDuration,
+        );
+      }
+
+      // Reset fade if user seeks back
+      if (_isFadingOut) {
+        final fadeOutMs = settings.fadeOutDuration * 1000;
+        if (remaining.inMilliseconds > fadeOutMs) {
+          _isFadingOut = false;
+          if (!_isFadingIn) {
+            _setVolumeWithSafety(1.0);
+          }
+        }
+      }
+    });
+
+    _sequenceSubscription = _player.sequenceStateStream.listen((state) async {
+      if (_ref == null) return;
+      final settings = _ref!.read(settingsProvider);
+
+      final currentItem = state.currentSource?.tag;
+      if (currentItem is MediaItem) {
+        final newFilename = currentItem.id;
+        if (_lastFadedFilename != newFilename) {
+          _lastFadedFilename = newFilename;
+          // Reset gap state on new song
+          _isInGap = false;
+          _currentGapSongId = null;
+          _gapTimer?.cancel();
+          _isFadingOut = false;
+
+          // Always reset volume on song change
+          _setVolumeWithSafety(1.0);
+
+          // Handle fade in for new song
+          if (settings.fadeInDuration > 0) {
+            _startFadeIn(settings.fadeInDuration);
           }
         }
       }
