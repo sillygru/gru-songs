@@ -103,9 +103,14 @@ class WispieApp extends ConsumerWidget {
       title: 'Wispie',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getTheme(themeState),
-      home: (!isSetupComplete || !authState.isAuthenticated)
-          ? const SetupScreen()
-          : const MainScreen(),
+      home: AnimatedTheme(
+        data: AppTheme.getTheme(themeState),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        child: (!isSetupComplete || !authState.isAuthenticated)
+            ? const SetupScreen()
+            : const MainScreen(),
+      ),
     );
   }
 }

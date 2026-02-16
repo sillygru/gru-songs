@@ -74,6 +74,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyFadeOutDuration = 'fade_out_duration';
   static const _keyFadeInDuration = 'fade_in_duration';
   static const _keyDelayDuration = 'delay_duration';
+  static const double maxDelayDuration = 12.0;
 
   @override
   SettingsState build() {
@@ -104,21 +105,43 @@ class SettingsNotifier extends Notifier<SettingsState> {
   }
 
   Future<void> setFadeOutDuration(double value) async {
+    // If setting fade, disable gap
+    if (value > 0) {
+      await setDelayDuration(0.0);
+    }
     state = state.copyWith(fadeOutDuration: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyFadeOutDuration, value);
   }
 
   Future<void> setFadeInDuration(double value) async {
+    // If setting fade, disable gap
+    if (value > 0) {
+      await setDelayDuration(0.0);
+    }
     state = state.copyWith(fadeInDuration: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyFadeInDuration, value);
   }
 
   Future<void> setDelayDuration(double value) async {
-    state = state.copyWith(delayDuration: value);
+    final clampedValue = value.clamp(0.0, maxDelayDuration);
+
+    // If setting gap, disable fade
+    if (clampedValue > 0) {
+      await _disableFadeWithoutNotification();
+    }
+
+    state = state.copyWith(delayDuration: clampedValue);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyDelayDuration, value);
+    await prefs.setDouble(_keyDelayDuration, clampedValue);
+  }
+
+  Future<void> _disableFadeWithoutNotification() async {
+    state = state.copyWith(fadeOutDuration: 0.0, fadeInDuration: 0.0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyFadeOutDuration, 0.0);
+    await prefs.setDouble(_keyFadeInDuration, 0.0);
   }
 
   Future<void> setShowSongDuration(bool show) async {
@@ -174,7 +197,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
           'setting': 'telemetry_level',
           'value': level,
         },
-        requiredLevel: 2); // Changed to Level 2 per request
+        requiredLevel: 2);
   }
 
   Future<void> setAutoPauseOnVolumeZero(bool enabled) async {
@@ -234,5 +257,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
   }
 }
 
-final settingsProvider =
-    NotifierProvider<SettingsNotifier, SettingsState>(SettingsNotifier.new);
+final settingsProvider = NotifierProvider<SettingsNotifier, SettingsState>(
+  SettingsNotifier.new,
+);

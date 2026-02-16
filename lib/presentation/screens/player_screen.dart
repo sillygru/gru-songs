@@ -431,8 +431,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget build(BuildContext context) {
     final themeState = ref.watch(themeProvider);
 
-    return Theme(
+    return AnimatedTheme(
       data: AppTheme.getPlayerTheme(themeState, themeState.extractedColor),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
       child: Builder(builder: (context) {
         final isDesktop = !kIsWeb &&
             (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
@@ -656,11 +658,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                           .transparent,
                                                                   builder:
                                                                       (context) =>
-                                                                          Theme(
+                                                                          AnimatedTheme(
                                                                     data: AppTheme.getPlayerTheme(
                                                                         themeState,
                                                                         themeState
                                                                             .extractedColor),
+                                                                    duration:
+                                                                        const Duration(
+                                                                            milliseconds:
+                                                                                500),
+                                                                    curve: Curves
+                                                                        .easeInOut,
                                                                     child:
                                                                         const NextUpSheet(),
                                                                   ),
@@ -819,12 +827,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                     .transparent,
                                                             builder:
                                                                 (context) =>
-                                                                    Theme(
-                                                              data: AppTheme
-                                                                  .getPlayerTheme(
+                                                                    AnimatedTheme(
+                                                                  data: AppTheme.getPlayerTheme(
                                                                       themeState,
                                                                       themeState
                                                                           .extractedColor),
+                                                                  duration:
+                                                                      const Duration(
+                                                                          milliseconds:
+                                                                              500),
+                                                                  curve: Curves
+                                                                      .easeInOut,
                                                               child:
                                                                   const NextUpSheet(),
                                                             ),

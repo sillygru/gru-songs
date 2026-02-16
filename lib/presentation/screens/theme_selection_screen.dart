@@ -245,8 +245,10 @@ class ThemePreviewWidget extends StatelessWidget {
         padding: EdgeInsets.only(top: 32, bottom: 8),
         devicePixelRatio: 1.0,
       ),
-      child: Theme(
+      child: AnimatedTheme(
         data: themeData,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
         child: Builder(builder: (context) {
           return Scaffold(
             backgroundColor: themeData.scaffoldBackgroundColor,

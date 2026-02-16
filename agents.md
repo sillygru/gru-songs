@@ -87,6 +87,8 @@ Always run `test/shuffle_logic_test.dart` and `test/personality_logic_test.dart`
 - **No git commits**: You are only allowed to use git commands to *READ*, you are *NOT* allowed to make git commits.
 - **Comments**: Keep comments minimal. Explain *why*, not *what*. Do not talk to yourself during comments. Do not add LLM specific comments such as "// added this line" or "// per user request", do not add too many comments per function, explain function at beginning then fully implement it with no more comments.
 - **Emojis**: Do *NOT* *EVER* use emojis in code, code comments or messages.
+- **No building**: Do *NOT* *EVER* build the project *UNLESS* explicitly requested.
+
 
 ## Established Patterns
 

@@ -20,6 +20,11 @@ import '../providers/theme_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/settings_provider.dart';
 
+// Gap state persistence keys
+const String _keyGapSongId = 'gap_current_song_id';
+const String _keyGapResumeTimestamp = 'gap_resume_timestamp';
+const String _keyGapIsActive = 'gap_is_active';
+
 class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
   final StatsService _statsService;
@@ -61,11 +66,22 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Fading and delay state
   bool _isFadingIn = false;
   bool _isFadingOut = false;
-  bool _isWaitingForDelay = false;
+  bool _isInGap = false;
   String? _lastFadedFilename;
+  String? _currentGapSongId;
   Timer? _fadeTimer;
+  Timer? _gapTimer;
+  DateTime? _gapStartTime;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<SequenceState?>? _sequenceSubscription;
+
+  // Fade state tracking
+  double _targetVolume = 1.0;
+  DateTime? _fadeStartTime;
+  double? _fadeDurationMs;
+
+  // Feature coordination state
+  bool _wasPausedByMute = false;
 
   // New stats counters
   double _foregroundDuration = 0.0;
@@ -73,18 +89,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
   final ValueNotifier<bool> shuffleNotifier = ValueNotifier(false);
-  final ValueNotifier<ShuffleState> shuffleStateNotifier =
-      ValueNotifier(const ShuffleState());
+  final ValueNotifier<ShuffleState> shuffleStateNotifier = ValueNotifier(
+    const ShuffleState(),
+  );
   final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
   final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
 
   AudioPlayerManager(this._statsService, this._storageService, [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
-    // DatabaseService is global now, initialized in main or providers
     _initStatsListeners();
     _initPersistence();
     _initVolumeMonitoring();
     _initFadingListeners();
+    _restoreGapStateIfNeeded();
   }
 
   AudioPlayer get player => _player;
@@ -130,11 +147,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return false;
   }
 
-  void setUserData(
-      {List<String>? favorites,
-      List<String>? suggestLess,
-      List<String>? hidden,
-      Map<String, List<String>>? mergedGroups}) {
+  void setUserData({
+    List<String>? favorites,
+    List<String>? suggestLess,
+    List<String>? hidden,
+    Map<String, List<String>>? mergedGroups,
+  }) {
     if (favorites != null) _favorites = favorites;
     if (suggestLess != null) _suggestLess = suggestLess;
     if (hidden != null) _hidden = hidden;
@@ -148,26 +166,22 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _saveShuffleState();
 
     if (_effectiveQueue.isNotEmpty) {
+      final currentIndex = _player.currentIndex ?? 0;
       if (config.enabled) {
-        await _applyShuffle(_player.currentIndex ?? 0);
+        await _applyShuffle(currentIndex);
       } else {
-        _applyLinear(_player.currentIndex ?? 0);
+        _applyLinear(currentIndex);
       }
     }
   }
 
-  Future<void> updateShuffleState(ShuffleState newState) async {
-    _shuffleState = newState;
-    shuffleStateNotifier.value = _shuffleState;
-    shuffleNotifier.value = newState.config.enabled;
-    _saveShuffleState();
-  }
-
-  Future<void> playSong(Song song,
-      {List<Song>? contextQueue,
-      String? playlistId,
-      bool startPlaying = true,
-      bool forceLinear = false}) async {
+  Future<void> playSong(
+    Song song, {
+    List<Song>? contextQueue,
+    String? playlistId,
+    bool startPlaying = true,
+    bool forceLinear = false,
+  }) async {
     _resetFading();
     await _player.setShuffleModeEnabled(false);
     _currentPlaylistId = playlistId;
@@ -193,8 +207,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    int originalIdx = _originalQueue
-        .indexWhere((item) => item.song.filename == song.filename);
+    int originalIdx = _originalQueue.indexWhere(
+      (item) => item.song.filename == song.filename,
+    );
     if (originalIdx == -1) {
       _originalQueue.insert(0, QueueItem(song: song));
       originalIdx = 0;
@@ -205,32 +220,68 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (_shuffleState.config.enabled && !forceLinear) {
       final otherItems = List<QueueItem>.from(_originalQueue)
         ..removeAt(originalIdx);
-      final shuffledOthers =
-          await _weightedShuffle(otherItems, lastItem: selectedItem);
+      final shuffledOthers = await _weightedShuffle(
+        otherItems,
+        lastItem: selectedItem,
+      );
       _effectiveQueue = [selectedItem, ...shuffledOthers];
       await _rebuildQueue(initialIndex: 0, startPlaying: startPlaying);
     } else {
       _effectiveQueue = List.from(_originalQueue);
       await _rebuildQueue(
-          initialIndex: originalIdx, startPlaying: startPlaying);
+        initialIndex: originalIdx,
+        startPlaying: startPlaying,
+      );
     }
 
     _savePlaybackState();
   }
 
   void _initStatsListeners() {
+    // Track previous playing state for manual pause detection
+    bool wasPlaying = false;
+
     _player.playerStateStream.listen((state) {
+      // Detect manual pause (user pressed pause button)
+      // Don't cancel transitions if we are in a gap (expected pause)
+      if (wasPlaying && !state.playing && !_isInGap) {
+        _handleManualIntervention();
+      }
+
+      // Handle user pressing play during gap - cancel the gap timer
+      if (_isInGap && state.playing) {
+        _cancelGap();
+      }
+
+      wasPlaying = state.playing;
+
       if (state.playing) {
         _playStartTime ??= DateTime.now();
       } else if (_playStartTime != null) {
         _updateDurations();
         _playStartTime = null;
-        // Commit a progress slice when playback is paused to ensure data persistence.
         _flushStats(eventType: 'listen');
       }
       if (state.processingState == ProcessingState.completed) {
         _isCompleting = true;
         _flushStats(eventType: 'complete');
+      }
+    });
+
+    // Listen for seek operations to cancel fade out
+    _player.positionStream.listen((position) {
+      if (_isFadingOut) {
+        final totalDuration = _player.duration;
+        if (totalDuration != null && _ref != null) {
+          final remaining = totalDuration - position;
+          final settings = _ref!.read(settingsProvider);
+          final fadeOutDuration = settings.fadeOutDuration;
+          if (fadeOutDuration > 0 &&
+              remaining.inMilliseconds > fadeOutDuration * 1000 + 500) {
+            // User seeked back, cancel fade
+            _cancelTransitions();
+          }
+        }
       }
     });
 
@@ -288,74 +339,75 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // Pick a random song from _allSongs using local weights
     if (_allSongs.isEmpty) return;
 
-    List<Song> sourcePool = _isRestrictedToOriginal
-        ? _originalQueue.map((q) => q.song).toList()
-        : _allSongs;
+    final currentIndex = _player.currentIndex ?? -1;
+    if (currentIndex < 0) return;
 
-    if (sourcePool.isEmpty) return;
+    final currentItem = _effectiveQueue[currentIndex];
+    final existingIds = _effectiveQueue.map((e) => e.song.filename).toSet();
 
-    var candidates = sourcePool
-        .where((s) => !_effectiveQueue.reversed
-            .take(10)
-            .any((q) => q.song.filename == s.filename))
-        .toList();
+    // Filter candidates
+    final List<QueueItem> candidateItems;
+    if (_isRestrictedToOriginal) {
+      candidateItems = _originalQueue
+          .where((q) => !existingIds.contains(q.song.filename))
+          .toList();
+    } else {
+      candidateItems = _allSongs
+          .where((s) => !existingIds.contains(s.filename))
+          .map((s) => QueueItem(song: s))
+          .toList();
+    }
 
-    if (candidates.isEmpty) candidates = List.from(sourcePool);
+    if (candidateItems.isEmpty) return;
+    final shuffled = await _weightedShuffle(
+      candidateItems,
+      lastItem: currentItem,
+    );
 
-    final queueItems = candidates.map((s) => QueueItem(song: s)).toList();
-    final lastItem = _effectiveQueue.isNotEmpty ? _effectiveQueue.last : null;
-
-    queueItems.shuffle();
-    final sample = queueItems.take(50).toList();
-    final result = await _weightedShuffle(sample, lastItem: lastItem);
-
-    if (result.isNotEmpty) {
-      final nextItem = result.first;
+    if (shuffled.isNotEmpty) {
+      final nextItem = shuffled.first;
       _effectiveQueue.add(nextItem);
-      _createAudioSource(nextItem).then((source) {
-        _player.addAudioSource(source);
-        _updateQueueNotifier();
-      });
+      final source = await _createAudioSource(nextItem);
+      await _player.addAudioSource(source);
+      _updateQueueNotifier();
     }
   }
 
   Future<void> _initPersistence() async {
-    final localStateData = await _storageService.loadShuffleState();
-    if (localStateData != null) {
-      _shuffleState = ShuffleState.fromJson(localStateData);
-      shuffleNotifier.value = _shuffleState.config.enabled;
+    // Load shuffle state
+    final savedShuffleJson = await _storageService.loadShuffleState();
+    if (savedShuffleJson != null) {
+      _shuffleState = ShuffleState.fromJson(savedShuffleJson);
       shuffleStateNotifier.value = _shuffleState;
+      shuffleNotifier.value = _shuffleState.config.enabled;
     }
-    // syncShuffleState() removed - strictly local now
-
-    // Start periodic sync removed - handled by SongsNotifier.refresh()
-    // triggered on startup, resumes, and play events.
   }
 
   void _initVolumeMonitoring() {
     if (_ref != null) {
       _volumeMonitorService = VolumeMonitorService(
         onVolumeZero: () {
-          // Read current settings each time to get up-to-date values
           final currentSettings = _ref!.read(settingsProvider);
           if (currentSettings.autoPauseOnVolumeZero && _player.playing) {
+            _wasPausedByMute = true;
             _player.pause();
           }
         },
         onVolumeRestored: () {
-          // Read current settings each time to get up-to-date values
           final currentSettings = _ref!.read(settingsProvider);
-          // Auto-resume when volume is restored, but only if both settings are enabled
-          // and the volume monitor service detected it was auto-paused
           if (currentSettings.autoPauseOnVolumeZero &&
-              currentSettings.autoResumeOnVolumeRestore) {
-            _player.play();
+              currentSettings.autoResumeOnVolumeRestore &&
+              _wasPausedByMute) {
+            _wasPausedByMute = false;
+            // If in gap, wait for gap to complete
+            if (!_isInGap) {
+              _player.play();
+            }
           }
         },
       );
       _volumeMonitorService?.initialize();
 
-      // Listen to settings changes to update volume monitor enabled state
       _ref!.listen(settingsProvider, (previous, next) {
         if (previous?.autoPauseOnVolumeZero != next.autoPauseOnVolumeZero) {
           _volumeMonitorService
@@ -363,64 +415,47 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
       });
 
-      // Set initial enabled state
       final initialSettings = _ref!.read(settingsProvider);
-      _volumeMonitorService
-          ?.setAutoPauseEnabled(initialSettings.autoPauseOnVolumeZero);
+      _volumeMonitorService?.setAutoPauseEnabled(
+        initialSettings.autoPauseOnVolumeZero,
+      );
     }
   }
+
+  // ==================== FADE AND GAP LOGIC ====================
 
   void _initFadingListeners() {
     _positionSubscription = _player.positionStream.listen((position) {
       if (_ref == null) return;
       final settings = _ref!.read(settingsProvider);
-      final fadeOutDuration = settings.fadeOutDuration;
-      final delayDuration = settings.delayDuration;
 
       final totalDuration = _player.duration;
       if (totalDuration == null) return;
 
+      // Minimum 30 second song for any transitions
+      if (totalDuration.inSeconds < 30) return;
+
       final remaining = totalDuration - position;
 
-      // 1. Delay logic (pause at 1s remaining)
-      if (delayDuration > 0 &&
-          remaining.inMilliseconds <= 1000 &&
-          remaining.inMilliseconds > 0 &&
-          !_isWaitingForDelay &&
+      // Handle fade mode only (gap is handled on completion, not by position)
+      if ((settings.fadeOutDuration > 0 || settings.fadeInDuration > 0) &&
           _player.playing) {
-        _isWaitingForDelay = true;
-        _player.pause();
-
-        // Subtract 1 second from the setting because we are pausing 1s early
-        final adjustedDelayMs = max(0.0, (delayDuration - 1.0) * 1000).toInt();
-
-        Future.delayed(Duration(milliseconds: adjustedDelayMs), () {
-          // Verify we're still on the same song before resuming
-          if (_player.duration == totalDuration) {
-            _player.play();
-          }
-        });
+        _handleFadeMode(
+          remaining: remaining,
+          position: position,
+          totalDuration: totalDuration,
+          fadeOutDuration: settings.fadeOutDuration,
+        );
       }
 
-      // 2. Fade Out logic
-      if (fadeOutDuration > 0) {
-        if (remaining.inMilliseconds <= fadeOutDuration * 1000 &&
-            remaining.inMilliseconds > 0 &&
-            _player.playing) {
-          _isFadingOut = true;
-          final volume = (remaining.inMilliseconds / (fadeOutDuration * 1000))
-              .clamp(0.0, 1.0);
-          _player.setVolume(volume);
-        } else if (_isFadingOut &&
-            remaining.inMilliseconds > fadeOutDuration * 1000) {
+      // Reset fade if user seeks back
+      if (_isFadingOut) {
+        final fadeOutMs = settings.fadeOutDuration * 1000;
+        if (remaining.inMilliseconds > fadeOutMs) {
           _isFadingOut = false;
           if (!_isFadingIn) {
-            _player.setVolume(1.0);
+            _setVolumeWithSafety(1.0);
           }
-        }
-      } else {
-        if (!_isFadingIn && _player.volume != 1.0) {
-          _player.setVolume(1.0);
         }
       }
     });
@@ -434,55 +469,306 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         final newFilename = currentItem.id;
         if (_lastFadedFilename != newFilename) {
           _lastFadedFilename = newFilename;
-          _isWaitingForDelay = false;
+          // Don't reset gap state here - gap completes after song ends,
+          // and sequence state changes when next song starts
           _isFadingOut = false;
 
+          // Always reset volume on song change
+          _setVolumeWithSafety(1.0);
+
+          // Handle fade in for new song
           if (settings.fadeInDuration > 0) {
             _startFadeIn(settings.fadeInDuration);
-          } else {
-            _player.setVolume(1.0);
+          }
+        }
+      }
+    });
+
+    // Handle completion - trigger gap AFTER song completes
+    _player.processingStateStream.listen((state) {
+      if (state == ProcessingState.completed) {
+        _setVolumeWithSafety(1.0);
+        _isFadingOut = false;
+
+        // Handle gap mode on completion (between songs)
+        if (_ref != null && !_isInGap) {
+          final settings = _ref!.read(settingsProvider);
+          if (settings.delayDuration > 0) {
+            _triggerGapOnCompletion(delayDuration: settings.delayDuration);
           }
         }
       }
     });
   }
 
+  void _triggerGapOnCompletion({required double delayDuration}) {
+    if (_currentGapSongId != null) return;
+
+    final currentItem = _player.sequenceState?.currentSource?.tag;
+    if (currentItem is! MediaItem) return;
+
+    _currentGapSongId = currentItem.id;
+    _isInGap = true;
+    _gapStartTime = DateTime.now();
+
+    // Persist gap state for background safety
+    _persistGapState(
+      songId: _currentGapSongId!,
+      delayMs: (delayDuration * 1000).toInt(),
+    );
+
+    // Player is already paused due to completion, schedule advance
+    final delayMs = (delayDuration * 1000).toInt();
+    _gapTimer = Timer(Duration(milliseconds: delayMs), () {
+      _completeGapAndAdvance();
+    });
+  }
+
+  void _completeGapAndAdvance() {
+    if (!_isInGap) return;
+
+    final gapSongId = _currentGapSongId;
+
+    // Clear gap state first
+    _isInGap = false;
+    _currentGapSongId = null;
+    _gapStartTime = null;
+    _gapTimer = null;
+    _clearGapState();
+
+    // Verify we still have the same song (user didn't skip during gap)
+    final currentItem = _player.sequenceState?.currentSource?.tag;
+    if (currentItem is MediaItem && currentItem.id == gapSongId) {
+      // Manually advance to next song
+      if (_player.hasNext) {
+        _player.seekToNext().then((_) {
+          if (!_wasPausedByMute) {
+            _player.play();
+          }
+        });
+      }
+    }
+  }
+
+  void _handleFadeMode({
+    required Duration remaining,
+    required Duration position,
+    required Duration totalDuration,
+    required double fadeOutDuration,
+  }) {
+    final fadeOutMs = (fadeOutDuration * 1000).toInt();
+
+    if (fadeOutMs > 0 &&
+        remaining.inMilliseconds <= fadeOutMs &&
+        remaining.inMilliseconds > 0 &&
+        !_isFadingOut) {
+      _isFadingOut = true;
+    }
+
+    if (_isFadingOut) {
+      final progress = remaining.inMilliseconds / fadeOutMs;
+      final curvedVolume = _fadeOutCurve(progress.clamp(0.0, 1.0));
+      _setVolumeWithSafety(curvedVolume);
+    }
+  }
+
+  // Exponential fade out curve (sounds natural to human ears)
+  double _fadeOutCurve(double linearProgress) {
+    // Exponential decay: volume drops faster at the end
+    // linearProgress: 1.0 -> 0.0 (remaining time ratio)
+    // Returns: curved volume from 1.0 -> 0.0
+    return pow(linearProgress, 2.0).toDouble();
+  }
+
+  // Exponential fade in curve (sounds natural to human ears)
+  double _fadeInCurve(double linearProgress) {
+    // Exponential growth: volume rises slower at the start
+    // linearProgress: 0.0 -> 1.0 (elapsed time ratio)
+    // Returns: curved volume from 0.0 -> 1.0
+    return pow(linearProgress, 0.5).toDouble();
+  }
+
   void _startFadeIn(double duration) {
     _fadeTimer?.cancel();
     _isFadingIn = true;
-    _player.setVolume(0.0);
+    _fadeDurationMs = duration * 1000;
+    _fadeStartTime = DateTime.now();
+    _targetVolume = 1.0;
 
-    final startTime = DateTime.now();
+    _setVolumeWithSafety(0.0);
+
     _fadeTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
-      final targetMs = duration * 1000;
+      if (_fadeStartTime == null || _fadeDurationMs == null) {
+        timer.cancel();
+        return;
+      }
+
+      final elapsed = DateTime.now().difference(_fadeStartTime!).inMilliseconds;
+      final targetMs = _fadeDurationMs!;
 
       if (elapsed >= targetMs) {
-        _player.setVolume(1.0);
+        _setVolumeWithSafety(1.0);
         _isFadingIn = false;
+        _fadeStartTime = null;
+        _fadeDurationMs = null;
         timer.cancel();
       } else {
-        _player.setVolume(elapsed / targetMs);
+        final linearProgress = elapsed / targetMs;
+        final curvedVolume = _fadeInCurve(linearProgress);
+        _setVolumeWithSafety(curvedVolume);
       }
     });
+  }
+
+  void _setVolumeWithSafety(double volume) {
+    _targetVolume = volume.clamp(0.0, 1.0);
+    try {
+      _player.setVolume(_targetVolume);
+    } catch (e) {
+      debugPrint('AudioPlayerManager: Failed to set volume: $e');
+    }
   }
 
   void _resetFading() {
     _fadeTimer?.cancel();
     _isFadingIn = false;
     _isFadingOut = false;
-    _isWaitingForDelay = false;
-    _player.setVolume(1.0);
+    _fadeStartTime = null;
+    _fadeDurationMs = null;
+    _targetVolume = 1.0;
+    _setVolumeWithSafety(1.0);
   }
 
+  void _cancelTransitions() {
+    _cancelGap();
+    _fadeTimer?.cancel();
+    _isFadingIn = false;
+    _isFadingOut = false;
+    _fadeStartTime = null;
+    _fadeDurationMs = null;
+    _targetVolume = 1.0;
+    _setVolumeWithSafety(1.0);
+  }
+
+  void _cancelGap() {
+    _isInGap = false;
+    _currentGapSongId = null;
+    _gapStartTime = null;
+    _gapTimer?.cancel();
+    _clearGapState();
+  }
+
+  void _handleManualIntervention() {
+    // User manually paused - cancel any ongoing transitions
+    _cancelTransitions();
+  }
+
+  // ==================== GAP STATE PERSISTENCE ====================
+
+  Future<void> _persistGapState({
+    required String songId,
+    required int delayMs,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final resumeTimestamp = DateTime.now().millisecondsSinceEpoch + delayMs;
+
+      await prefs.setString(_keyGapSongId, songId);
+      await prefs.setInt(_keyGapResumeTimestamp, resumeTimestamp);
+      await prefs.setBool(_keyGapIsActive, true);
+    } catch (e) {
+      debugPrint('AudioPlayerManager: Failed to persist gap state: $e');
+    }
+  }
+
+  Future<void> _clearGapState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyGapSongId);
+      await prefs.remove(_keyGapResumeTimestamp);
+      await prefs.remove(_keyGapIsActive);
+    } catch (e) {
+      debugPrint('AudioPlayerManager: Failed to clear gap state: $e');
+    }
+  }
+
+  Future<void> _restoreGapStateIfNeeded() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isActive = prefs.getBool(_keyGapIsActive) ?? false;
+
+      if (!isActive) return;
+
+      final songId = prefs.getString(_keyGapSongId);
+      final resumeTimestamp = prefs.getInt(_keyGapResumeTimestamp);
+
+      if (songId == null || resumeTimestamp == null) {
+        await _clearGapState();
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final remainingMs = resumeTimestamp - now;
+
+      if (remainingMs <= 0) {
+        // Gap already expired, clear state
+        await _clearGapState();
+        return;
+      }
+
+      // We're still in a gap from before
+      // Check if we're on the same song
+      final currentItem = _player.sequenceState?.currentSource?.tag;
+      if (currentItem is! MediaItem || currentItem.id != songId) {
+        await _clearGapState();
+        return;
+      }
+
+      // Restore gap state
+      _currentGapSongId = songId;
+      _isInGap = true;
+
+      // Schedule completion - advance to next song after gap
+      _gapTimer = Timer(Duration(milliseconds: remainingMs), () {
+        _completeGapAndAdvance();
+      });
+    } catch (e) {
+      debugPrint('AudioPlayerManager: Failed to restore gap state: $e');
+    }
+  }
+
+  // ==================== LIFECYCLE ====================
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_playStartTime != null) {
+      _updateDurations();
+      _playStartTime = DateTime.now();
+    }
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _flushStats(eventType: 'listen');
+      _savePlaybackState();
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+      _statsService.flush();
+    }
+
+    final isBackground = state != AppLifecycleState.resumed;
+    _statsService.setBackground(isBackground);
+
+    _appLifecycleState = state;
+  }
+
+  // ==================== STATS & SHUFFLE ====================
+
   Future<ShuffleState?> syncShuffleState() async {
-    // Strictly local now, but keep as no-op to avoid breaking other calls
     return _shuffleState;
   }
 
   Future<void> _saveShuffleState() async {
     await _storageService.saveShuffleState(_shuffleState.toJson());
-    // _statsService.updateShuffleState removed - strictly local
   }
 
   Future<void> _savePlaybackState() async {
@@ -526,10 +812,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     double finalDuration = _foregroundDuration + _backgroundDuration;
 
-    // Categorization logic
     String finalEventType = eventType;
 
-    // 1. Completion exceptions: if skipped/stopped in last 10s or over 1.0 ratio, it's a complete
     if (totalLength > 0) {
       final double ratio = finalDuration / totalLength;
       final double remaining = totalLength - finalDuration;
@@ -537,15 +821,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       if (remaining <= 10.0 || ratio >= 1.0) {
         finalEventType = 'complete';
       } else if (ratio < 0.10) {
-        // If played for less than 10% of duration, count as skip
         finalEventType = 'skip';
-      } else if (eventType == 'listen') {
-        // If it was a 'listen' event (pause/lifecycle change) but it's NOT the last song
-        // (meaning another song will be played in this session),
-        // it's actually a 'skip' if it's not the last thing recorded.
-        // However, at the time of _flushStats(listen), we don't always know if another song will follow.
-        // But per requirements: "when theres a song after it it should count a 'listen' as a skip"
-        // This is handled by 'skip' being passed when song actually switches.
       }
     }
 
@@ -559,7 +835,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         'total_length': totalLength,
       });
 
-      // Add to local history if completed OR played for at least 5 seconds
       if (finalEventType == 'complete' || finalDuration > 5.0) {
         _addToShuffleHistory(_currentSongFilename!);
       }
@@ -568,9 +843,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _backgroundDuration = 0.0;
     if (eventType == 'skip' || eventType == 'complete') {
       _playStartTime = null;
-
-      // Ensure stats are committed to DB immediately on song end/skip
-      // This prevents data loss without needing an expensive full library scan.
       _statsService.flush();
     } else {
       if (_playStartTime != null) _playStartTime = DateTime.now();
@@ -578,37 +850,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _addToShuffleHistory(String filename) {
-    // History is now tracked automatically via play events in the database
-    // No need to manually maintain a separate history list
+    // History is tracked via database play events
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_playStartTime != null) {
-      _updateDurations();
-      _playStartTime = DateTime.now();
-    }
-
-    // 1. Process session finalization events before the app is suspended.
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      _flushStats(eventType: 'listen');
-      _savePlaybackState();
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-
-      // Ensure that the final 'listen' event is committed to the database
-      // before the process is terminated or suspended.
-      _statsService.flush();
-    }
-
-    // 2. Adjust stats tracking mode based on lifecycle state.
-    // Background mode enables batching to reduce CPU wake-ups.
-    final isBackground = state != AppLifecycleState.resumed;
-    _statsService.setBackground(isBackground);
-
-    _appLifecycleState = state;
-  }
+  // ==================== INIT & QUEUE ====================
 
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
     _allSongs = songs;
@@ -618,7 +863,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     await DatabaseService.instance.init();
 
-    // 1. Fallback to Local Storage (Always local-first now)
     final savedState = await _storageService.loadPlaybackState();
 
     if (savedState != null) {
@@ -626,61 +870,37 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         final List<dynamic> effJson = savedState['last_effective_queue'] ?? [];
         final List<dynamic> origJson = savedState['last_original_queue'] ?? [];
 
-        // Parse effective queue and filter out items with missing files
         _effectiveQueue = effJson.expand((j) {
           try {
             final queueItem = QueueItem.fromJson(j);
-            // Check if the song file still exists
             if (queueItem.song.url.isNotEmpty) {
               final file = File(queueItem.song.url);
               if (file.existsSync()) {
                 return [queueItem];
-              } else {
-                debugPrint(
-                    'Skipping queue item with missing file: ${queueItem.song.url}');
-                return <QueueItem>[];
               }
-            } else {
-              debugPrint(
-                  'Skipping queue item with empty URL: ${queueItem.song.filename}');
-              return <QueueItem>[];
             }
+            return <QueueItem>[];
           } catch (e) {
-            debugPrint('Failed to parse a QueueItem from effectiveQueue: $e');
             return <QueueItem>[];
           }
         }).toList();
 
-        // Parse original queue and filter out items with missing files
         _originalQueue = origJson.expand((j) {
           try {
             final queueItem = QueueItem.fromJson(j);
-            // Check if the song file still exists
             if (queueItem.song.url.isNotEmpty) {
               final file = File(queueItem.song.url);
               if (file.existsSync()) {
                 return [queueItem];
-              } else {
-                debugPrint(
-                    'Skipping queue item with missing file: ${queueItem.song.url}');
-                return <QueueItem>[];
               }
-            } else {
-              debugPrint(
-                  'Skipping queue item with empty URL: ${queueItem.song.filename}');
-              return <QueueItem>[];
             }
+            return <QueueItem>[];
           } catch (e) {
-            debugPrint('Failed to parse a QueueItem from originalQueue: $e');
             return <QueueItem>[];
           }
         }).toList();
 
-        // If both queues are empty after filtering, fall back to a fresh state
-        if (_effectiveQueue.isEmpty && _originalQueue.isEmpty) {
-          debugPrint(
-              'Both queues are empty after filtering for missing files, starting fresh');
-        } else {
+        if (_effectiveQueue.isNotEmpty || _originalQueue.isNotEmpty) {
           _isRestrictedToOriginal =
               savedState['is_restricted_to_original'] ?? false;
           _currentPlaylistId = savedState['current_playlist_id'];
@@ -692,8 +912,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           Duration? resumePosition;
 
           if (lastSongFilename != null) {
-            initialIndex = _effectiveQueue
-                .indexWhere((item) => item.song.filename == lastSongFilename);
+            initialIndex = _effectiveQueue.indexWhere(
+              (item) => item.song.filename == lastSongFilename,
+            );
             if (initialIndex != -1) {
               resumePosition = Duration(milliseconds: savedPositionMs);
               _previousSessionSongFilename = lastSongFilename;
@@ -704,125 +925,20 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           }
 
           await _rebuildQueue(
-              initialIndex: initialIndex,
-              startPlaying: false,
-              initialPosition: resumePosition);
-
-          // Extract color for initial song
-          if (_ref != null) {
-            final initialSong = _effectiveQueue[initialIndex].song;
-            ColorExtractionService.extractColor(initialSong.coverUrl)
-                .then((color) {
-              _ref!.read(themeProvider.notifier).updateExtractedColor(color);
-            });
-          }
+            initialIndex: initialIndex,
+            startPlaying: false,
+            initialPosition: resumePosition,
+          );
           return;
         }
       } catch (e) {
-        // Ignore malformed persistence state, fallback to default
-      }
-    } else {
-      // Compatibility fallback to SharedPreferences for older versions
-      final prefs = await SharedPreferences.getInstance();
-      final savedEffectiveQueueJson = prefs.getString('last_effective_queue');
-      final savedOriginalQueueJson = prefs.getString('last_original_queue');
-      final savedPositionMs = prefs.getInt('last_position_ms') ?? 0;
-      final lastSongFilename = prefs.getString('last_song_filename');
-
-      if (savedEffectiveQueueJson != null && savedOriginalQueueJson != null) {
-        try {
-          final List<dynamic> effJson = jsonDecode(savedEffectiveQueueJson);
-          final List<dynamic> origJson = jsonDecode(savedOriginalQueueJson);
-
-          // Parse effective queue and filter out items with missing files
-          _effectiveQueue = effJson.expand((j) {
-            try {
-              final queueItem = QueueItem.fromJson(j);
-              // Check if the song file still exists
-              if (queueItem.song.url.isNotEmpty) {
-                final file = File(queueItem.song.url);
-                if (file.existsSync()) {
-                  return [queueItem];
-                } else {
-                  debugPrint(
-                      'Skipping legacy queue item with missing file: ${queueItem.song.url}');
-                  return <QueueItem>[];
-                }
-              } else {
-                debugPrint(
-                    'Skipping legacy queue item with empty URL: ${queueItem.song.filename}');
-                return <QueueItem>[];
-              }
-            } catch (e) {
-              debugPrint(
-                  'Failed to parse a QueueItem from legacy effectiveQueue: $e');
-              return <QueueItem>[];
-            }
-          }).toList();
-
-          // Parse original queue and filter out items with missing files
-          _originalQueue = origJson.expand((j) {
-            try {
-              final queueItem = QueueItem.fromJson(j);
-              // Check if the song file still exists
-              if (queueItem.song.url.isNotEmpty) {
-                final file = File(queueItem.song.url);
-                if (file.existsSync()) {
-                  return [queueItem];
-                } else {
-                  debugPrint(
-                      'Skipping legacy queue item with missing file: ${queueItem.song.url}');
-                  return <QueueItem>[];
-                }
-              } else {
-                debugPrint(
-                    'Skipping legacy queue item with empty URL: ${queueItem.song.filename}');
-                return <QueueItem>[];
-              }
-            } catch (e) {
-              debugPrint(
-                  'Failed to parse a QueueItem from legacy originalQueue: $e');
-              return <QueueItem>[];
-            }
-          }).toList();
-
-          // If both queues are empty after filtering, fall back to a fresh state
-          if (_effectiveQueue.isEmpty && _originalQueue.isEmpty) {
-            debugPrint(
-                'Both legacy queues are empty after filtering for missing files, starting fresh');
-          } else {
-            int initialIndex = 0;
-            Duration? resumePosition;
-
-            if (lastSongFilename != null) {
-              initialIndex = _effectiveQueue
-                  .indexWhere((item) => item.song.filename == lastSongFilename);
-              if (initialIndex != -1) {
-                resumePosition = Duration(milliseconds: savedPositionMs);
-                _previousSessionSongFilename = lastSongFilename;
-                _isResumedFromPreviousSession = true;
-              } else {
-                initialIndex = 0;
-              }
-            }
-
-            await _rebuildQueue(
-                initialIndex: initialIndex,
-                startPlaying: false,
-                initialPosition: resumePosition);
-            return;
-          }
-        } catch (e) {
-          // Ignore
-        }
+        // Ignore
       }
     }
 
-    // 2. Fallback to default list
     _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
     _effectiveQueue = List.from(_originalQueue);
 
-    // Auto-select logic...
     int initialIndex = 0;
     if (autoSelect && songs.isNotEmpty) {
       initialIndex = Random().nextInt(songs.length);
@@ -834,14 +950,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _allSongs = newSongs.where((s) => !_isHidden(s.filename)).toList();
     _songMap = {for (var s in _allSongs) s.filename: s};
 
-    // Check if current song was renamed (filename changed) or moved
     final currentIdx = _player.currentIndex;
     final currentItemBefore =
         (currentIdx != null && currentIdx < _effectiveQueue.length)
             ? _effectiveQueue[currentIdx]
             : null;
 
-    // Update URLs and filenames in queues to reflect moves/renames
     _effectiveQueue = _effectiveQueue.map((item) {
       final updatedSong = _songMap[item.song.filename];
       return updatedSong != null ? item.copyWith(song: updatedSong) : item;
@@ -855,8 +969,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _updateQueueNotifier();
     _savePlaybackState();
 
-    // If something changed in the current item, we need to rebuild the player queue
-    // to update the AudioSource (which contains the filename/URL and artUri)
     if (currentIdx != null && currentItemBefore != null) {
       final currentItemAfter = _effectiveQueue[currentIdx];
       if (currentItemBefore.song.url != currentItemAfter.song.url ||
@@ -897,27 +1009,44 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           .toList();
       final candidateItems = candidates.map((s) => QueueItem(song: s)).toList();
 
-      final shuffled =
-          await _weightedShuffle(candidateItems, lastItem: currentItem);
+      final shuffled = await _weightedShuffle(
+        candidateItems,
+        lastItem: currentItem,
+      );
 
       _effectiveQueue = [...prefix, ...priorityItems, ...shuffled];
       await _rebuildQueue(
-          initialIndex: currentIndex, startPlaying: _player.playing);
+        initialIndex: currentIndex,
+        startPlaying: _player.playing,
+      );
       return;
     }
 
     _applyLinear(currentIndex);
   }
 
+  void _applyLinear(int currentIndex) {
+    if (currentIndex >= _originalQueue.length) return;
+
+    final prefix = _originalQueue.sublist(0, currentIndex + 1);
+    final suffix = _originalQueue.sublist(currentIndex + 1);
+
+    _effectiveQueue = [...prefix, ...suffix];
+    _rebuildQueue(initialIndex: currentIndex, startPlaying: _player.playing);
+  }
+
   Future<AudioSource> _createAudioSource(QueueItem item) async {
     final song = item.song;
-
     final Uri audioUri = Uri.file(song.url);
 
     Uri? artUri;
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       artUri = Uri.file(song.coverUrl!);
     }
+
+    // Keep notification during gap to prevent service death
+    final bool keepNotification =
+        _ref != null && _ref!.read(settingsProvider).delayDuration > 0;
 
     return AudioSource.uri(
       audioUri,
@@ -929,12 +1058,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         duration: song.duration,
         artUri: artUri,
         extras: {
-          'hasLyrics':
-              song.hasLyrics, // Use the actual flag from the song model
+          'hasLyrics': song.hasLyrics,
           'remoteUrl': song.url,
           'queueId': item.queueId,
           'isPriority': item.isPriority,
-          'androidStopForegroundOnPause': true,
+          'androidStopForegroundOnPause': !keepNotification,
           'audioPath': song.url,
         },
       ),
@@ -945,8 +1073,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     queueNotifier.value = List.from(_effectiveQueue);
   }
 
-  Future<void> shuffleAndPlay(List<Song> songs,
-      {bool isRestricted = false}) async {
+  Future<void> shuffleAndPlay(
+    List<Song> songs, {
+    bool isRestricted = false,
+  }) async {
     if (songs.isEmpty) return;
 
     _shuffleState = _shuffleState.copyWith(
@@ -956,13 +1086,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     shuffleStateNotifier.value = _shuffleState;
     _saveShuffleState();
 
-    // Pick random start
     final randomIdx = Random().nextInt(songs.length);
 
     if (isRestricted) {
       await playSong(songs[randomIdx], contextQueue: songs, startPlaying: true);
     } else {
-      // For non-restricted, we update the original queue but don't lock it
       _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
       _isRestrictedToOriginal = false;
       await playSong(songs[randomIdx], startPlaying: true);
@@ -973,15 +1101,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final isShuffle = !shuffleNotifier.value;
     shuffleNotifier.value = isShuffle;
     _shuffleState = _shuffleState.copyWith(
-        config: _shuffleState.config.copyWith(enabled: isShuffle));
+      config: _shuffleState.config.copyWith(enabled: isShuffle),
+    );
     shuffleStateNotifier.value = _shuffleState;
-    updateShuffleConfig(_shuffleState.config); // Re-uses logic
+    updateShuffleConfig(_shuffleState.config);
   }
 
-  /// Replaces the current queue with a new set of songs.
-  /// If [forceLinear] is true, it replaces everything and starts from the first song.
-  Future<void> replaceQueue(List<Song> songs,
-      {String? playlistId, bool forceLinear = false}) async {
+  Future<void> replaceQueue(
+    List<Song> songs, {
+    String? playlistId,
+    bool forceLinear = false,
+  }) async {
     if (songs.isEmpty) return;
     _currentPlaylistId = playlistId;
 
@@ -992,7 +1122,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _resetFading();
       await _player.setShuffleModeEnabled(false);
 
-      // Automatically disable shuffle if forceLinear is requested
       if (_shuffleState.config.enabled) {
         _shuffleState = _shuffleState.copyWith(
           config: _shuffleState.config.copyWith(enabled: false),
@@ -1004,51 +1133,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
       _isRestrictedToOriginal = true;
-      _effectiveQueue = List.from(_originalQueue);
-      await _rebuildQueue(initialIndex: 0, startPlaying: true);
-      _savePlaybackState();
-      _updateQueueNotifier();
-      return;
-    }
 
-    // Filter out the currently playing song if it's first in the list
-    List<Song> queueSongs = List.from(songs);
-    if (currentSong != null &&
-        isPlaying &&
-        queueSongs.isNotEmpty &&
-        queueSongs.first.filename == currentSong.filename) {
-      queueSongs.removeAt(0);
-    }
-
-    if (queueSongs.isEmpty) return;
-
-    _resetFading();
-    await _player.setShuffleModeEnabled(false);
-
-    // Set up the new queue
-    _originalQueue = queueSongs.map((s) => QueueItem(song: s)).toList();
-    _isRestrictedToOriginal = true;
-
-    if (_shuffleState.config.enabled && !forceLinear) {
-      // If shuffle is enabled, we need to shuffle the remaining songs
-      final shuffledItems = await _weightedShuffle(
-        _originalQueue.map((item) => QueueItem(song: item.song)).toList(),
-        lastItem: currentSong != null ? QueueItem(song: currentSong) : null,
-      );
-
-      // Keep current song at the front if playing
       if (currentSong != null && isPlaying) {
-        final currentItem = QueueItem(song: currentSong);
-        _effectiveQueue = [currentItem, ...shuffledItems];
-        await _rebuildQueue(initialIndex: 0, startPlaying: true);
-      } else {
-        _effectiveQueue = shuffledItems;
-        await _rebuildQueue(initialIndex: 0, startPlaying: true);
-      }
-    } else {
-      // Linear queue
-      if (currentSong != null && isPlaying) {
-        // Add current song to front, then the new queue
         final currentItem = QueueItem(song: currentSong);
         _effectiveQueue = [currentItem, ..._originalQueue];
         await _rebuildQueue(initialIndex: 0, startPlaying: true);
@@ -1077,33 +1163,29 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final priorityItems = otherItems.where((item) => item.isPriority).toList();
     final normalItems = otherItems.where((item) => !item.isPriority).toList();
-    final shuffledNormal =
-        await _weightedShuffle(normalItems, lastItem: currentItem);
+    final shuffledNormal = await _weightedShuffle(
+      normalItems,
+      lastItem: currentItem,
+    );
 
     _effectiveQueue = [currentItem, ...priorityItems, ...shuffledNormal];
-    // Don't rebuild here if called from updateShuffleConfig, let the caller handle or sync.
-    // Actually updateShuffleConfig calls this.
-    // We should probably just sync.
-    // But for UI responsiveness, we rebuild queue locally.
-
-    // Check if we are playing to determine if we interrupt
-    // If playing, we only want to change the "Next" items.
-    // ConcatenatingAudioSource allows modifying the list.
-    // But simply recreating it is safer for "Total Shuffle".
-    await _rebuildQueue(initialIndex: 0, startPlaying: _player.playing);
+    await _rebuildQueue(
+      initialIndex: 0,
+      startPlaying: _player.playing,
+    );
   }
 
-  Future<List<QueueItem>> _weightedShuffle(List<QueueItem> items,
-      {QueueItem? lastItem}) async {
+  Future<List<QueueItem>> _weightedShuffle(
+    List<QueueItem> items, {
+    QueueItem? lastItem,
+  }) async {
     if (items.isEmpty) return [];
 
-    // Fetch local play counts, skip stats, and history for weighting
     final playCounts = await DatabaseService.instance.getPlayCounts();
     final skipStats = await DatabaseService.instance.getSkipStats();
     final playHistory = await DatabaseService.instance
         .getPlayHistory(limit: _shuffleState.config.historyLimit);
 
-    // Group items by merge group - each merge group becomes one "virtual" item
     final Map<String, List<QueueItem>> mergeGroups = {};
     final List<QueueItem> standaloneItems = [];
 
@@ -1116,10 +1198,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    // Create virtual items for shuffle: standalone items + merge groups (as units)
     final virtualItems = <_VirtualShuffleItem>[];
 
-    // Add standalone items
     for (final item in standaloneItems) {
       virtualItems.add(_VirtualShuffleItem(
         type: _VirtualItemType.standalone,
@@ -1128,10 +1208,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       ));
     }
 
-    // Add merge groups as single virtual items
     for (final entry in mergeGroups.entries) {
-      // Use the first item as representative for artist/album checks
-      // The actual song will be chosen later based on favorites/suggest-less
       virtualItems.add(_VirtualShuffleItem(
         type: _VirtualItemType.mergeGroup,
         items: entry.value,
@@ -1140,7 +1217,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       ));
     }
 
-    // Calculate max play count for adaptive consistent mode
     int maxPlayCount = 0;
     if (playCounts.isNotEmpty) {
       maxPlayCount = playCounts.values.fold(0, max);
@@ -1160,7 +1236,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
       if (totalWeight <= 0) {
-        // Fallback: shuffle remaining and select randomly from each group
         remaining.shuffle();
         for (final virtualItem in remaining) {
           final selected = _selectSongFromVirtualItem(virtualItem);
@@ -1197,9 +1272,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return result;
   }
 
-  /// Creates a virtual item from a queue item for comparison purposes
   _VirtualShuffleItem? _createVirtualItemFromQueueItem(
-      QueueItem item, Map<String, List<QueueItem>> mergeGroups) {
+    QueueItem item,
+    Map<String, List<QueueItem>> mergeGroups,
+  ) {
     final groupId = _getMergedGroupId(item.song.filename);
     if (groupId != null && mergeGroups.containsKey(groupId)) {
       return _VirtualShuffleItem(
@@ -1216,7 +1292,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     );
   }
 
-  /// Gets the merge group ID for a filename, or null if not in a group
   String? _getMergedGroupId(String filename) {
     for (final entry in _mergedGroups.entries) {
       if (entry.value.contains(filename)) {
@@ -1226,20 +1301,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return null;
   }
 
-  /// Selects an actual song from a virtual item based on favorites/suggest-less
   QueueItem? _selectSongFromVirtualItem(_VirtualShuffleItem virtualItem) {
     if (virtualItem.items.length == 1) {
       return virtualItem.items.first;
     }
 
-    // For merge groups, select based on weighted random with favorites/suggest-less
     final weights = virtualItem.items.map((item) {
       double weight = 1.0;
       if (_isFavorite(item.song.filename)) {
-        weight *= 2.0; // Favorites get 2x boost
+        weight *= 2.0;
       }
       if (_isSuggestLess(item.song.filename)) {
-        weight *= 0.2; // Suggest-less get 80% penalty
+        weight *= 0.2;
       }
       return weight;
     }).toList();
@@ -1260,7 +1333,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return virtualItem.items.last;
   }
 
-  /// Calculates weight for a virtual item (merge group or standalone song)
   double _calculateVirtualWeight(
     _VirtualShuffleItem item,
     _VirtualShuffleItem? prev,
@@ -1280,7 +1352,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final representative = item.representative;
     final config = _shuffleState.config;
 
-    // Get effective play count for the group (sum of all songs in group)
     int groupPlayCount = 0;
     if (item.type == _VirtualItemType.mergeGroup) {
       for (final queueItem in item.items) {
@@ -1290,7 +1361,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       groupPlayCount = playCounts[representative.song.filename] ?? 0;
     }
 
-    // HIERARCHY 1 (TOP PRIORITY): Global Recency Penalty
     final bool isConsistentMode =
         config.personality == ShufflePersonality.consistent;
     final bool isCustomMode = config.personality == ShufflePersonality.custom;
@@ -1301,7 +1371,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       int historyIndex = -1;
       double playRatioInHistory = 0.0;
 
-      // Check if any song in the group is in history
       for (int i = 0; i < playHistory.length; i++) {
         if (item.type == _VirtualItemType.mergeGroup) {
           for (final queueItem in item.items) {
@@ -1325,10 +1394,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       if (historyIndex != -1 && historyIndex < 200) {
         double basePenaltyPercent;
 
-        // Consistent mode: relaxed penalties (allows familiar songs)
-        // Other modes: aggressive penalties (avoids recent songs)
         if (isConsistentMode) {
-          // Relaxed penalties for Consistent mode
           if (historyIndex < 10) {
             basePenaltyPercent = 60.0;
           } else if (historyIndex < 20) {
@@ -1349,233 +1415,137 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             basePenaltyPercent = 0.0;
           }
         } else {
-          // Aggressive penalties for Explorer/Default/Custom modes
           if (historyIndex < 10) {
-            basePenaltyPercent = 99.9;
+            basePenaltyPercent = 95.0;
           } else if (historyIndex < 20) {
-            basePenaltyPercent = 99.0;
-          } else if (historyIndex < 30) {
-            basePenaltyPercent = 97.0;
-          } else if (historyIndex < 40) {
-            basePenaltyPercent = 94.0;
-          } else if (historyIndex < 50) {
             basePenaltyPercent = 90.0;
-          } else if (historyIndex < 60) {
-            basePenaltyPercent = 85.0;
-          } else if (historyIndex < 80) {
-            basePenaltyPercent = 75.0;
-          } else if (historyIndex < 100) {
+          } else if (historyIndex < 30) {
+            basePenaltyPercent = 80.0;
+          } else if (historyIndex < 40) {
+            basePenaltyPercent = 70.0;
+          } else if (historyIndex < 50) {
             basePenaltyPercent = 60.0;
-          } else if (historyIndex < 150) {
+          } else if (historyIndex < 60) {
+            basePenaltyPercent = 50.0;
+          } else if (historyIndex < 80) {
             basePenaltyPercent = 40.0;
-          } else {
+          } else if (historyIndex < 100) {
+            basePenaltyPercent = 30.0;
+          } else if (historyIndex < 120) {
             basePenaltyPercent = 20.0;
+          } else if (historyIndex < 150) {
+            basePenaltyPercent = 10.0;
+          } else {
+            basePenaltyPercent = 5.0;
           }
         }
 
-        // Adjust penalty based on play ratio
-        double penaltyMultiplier = 1.0;
-        if (playRatioInHistory < 0.25) {
-          penaltyMultiplier = 0.3;
-        } else if (playRatioInHistory < 0.5) {
-          penaltyMultiplier = 0.5;
-        } else if (playRatioInHistory < 0.8) {
-          penaltyMultiplier = 0.8;
+        double penaltyMultiplier = basePenaltyPercent / 100.0;
+        if (playRatioInHistory >= 0.9) {
+          penaltyMultiplier *= 1.2;
         }
 
-        double adjustedPenaltyPercent = basePenaltyPercent * penaltyMultiplier;
-        weight *= (1.0 - (adjustedPenaltyPercent / 100.0));
+        weight *= (1.0 - penaltyMultiplier.clamp(0.0, 0.95));
       }
     }
 
-    // HIERARCHY 2: Global Skip Penalty
-    if (item.type == _VirtualItemType.standalone) {
-      final stats = skipStats[representative.song.filename];
-      if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.25) {
-        weight *= stats.avgRatio;
+    if (prev != null) {
+      final prevArtist = prev.representative.song.artist.toLowerCase().trim();
+      final currentArtist = representative.song.artist.toLowerCase().trim();
+
+      if (prevArtist.isNotEmpty &&
+          currentArtist.isNotEmpty &&
+          prevArtist == currentArtist) {
+        weight *= 0.1;
       }
-    } else {
-      // For merge groups, check all songs
-      for (final queueItem in item.items) {
-        final stats = skipStats[queueItem.song.filename];
-        if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.25) {
-          weight *= 0.5; // 50% penalty if any song in group is often skipped
-          break;
-        }
+
+      final prevAlbum = prev.representative.song.album.toLowerCase().trim();
+      final currentAlbum = representative.song.album.toLowerCase().trim();
+
+      if (prevAlbum.isNotEmpty &&
+          currentAlbum.isNotEmpty &&
+          prevAlbum == currentAlbum) {
+        weight *= 0.3;
       }
     }
 
-    // HIERARCHY 3: Mode-Specific Weights
-    if (config.personality == ShufflePersonality.explorer) {
-      if (maxPlayCount > 0) {
-        final playRatio = groupPlayCount / maxPlayCount;
-        if (playRatio <= 0.4) {
-          double explorerReward = 1.0 + (1.0 - (playRatio / 0.4));
-          weight *= explorerReward;
+    if (isCustomMode) {
+      // Apply favorites weight (-99 to +99, convert to multiplier)
+      final favoriteBoost = config.favoritesWeight / 100.0;
+      final suggestLessPenalty = -config.suggestLessWeight / 100.0;
+
+      if (item.type == _VirtualItemType.mergeGroup) {
+        bool hasFavorite = false;
+        bool hasSuggestLess = false;
+
+        for (final queueItem in item.items) {
+          if (_isFavorite(queueItem.song.filename)) hasFavorite = true;
+          if (_isSuggestLess(queueItem.song.filename)) hasSuggestLess = true;
         }
-      } else if (groupPlayCount == 0) {
-        weight *= 2.0;
-      }
-    } else if (config.personality == ShufflePersonality.consistent) {
-      int threshold = 10;
-      if (maxPlayCount < 10) {
-        threshold = max(1, (maxPlayCount * 0.7).floor());
-      } else if (maxPlayCount < 20) {
-        threshold = 5;
-      }
 
-      if (groupPlayCount >= threshold && groupPlayCount > 0) {
-        weight *= 1.3;
-      }
-    } else if (config.personality == ShufflePersonality.custom) {
-      // Custom mode: use user-defined weights (-99 to +99)
-      // Convert -99..+99 to multiplier (0.01 to 1.99, with 0 = 1.0 neutral)
-      double weightToMultiplier(int weight) {
-        return 1.0 + (weight / 100.0); // -99 -> 0.01, 0 -> 1.0, +99 -> 1.99
-      }
-
-      // Apply least played weight for songs with low play count
-      if (maxPlayCount > 0) {
-        final playRatio = groupPlayCount / maxPlayCount;
-        if (playRatio <= 0.4 && config.leastPlayedWeight != 0) {
-          weight *= weightToMultiplier(config.leastPlayedWeight);
+        if (hasFavorite && favoriteBoost != 0) {
+          weight *= (1.0 + favoriteBoost);
         }
-      } else if (groupPlayCount == 0 && config.leastPlayedWeight != 0) {
-        weight *= weightToMultiplier(config.leastPlayedWeight);
-      }
-
-      // Apply most played weight for songs in top 40% of play counts
-      if (maxPlayCount > 0) {
-        final playRatio = groupPlayCount / maxPlayCount;
-        if (playRatio >= 0.6 && config.mostPlayedWeight != 0) {
-          weight *= weightToMultiplier(config.mostPlayedWeight);
+        if (hasSuggestLess && suggestLessPenalty != 0) {
+          weight *= (1.0 + suggestLessPenalty);
         }
-      }
-    }
-
-    // HIERARCHY 4: Artist/Album Avoidance (all modes except Consistent)
-    final bool isExplorer = config.personality == ShufflePersonality.explorer;
-    final bool isDefault = config.personality == ShufflePersonality.defaultMode;
-    final bool shouldAvoidArtist = isExplorer ||
-        isDefault ||
-        (isCustomMode && config.avoidRepeatingArtists);
-    final bool shouldAvoidAlbum = isExplorer ||
-        isDefault ||
-        (isCustomMode && config.avoidRepeatingAlbums);
-
-    if ((shouldAvoidArtist || shouldAvoidAlbum) && prev != null) {
-      final prevSong = prev.representative.song;
-      final currentSong = representative.song;
-
-      // Check if in same merge group
-      if (item.type == _VirtualItemType.mergeGroup &&
-          prev.type == _VirtualItemType.mergeGroup &&
-          item.groupId == prev.groupId) {
-        weight *= 0.01; // 99% penalty for same merge group
       } else {
-        // Artist avoidance
-        if (shouldAvoidArtist) {
-          if (currentSong.artist != 'Unknown Artist' &&
-              prevSong.artist != 'Unknown Artist' &&
-              currentSong.artist == prevSong.artist) {
-            weight *= 0.5; // 50% penalty
+        if (_isFavorite(representative.song.filename) && favoriteBoost != 0) {
+          weight *= (1.0 + favoriteBoost);
+        }
+        if (_isSuggestLess(representative.song.filename) &&
+            suggestLessPenalty != 0) {
+          weight *= (1.0 + suggestLessPenalty);
+        }
+      }
+
+      // Apply skip score adjustment in custom mode
+      if (item.type == _VirtualItemType.mergeGroup) {
+        double totalSkipRatio = 0;
+        int count = 0;
+        for (final queueItem in item.items) {
+          final skipStat = skipStats[queueItem.song.filename];
+          if (skipStat != null && skipStat.count > 0) {
+            totalSkipRatio += skipStat.avgRatio;
+            count++;
           }
         }
-
-        // Album avoidance
-        if (shouldAvoidAlbum) {
-          if (currentSong.album != 'Unknown Album' &&
-              prevSong.album != 'Unknown Album' &&
-              currentSong.album == prevSong.album) {
-            weight *= 0.7; // 30% penalty
+        if (count > 0) {
+          final avgSkipRatio = totalSkipRatio / count;
+          if (avgSkipRatio < 0.3) {
+            weight *= 0.5;
+          } else if (avgSkipRatio > 0.7) {
+            weight *= 1.2;
+          }
+        }
+      } else {
+        final skipStat = skipStats[representative.song.filename];
+        if (skipStat != null && skipStat.count > 0) {
+          if (skipStat.avgRatio < 0.3) {
+            weight *= 0.5;
+          } else if (skipStat.avgRatio > 0.7) {
+            weight *= 1.2;
           }
         }
       }
     }
 
-    // LOWER PRIORITY: Favorites and Suggest-Less (consider group as a whole)
-    bool hasFavorite = false;
-    bool hasSuggestLess = false;
-
-    if (item.type == _VirtualItemType.mergeGroup) {
-      for (final queueItem in item.items) {
-        if (_isFavorite(queueItem.song.filename)) hasFavorite = true;
-        if (_isSuggestLess(queueItem.song.filename)) hasSuggestLess = true;
-      }
-    } else {
-      if (_isFavorite(representative.song.filename)) hasFavorite = true;
-      if (_isSuggestLess(representative.song.filename)) hasSuggestLess = true;
-    }
-
-    if (hasFavorite) {
-      if (config.personality == ShufflePersonality.consistent) {
-        weight *= 1.4;
-      } else if (config.personality == ShufflePersonality.explorer) {
-        weight *= 1.12;
-      } else if (config.personality == ShufflePersonality.custom) {
-        // Convert -99..+99 to multiplier
-        double weightToMultiplier(int weight) {
-          return 1.0 + (weight / 100.0);
-        }
-
-        if (config.favoritesWeight != 0) {
-          weight *= weightToMultiplier(config.favoritesWeight);
-        }
-      } else {
-        weight *= config.favoriteMultiplier;
+    if (!isConsistentMode) {
+      if (maxPlayCount > 0 && groupPlayCount > 0) {
+        final playCountRatio = groupPlayCount / maxPlayCount;
+        final playCountPenalty = playCountRatio * 0.3;
+        weight *= (1.0 - playCountPenalty);
       }
     }
 
-    if (hasSuggestLess) {
-      if (config.personality == ShufflePersonality.custom &&
-          config.suggestLessWeight != 0) {
-        // Convert -99..+99 to multiplier (negative = penalty, positive = boost)
-        double weightToMultiplier(int weight) {
-          return 1.0 + (weight / 100.0);
-        }
-
-        weight *= weightToMultiplier(config.suggestLessWeight);
-      } else {
-        weight *= 0.2;
-      }
-    }
-
-    return max(0.0001, weight);
+    return weight.clamp(0.01, double.infinity);
   }
 
-  void _applyLinear(int currentIndex) {
-    // ... (Existing Logic) ...
-    if (_effectiveQueue.isEmpty) return;
-    if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) {
-      currentIndex = 0;
-    }
-    final currentItem = _effectiveQueue[currentIndex];
-    final priorityItems = _effectiveQueue
-        .where((item) => item.isPriority && item != currentItem)
-        .toList();
-    final originalItems = _originalQueue
-        .where((item) => !priorityItems.any((p) => p.queueId == item.queueId))
-        .toList();
-    int originalIdx = originalItems
-        .indexWhere((item) => item.song.filename == currentItem.song.filename);
-    if (originalIdx != -1) {
-      _effectiveQueue = [
-        ...originalItems.sublist(0, originalIdx),
-        currentItem,
-        ...priorityItems,
-        ...originalItems.sublist(originalIdx + 1)
-      ];
-    } else {
-      _effectiveQueue = [currentItem, ...priorityItems, ...originalItems];
-    }
-    int newIndex = _effectiveQueue.indexOf(currentItem);
-    _rebuildQueue(initialIndex: newIndex, startPlaying: _player.playing);
-  }
-
-  Future<void> _rebuildQueue(
-      {int? initialIndex,
-      bool startPlaying = true,
-      Duration? initialPosition}) async {
+  Future<void> _rebuildQueue({
+    int? initialIndex,
+    bool startPlaying = true,
+    Duration? initialPosition,
+  }) async {
     if (_effectiveQueue.isEmpty) return;
     _resetFading();
 
@@ -1584,7 +1554,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         ? _effectiveQueue[targetIndex]
         : null;
 
-    // Capture current player state reliably before rebuilding
     final sequenceState = _player.sequenceState;
     final currentMediaItem = sequenceState.currentSource?.tag as MediaItem?;
     final currentPosition = _player.position;
@@ -1593,17 +1562,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (initialPosition != null) {
       position = initialPosition;
     } else if (currentMediaItem != null && currentItem != null) {
-      // If the song currently in the player is the same as the one we are pointing to in the new queue,
-      // maintain the position.
       if (currentMediaItem.id == currentItem.song.filename) {
         position = currentPosition;
       }
     }
 
     final sources = await Future.wait(
-        _effectiveQueue.map((item) => _createAudioSource(item)));
-    await _player.setAudioSources(sources,
-        initialIndex: targetIndex, initialPosition: position);
+      _effectiveQueue.map((item) => _createAudioSource(item)),
+    );
+    await _player.setAudioSources(
+      sources,
+      initialIndex: targetIndex,
+      initialPosition: position,
+    );
 
     if (startPlaying) await _player.play();
     _updateQueueNotifier();
@@ -1645,12 +1616,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _positionSubscription?.cancel();
     _sequenceSubscription?.cancel();
     _fadeTimer?.cancel();
+    _gapTimer?.cancel();
+    _clearGapState();
     _player.dispose();
     shuffleNotifier.dispose();
   }
 }
 
-// Helper enum and class for merge group shuffle logic
 enum _VirtualItemType { standalone, mergeGroup }
 
 class _VirtualShuffleItem {
