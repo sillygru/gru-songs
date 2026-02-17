@@ -61,11 +61,137 @@ class ScannerService {
     '.aac',
     '.m4b',
     '.mp4',
-    '.opus'
+    '.opus',
+    '.m4v',
+    '.mov',
+    '.mkv',
+    '.webm',
+    '.avi',
+    '.3gp',
   ];
 
+  static const Set<String> _videoExtensions = {
+    '.mp4',
+    '.m4v',
+    '.mov',
+    '.mkv',
+    '.webm',
+    '.avi',
+    '.3gp',
+  };
+
+  static bool _isVideoFile(String path) {
+    final ext = p.extension(path).toLowerCase();
+    return _videoExtensions.contains(ext);
+  }
+
+  /// Extracts video thumbnails (via FFmpeg frame grab) for any video-format
+  /// songs that still have no cover art. This must be called on the main thread
+  /// after scanning because FFmpegService uses platform channels.
+  ///
+  /// Returns a new list of [Song] objects with updated [coverUrl] values.
+  /// Songs that already have a cover (or are not video files) are returned
+  /// unchanged. [onProgress] receives values in [0, 1].
+  Future<List<Song>> postProcessVideoThumbnails(
+    List<Song> songs, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+    if (!await coversDir.exists()) {
+      await coversDir.create(recursive: true);
+    }
+
+    // Only process video songs that are missing a cover.
+    final toProcess = <int>[];
+    for (int i = 0; i < songs.length; i++) {
+      final song = songs[i];
+      if (!_isVideoFile(song.url)) continue;
+      if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
+        final existing = File(song.coverUrl!);
+        if (await existing.exists()) continue;
+      }
+      toProcess.add(i);
+    }
+
+    if (toProcess.isEmpty) return songs;
+
+    final updated = List<Song>.from(songs);
+    final ffmpeg = FFmpegService();
+
+    for (int j = 0; j < toProcess.length; j++) {
+      final idx = toProcess[j];
+      final song = updated[idx];
+      try {
+        final file = File(song.url);
+        if (!await file.exists()) continue;
+
+        final mtimeMs = song.mtime != null
+            ? (song.mtime! * 1000).round()
+            : (await file.stat()).modified.millisecondsSinceEpoch;
+        final hash = md5.convert(utf8.encode(file.path)).toString();
+
+        // Check if a cached cover already exists (may have been created by a
+        // parallel path we aren't aware of).
+        String? existing;
+        for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp',
+            '_ffmpeg.jpg']) {
+          final candidate =
+              File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+          if (await candidate.exists()) {
+            existing = candidate.path;
+            break;
+          }
+        }
+
+        if (existing != null) {
+          updated[idx] = _songWithCover(song, existing);
+        } else {
+          final outputPath =
+              p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg');
+          // Use extractVideoThumbnail — NOT extractCover.
+          // extractCover does a stream-copy of 0:v:0 which works for audio
+          // files whose video stream is an attached picture, but for real
+          // video files that stream is H.264/VP9/etc. and cannot be copied
+          // into a JPEG.  extractVideoThumbnail seeks to 5 s and grabs one
+          // decoded frame instead.
+          final result = await ffmpeg.extractVideoThumbnail(
+            inputPath: file.path,
+            outputPath: outputPath,
+          );
+          if (result != null) {
+            updated[idx] = _songWithCover(song, result);
+            debugPrint(
+                'postProcessVideoThumbnails: extracted thumbnail for ${song.title}');
+          }
+        }
+      } catch (e) {
+        debugPrint(
+            'postProcessVideoThumbnails: failed for ${song.title}: $e');
+      }
+
+      onProgress?.call((j + 1) / toProcess.length);
+    }
+
+    return updated;
+  }
+
+  static Song _songWithCover(Song song, String coverPath) {
+    return Song(
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      filename: song.filename,
+      url: song.url,
+      coverUrl: coverPath,
+      hasLyrics: song.hasLyrics,
+      playCount: song.playCount,
+      duration: song.duration,
+      mtime: song.mtime,
+    );
+  }
+
   /// Scans a specific directory for audio files (backward compatibility).
-  /// Note: This method respects excluded folders from settings.
   Future<List<Song>> scanDirectory(
     String path, {
     List<Song>? existingSongs,
@@ -141,8 +267,30 @@ class ScannerService {
         } catch (e) {
           debugPrint('Error rebuilding search index: $e');
         }
-        onComplete?.call(allScannedSongs);
-        completer.complete(allScannedSongs);
+        // Extract thumbnails for video files on the main thread using FFmpeg.
+        // This must happen here (not in the isolate) because FFmpegService
+        // uses platform channels.
+        List<Song> finalSongs = allScannedSongs;
+        try {
+          finalSongs = await postProcessVideoThumbnails(allScannedSongs);
+          // Persist any newly-extracted cover URLs back to the DB.
+          final updated = <Song>[];
+          for (int i = 0; i < finalSongs.length; i++) {
+            if (finalSongs[i].coverUrl != allScannedSongs[i].coverUrl) {
+              updated.add(finalSongs[i]);
+            }
+          }
+          if (updated.isNotEmpty) {
+            await DatabaseService.instance.insertSongsBatch(updated);
+            debugPrint(
+                'Video thumbnails extracted for ${updated.length} songs');
+          }
+        } catch (e) {
+          debugPrint('Error post-processing video thumbnails: $e');
+          finalSongs = allScannedSongs;
+        }
+        onComplete?.call(finalSongs);
+        completer.complete(finalSongs);
         receivePort.close();
       } else if (message is String && message.startsWith('error:')) {
         receivePort.close();
@@ -259,8 +407,27 @@ class ScannerService {
         } catch (e) {
           debugPrint('Error rebuilding search index: $e');
         }
-        onComplete?.call(allScannedSongs);
-        completer.complete(allScannedSongs);
+        // Extract thumbnails for video files on the main thread using FFmpeg.
+        List<Song> finalSongs = allScannedSongs;
+        try {
+          finalSongs = await postProcessVideoThumbnails(allScannedSongs);
+          final updated = <Song>[];
+          for (int i = 0; i < finalSongs.length; i++) {
+            if (finalSongs[i].coverUrl != allScannedSongs[i].coverUrl) {
+              updated.add(finalSongs[i]);
+            }
+          }
+          if (updated.isNotEmpty) {
+            await DatabaseService.instance.insertSongsBatch(updated);
+            debugPrint(
+                'Video thumbnails extracted for ${updated.length} songs');
+          }
+        } catch (e) {
+          debugPrint('Error post-processing video thumbnails: $e');
+          finalSongs = allScannedSongs;
+        }
+        onComplete?.call(finalSongs);
+        completer.complete(finalSongs);
         receivePort.close();
       } else if (message is String && message.startsWith('error:')) {
         receivePort.close();
@@ -311,15 +478,25 @@ class ScannerService {
     // Actually, we want to try this whenever manual extraction fails, provided we can trust FFmpegService.
     if (useFFmpegFallback) {
       try {
-        // Use a unique suffix so we don't conflict with other attempts
         debugPrint(
             'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
         final coverFile =
             File(p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg'));
-        final extracted = await FFmpegService().extractCover(
-          inputPath: file.path,
-          outputPath: coverFile.path,
-        );
+
+        String? extracted;
+        if (_isVideoFile(file.path)) {
+          // For real video files we need a frame-grab, not a stream-copy.
+          extracted = await FFmpegService().extractVideoThumbnail(
+            inputPath: file.path,
+            outputPath: coverFile.path,
+          );
+        } else {
+          extracted = await FFmpegService().extractCover(
+            inputPath: file.path,
+            outputPath: coverFile.path,
+          );
+        }
+
         if (extracted != null) {
           debugPrint('Scanner: FFmpeg fallback success!');
           return extracted;
@@ -414,19 +591,22 @@ class ScannerService {
           }
 
           if (resolvedCoverUrl == null || params.force) {
-            // Try metadata extraction first
-            try {
-              final metadata = amr.readMetadata(file);
-              if (metadata.pictures.isNotEmpty) {
-                final picture = metadata.pictures.first;
-                final coverExt = _getExtFromMime(picture.mimetype);
-                final coverFile =
-                    File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
-                await coverFile.writeAsBytes(picture.bytes);
-                resolvedCoverUrl = coverFile.path;
+            // Skip audio_metadata_reader for video files — it can crash or
+            // return nothing useful for most video containers.
+            if (!_isVideoFile(file.path)) {
+              try {
+                final metadata = amr.readMetadata(file);
+                if (metadata.pictures.isNotEmpty) {
+                  final picture = metadata.pictures.first;
+                  final coverExt = _getExtFromMime(picture.mimetype);
+                  final coverFile =
+                      File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+                  await coverFile.writeAsBytes(picture.bytes);
+                  resolvedCoverUrl = coverFile.path;
+                }
+              } catch (e) {
+                debugPrint('No embedded cover found for ${song.title}: $e');
               }
-            } catch (e) {
-              debugPrint('No embedded cover found for ${song.title}: $e');
             }
 
             // Try manual extraction if no embedded cover found
@@ -609,34 +789,45 @@ class ScannerService {
       }
     }
 
-    try {
-      final metadata = amr.readMetadata(file);
-      if (metadata.title?.isNotEmpty == true) title = metadata.title!;
-      if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
-      if (metadata.album?.isNotEmpty == true) album = metadata.album!;
-      duration = metadata.duration;
+    final isVideo = _isVideoFile(file.path);
 
-      // Check for embedded lyrics using audio_metadata_reader
-      // Note: FFmpeg is used for actual lyrics reading in the main thread
-      if (metadata.lyrics?.isNotEmpty == true) {
-        hasLyrics = true;
-      }
+    if (!isVideo) {
+      // Only use audio_metadata_reader for non-video files — it can crash or
+      // hang on large video containers (MKV, WebM, AVI, etc.).
+      try {
+        final metadata = amr.readMetadata(file);
+        if (metadata.title?.isNotEmpty == true) title = metadata.title!;
+        if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
+        if (metadata.album?.isNotEmpty == true) album = metadata.album!;
+        duration = metadata.duration;
 
-      if (coverUrl == null && metadata.pictures.isNotEmpty) {
-        final picture = metadata.pictures.first;
-        final coverExt = _getExtFromMime(picture.mimetype);
-        final coverFile =
-            File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
-
-        if (!await coverFile.exists()) {
-          await coverFile.writeAsBytes(picture.bytes);
+        // Check for embedded lyrics using audio_metadata_reader
+        // Note: FFmpeg is used for actual lyrics reading in the main thread
+        if (metadata.lyrics?.isNotEmpty == true) {
+          hasLyrics = true;
         }
-        coverUrl = coverFile.path;
+
+        if (coverUrl == null && metadata.pictures.isNotEmpty) {
+          final picture = metadata.pictures.first;
+          final coverExt = _getExtFromMime(picture.mimetype);
+          final coverFile =
+              File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+
+          if (!await coverFile.exists()) {
+            await coverFile.writeAsBytes(picture.bytes);
+          }
+          coverUrl = coverFile.path;
+        }
+      } catch (e) {
+        // Silently fail primary and move to manual
       }
-    } catch (e) {
-      // Silently fail primary and move to manual
     }
 
+    // For audio: try manual byte-level extraction as fallback.
+    // For video: some MP4s embed a JPEG poster frame in the file header;
+    //            this may find it. Full frame extraction requires FFmpeg
+    //            and must be done post-scan on the main thread via
+    //            [postProcessVideoThumbnails].
     coverUrl ??=
         await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
 

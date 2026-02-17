@@ -133,21 +133,13 @@ class UserDataState {
 /// UserDataNotifier implements local-only data management:
 class UserDataNotifier extends Notifier<UserDataState> {
   bool _initialized = false;
+  List<Song>? _latestSongs;
 
   @override
   UserDataState build() {
     if (!_initialized) {
       _initialized = true;
       Future.microtask(() => _initLocal());
-      Future.microtask(() {
-        ref.listen(songsProvider, (previous, next) {
-          if (next is AsyncData &&
-              next.value != null &&
-              next.value!.isNotEmpty) {
-            updateRecommendationPlaylists();
-          }
-        });
-      });
       return UserDataState(isLoading: true);
     }
     return state;
@@ -178,25 +170,29 @@ class UserDataNotifier extends Notifier<UserDataState> {
         priorities[entry.key] = entry.value.priorityFilename;
       }
 
-      state = state.copyWith(
-        favorites: localFavs,
-        suggestLess: localSL,
-        hidden: localHidden,
+    state = state.copyWith(
+      favorites: localFavs,
+      suggestLess: localSL,
+      hidden: localHidden,
         playlists: localPlaylists,
         mergedGroups: groups,
         mergedGroupPriorities: priorities,
         recommendationPreferences: localRecommendationPrefs,
-        removedRecommendations: localRemovedRecommendations,
-        isLoading: false,
-      );
-      _updateManager();
+      removedRecommendations: localRemovedRecommendations,
+      isLoading: false,
+    );
+    _updateManager();
 
-      // Try to update recommendations if they are old or missing
-      await updateRecommendationPlaylists();
-    } catch (e) {
-      debugPrint('Error loading local user data: $e');
+    if (_latestSongs != null) {
+      await updateRecommendationPlaylists(force: true);
     }
+
+    // Try to update recommendations if they are old or missing
+    await updateRecommendationPlaylists(force: true);
+  } catch (e) {
+    debugPrint('Error loading local user data: $e');
   }
+}
 
   void _updateManager() {
     ref.read(audioPlayerManagerProvider).setUserData(
@@ -847,8 +843,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
     if (songsAsync is! AsyncData || songsAsync.value == null) return;
     final allSongs = songsAsync.value!;
 
-    // Await stats to ensure good recommendations
-    final playCounts = await ref.read(playCountsProvider.future);
+    // Read directly to avoid a provider self-dependency loop when this notifier
+    // updates recommendations during initialization in debug mode.
+    final playCounts = await DatabaseService.instance.getPlayCounts();
     final sessions = await ref.read(sessionHistoryProvider.future);
 
     final now = DateTime.now().millisecondsSinceEpoch / 1000.0;

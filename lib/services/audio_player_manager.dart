@@ -25,6 +25,8 @@ const String _keyGapSongId = 'gap_current_song_id';
 const String _keyGapResumeTimestamp = 'gap_resume_timestamp';
 const String _keyGapIsActive = 'gap_is_active';
 
+enum PlaybackMediaMode { audio, video }
+
 class AudioPlayerManager extends WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
   final StatsService _statsService;
@@ -95,6 +97,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   );
   final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
   final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
+  final ValueNotifier<PlaybackMediaMode> preferredMediaModeNotifier =
+      ValueNotifier(PlaybackMediaMode.audio);
+  final ValueNotifier<PlaybackMediaMode> effectiveMediaModeNotifier =
+      ValueNotifier(PlaybackMediaMode.audio);
 
   AudioPlayerManager(this._statsService, this._storageService, [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
@@ -107,6 +113,27 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   AudioPlayer get player => _player;
   String? get currentPlaylistId => _currentPlaylistId;
+  PlaybackMediaMode get preferredMediaMode => preferredMediaModeNotifier.value;
+  PlaybackMediaMode get effectiveMediaMode => effectiveMediaModeNotifier.value;
+
+  Future<void> setPreferredMediaMode(PlaybackMediaMode mode) async {
+    preferredMediaModeNotifier.value = mode;
+    _updateEffectivePlaybackMode();
+    await _savePlaybackState();
+  }
+
+  PlaybackMediaMode _resolveEffectiveMode(Song? song) {
+    if (preferredMediaModeNotifier.value == PlaybackMediaMode.video &&
+        song?.hasVideo == true) {
+      return PlaybackMediaMode.video;
+    }
+    return PlaybackMediaMode.audio;
+  }
+
+  void _updateEffectivePlaybackMode([Song? song]) {
+    final currentSong = song ?? currentSongNotifier.value;
+    effectiveMediaModeNotifier.value = _resolveEffectiveMode(currentSong);
+  }
 
   Future<bool> stopIfCurrentSong(String fileUrl) async {
     final current = currentSongNotifier.value;
@@ -329,6 +356,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _playStartTime = _player.playing ? DateTime.now() : null;
           final song = _songMap[newFilename];
           currentSongNotifier.value = song;
+          _updateEffectivePlaybackMode(song);
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
 
@@ -823,6 +851,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       'last_position_ms': _player.position.inMilliseconds,
       'is_restricted_to_original': _isRestrictedToOriginal,
       'current_playlist_id': _currentPlaylistId,
+      'preferred_media_mode': preferredMediaModeNotifier.value.name,
     };
 
     await _storageService.savePlaybackState(state);
@@ -905,6 +934,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     if (savedState != null) {
       try {
+        final savedPreferredMode =
+            savedState['preferred_media_mode'] as String?;
+        preferredMediaModeNotifier.value = savedPreferredMode == 'video'
+            ? PlaybackMediaMode.video
+            : PlaybackMediaMode.audio;
+
         final List<dynamic> effJson = savedState['last_effective_queue'] ?? [];
         final List<dynamic> origJson = savedState['last_original_queue'] ?? [];
 
@@ -967,6 +1002,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             startPlaying: false,
             initialPosition: resumePosition,
           );
+          _updateEffectivePlaybackMode();
           return;
         }
       } catch (e) {
@@ -982,6 +1018,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       initialIndex = Random().nextInt(songs.length);
     }
     await _rebuildQueue(initialIndex: initialIndex, startPlaying: false);
+    _updateEffectivePlaybackMode();
   }
 
   void refreshSongs(List<Song> newSongs) {
@@ -1006,6 +1043,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     _updateQueueNotifier();
     _savePlaybackState();
+    _updateEffectivePlaybackMode();
 
     if (currentIdx != null && currentItemBefore != null) {
       final currentItemAfter = _effectiveQueue[currentIdx];
@@ -1097,6 +1135,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         artUri: artUri,
         extras: {
           'hasLyrics': song.hasLyrics,
+          'hasVideo': song.hasVideo,
           'remoteUrl': song.url,
           'queueId': item.queueId,
           'isPriority': item.isPriority,
@@ -1613,6 +1652,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       initialIndex: targetIndex,
       initialPosition: position,
     );
+    _updateEffectivePlaybackMode(currentItem?.song);
 
     if (startPlaying) await _player.play();
     _updateQueueNotifier();
@@ -1700,6 +1740,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _clearGapState();
     _player.dispose();
     shuffleNotifier.dispose();
+    preferredMediaModeNotifier.dispose();
+    effectiveMediaModeNotifier.dispose();
   }
 }
 

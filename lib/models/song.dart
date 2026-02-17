@@ -10,6 +10,16 @@ enum SongSortOrder {
 }
 
 class Song extends Equatable {
+  static const Set<String> _videoExtensions = {
+    '.mp4',
+    '.m4v',
+    '.mov',
+    '.mkv',
+    '.webm',
+    '.avi',
+    '.3gp',
+  };
+
   final String title;
   final String artist;
   final String album;
@@ -79,6 +89,13 @@ class Song extends Equatable {
         duration,
         mtime
       ];
+
+  bool get hasVideo {
+    final dotIndex = filename.lastIndexOf('.');
+    if (dotIndex < 0 || dotIndex >= filename.length - 1) return false;
+    final ext = filename.substring(dotIndex).toLowerCase();
+    return _videoExtensions.contains(ext);
+  }
 }
 
 class LyricLine extends Equatable {

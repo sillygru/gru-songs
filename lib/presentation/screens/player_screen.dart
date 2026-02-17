@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:video_player/video_player.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
@@ -15,6 +16,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../services/audio_player_manager.dart';
 import '../widgets/heart_context_menu.dart';
 import '../widgets/next_up_sheet.dart';
 import '../widgets/waveform_progress_bar.dart';
@@ -39,6 +41,16 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen>
     with SingleTickerProviderStateMixin {
+  static const Set<String> _videoExtensions = {
+    '.mp4',
+    '.m4v',
+    '.mov',
+    '.mkv',
+    '.webm',
+    '.avi',
+    '.3gp',
+  };
+
   bool _showLyrics = false;
   List<LyricLine>? _lyrics;
   bool _loadingLyrics = false;
@@ -56,8 +68,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   StreamSubscription? _sequenceSubscription;
   StreamSubscription? _playerStateSubscription;
   StreamSubscription? _positionSubscription;
+  VideoPlayerController? _videoController;
+  String? _videoSongId;
+  bool _isVideoReady = false;
 
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
+  AudioPlayerManager get _audioManager => ref.read(audioPlayerManagerProvider);
 
   @override
   void initState() {
@@ -86,11 +102,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             _hasLyricsForCurrentSong = metadataHasLyrics;
           });
         }
-        _refreshLyricsAvailability(songId, metadataHasLyrics: metadataHasLyrics);
+        _refreshLyricsAvailability(songId,
+            metadataHasLyrics: metadataHasLyrics);
       }
+      _syncVideoForCurrentTrack(mediaItem);
     });
 
-    // Sync animation controller with player state
     _playerStateSubscription = player.playerStateStream.listen((state) {
       if (!mounted) return;
       if (state.playing) {
@@ -98,10 +115,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       } else {
         _playPauseController.reverse();
       }
+      _syncVideoPlaybackState();
     });
 
     _positionSubscription = player.positionStream.listen((position) {
       if (!mounted) return;
+      _syncVideoPosition(position);
       if (_lyrics != null && _lyrics!.any((l) => l.time != Duration.zero)) {
         int newIndex = -1;
         for (int i = 0; i < _lyrics!.length; i++) {
@@ -121,6 +140,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         }
       }
     });
+    _audioManager.effectiveMediaModeNotifier
+        .addListener(_handleMediaModeChanged);
   }
 
   void _updateCurrentLyricIndex(Duration position) {
@@ -148,10 +169,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     final currentScroll = _lyricsScrollController.offset;
-    final targetScroll = _lyricOffsets![_currentLyricIndexNotifier.value] -
-        120; // 120 is padding
+    final targetScroll = _lyricOffsets![_currentLyricIndexNotifier.value] - 120;
 
-    // If current scroll is within 150px of target, re-enable sync
     if ((currentScroll - targetScroll).abs() < 150) {
       if (mounted && !_autoScrollEnabled) {
         setState(() => _autoScrollEnabled = true);
@@ -217,6 +236,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _sequenceSubscription?.cancel();
     _playerStateSubscription?.cancel();
     _positionSubscription?.cancel();
+    _audioManager.effectiveMediaModeNotifier
+        .removeListener(_handleMediaModeChanged);
+    unawaited(_disposeVideoController(notify: false));
     _currentLyricIndexNotifier.dispose();
     _playPauseController.dispose();
     _lyricsScrollController.dispose();
@@ -226,6 +248,48 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   List<double>? _lyricOffsets;
+
+  void _handleMediaModeChanged() {
+    final tag = player.sequenceState?.currentSource?.tag;
+    final mediaItem = tag is MediaItem ? tag : null;
+    unawaited(_syncVideoForCurrentTrack(mediaItem));
+  }
+
+  bool _hasVideoExtension(String path) {
+    final lowerPath = path.toLowerCase();
+    return _videoExtensions.any(lowerPath.endsWith);
+  }
+
+  String? _resolveCoverUrl(MediaItem? mediaItem) {
+    if (mediaItem == null) return null;
+
+    final song = _findSongById(mediaItem.id);
+    if (song?.coverUrl != null && song!.coverUrl!.isNotEmpty) {
+      return song.coverUrl;
+    }
+
+    final artUri = mediaItem.artUri;
+    if (artUri == null) return null;
+    return artUri.toString();
+  }
+
+  ({String songId, bool hasVideo, String? mediaPath}) _resolveTrackMedia(
+      MediaItem? mediaItem) {
+    final songId = mediaItem?.id ?? '';
+    final song = songId.isNotEmpty ? _findSongById(songId) : null;
+    final extras = mediaItem?.extras;
+
+    final String? mediaPath = song?.url ??
+        (extras?['audioPath'] as String?) ??
+        (extras?['remoteUrl'] as String?);
+
+    final bool hasVideo = song?.hasVideo == true ||
+        (song == null &&
+            ((extras?['hasVideo'] == true) ||
+                (mediaPath != null && _hasVideoExtension(mediaPath))));
+
+    return (songId: songId, hasVideo: hasVideo, mediaPath: mediaPath);
+  }
 
   Song? _findSongById(String songId) {
     final songs = ref.read(songsProvider).asData?.value ?? [];
@@ -263,6 +327,212 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     setState(() => _hasLyricsForCurrentSong = hasLyrics);
   }
 
+  Future<void> _syncVideoForCurrentTrack(MediaItem? mediaItem) async {
+    final track = _resolveTrackMedia(mediaItem);
+    final isVideoMode =
+        _audioManager.effectiveMediaMode == PlaybackMediaMode.video;
+
+    if (!isVideoMode ||
+        track.songId.isEmpty ||
+        !track.hasVideo ||
+        track.mediaPath == null ||
+        track.mediaPath!.isEmpty) {
+      await _disposeVideoController();
+      return;
+    }
+
+    if (_videoSongId == track.songId &&
+        _videoController != null &&
+        _isVideoReady) {
+      _syncVideoPlaybackState();
+      _syncVideoPosition(player.position);
+      return;
+    }
+
+    await _disposeVideoController();
+
+    // Build the controller for either a local file or a remote URL.
+    final VideoPlayerController controller;
+    final bool isNetworkPath = track.mediaPath!.startsWith('http://') ||
+        track.mediaPath!.startsWith('https://');
+
+    if (isNetworkPath) {
+      controller = VideoPlayerController.networkUrl(
+        Uri.parse(track.mediaPath!),
+      );
+    } else {
+      controller = VideoPlayerController.file(File(track.mediaPath!));
+    }
+
+    try {
+      // Listen before initializing so we catch any size/state updates that
+      // fire during or after initialization.
+      controller.addListener(_onVideoControllerUpdated);
+      await controller.initialize();
+      await controller.setLooping(false);
+      await controller.setVolume(0.0);
+      await controller.seekTo(player.position);
+      _videoController = controller;
+      _videoSongId = track.songId;
+      _isVideoReady = true;
+      _syncVideoPlaybackState();
+      if (mounted) setState(() {});
+    } catch (_) {
+      controller.removeListener(_onVideoControllerUpdated);
+      await controller.dispose();
+      _videoController = null;
+      _videoSongId = null;
+      _isVideoReady = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _syncVideoPlaybackState() {
+    final controller = _videoController;
+    if (controller == null || !_isVideoReady) return;
+    if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
+      controller.pause();
+      return;
+    }
+    if (player.playing) {
+      controller.play();
+    } else {
+      controller.pause();
+    }
+  }
+
+  void _syncVideoPosition(Duration position) {
+    final controller = _videoController;
+    if (controller == null || !_isVideoReady) return;
+    if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) return;
+
+    final videoPosition = controller.value.position;
+    if ((videoPosition - position).abs().inMilliseconds > 350) {
+      controller.seekTo(position);
+    }
+  }
+
+  Future<void> _disposeVideoController({bool notify = true}) async {
+    final controller = _videoController;
+    _videoController = null;
+    _videoSongId = null;
+    _isVideoReady = false;
+    if (controller != null) {
+      controller.removeListener(_onVideoControllerUpdated);
+      await controller.dispose();
+    }
+    if (notify && mounted) setState(() {});
+  }
+
+  /// Called whenever the [VideoPlayerController]'s value changes (size,
+  /// playback state, etc.). Triggers a rebuild so the video widget appears
+  /// as soon as the first frame is decoded.
+  void _onVideoControllerUpdated() {
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildMediaModePill(MediaItem metadata) {
+    final hasVideo = _resolveTrackMedia(metadata).hasVideo;
+
+    return ValueListenableBuilder<PlaybackMediaMode>(
+      valueListenable: _audioManager.effectiveMediaModeNotifier,
+      builder: (context, effectiveMode, _) {
+        final bool isAudio = effectiveMode == PlaybackMediaMode.audio;
+
+        return Container(
+          width: 140, // Slightly wider for better breathing room
+          height: 32,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Stack(
+            children: [
+              // Sliding background pill
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                alignment:
+                    isAudio ? Alignment.centerLeft : Alignment.centerRight,
+                child: FractionallySizedBox(
+                  widthFactor: 0.5,
+                  child: Container(
+                    decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          )
+                        ]),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildModeSegment(
+                      label: 'Audio',
+                      isSelected: isAudio,
+                      onTap: () async {
+                        await _audioManager
+                            .setPreferredMediaMode(PlaybackMediaMode.audio);
+                        await _syncVideoForCurrentTrack(metadata);
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildModeSegment(
+                      label: 'Video',
+                      isSelected: !isAudio,
+                      isEnabled: hasVideo,
+                      onTap: hasVideo
+                          ? () async {
+                              await _audioManager.setPreferredMediaMode(
+                                  PlaybackMediaMode.video);
+                              await _syncVideoForCurrentTrack(metadata);
+                            }
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildModeSegment({
+    required String label,
+    required bool isSelected,
+    bool isEnabled = true,
+    Future<void> Function()? onTap,
+  }) {
+    return GestureDetector(
+      onTap: isEnabled && onTap != null ? () => unawaited(onTap()) : null,
+      behavior: HitTestBehavior.opaque,
+      child: Center(
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 200),
+          style: TextStyle(
+            color: !isEnabled
+                ? Colors.white24
+                : (isSelected ? Colors.white : Colors.white60),
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontSize: 12,
+          ),
+          child: Text(label),
+        ),
+      ),
+    );
+  }
+
   void _calculateLyricOffsets() {
     if (_lyrics == null || _lyrics!.isEmpty) return;
 
@@ -290,7 +560,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         textAlign: TextAlign.center,
       )..layout(maxWidth: maxWidth - 48);
 
-      final height = textPainter.size.height + 24; // 12 * 2 padding
+      final height = textPainter.size.height + 24;
       offsets.add(currentOffset + height / 2);
       currentOffset += height;
     }
@@ -315,9 +585,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
 
     if (_lyrics == null) {
-      // Get current song from player
       final sequenceState = player.sequenceState;
-      final currentSource = sequenceState.currentSource;
+      final currentSource = sequenceState?.currentSource;
       final tag = currentSource?.tag;
       if (tag is MediaItem) {
         final songs = ref.read(songsProvider).asData?.value ?? [];
@@ -338,7 +607,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               _hasLyricsForCurrentSong = parsedLyrics.isNotEmpty;
             });
 
-            // Find current position and scroll after first build
             _updateCurrentLyricIndex(player.position);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && _showLyrics) {
@@ -354,7 +622,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (mounted) setState(() => _loadingLyrics = false);
       }
     } else {
-      // Already loaded, just scroll to current
       _updateCurrentLyricIndex(player.position);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _showLyrics) {
@@ -433,9 +700,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }).toList();
 
     if (artistSongs.isNotEmpty) {
-      // Close player screen first
       Navigator.pop(context);
-
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -456,9 +721,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }).toList();
 
     if (albumSongs.isNotEmpty) {
-      // Close player screen first
       Navigator.pop(context);
-
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -497,10 +760,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  // _buildGlassControls removed.
-  // _buildBlurButton removed.
-  // _buildBottomDock removed.
-
   Stream<PositionData> get _positionDataStream =>
       Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
           player.positionStream,
@@ -508,6 +767,141 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           player.durationStream,
           (position, bufferedPosition, duration) => PositionData(
               position, bufferedPosition, duration ?? Duration.zero));
+
+  /// Builds the artwork / video panel. The aspect ratio and corner radius
+  /// animate smoothly whenever the effective media mode changes so the panel
+  /// snaps from square album-art to the video's native shape (e.g. 16:9).
+  Widget _buildArtPanel(
+    BuildContext context,
+    BoxConstraints constraints,
+    MediaItem metadata,
+    dynamic themeState,
+  ) {
+    final canShowVideo = _audioManager.effectiveMediaMode ==
+            PlaybackMediaMode.video &&
+        _isVideoReady &&
+        _videoController != null &&
+        _videoSongId == metadata.id &&
+        _videoController!.value.isInitialized;
+
+    // When showing video use the video's real aspect ratio; otherwise square.
+    final targetAspectRatio =
+        canShowVideo ? _videoController!.value.aspectRatio : 1.0;
+    // Rounded corners look great for album art; go almost-flat for video.
+    final targetRadius = canShowVideo ? 8.0 : 28.0;
+
+    return Center(
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.92, end: 1.0).animate(CurvedAnimation(
+          parent: _playPauseController,
+          curve: Curves.easeOutBack,
+        )),
+        child: TweenAnimationBuilder<double>(
+          // TweenAnimationBuilder will automatically start from the last
+          // animated value when `end` changes — giving us a free smooth
+          // transition between square and the video's aspect ratio.
+          tween: Tween<double>(begin: 1.0, end: targetAspectRatio),
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeInOut,
+          builder: (context, aspectRatio, _) {
+            return TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 28.0, end: targetRadius),
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeInOut,
+              builder: (context, radius, _) {
+                return AspectRatio(
+                  aspectRatio: aspectRatio,
+                  child: Hero(
+                    tag: 'now_playing_art_${metadata.id}',
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Main art / video container.
+                        Positioned.fill(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 380),
+                            curve: Curves.easeInOut,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(radius),
+                              boxShadow: canShowVideo
+                                  ? []
+                                  : [
+                                      BoxShadow(
+                                        color:
+                                            Colors.black.withValues(alpha: 0.4),
+                                        blurRadius: 25,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(radius),
+                              child: canShowVideo
+                                  ? SizedBox.expand(
+                                      child: FittedBox(
+                                        fit: BoxFit.cover,
+                                        clipBehavior: Clip.hardEdge,
+                                        child: SizedBox(
+                                          width: _videoController!
+                                              .value.size.width,
+                                          height: _videoController!
+                                              .value.size.height,
+                                          child:
+                                              VideoPlayer(_videoController!),
+                                        ),
+                                      ),
+                                    )
+                                  : AlbumArtImage(
+                                      key: ValueKey('art_${metadata.id}'),
+                                      url: _resolveCoverUrl(metadata) ?? '',
+                                      filename: metadata.id,
+                                      width: constraints.maxWidth,
+                                      height: constraints.maxWidth,
+                                      cacheWidth: 800,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
+                        ),
+                        // Overlay: lyrics toggle.
+                        if (_hasLyricsForCurrentSong)
+                          Positioned(
+                            bottom: 12,
+                            left: 12,
+                            child: SmoothColorBuilder(
+                              targetColor: _showLyrics
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.white,
+                              builder: (context, color) {
+                                return _buildOverlayButton(
+                                  icon: const Icon(Icons.lyrics_outlined),
+                                  color: color,
+                                  onPressed: _toggleLyrics,
+                                );
+                              },
+                            ),
+                          ),
+                        // Overlay: queue.
+                        Positioned(
+                          bottom: 12,
+                          right: 12,
+                          child: _buildOverlayButton(
+                            icon: const Icon(Icons.queue_music),
+                            onPressed: () =>
+                                _showNextUpSheet(context, themeState),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -546,7 +940,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
                 return Stack(
                   children: [
-                    // Immersive Background for the whole screen
                     if (metadata != null)
                       Positioned.fill(
                         child: RepaintBoundary(
@@ -554,7 +947,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             children: [
                               Positioned.fill(
                                 child: AlbumArtImage(
-                                  url: metadata.artUri?.toString() ?? '',
+                                  url: _resolveCoverUrl(metadata) ?? '',
                                   filename: metadata.id,
                                   fit: BoxFit.cover,
                                 ),
@@ -581,7 +974,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           ),
                         ),
                       ),
-
                     RepaintBoundary(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
@@ -591,11 +983,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             Container(
                               width: 40,
                               height: 4,
-                              margin: const EdgeInsets.only(bottom: 32),
+                              margin: const EdgeInsets.only(bottom: 24),
                               decoration: BoxDecoration(
                                   color: Colors.white.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(2)),
                             ),
+                            if (metadata != null) ...[
+                              _buildMediaModePill(metadata),
+                              const SizedBox(height: 16),
+                            ],
                             if (metadata != null) ...[
                               Expanded(
                                 child: RepaintBoundary(
@@ -634,122 +1030,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                           );
                                         },
                                         child: !_showLyrics
-                                            ? Center(
-                                                child: ScaleTransition(
-                                                  scale: Tween<double>(
-                                                          begin: 0.92, end: 1.0)
-                                                      .animate(CurvedAnimation(
-                                                    parent:
-                                                        _playPauseController,
-                                                    curve: Curves.easeOutBack,
-                                                  )),
-                                                  child: AspectRatio(
-                                                    aspectRatio: 1,
-                                                    child: Hero(
-                                                      tag:
-                                                          'now_playing_art_${metadata.id}',
-                                                      child: Stack(
-                                                        alignment:
-                                                            Alignment.center,
-                                                        children: [
-                                                          // Main Image
-                                                          Container(
-                                                            decoration:
-                                                                BoxDecoration(
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          28),
-                                                              boxShadow: [
-                                                                BoxShadow(
-                                                                  color: Colors
-                                                                      .black
-                                                                      .withValues(
-                                                                          alpha:
-                                                                              0.4),
-                                                                  blurRadius:
-                                                                      25,
-                                                                  offset:
-                                                                      const Offset(
-                                                                          0,
-                                                                          10),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                            child: ClipRRect(
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          28),
-                                                              child:
-                                                                  AlbumArtImage(
-                                                                key: ValueKey(
-                                                                    'art_${metadata.id}'),
-                                                                url: metadata
-                                                                        .artUri
-                                                                        ?.toString() ??
-                                                                    '',
-                                                                filename:
-                                                                    metadata.id,
-                                                                width: constraints
-                                                                    .maxWidth,
-                                                                height:
-                                                                    constraints
-                                                                        .maxWidth,
-                                                                cacheWidth: 800,
-                                                                fit: BoxFit
-                                                                    .cover,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          // Overlay Controls (Lyrics / Queue)
-                                                          if (_hasLyricsForCurrentSong)
-                                                            Positioned(
-                                                              bottom: 12,
-                                                              left: 12,
-                                                              child:
-                                                                  SmoothColorBuilder(
-                                                                targetColor: _showLyrics
-                                                                    ? Theme.of(
-                                                                            context)
-                                                                        .colorScheme
-                                                                        .primary
-                                                                    : Colors
-                                                                        .white,
-                                                                builder:
-                                                                    (context,
-                                                                        color) {
-                                                                  return _buildOverlayButton(
-                                                                    icon: const Icon(
-                                                                        Icons
-                                                                            .lyrics_outlined),
-                                                                    color:
-                                                                        color,
-                                                                    onPressed:
-                                                                        _toggleLyrics,
-                                                                  );
-                                                                },
-                                                              ),
-                                                            ),
-                                                          Positioned(
-                                                            bottom: 12,
-                                                            right: 12,
-                                                            child:
-                                                                _buildOverlayButton(
-                                                              icon: const Icon(Icons
-                                                                  .queue_music),
-                                                              onPressed: () {
-                                                                _showNextUpSheet(
-                                                                    context,
-                                                                    themeState);
-                                                              },
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
+                                            ? _buildArtPanel(
+                                                context,
+                                                constraints,
+                                                metadata,
+                                                themeState,
                                               )
                                             : ClipRRect(
                                                 borderRadius:
@@ -862,7 +1147,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                   },
                                                                 ),
                                                               ),
-                                                    // Overlay Controls in Lyrics Mode (Lyrics / Queue)
                                                     if (_hasLyricsForCurrentSong)
                                                       Positioned(
                                                         bottom: 12,
@@ -1009,7 +1293,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                 ),
                               ),
                             ],
-
                             RepaintBoundary(
                               child: StreamBuilder<PositionData>(
                                 stream: _positionDataStream,
@@ -1074,13 +1357,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               ),
                             ],
                             const SizedBox(height: 32),
-                            // Main Controls
                             RepaintBoundary(
                               child: Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  // Repeat
                                   StreamBuilder<LoopMode>(
                                     stream: player.loopModeStream,
                                     builder: (context, snapshot) {
@@ -1114,8 +1395,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                       );
                                     },
                                   ),
-
-                                  // Control Cluster (Rewind, Play, Next)
                                   SmoothColorBuilder(
                                     targetColor:
                                         Theme.of(context).colorScheme.primary,
@@ -1123,7 +1402,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                       return Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          // Previous
                                           Container(
                                             height: 55,
                                             width: 55,
@@ -1149,7 +1427,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                             ),
                                           ),
                                           const SizedBox(width: 12),
-                                          // Play/Pause
                                           StreamBuilder<PlayerState>(
                                             stream: player.playerStateStream,
                                             builder: (context, snapshot) {
@@ -1192,7 +1469,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                             },
                                           ),
                                           const SizedBox(width: 12),
-                                          // Next
                                           Container(
                                             height: 55,
                                             width: 55,
@@ -1216,8 +1492,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                       );
                                     },
                                   ),
-
-                                  // Shuffle
                                   ValueListenableBuilder<bool>(
                                     valueListenable: ref
                                         .read(audioPlayerManagerProvider)

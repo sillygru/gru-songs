@@ -172,6 +172,83 @@ class FFmpegService {
     return null;
   }
 
+  /// Grabs a single video frame and saves it as a JPEG thumbnail.
+  ///
+  /// Unlike [extractCover] (which does a stream-copy suited for audio files
+  /// with an attached-picture stream), this method seeks to [seekSeconds] and
+  /// decodes exactly one frame from the video track.  This is the correct
+  /// approach for real video files (MP4, MKV, WebM, MOV, AVI, etc.) where
+  /// stream 0:v:0 is H.264/VP9/etc. and cannot be "copied" into a JPEG.
+  ///
+  /// [seekSeconds] defaults to 5 s.  If the file is shorter the seek is
+  /// clamped to 0 by FFmpeg automatically, so it is safe to use this value
+  /// unconditionally.
+  Future<String?> extractVideoThumbnail({
+    required String inputPath,
+    required String outputPath,
+    double seekSeconds = 5.0,
+  }) async {
+    try {
+      // Input-side seek (-ss before -i) is fast: FFmpeg jumps to the nearest
+      // keyframe before seekSeconds without decoding every prior frame.
+      final session = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-ss', seekSeconds.toStringAsFixed(3),
+        '-i', inputPath,
+        '-vframes', '1',       // exactly one output frame
+        '-q:v', '3',           // JPEG quality 1–31, lower = better
+        '-vf', 'scale=\'min(640,iw)\':-2', // cap width at 640 px, keep AR
+        outputPath,
+      ]);
+
+      final rc = await session.getReturnCode();
+      if (ReturnCode.isSuccess(rc)) {
+        final file = File(outputPath);
+        if (await file.exists() && await file.length() > 0) {
+          return outputPath;
+        }
+      }
+
+      // Fallback: seek at 0 (in case the file is very short or the keyframe
+      // at 5 s is unavailable).
+      if (kDebugMode) {
+        final logs = await session.getAllLogsAsString();
+        debugPrint(
+            'FFmpegService.extractVideoThumbnail: seek@${seekSeconds}s failed, '
+            'retrying at 0\n$logs');
+      }
+
+      final session2 = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i', inputPath,
+        '-vframes', '1',
+        '-q:v', '3',
+        '-vf', 'scale=\'min(640,iw)\':-2',
+        outputPath,
+      ]);
+
+      final rc2 = await session2.getReturnCode();
+      if (ReturnCode.isSuccess(rc2)) {
+        final file = File(outputPath);
+        if (await file.exists() && await file.length() > 0) {
+          return outputPath;
+        }
+      }
+
+      if (kDebugMode) {
+        final logs2 = await session2.getAllLogsAsString();
+        debugPrint(
+            'FFmpegService.extractVideoThumbnail: fallback also failed\n$logs2');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('FFmpegService.extractVideoThumbnail: exception: $e');
+      }
+    }
+
+    return null;
+  }
+
   String _q(String path) {
     final escaped = path.replaceAll('"', '\\"');
     return '"$escaped"';
