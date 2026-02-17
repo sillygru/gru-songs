@@ -43,7 +43,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   List<LyricLine>? _lyrics;
   bool _loadingLyrics = false;
   bool _autoScrollEnabled = true;
+  bool _hasLyricsForCurrentSong = false;
   String? _lastSongId;
+  int _lyricsAvailabilityRequestToken = 0;
   final ScrollController _lyricsScrollController = ScrollController();
   final GlobalKey _lyricsContainerKey = GlobalKey();
   final ValueNotifier<int> _currentLyricIndexNotifier = ValueNotifier<int>(-1);
@@ -68,7 +70,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _albumRecognizer = TapGestureRecognizer();
     _sequenceSubscription = player.sequenceStateStream.listen((state) {
       final tag = state.currentSource?.tag;
-      final String? songId = tag is MediaItem ? tag.id : null;
+      final mediaItem = tag is MediaItem ? tag : null;
+      final String? songId = mediaItem?.id;
+      final metadataHasLyrics = mediaItem?.extras?['hasLyrics'] == true;
 
       if (songId != _lastSongId) {
         if (mounted) {
@@ -79,8 +83,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             _loadingLyrics = false;
             _autoScrollEnabled = true;
             _currentLyricIndexNotifier.value = -1;
+            _hasLyricsForCurrentSong = metadataHasLyrics;
           });
         }
+        _refreshLyricsAvailability(songId, metadataHasLyrics: metadataHasLyrics);
       }
     });
 
@@ -221,6 +227,42 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   List<double>? _lyricOffsets;
 
+  Song? _findSongById(String songId) {
+    final songs = ref.read(songsProvider).asData?.value ?? [];
+    for (final song in songs) {
+      if (song.filename == songId) return song;
+    }
+    return null;
+  }
+
+  Future<void> _refreshLyricsAvailability(
+    String? songId, {
+    required bool metadataHasLyrics,
+  }) async {
+    final requestToken = ++_lyricsAvailabilityRequestToken;
+
+    if (songId == null) {
+      if (mounted) {
+        setState(() => _hasLyricsForCurrentSong = false);
+      }
+      return;
+    }
+
+    final currentSong = _findSongById(songId);
+    if (currentSong == null) return;
+
+    bool hasLyrics = metadataHasLyrics;
+    try {
+      hasLyrics = await ref.read(songRepositoryProvider).hasLyrics(currentSong);
+    } catch (_) {
+      hasLyrics = metadataHasLyrics;
+    }
+
+    if (!mounted || requestToken != _lyricsAvailabilityRequestToken) return;
+    if (_lastSongId != songId) return;
+    setState(() => _hasLyricsForCurrentSong = hasLyrics);
+  }
+
   void _calculateLyricOffsets() {
     if (_lyrics == null || _lyrics!.isEmpty) return;
 
@@ -259,6 +301,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _toggleLyrics() async {
+    if (!_showLyrics && !_hasLyricsForCurrentSong) return;
+
     if (_showLyrics) {
       setState(() => _showLyrics = false);
       return;
@@ -291,6 +335,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             setState(() {
               _lyrics = parsedLyrics;
               _loadingLyrics = false;
+              _hasLyricsForCurrentSong = parsedLyrics.isNotEmpty;
             });
 
             // Find current position and scroll after first build
@@ -559,7 +604,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                     return GestureDetector(
                                       onVerticalDragUpdate: (details) {
                                         if (details.primaryDelta! < -5) {
-                                          if (!_showLyrics) {
+                                          if (!_showLyrics &&
+                                              _hasLyricsForCurrentSong) {
                                             _toggleLyrics();
                                           }
                                         } else if (details.primaryDelta! > 5) {
@@ -657,9 +703,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                             ),
                                                           ),
                                                           // Overlay Controls (Lyrics / Queue)
-                                                          if (metadata.extras?[
-                                                                  'hasLyrics'] ??
-                                                              false)
+                                                          if (_hasLyricsForCurrentSong)
                                                             Positioned(
                                                               bottom: 12,
                                                               left: 12,
@@ -819,9 +863,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                 ),
                                                               ),
                                                     // Overlay Controls in Lyrics Mode (Lyrics / Queue)
-                                                    if (metadata.extras?[
-                                                            'hasLyrics'] ??
-                                                        false)
+                                                    if (_hasLyricsForCurrentSong)
                                                       Positioned(
                                                         bottom: 12,
                                                         left: 12,

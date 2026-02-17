@@ -22,6 +22,7 @@ class _StorageManagementScreenState
   int _searchIndexSize = 0;
   int _waveformCacheSize = 0;
   int _colorCacheSize = 0;
+  int _lyricsCacheSize = 0;
   bool _isClearing = false;
 
   @override
@@ -48,6 +49,8 @@ class _StorageManagementScreenState
           await StorageAnalysisService.instance.getWaveformCacheSize();
       final colorSize =
           await StorageAnalysisService.instance.getColorCacheSize();
+      final lyricsSize =
+          await StorageAnalysisService.instance.getLyricsCacheSize();
 
       if (mounted) {
         setState(() {
@@ -58,6 +61,7 @@ class _StorageManagementScreenState
           _searchIndexSize = searchSize;
           _waveformCacheSize = waveformSize;
           _colorCacheSize = colorSize;
+          _lyricsCacheSize = lyricsSize;
           _isLoading = false;
         });
       }
@@ -400,6 +404,38 @@ class _StorageManagementScreenState
     }
   }
 
+  Future<void> _handleClearLyricsCache() async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Clear Lyrics Cache?',
+      content: 'This will remove cached lyrics lookups.\n\n'
+          'Lyrics will be re-read from song metadata when needed.',
+      confirmText: 'Clear Cache',
+      confirmColor: Colors.orange,
+    );
+
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isClearing = true);
+
+    try {
+      await StorageAnalysisService.instance.clearLyricsCache();
+      await _loadSizes();
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lyrics cache cleared successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error clearing lyrics cache: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _handleDangerousClear() async {
     final confirmed = await _showConfirmationDialog(
       title: 'Clear All App Data?',
@@ -411,7 +447,8 @@ class _StorageManagementScreenState
           '• All local backups\n'
           '• Library cache\n'
           '• Search index\n'
-          '• Waveform cache\n\n'
+          '• Waveform cache\n'
+          '• Lyrics cache\n\n'
           'The app will reset.',
       confirmText: 'Clear Everything',
       confirmColor: Colors.red,
@@ -517,6 +554,15 @@ class _StorageManagementScreenState
                     onClear:
                         _colorCacheSize > 0 ? _handleClearColorCache : null,
                   ),
+                  _buildStorageCard(
+                    title: 'Lyrics Cache',
+                    subtitle: 'Cached lyrics availability and text',
+                    size: _lyricsCacheSize,
+                    icon: Icons.lyrics_rounded,
+                    color: Colors.indigo,
+                    onClear:
+                        _lyricsCacheSize > 0 ? _handleClearLyricsCache : null,
+                  ),
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 24),
@@ -547,6 +593,7 @@ class _StorageManagementScreenState
                       ),
                     ),
                   ),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),

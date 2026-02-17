@@ -8,6 +8,7 @@ import 'color_extraction_service.dart';
 class StorageAnalysisService {
   static final StorageAnalysisService instance = StorageAnalysisService._();
   StorageAnalysisService._();
+  static const String _lyricsCacheDirName = 'lyrics_cache';
 
   Future<int> getDatabaseSize() async {
     int total = 0;
@@ -140,6 +141,20 @@ class StorageAnalysisService {
       }
     } catch (e) {
       debugPrint('Error calculating color cache size: $e');
+    }
+    return 0;
+  }
+
+  Future<int> getLyricsCacheSize() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final lyricsDir =
+          Directory(p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheDirName));
+      if (await lyricsDir.exists()) {
+        return await _getDirSize(lyricsDir);
+      }
+    } catch (e) {
+      debugPrint('Error calculating lyrics cache size: $e');
     }
     return 0;
   }
@@ -279,6 +294,21 @@ class StorageAnalysisService {
     }
   }
 
+  /// Clears only the lyrics cache
+  Future<void> clearLyricsCache() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final lyricsDir =
+          Directory(p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheDirName));
+      if (await lyricsDir.exists()) {
+        await lyricsDir.delete(recursive: true);
+      }
+    } catch (e) {
+      debugPrint('Error clearing lyrics cache: $e');
+      rethrow;
+    }
+  }
+
   Future<void> clearAllUserData() async {
     try {
       // 1. Delete Database Files
@@ -300,6 +330,9 @@ class StorageAnalysisService {
       await clearWaveformCache();
 
       // 7. Clear Shared Preferences
+      await clearLyricsCache();
+
+      // 8. Clear Shared Preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
     } catch (e) {

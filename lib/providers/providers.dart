@@ -683,6 +683,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       await ref
           .read(fileManagerServiceProvider)
           .updateLyrics(song, lyricsContent);
+      await ref.read(songRepositoryProvider).invalidateLyricsCache(song);
       return _performFullScan();
     });
   }

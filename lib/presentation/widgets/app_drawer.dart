@@ -385,6 +385,7 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
               _buildFinishToggle(colorScheme),
             const SizedBox(height: 32),
             _buildActionButtons(colorScheme),
+            const SizedBox(height: 80),
           ],
         ),
       ),

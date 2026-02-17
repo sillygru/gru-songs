@@ -85,11 +85,12 @@ class _NextUpSheetState extends ConsumerState<NextUpSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final audioManager = ref.watch(audioPlayerManagerProvider);
+    final audioManager = ref.read(audioPlayerManagerProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: 0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -105,9 +106,7 @@ class _NextUpSheetState extends ConsumerState<NextUpSheet> {
           )
         ],
       ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        child: Column(
+      child: Column(
           children: [
             const SizedBox(height: 12),
             // Grab Handle Area - Static
@@ -178,7 +177,6 @@ class _NextUpSheetState extends ConsumerState<NextUpSheet> {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -224,23 +222,12 @@ class _QueueListContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // We create a prototype item for performance calculation
-    final prototypeItem = upcomingQueue.isNotEmpty
-        ? _NextUpItem(
-            key: const ValueKey('prototype'),
-            item: upcomingQueue.first,
-            index: 0,
-            currentIndex: 0,
-            audioManager: audioManager)
-        : null;
-
     return ReorderableListView.builder(
       itemCount: upcomingQueue.length,
       scrollController: scrollController,
-      // PERFORMANCE: Helps flutter calculate scroll height without rendering everything
-      prototypeItem: prototypeItem,
-      cacheExtent:
-          1000, // Keep more items alive in memory for smoother fast scrolling
+      // PERFORMANCE: Fixed item height avoids constructing a prototype widget on every build
+      itemExtent: 80.0,
+      cacheExtent: 400, // Reduced from 1000 — budget phones can't afford pre-rendering 15 items
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
       // IMPORTANT: Disabling default handles prevents the whole tile from being a drag target.
       // This allows the Swipe gesture (Dismissible) to work everywhere EXCEPT the handle.
@@ -315,6 +302,7 @@ class _NextUpHeader extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
+              // Single combined listener replacing two separate nests
               child: ValueListenableBuilder<List<QueueItem>>(
                 valueListenable: audioManager.queueNotifier,
                 builder: (context, queue, child) {
@@ -326,24 +314,45 @@ class _NextUpHeader extends StatelessWidget {
                       final upcomingCount = queue.length - currentIndex - 1;
                       final displayCount =
                           upcomingCount < 0 ? 0 : upcomingCount;
+                      final hasUpcoming = displayCount > 0;
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      return Row(
                         children: [
-                          Text(
-                            'Up Next',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Up Next',
+                                  style: theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                Text(
+                                  '$displayCount songs remaining',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colorScheme.onSurfaceVariant
+                                        .withValues(alpha: 0.7),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            '$displayCount songs remaining',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.7),
-                              fontWeight: FontWeight.w500,
-                            ),
+                          _HeaderAction(
+                            icon: Icons.refresh_rounded,
+                            tooltip: 'Shuffle Remaining',
+                            onPressed: () {
+                              HapticFeedback.mediumImpact();
+                              audioManager.refreshQueue();
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          _HeaderAction(
+                            icon: Icons.delete_sweep_rounded,
+                            tooltip: 'Clear All',
+                            onPressed: hasUpcoming ? onClearConfirm : null,
                           ),
                         ],
                       );
@@ -351,34 +360,6 @@ class _NextUpHeader extends StatelessWidget {
                   );
                 },
               ),
-            ),
-            _HeaderAction(
-              icon: Icons.refresh_rounded,
-              tooltip: 'Shuffle Remaining',
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                audioManager.refreshQueue();
-              },
-            ),
-            const SizedBox(width: 8),
-            ValueListenableBuilder<List<QueueItem>>(
-              valueListenable: audioManager.queueNotifier,
-              builder: (context, queue, child) {
-                return StreamBuilder<int?>(
-                  stream: audioManager.player.currentIndexStream,
-                  initialData: audioManager.player.currentIndex,
-                  builder: (context, snapshot) {
-                    final currentIndex = snapshot.data ?? -1;
-                    final hasUpcoming = queue.length > currentIndex + 1;
-
-                    return _HeaderAction(
-                      icon: Icons.delete_sweep_rounded,
-                      tooltip: 'Clear All',
-                      onPressed: hasUpcoming ? onClearConfirm : null,
-                    );
-                  },
-                );
-              },
             ),
           ],
         ),
@@ -425,6 +406,12 @@ class _NextUpItem extends StatelessWidget {
   final int currentIndex;
   final AudioPlayerManager audioManager;
 
+  // Pre-computed static colors to avoid per-item allocation during scroll
+  static const _pinBorderOpacity = 0.3;
+  static const _dragHandleOpacity = 0.2;
+  static const _subtitleOpacity = 0.7;
+  static const _pinShadowOpacity = 0.2;
+
   const _NextUpItem({
     super.key,
     required this.item,
@@ -435,12 +422,6 @@ class _NextUpItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final song = item.song;
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    // We use a cleaner Dismissible setup.
-    // The key ensures Flutter knows which item is being swiped.
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Dismissible(
@@ -451,7 +432,7 @@ class _NextUpItem extends StatelessWidget {
           DismissDirection.endToStart: 0.25,
         },
         background: _SwipeAction(
-          color: colorScheme.primary,
+          color: Theme.of(context).colorScheme.primary,
           icon: item.isPriority
               ? Icons.push_pin_rounded
               : Icons.push_pin_outlined,
@@ -468,9 +449,9 @@ class _NextUpItem extends StatelessWidget {
           if (direction == DismissDirection.startToEnd) {
             HapticFeedback.mediumImpact();
             audioManager.togglePriority(currentIndex + 1 + index);
-            return false; // Don't remove from list, just toggle state
+            return false;
           }
-          return true; // Allow remove
+          return true;
         },
         onDismissed: (direction) {
           if (direction == DismissDirection.endToStart) {
@@ -478,29 +459,47 @@ class _NextUpItem extends StatelessWidget {
             audioManager.removeFromQueue(currentIndex + 1 + index);
           }
         },
-        child: _buildItemContent(context, song, theme, colorScheme),
+        child: _NextUpItemContent(item: item, index: index),
       ),
     );
   }
+}
 
-  Widget _buildItemContent(BuildContext context, Song song, ThemeData theme,
-      ColorScheme colorScheme) {
+// Extracted into its own StatelessWidget so Flutter can diff and skip rebuilds independently
+class _NextUpItemContent extends StatelessWidget {
+  final QueueItem item;
+  final int index;
+
+  const _NextUpItemContent({
+    required this.item,
+    required this.index,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final song = item.song;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // Pre-compute colors once per build rather than inline per-property
+    final subtitleColor = colorScheme.onSurfaceVariant
+        .withValues(alpha: _NextUpItem._subtitleOpacity);
+    final borderColor = item.isPriority
+        ? colorScheme.primary.withValues(alpha: _NextUpItem._pinBorderOpacity)
+        : Colors.transparent;
+    final titleColor = item.isPriority ? colorScheme.primary : null;
+    final dragHandleColor = colorScheme.onSurfaceVariant
+        .withValues(alpha: _NextUpItem._dragHandleOpacity);
+
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: item.isPriority
-              ? colorScheme.primary.withValues(alpha: 0.3)
-              : Colors
-                  .transparent, // Optimization: transparent instead of calc when not needed
-          width: 1,
-        ),
+        border: Border.all(color: borderColor, width: 1),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        // Album Art
         leading: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -521,22 +520,23 @@ class _NextUpItem extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                      color: colorScheme.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: colorScheme.surface, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 4,
-                        )
-                      ]),
+                    color: colorScheme.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: colorScheme.surface, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black
+                            .withValues(alpha: _NextUpItem._pinShadowOpacity),
+                        blurRadius: 4,
+                      )
+                    ],
+                  ),
                   child: const Icon(Icons.push_pin_rounded,
                       size: 10, color: Colors.white),
                 ),
               ),
           ],
         ),
-        // Text Info
         title: Text(
           song.title,
           maxLines: 1,
@@ -544,7 +544,7 @@ class _NextUpItem extends StatelessWidget {
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
             fontSize: 15,
-            color: item.isPriority ? colorScheme.primary : null,
+            color: titleColor,
           ),
         ),
         subtitle: Text(
@@ -552,21 +552,18 @@ class _NextUpItem extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            color: subtitleColor,
             fontSize: 13,
           ),
         ),
-        // The Reorder Handle
-        // This is CRITICAL: ReorderableDragStartListener makes ONLY this icon
-        // the trigger for dragging. The rest of the tile is free for scrolling/swiping.
         trailing: ReorderableDragStartListener(
           index: index,
           child: Container(
             padding: const EdgeInsets.all(12),
-            color: Colors.transparent, // Increase hit area
+            color: Colors.transparent,
             child: Icon(
               Icons.drag_indicator_rounded,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+              color: dragHandleColor,
               size: 20,
             ),
           ),
@@ -582,6 +579,8 @@ class _SwipeAction extends StatelessWidget {
   final Alignment alignment;
   final String label;
 
+  static const _backgroundOpacity = 0.15;
+
   const _SwipeAction({
     required this.color,
     required this.icon,
@@ -591,12 +590,13 @@ class _SwipeAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Optimization: Pre-calculate padding based on alignment
     final isLeft = alignment == Alignment.centerLeft;
+    // Pre-compute background color once rather than inline
+    final bgColor = color.withValues(alpha: _backgroundOpacity);
 
     return Container(
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: bgColor,
         borderRadius: BorderRadius.circular(18),
       ),
       alignment: alignment,
