@@ -170,6 +170,42 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  void _showNextUpSheet(BuildContext context, ThemeState themeState) {
+    final controller = DraggableScrollableController();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      barrierColor: Colors.black54,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        behavior: HitTestBehavior.translucent,
+        child: DraggableScrollableSheet(
+          controller: controller,
+          initialChildSize: 0.5,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          snap: true,
+          snapSizes: const [0.5, 0.9],
+          builder: (context, scrollController) => GestureDetector(
+            onTap: () {},
+            child: AnimatedTheme(
+              data: AppTheme.getPlayerTheme(
+                  themeState, themeState.extractedColor),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+              child: NextUpSheet(
+                scrollController: scrollController,
+                sheetController: controller,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _sequenceSubscription?.cancel();
@@ -659,28 +695,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                               icon: const Icon(Icons
                                                                   .queue_music),
                                                               onPressed: () {
-                                                                showModalBottomSheet(
-                                                                  context:
-                                                                      context,
-                                                                  backgroundColor:
-                                                                      Colors
-                                                                          .transparent,
-                                                                  builder:
-                                                                      (context) =>
-                                                                          AnimatedTheme(
-                                                                    data: AppTheme.getPlayerTheme(
-                                                                        themeState,
-                                                                        themeState
-                                                                            .extractedColor),
-                                                                    duration: const Duration(
-                                                                        milliseconds:
-                                                                            500),
-                                                                    curve: Curves
-                                                                        .easeInOut,
-                                                                    child:
-                                                                        const NextUpSheet(),
-                                                                  ),
-                                                                );
+                                                                _showNextUpSheet(
+                                                                    context,
+                                                                    themeState);
                                                               },
                                                             ),
                                                           ),
@@ -834,28 +851,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                         icon: const Icon(
                                                             Icons.queue_music),
                                                         onPressed: () {
-                                                          showModalBottomSheet(
-                                                            context: context,
-                                                            backgroundColor:
-                                                                Colors
-                                                                    .transparent,
-                                                            builder: (context) =>
-                                                                AnimatedTheme(
-                                                              data: AppTheme
-                                                                  .getPlayerTheme(
-                                                                      themeState,
-                                                                      themeState
-                                                                          .extractedColor),
-                                                              duration:
-                                                                  const Duration(
-                                                                      milliseconds:
-                                                                          500),
-                                                              curve: Curves
-                                                                  .easeInOut,
-                                                              child:
-                                                                  const NextUpSheet(),
-                                                            ),
-                                                          );
+                                                          _showNextUpSheet(
+                                                              context,
+                                                              themeState);
                                                         },
                                                       ),
                                                     ),

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../providers/providers.dart';
 import '../../models/song.dart';
 import 'folder_picker.dart';
@@ -216,6 +217,17 @@ void showSongOptionsMenu(
                                 ),
                               ],
                             ),
+                          );
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.share),
+                        title: const Text("Share"),
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          Share.shareXFiles(
+                            [XFile(song.url)],
+                            text: '${song.title} by ${song.artist}',
                           );
                         },
                       ),

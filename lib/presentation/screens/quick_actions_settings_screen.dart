@@ -47,6 +47,8 @@ class _QuickActionsSettingsScreenState
         return 'Move to Folder';
       case QuickAction.addToPlaylist:
         return 'Add to Playlist';
+      case QuickAction.share:
+        return 'Share';
       case QuickAction.addToNewPlaylist:
         return 'Add to New Playlist';
       case QuickAction.editMetadata:
@@ -81,6 +83,8 @@ class _QuickActionsSettingsScreenState
         return Icons.drive_file_move_outlined;
       case QuickAction.addToPlaylist:
         return Icons.playlist_add;
+      case QuickAction.share:
+        return Icons.share;
       case QuickAction.addToNewPlaylist:
         return Icons.playlist_add_circle_outlined;
       case QuickAction.editMetadata:
@@ -167,6 +171,7 @@ class _QuickActionsSettingsScreenState
                       ...disabledActions,
                     ];
                   });
+                  _saveConfig();
                 },
                 itemBuilder: (context, index) {
                   final action = enabledActions[index];

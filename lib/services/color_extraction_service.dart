@@ -1,34 +1,165 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:image/image.dart' as img;
+import 'package:palette_generator/palette_generator.dart';
+
+class ExtractedPalette {
+  final Color? used;
+  final Color mixedColor;
+  final List<Color> palette;
+
+  Color get color => used ?? mixedColor;
+
+  const ExtractedPalette({
+    this.used,
+    required this.mixedColor,
+    required this.palette,
+  });
+
+  ExtractedPalette.single(Color color)
+      : used = null,
+        mixedColor = color,
+        palette = [color];
+
+  factory ExtractedPalette.create({
+    Color? used,
+    required List<Color> palette,
+  }) {
+    final mixed = ExtractedPalette.mixColors(palette.take(10).toList());
+    return ExtractedPalette(
+      used: used,
+      mixedColor: mixed,
+      palette: palette,
+    );
+  }
+
+  static Color mixColors(List<Color> colors) {
+    if (colors.isEmpty) return Colors.transparent;
+    int red = 0;
+    int green = 0;
+    int blue = 0;
+
+    for (final color in colors) {
+      final intValue = color.toARGB32();
+      red += (intValue >> 16) & 0xFF;
+      green += (intValue >> 8) & 0xFF;
+      blue += intValue & 0xFF;
+    }
+
+    red ~/= colors.length;
+    green ~/= colors.length;
+    blue ~/= colors.length;
+
+    return Color.fromARGB(255, red, green, blue);
+  }
+
+  factory ExtractedPalette.fromJson(Map<String, dynamic> json) {
+    final paletteList =
+        (json['palette'] as List?)?.map((e) => Color(e as int)).toList() ?? [];
+    final mixedColor = json['mixedColor'] is int
+        ? Color(json['mixedColor'] as int)
+        : ExtractedPalette.mixColors(paletteList.take(10).toList());
+    return ExtractedPalette(
+      used: json['used'] != null ? Color(json['used'] as int) : null,
+      mixedColor: mixedColor,
+      palette: paletteList,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'used': used?.toARGB32(),
+      'mixedColor': mixedColor.toARGB32(),
+      'palette': palette.map((e) => e.toARGB32()).toList(),
+    };
+  }
+
+  ExtractedPalette withDelightned() {
+    if (palette.isEmpty) return this;
+    final delightnedColors = palette.map((c) => _delightnedColor(c)).toList();
+    final delightnedMix =
+        ExtractedPalette.mixColors(delightnedColors.take(10).toList());
+    return ExtractedPalette(
+      used: used != null ? _delightnedColor(used!) : null,
+      mixedColor: delightnedMix,
+      palette: delightnedColors,
+    );
+  }
+
+  ExtractedPalette withAlpha(int alpha) {
+    return ExtractedPalette(
+      used: used?.withAlpha(alpha),
+      mixedColor: mixedColor.withAlpha(alpha),
+      palette: palette,
+    );
+  }
+
+  ExtractedPalette withDelightnedAndAlpha(int alpha) {
+    final delightned = withDelightned();
+    return delightned.withAlpha(alpha);
+  }
+
+  static Color _delightnedColor(Color color) {
+    final luminance = color.computeLuminance();
+    if (luminance <= 0.1 || luminance >= 0.9) return color;
+    final hslColor = HSLColor.fromColor(color);
+    return hslColor.withLightness(0.4).toColor();
+  }
+
+  static Color _lighterColor(Color color) {
+    final luminance = color.computeLuminance();
+    if (luminance <= 0.1 || luminance >= 0.9) return color;
+    final hslColor = HSLColor.fromColor(color);
+    return hslColor.withLightness(0.64).toColor();
+  }
+
+  ExtractedPalette withLighter() {
+    if (palette.isEmpty) return this;
+    final lighterColors = palette.map((c) => _lighterColor(c)).toList();
+    final lighterMix =
+        ExtractedPalette.mixColors(lighterColors.take(10).toList());
+    return ExtractedPalette(
+      used: used != null ? _lighterColor(used!) : null,
+      mixedColor: lighterMix,
+      palette: lighterColors,
+    );
+  }
+}
 
 class ColorExtractionService {
-  static const double _minSaturation = 0.15;
-  static const double _minLightness = 0.10;
-  static const double _maxLightness = 0.90;
-
-  static Map<String, int> _colorCache = {};
+  static Map<String, ExtractedPalette> _paletteCache = {};
   static File? _cacheFile;
+  static Directory? _paletteDir;
   static bool _initialized = false;
+
+  static const int _resizeHeight = 240;
+  static const int _maximumColorCount = 28;
+  static const Duration _timeout = Duration(seconds: 5);
 
   static Future<void> init() async {
     if (_initialized) return;
     try {
       final appSupportDir = await getApplicationSupportDirectory();
-      _cacheFile = File(p.join(appSupportDir.path, 'color_cache.json'));
+      _cacheFile = File(p.join(appSupportDir.path, 'palette_cache.json'));
+      _paletteDir = Directory(p.join(appSupportDir.path, 'palettes'));
+
+      if (!await _paletteDir!.exists()) {
+        await _paletteDir!.create(recursive: true);
+      }
 
       if (await _cacheFile!.exists()) {
         final jsonString = await _cacheFile!.readAsString();
         final Map<String, dynamic> json = jsonDecode(jsonString);
-        _colorCache = json.map((key, value) => MapEntry(key, value as int));
+        _paletteCache = json.map((key, value) => MapEntry(
+            key, ExtractedPalette.fromJson(value as Map<String, dynamic>)));
         debugPrint(
-            'ColorExtractionService: Loaded ${_colorCache.length} cached colors');
+            'ColorExtractionService: Loaded ${_paletteCache.length} cached palettes');
       }
       _initialized = true;
     } catch (e) {
@@ -37,48 +168,141 @@ class ColorExtractionService {
     }
   }
 
-  static Future<Color?> extractColor(String? imagePath) async {
+  static Future<ExtractedPalette?> extractPalette(
+    String? imagePath, {
+    bool useIsolate = false,
+  }) async {
     if (imagePath == null || imagePath.isEmpty) return null;
 
     await init();
 
-    if (_colorCache.containsKey(imagePath)) {
-      return Color(_colorCache[imagePath]!);
+    if (_paletteCache.containsKey(imagePath)) {
+      return _paletteCache[imagePath];
     }
 
     try {
       final file = File(imagePath);
       if (!await file.exists()) return null;
 
-      final imageBytes = await file.readAsBytes();
-      final colorInt = await compute(_extractColorInIsolate, imageBytes);
+      final palette = await _extractPalette(file, useIsolate: useIsolate);
+      if (palette == null) return null;
 
-      if (colorInt != null) {
-        _colorCache[imagePath] = colorInt;
-        await _saveCacheToDisk();
-        return Color(colorInt);
-      }
-      return null;
+      final extractedPalette = ExtractedPalette.create(
+        palette: palette,
+      );
+
+      _paletteCache[imagePath] = extractedPalette;
+      await _saveCacheToDisk();
+      return extractedPalette;
     } catch (e) {
-      debugPrint('Error extracting color: $e');
+      debugPrint('Error extracting palette from $imagePath: $e');
       return null;
     }
+  }
+
+  static Future<List<Color>?> _extractPalette(
+    File imageFile, {
+    bool useIsolate = false,
+  }) async {
+    final imageProvider = ResizeImage(
+      FileImage(imageFile),
+      height: _resizeHeight,
+    );
+
+    try {
+      if (useIsolate) {
+        return await _extractPaletteInIsolate(imageProvider);
+      } else {
+        final palette = await PaletteGenerator.fromImageProvider(
+          imageProvider,
+          filters: const [],
+          maximumColorCount: _maximumColorCount,
+          timeout: _timeout,
+        );
+        return palette.colors.toList();
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<List<Color>?> _extractPaletteInIsolate(
+      ImageProvider imageProvider) async {
+    final ImageStream stream = imageProvider.resolve(
+      const ImageConfiguration(size: null, devicePixelRatio: 1.0),
+    );
+    final Completer<ui.Image> imageCompleter = Completer<ui.Image>();
+    Timer? loadFailureTimeout;
+    late ImageStreamListener listener;
+    listener = ImageStreamListener((ImageInfo info, bool synchronousCall) {
+      loadFailureTimeout?.cancel();
+      stream.removeListener(listener);
+      imageCompleter.complete(info.image);
+    });
+
+    loadFailureTimeout = Timer(_timeout, () {
+      stream.removeListener(listener);
+      imageCompleter.completeError(
+        TimeoutException('Timeout occurred trying to load image'),
+      );
+    });
+
+    stream.addListener(listener);
+
+    try {
+      final ui.Image image = await imageCompleter.future;
+      final ByteData? imageData = await image.toByteData();
+      if (imageData == null) return null;
+
+      final encImg = EncodedImage(
+        imageData,
+        width: image.width,
+        height: image.height,
+      );
+
+      final colors = await compute(_extractPaletteCompute, encImg);
+      return colors;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<List<Color>> _extractPaletteCompute(EncodedImage encImg) async {
+    final result = await PaletteGenerator.fromByteData(
+      encImg,
+      filters: const [],
+      maximumColorCount: _maximumColorCount,
+    );
+    return result.colors.toList();
+  }
+
+  static Future<Color?> extractColor(
+    String? imagePath, {
+    bool useIsolate = false,
+  }) async {
+    final palette = await extractPalette(imagePath, useIsolate: useIsolate);
+    return palette?.color;
   }
 
   static Future<void> _saveCacheToDisk() async {
     if (_cacheFile == null) return;
     try {
-      final jsonString = jsonEncode(_colorCache);
-      await _cacheFile!.writeAsString(jsonString);
+      final json =
+          _paletteCache.map((key, value) => MapEntry(key, value.toJson()));
+      await _cacheFile!.writeAsString(jsonEncode(json));
     } catch (e) {
-      debugPrint('Error saving color cache: $e');
+      debugPrint('Error saving palette cache: $e');
     }
   }
 
   static Future<void> clearCache() async {
-    _colorCache.clear();
+    _paletteCache.clear();
     if (_cacheFile != null && await _cacheFile!.exists()) {
       await _cacheFile!.delete();
+    }
+    if (_paletteDir != null && await _paletteDir!.exists()) {
+      await _paletteDir!.delete(recursive: true);
+      await _paletteDir!.create();
     }
   }
 
@@ -86,90 +310,41 @@ class ColorExtractionService {
     if (_cacheFile == null || !await _cacheFile!.exists()) return 0;
     return await _cacheFile!.length();
   }
-}
 
-class _ColorCandidate {
-  final int color;
-  final int population;
+  static int _batchProgress = 0;
+  static int _batchTotal = 0;
+  static bool _batchCancelled = false;
 
-  _ColorCandidate(this.color, this.population);
-}
+  static double? get batchProgress =>
+      _batchTotal > 0 ? _batchProgress / _batchTotal : null;
 
-int? _extractColorInIsolate(Uint8List imageBytes) {
-  try {
-    final image = img.decodeImage(imageBytes);
-    if (image == null) return null;
+  static Future<void> extractAllPalettes(
+    List<String> imagePaths, {
+    bool useIsolate = true,
+    void Function(int progress, int total)? onProgress,
+  }) async {
+    await init();
+    _batchProgress = 0;
+    _batchTotal = imagePaths.length;
+    _batchCancelled = false;
 
-    final resized = img.copyResize(image, width: 64, height: 64);
+    for (int i = 0; i < imagePaths.length; i++) {
+      if (_batchCancelled) break;
 
-    final Map<int, int> colorCounts = {};
-    for (int y = 0; y < resized.height; y++) {
-      for (int x = 0; x < resized.width; x++) {
-        final pixel = resized.getPixel(x, y);
-        final r = pixel.r.toInt();
-        final g = pixel.g.toInt();
-        final b = pixel.b.toInt();
-        final colorInt = (0xFF << 24) | (r << 16) | (g << 8) | b;
-        colorCounts[colorInt] = (colorCounts[colorInt] ?? 0) + 1;
+      final path = imagePaths[i];
+      if (!_paletteCache.containsKey(path)) {
+        await extractPalette(path, useIsolate: useIsolate);
       }
+
+      _batchProgress = i + 1;
+      onProgress?.call(_batchProgress, _batchTotal);
     }
 
-    final candidates = colorCounts.entries
-        .map((e) => _ColorCandidate(e.key, e.value))
-        .toList();
-
-    final vibrantCandidates = candidates.where((c) {
-      final color = Color(c.color);
-      final hsl = HSLColor.fromColor(color);
-      return hsl.saturation >= 0.3 &&
-          hsl.lightness >= 0.2 &&
-          hsl.lightness <= 0.8;
-    }).toList();
-
-    if (vibrantCandidates.isNotEmpty) {
-      vibrantCandidates.sort((a, b) {
-        final satA = HSLColor.fromColor(Color(a.color)).saturation;
-        final satB = HSLColor.fromColor(Color(b.color)).saturation;
-        return satB.compareTo(satA);
-      });
-      return vibrantCandidates.first.color;
-    }
-
-    candidates.sort((a, b) => b.population.compareTo(a.population));
-    final dominant = candidates.firstOrNull;
-    if (dominant != null && _isValidColorInt(dominant.color)) {
-      return dominant.color;
-    }
-
-    final validColors =
-        candidates.where((c) => _isValidColorInt(c.color)).toList();
-    if (validColors.isEmpty) return null;
-
-    validColors.sort((a, b) {
-      final scoreA = _calculateColorScore(a);
-      final scoreB = _calculateColorScore(b);
-      return scoreB.compareTo(scoreA);
-    });
-
-    return validColors.first.color;
-  } catch (e) {
-    debugPrint('Error in isolate color extraction: $e');
-    return null;
+    _batchProgress = 0;
+    _batchTotal = 0;
   }
-}
 
-bool _isValidColorInt(int colorInt) {
-  final color = Color(colorInt);
-  final hsl = HSLColor.fromColor(color);
-  return hsl.saturation >= ColorExtractionService._minSaturation &&
-      hsl.lightness >= ColorExtractionService._minLightness &&
-      hsl.lightness <= ColorExtractionService._maxLightness;
-}
-
-double _calculateColorScore(_ColorCandidate candidate) {
-  final color = Color(candidate.color);
-  final hsl = HSLColor.fromColor(color);
-  final saturationScore = hsl.saturation;
-  final populationNormalized = math.min(candidate.population / 500.0, 1.0);
-  return (saturationScore * 0.8) + (populationNormalized * 0.2);
+  static void cancelBatchExtraction() {
+    _batchCancelled = true;
+  }
 }

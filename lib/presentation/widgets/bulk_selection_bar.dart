@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../models/quick_action_config.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
@@ -47,6 +48,10 @@ class BulkSelectionBar extends ConsumerWidget {
         case QuickAction.addToPlaylist:
           button =
               _buildPlaylistButton(context, ref, selectedSongs, selectedCount);
+          break;
+        case QuickAction.share:
+          button =
+              _buildShareButton(context, ref, selectedSongs, selectedCount);
           break;
         case QuickAction.editMetadata:
           button = _buildMetadataButton(
@@ -203,6 +208,22 @@ class BulkSelectionBar extends ConsumerWidget {
             ),
           );
         }
+      },
+    );
+  }
+
+  Widget _buildShareButton(
+      BuildContext context, WidgetRef ref, List<Song> songs, int count) {
+    return _ActionButton(
+      icon: Icons.share,
+      label: 'Share',
+      onTap: () {
+        final xFiles = songs.map((s) => XFile(s.url)).toList();
+        final text = songs.length == 1
+            ? '${songs[0].title} by ${songs[0].artist}'
+            : '${songs.length} songs';
+        Share.shareXFiles(xFiles, text: text);
+        ref.read(selectionProvider.notifier).exitSelectionMode();
       },
     );
   }

@@ -6,6 +6,7 @@ enum QuickAction {
   goToArtist,
   moveToFolder,
   addToPlaylist,
+  share,
   addToNewPlaylist,
   editMetadata,
   toggleFavorite,
@@ -27,6 +28,7 @@ class QuickActionConfig {
     QuickAction.toggleFavorite,
     QuickAction.playNext,
     QuickAction.addToPlaylist,
+    QuickAction.share,
     QuickAction.delete,
     QuickAction.hide,
     QuickAction.goToAlbum,
@@ -41,6 +43,7 @@ class QuickActionConfig {
     QuickAction.toggleFavorite,
     QuickAction.playNext,
     QuickAction.addToPlaylist,
+    QuickAction.share,
     QuickAction.delete,
   ];
 

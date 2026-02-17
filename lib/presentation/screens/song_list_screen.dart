@@ -8,6 +8,7 @@ import '../widgets/song_list_item.dart';
 import '../widgets/sort_menu.dart';
 import '../widgets/duration_display.dart';
 import '../widgets/bulk_selection_bar.dart';
+import '../widgets/folder_grid_image.dart';
 import '../../providers/selection_provider.dart';
 import 'select_songs_screen.dart';
 
@@ -31,6 +32,7 @@ class SongListScreen extends ConsumerWidget {
     final userData = ref.watch(userDataProvider);
     final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
     final playCounts = ref.watch(playCountsProvider).value ?? {};
+    final colorScheme = Theme.of(context).colorScheme;
 
     final sortedSongs = LibraryLogic.sortSongs(
       songs,
@@ -39,6 +41,8 @@ class SongListScreen extends ConsumerWidget {
       shuffleConfig: shuffleConfig,
       playCounts: playCounts,
     );
+
+    final isPlaylist = playlistId != null;
 
     return PopScope(
       canPop: !selectionState.isSelectionMode,
@@ -58,7 +62,12 @@ class SongListScreen extends ConsumerWidget {
                   style: const TextStyle(fontWeight: FontWeight.w900)),
               actions: [
                 const SortMenu(),
-                // Merge button - only show for non-playlist views
+                if (playlistId != null)
+                  IconButton(
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: () => _showPlaylistOptions(context, ref),
+                    tooltip: 'Playlist Options',
+                  ),
                 if (playlistId == null && sortedSongs.length >= 2)
                   IconButton(
                     icon: const Icon(Icons.merge_type),
@@ -100,44 +109,111 @@ class SongListScreen extends ConsumerWidget {
                     },
                     tooltip: 'Merge Songs',
                   ),
-                IconButton(
-                  icon: const Icon(Icons.shuffle),
-                  onPressed: () {
-                    if (sortedSongs.isNotEmpty) {
-                      audioManager.shuffleAndPlay(sortedSongs,
-                          isRestricted: true);
-                    }
-                  },
-                  tooltip: 'Shuffle',
-                ),
               ],
             ),
-            // Total duration header
-            if (sortedSongs.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.schedule,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: FolderGridImage(
+                            songs: sortedSongs,
+                            size: 220,
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 8),
+                    ),
+                    const SizedBox(height: 24),
+                    GestureDetector(
+                      onLongPress: isPlaylist
+                          ? () => _showRenameDialog(context, ref)
+                          : null,
+                      child: Text(
+                        title,
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (sortedSongs.isNotEmpty)
                       CollectionDurationDisplay(
                         songs: sortedSongs,
                         showSongCount: true,
-                        compact: false,
+                        compact: true,
                         style: TextStyle(
                           fontSize: 14,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
-                    ],
-                  ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: sortedSongs.isNotEmpty
+                              ? () {
+                                  audioManager.shuffleAndPlay(sortedSongs,
+                                      isRestricted: true);
+                                }
+                              : null,
+                          icon: const Icon(Icons.shuffle),
+                          label: const Text('Shuffle'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 14,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        FilledButton.icon(
+                          onPressed: sortedSongs.isNotEmpty
+                              ? () {
+                                  audioManager.playSong(
+                                    sortedSongs.first,
+                                    contextQueue: sortedSongs,
+                                    playlistId: playlistId,
+                                  );
+                                }
+                              : null,
+                          icon: const Icon(Icons.play_arrow),
+                          label: const Text('Play'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
+            ),
             if (sortedSongs.isEmpty)
               SliverFillRemaining(
                 child: Center(
@@ -177,6 +253,103 @@ class SongListScreen extends ConsumerWidget {
         ),
         bottomNavigationBar:
             selectionState.isSelectionMode ? const BulkSelectionBar() : null,
+      ),
+    );
+  }
+
+  void _showPlaylistOptions(BuildContext context, WidgetRef ref) {
+    if (playlistId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Rename'),
+              onTap: () {
+                Navigator.pop(context);
+                _showRenameDialog(context, ref);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Delete', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _showDeleteConfirmation(context, ref);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRenameDialog(BuildContext context, WidgetRef ref) {
+    if (playlistId == null) return;
+
+    final controller = TextEditingController(text: title);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Playlist'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final newName = controller.text;
+              if (newName.isNotEmpty && newName != title) {
+                ref
+                    .read(userDataProvider.notifier)
+                    .updatePlaylistName(playlistId!, newName);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, WidgetRef ref) {
+    if (playlistId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Playlist'),
+        content: Text('Are you sure you want to delete "$title"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              ref.read(userDataProvider.notifier).deletePlaylist(playlistId!);
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }

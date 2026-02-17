@@ -334,8 +334,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
           // Extract color from cover
           if (song != null && _ref != null) {
-            ColorExtractionService.extractColor(song.coverUrl).then((color) {
-              _ref!.read(themeProvider.notifier).updateExtractedColor(color);
+            ColorExtractionService.extractPalette(song.coverUrl)
+                .then((palette) {
+              if (palette != null) {
+                final processedPalette =
+                    palette.withDelightned().withAlpha(200);
+                _ref!
+                    .read(themeProvider.notifier)
+                    .updateExtractedPalette(processedPalette);
+              }
             });
             _preExtractNextColor();
           }
@@ -790,7 +797,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final nextSong = _effectiveQueue[nextIndex].song;
     if (nextSong.coverUrl != null) {
-      ColorExtractionService.extractColor(nextSong.coverUrl);
+      ColorExtractionService.extractPalette(nextSong.coverUrl);
     }
   }
 

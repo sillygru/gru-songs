@@ -3,31 +3,36 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import '../services/telemetry_service.dart';
+import '../services/color_extraction_service.dart';
 
 class ThemeState {
   final AppThemeMode mode;
   final bool useCoverColor;
   final bool applyCoverColorToAll;
-  final Color? extractedColor;
+  final ExtractedPalette? extractedPalette;
 
   ThemeState({
     required this.mode,
     this.useCoverColor = false,
     this.applyCoverColorToAll = false,
-    this.extractedColor,
+    this.extractedPalette,
   });
+
+  Color? get extractedColor => extractedPalette?.color;
+
+  List<Color> get palette => extractedPalette?.palette ?? [];
 
   ThemeState copyWith({
     AppThemeMode? mode,
     bool? useCoverColor,
     bool? applyCoverColorToAll,
-    Color? extractedColor,
+    ExtractedPalette? extractedPalette,
   }) {
     return ThemeState(
       mode: mode ?? this.mode,
       useCoverColor: useCoverColor ?? this.useCoverColor,
       applyCoverColorToAll: applyCoverColorToAll ?? this.applyCoverColorToAll,
-      extractedColor: extractedColor ?? this.extractedColor,
+      extractedPalette: extractedPalette ?? this.extractedPalette,
     );
   }
 }
@@ -89,9 +94,16 @@ class ThemeNotifier extends Notifier<ThemeState> {
         requiredLevel: 2);
   }
 
+  void updateExtractedPalette(ExtractedPalette? palette) {
+    if (state.extractedPalette != palette) {
+      state = state.copyWith(extractedPalette: palette);
+    }
+  }
+
   void updateExtractedColor(Color? color) {
     if (state.extractedColor != color) {
-      state = state.copyWith(extractedColor: color);
+      final palette = color != null ? ExtractedPalette.single(color) : null;
+      state = state.copyWith(extractedPalette: palette);
     }
   }
 }
