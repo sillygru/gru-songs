@@ -61,3 +61,4 @@ android/build/reports/problems/problems-report.html
 /temp
 /.gemini
 setup-project-ramdisk.sh
+/.opencode

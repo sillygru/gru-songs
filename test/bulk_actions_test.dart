@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gru_songs/models/song.dart';
 import 'package:gru_songs/services/bulk_metadata_service.dart';
@@ -15,7 +16,7 @@ void main() {
       final state = SelectionState();
       final updated = state.copyWith(
         isSelectionMode: true,
-        selectedFilenames: {'song1.mp3'},
+        selectedFilenames: LinkedHashSet<String>.from({'song1.mp3'}),
       );
       expect(updated.isSelectionMode, true);
       expect(updated.selectedFilenames, {'song1.mp3'});

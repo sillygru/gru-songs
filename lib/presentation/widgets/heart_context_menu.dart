@@ -19,7 +19,8 @@ void showHeartContextMenu({
           final userData = ref.watch(userDataProvider);
           final isFavorite = userData.isFavorite(songFilename);
           final isSuggestLess = userData.isSuggestLess(songFilename);
-          final playlists = userData.playlists;
+          final playlists =
+              userData.playlists.where((p) => !p.isRecommendation).toList();
 
           // Find the playlist this song was most recently added to
           Playlist? latestPlaylistWithSong;
@@ -124,7 +125,11 @@ void showHeartContextMenu({
 
 void _handleAddToPlaylist(
     BuildContext context, WidgetRef ref, String songFilename) {
-  final playlists = ref.read(userDataProvider).playlists;
+  final playlists = ref
+      .read(userDataProvider)
+      .playlists
+      .where((p) => !p.isRecommendation)
+      .toList();
   final sorted = List.of(playlists)
     ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 

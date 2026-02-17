@@ -1,17 +1,18 @@
+import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class SelectionState {
   final bool isSelectionMode;
-  final Set<String> selectedFilenames;
+  final LinkedHashSet<String> selectedFilenames;
 
   SelectionState({
     this.isSelectionMode = false,
-    this.selectedFilenames = const {},
-  });
+    LinkedHashSet<String>? selectedFilenames,
+  }) : selectedFilenames = selectedFilenames ?? LinkedHashSet<String>();
 
   SelectionState copyWith({
     bool? isSelectionMode,
-    Set<String>? selectedFilenames,
+    LinkedHashSet<String>? selectedFilenames,
   }) {
     return SelectionState(
       isSelectionMode: isSelectionMode ?? this.isSelectionMode,
@@ -27,16 +28,18 @@ class SelectionNotifier extends Notifier<SelectionState> {
   }
 
   void toggleSelectionMode() {
-    state = state.copyWith(
+    state = SelectionState(
       isSelectionMode: !state.isSelectionMode,
-      selectedFilenames: {},
+      selectedFilenames: LinkedHashSet<String>(),
     );
   }
 
   void enterSelectionMode(String initialFilename) {
-    state = state.copyWith(
+    final newSet = LinkedHashSet<String>();
+    newSet.add(initialFilename);
+    state = SelectionState(
       isSelectionMode: true,
-      selectedFilenames: {initialFilename},
+      selectedFilenames: newSet,
     );
   }
 
@@ -45,11 +48,11 @@ class SelectionNotifier extends Notifier<SelectionState> {
   }
 
   void toggleSelection(String filename) {
-    final current = Set<String>.from(state.selectedFilenames);
+    final current = LinkedHashSet<String>.from(state.selectedFilenames);
     if (current.contains(filename)) {
       current.remove(filename);
       if (current.isEmpty) {
-        state = SelectionState(); // Exit if none left
+        state = SelectionState();
         return;
       }
     } else {
@@ -59,7 +62,11 @@ class SelectionNotifier extends Notifier<SelectionState> {
   }
 
   void selectAll(List<String> filenames) {
-    state = state.copyWith(selectedFilenames: Set.from(filenames));
+    state = state.copyWith(selectedFilenames: LinkedHashSet.from(filenames));
+  }
+
+  List<String> getOrderedSelection() {
+    return state.selectedFilenames.toList();
   }
 }
 

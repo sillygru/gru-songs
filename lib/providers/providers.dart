@@ -185,7 +185,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
   @override
   Future<List<Song>> build() async {
-    final userData = ref.watch(userDataProvider);
+    final userData = ref.read(userDataProvider);
 
     // 2. Load from SQLite
     final cached = await DatabaseService.instance.getAllSongs();

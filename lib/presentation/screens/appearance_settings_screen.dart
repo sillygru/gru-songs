@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import 'theme_selection_screen.dart';
+import 'quick_actions_settings_screen.dart';
 
 class AppearanceSettingsScreen extends ConsumerStatefulWidget {
   const AppearanceSettingsScreen({super.key});
@@ -72,6 +73,24 @@ class _AppearanceSettingsScreenState
                 value: settings.showSongDuration,
                 onChanged: (val) {
                   ref.read(settingsProvider.notifier).setShowSongDuration(val);
+                },
+              ),
+            ],
+          ),
+          _buildSettingsGroup(
+            title: 'Interaction',
+            icon: Icons.touch_app_outlined,
+            children: [
+              _buildListTile(
+                icon: Icons.flash_on_outlined,
+                title: 'Quick Actions',
+                subtitle: 'Customize long-press actions',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const QuickActionsSettingsScreen()),
+                  );
                 },
               ),
             ],

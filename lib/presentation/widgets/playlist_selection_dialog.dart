@@ -10,7 +10,8 @@ class PlaylistSelectionDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userData = ref.watch(userDataProvider);
-    final playlists = userData.playlists;
+    final playlists =
+        userData.playlists.where((p) => !p.isRecommendation).toList();
 
     return AlertDialog(
       title: const Text('Add to Playlist'),

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song.dart';
+import '../models/quick_action_config.dart';
 import '../services/telemetry_service.dart';
 
 class SettingsState {
@@ -15,6 +16,7 @@ class SettingsState {
   final double fadeOutDuration;
   final double fadeInDuration;
   final double delayDuration;
+  final QuickActionConfig quickActionConfig;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -28,7 +30,8 @@ class SettingsState {
     this.fadeOutDuration = 0.0,
     this.fadeInDuration = 0.0,
     this.delayDuration = 0.0,
-  });
+    QuickActionConfig? quickActionConfig,
+  }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
     bool? visualizerEnabled,
@@ -42,6 +45,7 @@ class SettingsState {
     double? fadeOutDuration,
     double? fadeInDuration,
     double? delayDuration,
+    QuickActionConfig? quickActionConfig,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -58,6 +62,7 @@ class SettingsState {
       fadeOutDuration: fadeOutDuration ?? this.fadeOutDuration,
       fadeInDuration: fadeInDuration ?? this.fadeInDuration,
       delayDuration: delayDuration ?? this.delayDuration,
+      quickActionConfig: quickActionConfig ?? this.quickActionConfig,
     );
   }
 }
@@ -74,6 +79,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyFadeOutDuration = 'fade_out_duration';
   static const _keyFadeInDuration = 'fade_in_duration';
   static const _keyDelayDuration = 'delay_duration';
+  static const _keyQuickActionConfig = 'quick_action_config';
   static const double maxDelayDuration = 12.0;
 
   @override
@@ -101,6 +107,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
       fadeOutDuration: prefs.getDouble(_keyFadeOutDuration) ?? 0.0,
       fadeInDuration: prefs.getDouble(_keyFadeInDuration) ?? 0.0,
       delayDuration: prefs.getDouble(_keyDelayDuration) ?? 0.0,
+      quickActionConfig: QuickActionConfig.fromJsonString(
+          prefs.getString(_keyQuickActionConfig) ?? ''),
     );
   }
 
@@ -254,6 +262,12 @@ class SettingsNotifier extends Notifier<SettingsState> {
           'value': enabled,
         },
         requiredLevel: 2);
+  }
+
+  Future<void> setQuickActionConfig(QuickActionConfig config) async {
+    state = state.copyWith(quickActionConfig: config);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyQuickActionConfig, config.toJsonString());
   }
 }
 

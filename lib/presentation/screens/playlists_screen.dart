@@ -79,7 +79,8 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
       ),
       body: songsAsync.when(
         data: (songs) {
-          var playlists = userData.playlists;
+          var playlists =
+              userData.playlists.where((p) => !p.isRecommendation).toList();
 
           if (_searchQuery.isNotEmpty) {
             playlists = playlists

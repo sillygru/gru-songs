@@ -136,18 +136,18 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   @override
   UserDataState build() {
-    // Listen to songsProvider to trigger recommendation updates when songs are ready.
-    // This ensures that even if updateRecommendationPlaylists was called too early during init,
-    // it will run as soon as we have songs to generate from.
-    ref.listen(songsProvider, (previous, next) {
-      if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
-        updateRecommendationPlaylists();
-      }
-    });
-
     if (!_initialized) {
       _initialized = true;
       Future.microtask(() => _initLocal());
+      Future.microtask(() {
+        ref.listen(songsProvider, (previous, next) {
+          if (next is AsyncData &&
+              next.value != null &&
+              next.value!.isNotEmpty) {
+            updateRecommendationPlaylists();
+          }
+        });
+      });
       return UserDataState(isLoading: true);
     }
     return state;
@@ -386,6 +386,33 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
 
     state = state.copyWith(hidden: newHidden);
+    _updateManager();
+  }
+
+  Future<void> bulkToggleSuggestLess(
+      List<String> filenames, bool suggestLess) async {
+    final newSL = List<String>.from(state.suggestLess);
+
+    for (final filename in filenames) {
+      final isCurrentlySL = state.isSuggestLess(filename);
+
+      if (suggestLess && !isCurrentlySL) {
+        newSL.add(filename);
+        await DatabaseService.instance.addSuggestLess(filename);
+      } else if (!suggestLess && isCurrentlySL) {
+        final actualSLMatch = state.suggestLess.firstWhere(
+          (sl) =>
+              sl.toLowerCase() == filename.toLowerCase() ||
+              p.basename(sl).toLowerCase() ==
+                  p.basename(filename).toLowerCase(),
+          orElse: () => filename,
+        );
+        newSL.remove(actualSLMatch);
+        await DatabaseService.instance.removeSuggestLess(actualSLMatch);
+      }
+    }
+
+    state = state.copyWith(suggestLess: newSL);
     _updateManager();
   }
 

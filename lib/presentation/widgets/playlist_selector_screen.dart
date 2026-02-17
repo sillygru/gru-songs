@@ -44,6 +44,7 @@ class _PlaylistSelectorDialogState
         final songFilename = widget.songFilenames[0];
         _isFavorite = userData.isFavorite(songFilename);
         _selectedPlaylistIds = userData.playlists
+            .where((p) => !p.isRecommendation)
             .where(
                 (pl) => pl.songs.any((ps) => ps.songFilename == songFilename))
             .map((pl) => pl.id)
@@ -66,7 +67,7 @@ class _PlaylistSelectorDialogState
         // Actually, maybe it's better to show as selected if ANY song is in it, or use a tri-state.
         // Let's use ANY for simplicity in initialization, but maybe null for mixed.
         _selectedPlaylistIds = {};
-        for (final pl in userData.playlists) {
+        for (final pl in userData.playlists.where((p) => !p.isRecommendation)) {
           bool anyIn = false;
           for (final f in widget.songFilenames) {
             if (pl.songs.any((ps) => ps.songFilename == f)) {
@@ -86,7 +87,8 @@ class _PlaylistSelectorDialogState
   @override
   Widget build(BuildContext context) {
     final userData = ref.watch(userDataProvider);
-    final playlists = userData.playlists;
+    final playlists =
+        userData.playlists.where((p) => !p.isRecommendation).toList();
 
     return AlertDialog(
       title: Text(
@@ -282,9 +284,18 @@ class _PlaylistSelectorDialogState
       await notifier.createPlaylist(name, songFilenames[0]);
     } else {
       await notifier.createPlaylist(name);
-      // Find the newly created playlist (it's at the top)
-      final newPlaylist = ref.read(userDataProvider).playlists.first;
-      await notifier.bulkAddSongsToPlaylist(newPlaylist.id, songFilenames);
+      final userPlaylists = ref
+          .read(userDataProvider)
+          .playlists
+          .where((p) => !p.isRecommendation)
+          .toList();
+      final newPlaylist = userPlaylists.isNotEmpty ? userPlaylists.first : null;
+      if (newPlaylist != null) {
+        await notifier.bulkAddSongsToPlaylist(newPlaylist.id, songFilenames);
+        setState(() {
+          _selectedPlaylistIds.add(newPlaylist.id);
+        });
+      }
     }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
