@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +5,7 @@ import '../../providers/providers.dart';
 import '../../models/queue_item.dart';
 import '../../models/song.dart';
 import '../../services/audio_player_manager.dart';
-import 'album_art_image.dart';
+import 'album_art_image.dart' show StaticAlbumArtImage;
 
 class NextUpSheet extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
@@ -24,6 +22,11 @@ class NextUpSheet extends ConsumerStatefulWidget {
 }
 
 class _NextUpSheetState extends ConsumerState<NextUpSheet> {
+  // Memoized queue list to prevent recalculation on every minor build
+  List<QueueItem>? _cachedUpcomingQueue;
+  int _cachedCurrentIndex = -1;
+  int _cachedQueueLength = -1;
+
   void _toggleSheetSize() {
     final controller = widget.sheetController;
     if (controller == null) return;
@@ -34,7 +37,49 @@ class _NextUpSheetState extends ConsumerState<NextUpSheet> {
     controller.animateTo(
       targetSize,
       duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+      curve: Curves.elasticOut,
+    );
+  }
+
+  // Optimized manual drag for the header
+  void _handleHeaderDragUpdate(DragUpdateDetails details) {
+    final controller = widget.sheetController;
+    if (controller == null) return;
+
+    final double delta = details.primaryDelta ?? 0;
+    final double height = MediaQuery.of(context).size.height;
+    if (height == 0) return;
+
+    // Calculate new size directly
+    final newSize = controller.size - (delta / height);
+    controller.jumpTo(newSize.clamp(0.1, 0.95));
+  }
+
+  void _handleHeaderDragEnd(DragEndDetails details) {
+    final controller = widget.sheetController;
+    if (controller == null) return;
+
+    final velocity = details.primaryVelocity ?? 0;
+    final currentSize = controller.size;
+
+    // Fast dismiss logic
+    if (velocity > 1500 || (velocity > 0 && currentSize < 0.35)) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    // Snap logic
+    double targetSize;
+    if (velocity.abs() > 300) {
+      targetSize = velocity > 0 ? 0.5 : 0.9;
+    } else {
+      targetSize = currentSize < 0.7 ? 0.5 : 0.9;
+    }
+
+    controller.animateTo(
+      targetSize,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -44,194 +89,96 @@ class _NextUpSheetState extends ConsumerState<NextUpSheet> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return ValueListenableBuilder<List<QueueItem>>(
-      valueListenable: audioManager.queueNotifier,
-      builder: (context, queue, child) {
-        return StreamBuilder<int?>(
-          stream: audioManager.player.currentIndexStream,
-          initialData: audioManager.player.currentIndex,
-          builder: (context, snapshot) {
-            final currentIndex = snapshot.data ?? -1;
-
-            // Show upcoming songs after current
-            final upcomingQueue = queue.skip(currentIndex + 1).toList();
-
-            return Container(
-              decoration: BoxDecoration(
-                color: colorScheme.surface.withValues(alpha: 0.95),
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(32)),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  width: 1,
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.95),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.05),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          )
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            // Grab Handle Area - Static
+            GestureDetector(
+              onTap: _toggleSheetSize,
+              onVerticalDragUpdate: _handleHeaderDragUpdate,
+              onVerticalDragEnd: _handleHeaderDragEnd,
+              behavior: HitTestBehavior.translucent,
+              child: SizedBox(
+                width: double.infinity,
+                height: 20,
+                child: Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.onSurface.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
               ),
-              child: ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(32)),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 12),
-                    // Grab Handle - Draggable with dismiss support
-                    GestureDetector(
-                      onTap: _toggleSheetSize,
-                      onVerticalDragUpdate: (details) {
-                        final controller = widget.sheetController;
-                        if (controller == null) return;
-                        final delta = details.primaryDelta ?? 0;
-                        final newSize = controller.size -
-                            (delta / MediaQuery.of(context).size.height);
-                        controller.jumpTo(newSize.clamp(0.1, 0.9));
-                      },
-                      onVerticalDragEnd: (details) {
-                        final controller = widget.sheetController;
-                        if (controller == null) return;
-                        final velocity = details.primaryVelocity ?? 0;
-                        final currentSize = controller.size;
+            ),
+            // Header Area with Dynamic Content
+            _NextUpHeader(
+              audioManager: audioManager,
+              onHeaderDragUpdate: _handleHeaderDragUpdate,
+              onHeaderDragEnd: _handleHeaderDragEnd,
+              onClearConfirm: () => _showClearConfirm(context, audioManager),
+            ),
+            // List Content - Only this part rebuilds frequently
+            Expanded(
+              child: ValueListenableBuilder<List<QueueItem>>(
+                valueListenable: audioManager.queueNotifier,
+                builder: (context, queue, child) {
+                  return StreamBuilder<int?>(
+                    stream: audioManager.player.currentIndexStream,
+                    initialData: audioManager.player.currentIndex,
+                    builder: (context, snapshot) {
+                      final currentIndex = snapshot.data ?? -1;
 
-                        // Dismiss on fast downward swipe (>800 px/s) or if dragged below 0.25
-                        if (velocity > 800 || currentSize < 0.25) {
-                          Navigator.of(context).pop();
-                          return;
-                        }
+                      // Simple cache check to avoid expensive .skip().toList() on every frame if nothing changed
+                      if (_cachedUpcomingQueue == null ||
+                          _cachedCurrentIndex != currentIndex ||
+                          _cachedQueueLength != queue.length) {
+                        _cachedUpcomingQueue =
+                            queue.skip(currentIndex + 1).toList();
+                        _cachedCurrentIndex = currentIndex;
+                        _cachedQueueLength = queue.length;
+                      }
 
-                        // Snap to nearest point based on velocity and position
-                        double targetSize;
-                        if (velocity.abs() > 300) {
-                          targetSize = velocity > 0 ? 0.5 : 0.9;
-                        } else {
-                          targetSize = currentSize < 0.7 ? 0.5 : 0.9;
-                        }
+                      final upcomingQueue = _cachedUpcomingQueue!;
 
-                        controller.animateTo(
-                          targetSize,
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOut,
-                        );
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        color: Colors.transparent,
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: colorScheme.onSurface
-                                    .withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Header - Also draggable with dismiss support
-                    GestureDetector(
-                      onVerticalDragUpdate: (details) {
-                        final controller = widget.sheetController;
-                        if (controller == null) return;
-                        final delta = details.primaryDelta ?? 0;
-                        final newSize = controller.size -
-                            (delta / MediaQuery.of(context).size.height);
-                        controller.jumpTo(newSize.clamp(0.1, 0.9));
-                      },
-                      onVerticalDragEnd: (details) {
-                        final controller = widget.sheetController;
-                        if (controller == null) return;
-                        final velocity = details.primaryVelocity ?? 0;
-                        final currentSize = controller.size;
+                      if (upcomingQueue.isEmpty) {
+                        return const _EmptyQueue();
+                      }
 
-                        // Dismiss on fast downward swipe (>800 px/s) or if dragged below 0.25
-                        if (velocity > 800 || currentSize < 0.25) {
-                          Navigator.of(context).pop();
-                          return;
-                        }
-
-                        double targetSize;
-                        if (velocity.abs() > 300) {
-                          targetSize = velocity > 0 ? 0.5 : 0.9;
-                        } else {
-                          targetSize = currentSize < 0.7 ? 0.5 : 0.9;
-                        }
-
-                        controller.animateTo(
-                          targetSize,
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOut,
-                        );
-                      },
-                      behavior: HitTestBehavior.translucent,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 16, 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Up Next',
-                                    style:
-                                        theme.textTheme.headlineSmall?.copyWith(
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${upcomingQueue.length} songs remaining',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: colorScheme.onSurfaceVariant
-                                          .withValues(alpha: 0.7),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Header Actions
-                            _HeaderAction(
-                              icon: Icons.refresh_rounded,
-                              tooltip: 'Shuffle Remaining',
-                              onPressed: () {
-                                HapticFeedback.mediumImpact();
-                                audioManager.refreshQueue();
-                              },
-                            ),
-                            const SizedBox(width: 8),
-                            _HeaderAction(
-                              icon: Icons.delete_sweep_rounded,
-                              tooltip: 'Clear All',
-                              onPressed: upcomingQueue.isEmpty
-                                  ? null
-                                  : () {
-                                      _showClearConfirm(context, audioManager);
-                                    },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: upcomingQueue.isEmpty
-                          ? const _EmptyQueue()
-                          : _QueueListContent(
-                              upcomingQueue: upcomingQueue,
-                              currentIndex: currentIndex,
-                              audioManager: audioManager,
-                              scrollController: widget.scrollController,
-                            ),
-                    ),
-                  ],
-                ),
+                      return _QueueListContent(
+                        upcomingQueue: upcomingQueue,
+                        currentIndex: currentIndex,
+                        audioManager: audioManager,
+                        scrollController: widget.scrollController,
+                      );
+                    },
+                  );
+                },
               ),
-            );
-          },
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -277,13 +224,29 @@ class _QueueListContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // We create a prototype item for performance calculation
+    final prototypeItem = upcomingQueue.isNotEmpty
+        ? _NextUpItem(
+            key: const ValueKey('prototype'),
+            item: upcomingQueue.first,
+            index: 0,
+            currentIndex: 0,
+            audioManager: audioManager)
+        : null;
+
     return ReorderableListView.builder(
       itemCount: upcomingQueue.length,
       scrollController: scrollController,
-      cacheExtent: 500,
+      // PERFORMANCE: Helps flutter calculate scroll height without rendering everything
+      prototypeItem: prototypeItem,
+      cacheExtent:
+          1000, // Keep more items alive in memory for smoother fast scrolling
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+      // IMPORTANT: Disabling default handles prevents the whole tile from being a drag target.
+      // This allows the Swipe gesture (Dismissible) to work everywhere EXCEPT the handle.
+      buildDefaultDragHandles: false,
       onReorder: (oldIndex, newIndex) {
-        HapticFeedback.lightImpact();
+        HapticFeedback.selectionClick();
         audioManager.reorderQueue(
           currentIndex + 1 + oldIndex,
           currentIndex + 1 + newIndex,
@@ -293,28 +256,133 @@ class _QueueListContent extends StatelessWidget {
         return AnimatedBuilder(
           animation: animation,
           builder: (context, child) {
-            final elevation = Tween<double>(
-              begin: 0,
-              end: 8,
-            ).evaluate(animation);
+            final double animValue =
+                Curves.easeInOut.transform(animation.value);
             return Material(
-              elevation: elevation,
+              elevation: 12 * animValue,
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(18),
-              child: child,
+              child: Transform.scale(
+                scale: 1.0 + (0.02 * animValue),
+                child: child,
+              ),
             );
           },
           child: child,
         );
       },
       itemBuilder: (context, index) {
-        return _NextUpItem(
-          key: ValueKey(upcomingQueue[index].queueId),
-          item: upcomingQueue[index],
-          index: index,
-          currentIndex: currentIndex,
-          audioManager: audioManager,
+        final item = upcomingQueue[index];
+        return RepaintBoundary(
+          key: ValueKey('repaint_${item.queueId}'),
+          child: _NextUpItem(
+            key: ValueKey(item.queueId),
+            item: item,
+            index: index,
+            currentIndex: currentIndex,
+            audioManager: audioManager,
+          ),
         );
       },
+    );
+  }
+}
+
+class _NextUpHeader extends StatelessWidget {
+  final AudioPlayerManager audioManager;
+  final void Function(DragUpdateDetails) onHeaderDragUpdate;
+  final void Function(DragEndDetails) onHeaderDragEnd;
+  final VoidCallback onClearConfirm;
+
+  const _NextUpHeader({
+    required this.audioManager,
+    required this.onHeaderDragUpdate,
+    required this.onHeaderDragEnd,
+    required this.onClearConfirm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return GestureDetector(
+      onVerticalDragUpdate: onHeaderDragUpdate,
+      onVerticalDragEnd: onHeaderDragEnd,
+      behavior: HitTestBehavior.translucent,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 16, 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: ValueListenableBuilder<List<QueueItem>>(
+                valueListenable: audioManager.queueNotifier,
+                builder: (context, queue, child) {
+                  return StreamBuilder<int?>(
+                    stream: audioManager.player.currentIndexStream,
+                    initialData: audioManager.player.currentIndex,
+                    builder: (context, snapshot) {
+                      final currentIndex = snapshot.data ?? -1;
+                      final upcomingCount = queue.length - currentIndex - 1;
+                      final displayCount =
+                          upcomingCount < 0 ? 0 : upcomingCount;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Up Next',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          Text(
+                            '$displayCount songs remaining',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.7),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            _HeaderAction(
+              icon: Icons.refresh_rounded,
+              tooltip: 'Shuffle Remaining',
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                audioManager.refreshQueue();
+              },
+            ),
+            const SizedBox(width: 8),
+            ValueListenableBuilder<List<QueueItem>>(
+              valueListenable: audioManager.queueNotifier,
+              builder: (context, queue, child) {
+                return StreamBuilder<int?>(
+                  stream: audioManager.player.currentIndexStream,
+                  initialData: audioManager.player.currentIndex,
+                  builder: (context, snapshot) {
+                    final currentIndex = snapshot.data ?? -1;
+                    final hasUpcoming = queue.length > currentIndex + 1;
+
+                    return _HeaderAction(
+                      icon: Icons.delete_sweep_rounded,
+                      tooltip: 'Clear All',
+                      onPressed: hasUpcoming ? onClearConfirm : null,
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -332,24 +400,26 @@ class _HeaderAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: IconButton(
         icon: Icon(icon, size: 22),
         tooltip: tooltip,
         onPressed: onPressed,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        color: theme.colorScheme.onSurfaceVariant,
         padding: const EdgeInsets.all(8),
         constraints: const BoxConstraints(),
+        visualDensity: VisualDensity.compact,
       ),
     );
   }
 }
 
-class _NextUpItem extends StatefulWidget {
+class _NextUpItem extends StatelessWidget {
   final QueueItem item;
   final int index;
   final int currentIndex;
@@ -364,172 +434,140 @@ class _NextUpItem extends StatefulWidget {
   });
 
   @override
-  State<_NextUpItem> createState() => _NextUpItemState();
-}
-
-class _NextUpItemState extends State<_NextUpItem> {
-  bool _isDragging = false;
-  double _dragStartX = 0;
-  double _dragStartY = 0;
-  bool _isHorizontalDrag = false;
-
-  @override
   Widget build(BuildContext context) {
-    final song = widget.item.song;
+    final song = item.song;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return RepaintBoundary(
-      child: Padding(
-        key: ValueKey('padding_${widget.item.queueId}'),
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Listener(
-          onPointerDown: (event) {
-            _dragStartX = event.position.dx;
-            _dragStartY = event.position.dy;
-            _isDragging = true;
-            _isHorizontalDrag = false;
-          },
-          onPointerMove: (event) {
-            if (!_isDragging) return;
-
-            final dx = event.position.dx - _dragStartX;
-            final dy = event.position.dy - _dragStartY;
-            final totalDistance = math.sqrt(dx * dx + dy * dy);
-
-            if (totalDistance > 10) {
-              final horizontalRatio = dx.abs() / totalDistance;
-              _isHorizontalDrag = horizontalRatio > 0.6;
-              setState(() {});
-            }
-          },
-          onPointerUp: (event) {
-            _isDragging = false;
-          },
-          onPointerCancel: (event) {
-            _isDragging = false;
-          },
-          behavior: HitTestBehavior.translucent,
-          child: _isHorizontalDrag || !_isDragging
-              ? Dismissible(
-                  key: ValueKey('dismiss_${widget.item.queueId}'),
-                  direction: DismissDirection.horizontal,
-                  dismissThresholds: const {
-                    DismissDirection.startToEnd: 0.25,
-                    DismissDirection.endToStart: 0.25,
-                  },
-                  movementDuration: const Duration(milliseconds: 200),
-                  onDismissed: (direction) {
-                    if (direction == DismissDirection.endToStart) {
-                      widget.audioManager.removeFromQueue(
-                          widget.currentIndex + 1 + widget.index);
-                    }
-                  },
-                  confirmDismiss: (direction) async {
-                    if (direction == DismissDirection.startToEnd) {
-                      widget.audioManager.togglePriority(
-                          widget.currentIndex + 1 + widget.index);
-                      return false;
-                    }
-                    return true;
-                  },
-                  background: _SwipeAction(
-                    color: colorScheme.primary,
-                    icon: widget.item.isPriority
-                        ? Icons.push_pin_rounded
-                        : Icons.push_pin_outlined,
-                    alignment: Alignment.centerLeft,
-                    label: widget.item.isPriority ? 'Unpin' : 'Pin to Top',
-                  ),
-                  secondaryBackground: const _SwipeAction(
-                    color: Colors.redAccent,
-                    icon: Icons.delete_outline_rounded,
-                    alignment: Alignment.centerRight,
-                    label: 'Remove',
-                  ),
-                  child: _buildItemContent(song, theme, colorScheme),
-                )
-              : _buildItemContent(song, theme, colorScheme),
+    // We use a cleaner Dismissible setup.
+    // The key ensures Flutter knows which item is being swiped.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Dismissible(
+        key: ValueKey('dismiss_${item.queueId}'),
+        direction: DismissDirection.horizontal,
+        dismissThresholds: const {
+          DismissDirection.startToEnd: 0.25,
+          DismissDirection.endToStart: 0.25,
+        },
+        background: _SwipeAction(
+          color: colorScheme.primary,
+          icon: item.isPriority
+              ? Icons.push_pin_rounded
+              : Icons.push_pin_outlined,
+          alignment: Alignment.centerLeft,
+          label: item.isPriority ? 'Unpin' : 'Pin to Top',
         ),
+        secondaryBackground: const _SwipeAction(
+          color: Colors.redAccent,
+          icon: Icons.delete_outline_rounded,
+          alignment: Alignment.centerRight,
+          label: 'Remove',
+        ),
+        confirmDismiss: (direction) async {
+          if (direction == DismissDirection.startToEnd) {
+            HapticFeedback.mediumImpact();
+            audioManager.togglePriority(currentIndex + 1 + index);
+            return false; // Don't remove from list, just toggle state
+          }
+          return true; // Allow remove
+        },
+        onDismissed: (direction) {
+          if (direction == DismissDirection.endToStart) {
+            HapticFeedback.mediumImpact();
+            audioManager.removeFromQueue(currentIndex + 1 + index);
+          }
+        },
+        child: _buildItemContent(context, song, theme, colorScheme),
       ),
     );
   }
 
-  Widget _buildItemContent(
-      Song song, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildItemContent(BuildContext context, Song song, ThemeData theme,
+      ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: widget.item.isPriority
-              ? colorScheme.primary.withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.03),
+          color: item.isPriority
+              ? colorScheme.primary.withValues(alpha: 0.3)
+              : Colors
+                  .transparent, // Optimization: transparent instead of calc when not needed
           width: 1,
         ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: ListTile(
-          contentPadding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          leading: Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: AlbumArtImage(
-                  url: widget.item.song.coverUrl ?? '',
-                  filename: widget.item.song.filename,
-                  width: 52,
-                  height: 52,
-                  fit: BoxFit.cover,
-                ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        // Album Art
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: StaticAlbumArtImage(
+                url: song.coverUrl ?? '',
+                filename: song.filename,
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
               ),
-              if (widget.item.isPriority)
-                Positioned(
-                  top: -2,
-                  right: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
+            ),
+            if (item.isPriority)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
                       color: colorScheme.primary,
                       shape: BoxShape.circle,
                       border: Border.all(color: colorScheme.surface, width: 2),
-                    ),
-                    child: const Icon(Icons.push_pin_rounded,
-                        size: 10, color: Colors.white),
-                  ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                        )
+                      ]),
+                  child: const Icon(Icons.push_pin_rounded,
+                      size: 10, color: Colors.white),
                 ),
-            ],
-          ),
-          title: Text(
-            song.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: widget.item.isPriority ? colorScheme.primary : null,
-            ),
-          ),
-          subtitle: Text(
-            song.artist,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              fontSize: 13,
-            ),
-          ),
-          trailing: ReorderableDragStartListener(
-            index: widget.index,
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Icon(
-                Icons.drag_indicator_rounded,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
               ),
+          ],
+        ),
+        // Text Info
+        title: Text(
+          song.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+            color: item.isPriority ? colorScheme.primary : null,
+          ),
+        ),
+        subtitle: Text(
+          song.artist,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            fontSize: 13,
+          ),
+        ),
+        // The Reorder Handle
+        // This is CRITICAL: ReorderableDragStartListener makes ONLY this icon
+        // the trigger for dragging. The rest of the tile is free for scrolling/swiping.
+        trailing: ReorderableDragStartListener(
+          index: index,
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            color: Colors.transparent, // Increase hit area
+            child: Icon(
+              Icons.drag_indicator_rounded,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+              size: 20,
             ),
           ),
         ),
@@ -553,24 +591,31 @@ class _SwipeAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Optimization: Pre-calculate padding based on alignment
+    final isLeft = alignment == Alignment.centerLeft;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      alignment: alignment,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(18),
       ),
+      alignment: alignment,
+      padding: EdgeInsets.only(
+        left: isLeft ? 24 : 0,
+        right: isLeft ? 0 : 24,
+      ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 4),
+          Icon(icon, color: color, size: 26),
+          const SizedBox(height: 2),
           Text(
             label,
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.bold,
-              fontSize: 10,
+              fontSize: 11,
             ),
           ),
         ],
@@ -580,7 +625,7 @@ class _SwipeAction extends StatelessWidget {
 }
 
 class _EmptyQueue extends StatelessWidget {
-  const _EmptyQueue({super.key});
+  const _EmptyQueue();
 
   @override
   Widget build(BuildContext context) {
@@ -593,29 +638,31 @@ class _EmptyQueue extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: colorScheme.onSurface.withValues(alpha: 0.05),
+              color: colorScheme.onSurface.withValues(alpha: 0.03),
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.auto_awesome_motion_rounded,
-              size: 64,
+              Icons.queue_music_rounded,
+              size: 48,
               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Text(
             "Nothing's next",
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                ),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
-            "Hmmmm guess you ran out of songs bro",
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                ),
+            "Add songs to keep the vibe going",
+            style: TextStyle(
+              fontSize: 14,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
           ),
         ],
       ),

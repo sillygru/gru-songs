@@ -190,14 +190,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           snapSizes: const [0.5, 0.9],
           builder: (context, scrollController) => GestureDetector(
             onTap: () {},
-            child: AnimatedTheme(
+            child: Theme(
               data: AppTheme.getPlayerTheme(
                   themeState, themeState.extractedColor),
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOut,
-              child: NextUpSheet(
-                scrollController: scrollController,
-                sheetController: controller,
+              child: RepaintBoundary(
+                child: NextUpSheet(
+                  scrollController: scrollController,
+                  sheetController: controller,
+                ),
               ),
             ),
           ),
@@ -517,7 +517,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               Positioned.fill(
                                 child: BackdropFilter(
                                   filter:
-                                      ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                                      ImageFilter.blur(sigmaX: 25, sigmaY: 25),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(

@@ -156,3 +156,112 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
     );
   }
 }
+
+class StaticAlbumArtImage extends StatelessWidget {
+  final String url;
+  final String? filename;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final double borderRadius;
+  final Widget? placeholder;
+  final Widget? errorWidget;
+
+  const StaticAlbumArtImage({
+    super.key,
+    required this.url,
+    this.filename,
+    this.width,
+    this.height,
+    this.fit = BoxFit.cover,
+    this.borderRadius = 0,
+    this.placeholder,
+    this.errorWidget,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.isEmpty) {
+      return _buildErrorWidget();
+    }
+
+    final bool isLocal = url.startsWith('/') ||
+        url.startsWith('C:\\') ||
+        url.startsWith('file://') ||
+        url.startsWith('content://');
+
+    Widget content;
+
+    if (isLocal) {
+      String path;
+      try {
+        final uri = Uri.parse(url);
+        if (uri.isScheme('file')) {
+          path = uri.toFilePath();
+        } else {
+          path = url;
+        }
+      } catch (_) {
+        path = url;
+      }
+
+      content = Image.file(
+        File(path),
+        width: width,
+        height: height,
+        fit: fit,
+        filterQuality: FilterQuality.low,
+        cacheWidth: width != null ? (width! * 2).toInt() : null,
+        cacheHeight: height != null ? (height! * 2).toInt() : null,
+        errorBuilder: (context, error, stackTrace) {
+          return errorWidget ?? _buildErrorWidget();
+        },
+      );
+    } else {
+      content = Image.network(
+        url,
+        width: width,
+        height: height,
+        fit: fit,
+        filterQuality: FilterQuality.low,
+        cacheWidth: width != null ? (width! * 2).toInt() : null,
+        cacheHeight: height != null ? (height! * 2).toInt() : null,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return placeholder ?? _buildPlaceholderWidget();
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return errorWidget ?? _buildErrorWidget();
+        },
+      );
+    }
+
+    if (borderRadius > 0) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: content,
+      );
+    }
+
+    return content;
+  }
+
+  Widget _buildPlaceholderWidget() {
+    return Container(
+      width: width,
+      height: height,
+      color: const Color(0xFF1E1E1E),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    return Container(
+      width: width,
+      height: height,
+      color: const Color(0xFF1E1E1E),
+      child: const Center(
+        child: Icon(Icons.music_note, color: Colors.white24),
+      ),
+    );
+  }
+}
