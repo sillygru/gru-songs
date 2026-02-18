@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../providers/theme_provider.dart';
 
-enum AppThemeMode { defaultTheme, lightBlue, oled, matchCover }
+enum AppThemeMode { matchCover, defaultTheme, oled, lightBlue }
 
 class AppTheme {
   static const int _darkAlpha = 200;

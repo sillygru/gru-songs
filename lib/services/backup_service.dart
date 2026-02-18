@@ -10,6 +10,36 @@ import 'database_service.dart';
 import '../models/song.dart';
 import '../data/repositories/search_index_repository.dart';
 
+enum BackupContentType {
+  userStats,
+  userData,
+  coverCache,
+  libraryCache,
+  searchIndex,
+  waveformCache,
+  colorCache,
+  lyricsCache,
+}
+
+class BackupOptions {
+  final Set<BackupContentType> contentTypes;
+
+  BackupOptions({Set<BackupContentType>? contentTypes})
+      : contentTypes = contentTypes ?? {
+          BackupContentType.userStats,
+          BackupContentType.userData,
+        };
+
+  bool get includeUserStats => contentTypes.contains(BackupContentType.userStats);
+  bool get includeUserData => contentTypes.contains(BackupContentType.userData);
+  bool get includeCoverCache => contentTypes.contains(BackupContentType.coverCache);
+  bool get includeLibraryCache => contentTypes.contains(BackupContentType.libraryCache);
+  bool get includeSearchIndex => contentTypes.contains(BackupContentType.searchIndex);
+  bool get includeWaveformCache => contentTypes.contains(BackupContentType.waveformCache);
+  bool get includeColorCache => contentTypes.contains(BackupContentType.colorCache);
+  bool get includeLyricsCache => contentTypes.contains(BackupContentType.lyricsCache);
+}
+
 class BackupDiff {
   final int songCountDiff;
   final int statsRowsDiff;
@@ -48,11 +78,20 @@ class BackupInfo {
   }
 
   String get displayName {
-    return 'Backup #$number - ${_formatDateTime(timestamp)}';
+    return _formatDateTime(timestamp);
   }
 
   String _formatDateTime(DateTime dt) {
-    return '${dt.year.toString().padLeft(4, '0')}_${dt.month.toString().padLeft(2, '0')}_${dt.day.toString().padLeft(2, '0')}_${dt.hour.toString().padLeft(2, '0')}-${dt.minute.toString().padLeft(2, '0')}';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final month = months[dt.month - 1];
+    final day = dt.day;
+    final year = dt.year;
+    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final amPm = dt.hour >= 12 ? 'PM' : 'AM';
+    
+    return '$month $day, $year at $hour:$minute $amPm';
   }
 }
 
@@ -138,7 +177,9 @@ class BackupService {
     return backups.first.number + 1;
   }
 
-  Future<String> createBackup() async {
+  Future<String> createBackup([BackupOptions? options]) async {
+    options ??= BackupOptions();
+    
     try {
       final backupsDir = await _backupsDir;
       final backupNumber = await _getNextBackupNumber();
@@ -155,67 +196,125 @@ class BackupService {
       await dataDir.create(recursive: true);
 
       try {
-        // Copy database files
         final appDir = await getApplicationDocumentsDirectory();
-        final statsDb = File(p.join(appDir.path, 'wispie_stats.db'));
-        final dataDb = File(p.join(appDir.path, 'wispie_data.db'));
 
-        if (await statsDb.exists()) {
-          await statsDb.copy(p.join(dataDir.path, 'wispie_stats.db'));
+        // Copy database files based on options
+        if (options.includeUserStats) {
+          final statsDb = File(p.join(appDir.path, 'wispie_stats.db'));
+          if (await statsDb.exists()) {
+            await statsDb.copy(p.join(dataDir.path, 'wispie_stats.db'));
+          }
         }
-        if (await dataDb.exists()) {
-          await dataDb.copy(p.join(dataDir.path, 'wispie_data.db'));
-        }
-
-        // Export user data to JSON
-        final storage = StorageService();
-        final database = DatabaseService.instance;
-        // Ensure initialized
-        await database.init();
-
-        final songs = await database.getAllSongs();
-        final userData = await storage.loadUserData();
-        final shuffleState = await storage.loadShuffleState();
-        final playbackState = await storage.loadPlaybackState();
-
-        // Create final stats JSON
-        final funStats = await database.getFunStats();
-
-        // Get merged song groups
-        final mergedGroups = await database.getMergedSongGroups();
-
-        // Save JSON files
-        final songsJson = songs.map((s) => s.toJson()).toList();
-        await File(p.join(dataDir.path, 'songs.json'))
-            .writeAsString(encodeJson(songsJson));
-
-        if (userData != null) {
-          await File(p.join(dataDir.path, 'user_data.json'))
-              .writeAsString(encodeJson(userData));
+        
+        if (options.includeUserData) {
+          final dataDb = File(p.join(appDir.path, 'wispie_data.db'));
+          if (await dataDb.exists()) {
+            await dataDb.copy(p.join(dataDir.path, 'wispie_data.db'));
+          }
         }
 
-        if (shuffleState != null) {
-          await File(p.join(dataDir.path, 'shuffle_state.json'))
-              .writeAsString(encodeJson(shuffleState));
+        // Export user data to JSON based on options
+        if (options.includeUserData || options.includeUserStats) {
+          final storage = StorageService();
+          final database = DatabaseService.instance;
+          await database.init();
+
+          if (options.includeUserStats) {
+            final songs = await database.getAllSongs();
+            final songsJson = songs.map((s) => s.toJson()).toList();
+            await File(p.join(dataDir.path, 'songs.json'))
+                .writeAsString(encodeJson(songsJson));
+
+            final funStats = await database.getFunStats();
+            await File(p.join(dataDir.path, 'final_stats.json'))
+                .writeAsString(encodeJson(funStats));
+
+            final mergedGroups = await database.getMergedSongGroups();
+            final mergedGroupsJson = mergedGroups.map((groupId, groupData) {
+              return MapEntry(groupId, {
+                'filenames': groupData.filenames,
+                'priorityFilename': groupData.priorityFilename,
+              });
+            });
+            await File(p.join(dataDir.path, 'merged_groups.json'))
+                .writeAsString(encodeJson(mergedGroupsJson));
+          }
+
+          if (options.includeUserData) {
+            final userData = await storage.loadUserData();
+            final shuffleState = await storage.loadShuffleState();
+            final playbackState = await storage.loadPlaybackState();
+
+            if (userData != null) {
+              await File(p.join(dataDir.path, 'user_data.json'))
+                  .writeAsString(encodeJson(userData));
+            }
+
+            if (shuffleState != null) {
+              await File(p.join(dataDir.path, 'shuffle_state.json'))
+                  .writeAsString(encodeJson(shuffleState));
+            }
+
+            if (playbackState != null) {
+              await File(p.join(dataDir.path, 'playback_state.json'))
+                  .writeAsString(encodeJson(playbackState));
+            }
+          }
         }
 
-        if (playbackState != null) {
-          await File(p.join(dataDir.path, 'playback_state.json'))
-              .writeAsString(encodeJson(playbackState));
+        // Include cache files based on options
+        if (options.includeCoverCache || options.includeLibraryCache || 
+            options.includeSearchIndex || options.includeWaveformCache || 
+            options.includeColorCache || options.includeLyricsCache) {
+          final supportDir = await getApplicationSupportDirectory();
+          final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
+          
+          if (await cacheDir.exists()) {
+            final cacheDataDir = Directory(p.join(dataDir.path, 'cache'));
+            await cacheDataDir.create(recursive: true);
+            
+            await for (final entity in cacheDir.list(recursive: true)) {
+              if (entity is File) {
+                final filename = p.basename(entity.path);
+                final parentDir = p.basename(p.dirname(entity.path));
+                
+                bool include = false;
+                
+                if (options.includeLyricsCache && parentDir == 'lyrics_cache') {
+                  include = true;
+                }
+                
+                if (options.includeWaveformCache && filename.contains('waveform')) {
+                  include = true;
+                }
+                
+                if (options.includeColorCache && filename.contains('color')) {
+                  include = true;
+                }
+                
+                if (options.includeLibraryCache && filename == 'cached_songs.json') {
+                  include = true;
+                }
+                
+                if (options.includeSearchIndex && filename.contains('_search_index.db')) {
+                  include = true;
+                }
+                
+                if (options.includeCoverCache && 
+                    (filename.endsWith('.jpg') || filename.endsWith('.png'))) {
+                  include = true;
+                }
+                
+                if (include) {
+                  final relativePath = p.relative(entity.path, from: cacheDir.path);
+                  final targetDir = p.join(cacheDataDir.path, p.dirname(relativePath));
+                  await Directory(targetDir).create(recursive: true);
+                  await entity.copy(p.join(targetDir, filename));
+                }
+              }
+            }
+          }
         }
-
-        // Save merged song groups
-        final mergedGroupsJson = mergedGroups.map((groupId, groupData) {
-          return MapEntry(groupId, {
-            'filenames': groupData.filenames,
-            'priorityFilename': groupData.priorityFilename,
-          });
-        });
-        await File(p.join(dataDir.path, 'merged_groups.json'))
-            .writeAsString(encodeJson(mergedGroupsJson));
-
-        await File(p.join(dataDir.path, 'final_stats.json'))
-            .writeAsString(encodeJson(funStats));
 
         // Create ZIP file
         final zipFile = File(backupPath);
@@ -223,12 +322,6 @@ class BackupService {
 
         await for (final entity in dataDir.list(recursive: true)) {
           if (entity is File) {
-            // Skip search index database files
-            final filename = p.basename(entity.path);
-            if (filename.contains('_search_index.db')) {
-              continue;
-            }
-
             final relativePath = p.relative(entity.path, from: dataDir.path);
             final bytes = await entity.readAsBytes();
             final file = ArchiveFile(relativePath, bytes.length, bytes);

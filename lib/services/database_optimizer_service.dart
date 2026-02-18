@@ -328,6 +328,16 @@ class DatabaseOptimizerService {
       }
       details['event_fixes'] = fixResult;
 
+      // Delete sessions under 1 minute
+      final shortSessionsResult = await _deleteShortSessionsViaService();
+      if (shortSessionsResult['deletedSessions'] > 0) {
+        fixes.add('Deleted ${shortSessionsResult['deletedSessions']} sessions under 1 minute');
+      }
+      if (shortSessionsResult['deletedEvents'] > 0) {
+        fixes.add('Deleted ${shortSessionsResult['deletedEvents']} orphaned play events');
+      }
+      details['short_sessions_cleanup'] = shortSessionsResult['details'];
+
       // Vacuum requires exclusive access - use separate connection
       Database? vacuumDb;
       try {
@@ -408,6 +418,41 @@ class DatabaseOptimizerService {
     }
 
     return {'fixed': fixedCount, 'details': details};
+  }
+
+  /// Deletes sessions shorter than 60 seconds and their associated events
+  /// Short sessions are often accidental plays or quick skips that clutter the database
+  Future<Map<String, dynamic>> _deleteShortSessionsViaService() async {
+    int deletedSessions = 0;
+    int deletedEvents = 0;
+    final details = <String, dynamic>{};
+
+    try {
+      final statsDb = DatabaseService.instance.getStatsDatabase();
+      if (statsDb == null) {
+        details['error'] = 'Stats database not available';
+        return {'deletedSessions': deletedSessions, 'deletedEvents': deletedEvents, 'details': details};
+      }
+
+      deletedSessions = await statsDb.rawDelete('''
+        DELETE FROM playsession 
+        WHERE (end_time - start_time) < 60 
+        AND end_time IS NOT NULL 
+        AND start_time IS NOT NULL
+      ''');
+      details['sessions_deleted'] = deletedSessions;
+
+      deletedEvents = await statsDb.rawDelete('''
+        DELETE FROM playevent 
+        WHERE session_id NOT IN (SELECT id FROM playsession)
+      ''');
+      details['orphaned_events_deleted'] = deletedEvents;
+    } catch (e) {
+      debugPrint('Error deleting short sessions: $e');
+      details['error'] = e.toString();
+    }
+
+    return {'deletedSessions': deletedSessions, 'deletedEvents': deletedEvents, 'details': details};
   }
 
   /// Fixes event type categorization based on new rules with priority hierarchy:
@@ -599,6 +644,27 @@ class DatabaseOptimizerService {
         FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS mood_tag (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        normalized_name TEXT UNIQUE NOT NULL,
+        is_preset INTEGER DEFAULT 0,
+        created_at REAL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS song_mood (
+        song_filename TEXT NOT NULL,
+        mood_id TEXT NOT NULL,
+        added_at REAL,
+        source TEXT DEFAULT 'manual',
+        PRIMARY KEY (song_filename, mood_id),
+        FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   /// Ensures all user data tables exist
@@ -615,6 +681,8 @@ class DatabaseOptimizerService {
       'playlist_song',
       'merged_song_group',
       'merged_song',
+      'mood_tag',
+      'song_mood',
     ];
 
     for (final tableName in tables) {
@@ -704,6 +772,29 @@ class DatabaseOptimizerService {
           )
         ''');
         break;
+      case 'mood_tag':
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS mood_tag (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            normalized_name TEXT UNIQUE NOT NULL,
+            is_preset INTEGER DEFAULT 0,
+            created_at REAL
+          )
+        ''');
+        break;
+      case 'song_mood':
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS song_mood (
+            song_filename TEXT NOT NULL,
+            mood_id TEXT NOT NULL,
+            added_at REAL,
+            source TEXT DEFAULT 'manual',
+            PRIMARY KEY (song_filename, mood_id),
+            FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
+          )
+        ''');
+        break;
     }
   }
 
@@ -768,6 +859,12 @@ class DatabaseOptimizerService {
           'CREATE INDEX idx_merged_song_group_id ON merged_song(group_id)',
       'idx_playlist_song_playlist_id':
           'CREATE INDEX idx_playlist_song_playlist_id ON playlist_song(playlist_id)',
+      'idx_song_mood_song_filename':
+          'CREATE INDEX idx_song_mood_song_filename ON song_mood(song_filename)',
+      'idx_song_mood_mood_id':
+          'CREATE INDEX idx_song_mood_mood_id ON song_mood(mood_id)',
+      'idx_mood_tag_normalized_name':
+          'CREATE INDEX idx_mood_tag_normalized_name ON mood_tag(normalized_name)',
     };
 
     for (final entry in expectedIndexes.entries) {

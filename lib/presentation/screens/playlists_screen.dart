@@ -71,6 +71,11 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
             icon: Icon(_isSearching ? Icons.close : Icons.search),
           ),
           IconButton(
+            onPressed: () => _showMoodMixGenerator(context, ref, songsAsync),
+            icon: const Icon(Icons.mood_rounded),
+            tooltip: 'Mood Mix',
+          ),
+          IconButton(
             onPressed: () => _createPlaylist(context, ref, songsAsync),
             icon: const Icon(Icons.add),
             tooltip: 'Create Playlist',
@@ -99,9 +104,50 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: playlists.length,
+            itemCount: playlists.length + 1,
             itemBuilder: (context, index) {
-              final playlist = playlists[index];
+              if (index == 0) {
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: InkWell(
+                    onTap: () =>
+                        _showMoodMixGenerator(context, ref, songsAsync),
+                    borderRadius: BorderRadius.circular(16),
+                    child: const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          Icon(Icons.mood_rounded, size: 28),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Mood Mix',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text('Generate a playlist from selected moods'),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final playlist = playlists[index - 1];
               final playlistSongs = songs
                   .where((s) =>
                       playlist.songs.any((ps) => ps.songFilename == s.filename))
@@ -234,6 +280,12 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
             icon: const Icon(Icons.add),
             label: const Text('Create Playlist'),
           ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => _showMoodMixGenerator(context, ref, songsAsync),
+            icon: const Icon(Icons.mood_rounded),
+            label: const Text('Mood Mix'),
+          ),
         ],
       ),
     );
@@ -278,6 +330,139 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
         }
       }
     }
+  }
+
+  Future<void> _showMoodMixGenerator(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<Song>> songsAsync,
+  ) async {
+    final songs = songsAsync.value;
+    if (songs == null || songs.isEmpty) return;
+    final userData = ref.read(userDataProvider);
+    if (userData.moodTags.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Create moods first from song options')),
+        );
+      }
+      return;
+    }
+
+    final selectedMoodIds = <String>{};
+    double length = 25;
+    double diversity = 0.65;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Mood Mix',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: userData.moodTags.map((mood) {
+                      final selected = selectedMoodIds.contains(mood.id);
+                      return FilterChip(
+                        label: Text(mood.name),
+                        selected: selected,
+                        onSelected: (_) {
+                          setModalState(() {
+                            if (selected) {
+                              selectedMoodIds.remove(mood.id);
+                            } else {
+                              selectedMoodIds.add(mood.id);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  Text('Tracks: ${length.round()}'),
+                  Slider(
+                    value: length,
+                    min: 10,
+                    max: 60,
+                    divisions: 10,
+                    label: length.round().toString(),
+                    onChanged: (value) => setModalState(() => length = value),
+                  ),
+                  Text('Diversity: ${(diversity * 100).round()}%'),
+                  Slider(
+                    value: diversity,
+                    min: 0.1,
+                    max: 1.0,
+                    divisions: 9,
+                    label: '${(diversity * 100).round()}%',
+                    onChanged: (value) =>
+                        setModalState(() => diversity = value),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: selectedMoodIds.isEmpty
+                          ? null
+                          : () async {
+                              final generated = await ref
+                                  .read(userDataProvider.notifier)
+                                  .generateMoodMix(
+                                    moodIds: selectedMoodIds.toList(),
+                                    length: length.round(),
+                                    diversity: diversity,
+                                  );
+                              if (!sheetContext.mounted) return;
+                              Navigator.pop(sheetContext);
+                              if (generated.isEmpty) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text('No songs match those moods')),
+                                  );
+                                }
+                                return;
+                              }
+                              if (context.mounted) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => SongListScreen(
+                                      title: 'Mood Mix',
+                                      songs: generated,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                      child: const Text('Generate'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<String?> _showNameDialog(BuildContext context) async {

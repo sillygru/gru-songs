@@ -10,6 +10,7 @@ import '../../providers/selection_provider.dart';
 import '../../services/telemetry_service.dart';
 import '../widgets/bulk_selection_bar.dart';
 import '../widgets/immersive_background.dart';
+import '../widgets/auto_backup_indicator.dart';
 
 class SyncIndicator extends ConsumerWidget {
   const SyncIndicator({super.key});
@@ -204,6 +205,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
       // Trigger background refresh when app returns to foreground
       // This will use the optimized scanner we just implemented
       ref.read(songsProvider.notifier).refresh(isBackground: true);
+      
+      // Check and run auto-backup if needed
+      ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
     }
   }
 
@@ -255,6 +259,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 left: 0,
                 right: 0,
                 child: const SyncIndicator(),
+              ),
+              Positioned(
+                top: topPadding + 40,
+                left: 0,
+                right: 0,
+                child: const AutoBackupIndicator(),
               ),
               Positioned(
                 left: 0,

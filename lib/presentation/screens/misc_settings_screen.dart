@@ -15,6 +15,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final autoBackupState = ref.watch(autoBackupProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -29,6 +30,14 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
             icon: Icons.security_outlined,
             children: [
               _buildTelemetryWidget(settings),
+            ],
+          ),
+          _buildSettingsGroup(
+            title: 'Backup',
+            icon: Icons.backup_rounded,
+            children: [
+              _buildAutoBackupFrequencyTile(settings, autoBackupState),
+              _buildAutoBackupDeleteAfterTile(settings),
             ],
           ),
           _buildSettingsGroup(
@@ -201,6 +210,93 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildAutoBackupFrequencyTile(
+      SettingsState settings, autoBackupState) {
+    final frequencyOptions = {
+      0: 'Disabled',
+      24: 'Every 24 hours',
+      48: 'Every 48 hours',
+      72: 'Every 3 days',
+      168: 'Every 7 days',
+    };
+
+    final currentLabel =
+        frequencyOptions[settings.autoBackupFrequencyHours] ?? 'Disabled';
+
+    return ListTile(
+      leading: const Icon(Icons.backup_rounded),
+      title: const Text('Auto Backup'),
+      subtitle: Text('Frequency: $currentLabel'),
+      trailing: DropdownButton<int>(
+        value: settings.autoBackupFrequencyHours,
+        underline: const SizedBox(),
+        items: frequencyOptions.entries.map((entry) {
+          return DropdownMenuItem(
+            value: entry.key,
+            child: Text(entry.value, style: const TextStyle(fontSize: 14)),
+          );
+        }).toList(),
+        onChanged: (val) async {
+          if (val != null) {
+            await ref.read(settingsProvider.notifier).setAutoBackupFrequencyHours(val);
+            await ref.read(autoBackupProvider.notifier).setFrequencyHours(val);
+
+            await TelemetryService.instance.trackEvent(
+                'setting_changed',
+                {
+                  'setting': 'auto_backup_frequency_hours',
+                  'value': val,
+                },
+                requiredLevel: 2);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildAutoBackupDeleteAfterTile(SettingsState settings) {
+    final deleteOptions = {
+      0: 'Never',
+      7: '7 days',
+      14: '14 days',
+      30: '30 days',
+      90: '90 days',
+    };
+
+    final currentLabel =
+        deleteOptions[settings.autoBackupDeleteAfterDays] ?? 'Never';
+
+    return ListTile(
+      leading: const Icon(Icons.delete_outline_rounded),
+      title: const Text('Auto-Delete Old Backups'),
+      subtitle: Text('Delete backups older than: $currentLabel'),
+      trailing: DropdownButton<int>(
+        value: settings.autoBackupDeleteAfterDays,
+        underline: const SizedBox(),
+        items: deleteOptions.entries.map((entry) {
+          return DropdownMenuItem(
+            value: entry.key,
+            child: Text(entry.value, style: const TextStyle(fontSize: 14)),
+          );
+        }).toList(),
+        onChanged: (val) async {
+          if (val != null) {
+            await ref.read(settingsProvider.notifier).setAutoBackupDeleteAfterDays(val);
+            await ref.read(autoBackupProvider.notifier).setDeleteAfterDays(val);
+
+            await TelemetryService.instance.trackEvent(
+                'setting_changed',
+                {
+                  'setting': 'auto_backup_delete_after_days',
+                  'value': val,
+                },
+                requiredLevel: 2);
+          }
+        },
+      ),
     );
   }
 }

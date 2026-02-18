@@ -145,6 +145,110 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     );
   }
 
+  Future<void> _handleAddMoods() async {
+    final notifier = ref.read(userDataProvider.notifier);
+    final userData = ref.read(userDataProvider);
+    final selectedMoodIds = userData.moodsForSong(widget.songFilename).toSet();
+    var moodTags = List.of(userData.moodTags);
+    final customController = TextEditingController();
+
+    _closePopup();
+
+    await showModalBottomSheet<void>(
+      context: widget.parentContext,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> addMood() async {
+              final createdId =
+                  await notifier.createMoodTag(customController.text.trim());
+              if (createdId == null) return;
+              customController.clear();
+              final nextState = ref.read(userDataProvider);
+              moodTags = List.of(nextState.moodTags);
+              selectedMoodIds.add(createdId);
+              setModalState(() {});
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Add moods',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: moodTags.map((mood) {
+                      final selected = selectedMoodIds.contains(mood.id);
+                      return FilterChip(
+                        label: Text(mood.name),
+                        selected: selected,
+                        onSelected: (_) {
+                          if (selected) {
+                            selectedMoodIds.remove(mood.id);
+                          } else {
+                            selectedMoodIds.add(mood.id);
+                          }
+                          setModalState(() {});
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: customController,
+                          decoration: const InputDecoration(
+                            hintText: 'Create mood',
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (_) => addMood(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: addMood,
+                        child: const Text('Add'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () async {
+                        await notifier.setSongMoods(
+                          widget.songFilename,
+                          selectedMoodIds.toList(),
+                        );
+                        if (context.mounted) Navigator.pop(context);
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _handlePlayNext() async {
     final song = widget.song;
     if (song == null) return;
@@ -591,6 +695,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
   Widget _buildPersonalizeView({
     required bool isFavorite,
     required bool isSuggestLess,
+    required List<String> moodPrompts,
   }) {
     return Column(
       key: const ValueKey(_SongMenuView.personalize),
@@ -608,6 +713,13 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           label: isSuggestLess ? 'Suggest More' : 'Suggest Less',
           subtitle: 'Adjust how often this song appears in suggestions',
           onTap: () => _toggleSuggestLess(isSuggestLess),
+        ),
+        _submenuEntry(
+          icon: Icons.mood_rounded,
+          label: 'Add moods',
+          subtitle:
+              moodPrompts.isEmpty ? 'Add moods' : moodPrompts.take(3).join(' '),
+          onTap: _handleAddMoods,
         ),
       ],
     );
@@ -647,6 +759,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     required bool isFavorite,
     required bool isSuggestLess,
     required bool isCurrentlyPlaying,
+    required List<String> moodPrompts,
   }) {
     Widget child;
     switch (_view) {
@@ -667,6 +780,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         child = _buildPersonalizeView(
           isFavorite: isFavorite,
           isSuggestLess: isSuggestLess,
+          moodPrompts: moodPrompts,
         );
         break;
       case _SongMenuView.danger:
@@ -716,10 +830,14 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     final userData = ref.watch(userDataProvider);
     final isFavorite = userData.isFavorite(widget.songFilename);
     final isSuggestLess = userData.isSuggestLess(widget.songFilename);
+    final playCounts = ref.watch(playCountsProvider).value ?? const <String, int>{};
 
     final currentSong =
         ref.read(audioPlayerManagerProvider).currentSongNotifier.value;
     final isCurrentlyPlaying = currentSong?.filename == widget.songFilename;
+    final moodPrompts = ref
+        .read(userDataProvider.notifier)
+        .moodSuggestionPromptsForSong(widget.songFilename, limit: 3, playCounts: playCounts);
 
     final theme = Theme.of(context);
     final canGoBack = _view != _SongMenuView.root;
@@ -810,6 +928,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                     isFavorite: isFavorite,
                     isSuggestLess: isSuggestLess,
                     isCurrentlyPlaying: isCurrentlyPlaying,
+                    moodPrompts: moodPrompts,
                   ),
                 ),
               ),

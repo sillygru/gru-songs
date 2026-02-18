@@ -41,14 +41,32 @@ class SearchFilterNotifier extends Notifier<SearchFilterState> {
   void reset() {
     state = const SearchFilterState(all: true);
   }
+
+  void toggleMood(String moodId) {
+    final selected = state.selectedMoodIds.toSet();
+    if (selected.contains(moodId)) {
+      selected.remove(moodId);
+    } else {
+      selected.add(moodId);
+    }
+    state = state.withMoodIds(selected);
+  }
+
+  void clearMoods() {
+    state = state.withMoodIds(const <String>[]);
+  }
 }
 
 /// Provider for search results
 final searchResultsProvider =
     FutureProvider.family<List<SearchResult>, String>((ref, query) async {
+  // Watch filter state - this is the primary dependency
   final filterState = ref.watch(searchFilterProvider);
+  
+  // Read songs and user data without watching to avoid circular dependencies
   final songsAsync = ref.watch(songsProvider);
-  final searchService = ref.watch(searchServiceProvider);
+  final userData = ref.watch(userDataProvider);
+  final searchService = ref.read(searchServiceProvider);
 
   if (query.isEmpty) {
     return [];
@@ -59,11 +77,18 @@ final searchResultsProvider =
 
   return songsAsync.when(
     data: (songs) async {
-      return await searchService.search(
+      final results = await searchService.search(
         query: query,
         filterState: filterState,
         allSongs: songs,
       );
+      if (filterState.selectedMoodIds.isEmpty) return results;
+
+      final selectedMoodIds = filterState.selectedMoodIds.toSet();
+      return results
+          .where(
+              (r) => userData.songHasAnyMood(r.song.filename, selectedMoodIds))
+          .toList();
     },
     loading: () => [],
     error: (_, __) => [],

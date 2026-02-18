@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'providers.dart';
 import 'session_history_provider.dart';
 import '../services/database_service.dart';
+import '../models/mood_tag.dart';
 import '../models/playlist.dart';
 import '../models/song.dart';
 import '../domain/models/play_session.dart';
@@ -16,6 +17,8 @@ class UserDataState {
   final List<String> suggestLess;
   final List<String> hidden;
   final List<Playlist> playlists;
+  final List<MoodTag> moodTags;
+  final Map<String, List<String>> songMoodIdsByFilename;
   final Map<String, List<String>> mergedGroups;
   final Map<String, String?> mergedGroupPriorities;
   final Map<String, ({String? customTitle, bool isPinned})>
@@ -28,6 +31,8 @@ class UserDataState {
     this.suggestLess = const [],
     this.hidden = const [],
     this.playlists = const [],
+    this.moodTags = const [],
+    this.songMoodIdsByFilename = const {},
     this.mergedGroups = const {},
     this.mergedGroupPriorities = const {},
     this.recommendationPreferences = const {},
@@ -101,11 +106,32 @@ class UserDataState {
     return priority == filename;
   }
 
+  List<String> moodsForSong(String filename) {
+    if (songMoodIdsByFilename.containsKey(filename)) {
+      return songMoodIdsByFilename[filename]!;
+    }
+    final searchBasename = p.basename(filename).toLowerCase();
+    for (final entry in songMoodIdsByFilename.entries) {
+      if (p.basename(entry.key).toLowerCase() == searchBasename) {
+        return entry.value;
+      }
+    }
+    return const [];
+  }
+
+  bool songHasAnyMood(String filename, Set<String> moodIds) {
+    if (moodIds.isEmpty) return true;
+    final songMoods = moodsForSong(filename);
+    return songMoods.any(moodIds.contains);
+  }
+
   UserDataState copyWith({
     List<String>? favorites,
     List<String>? suggestLess,
     List<String>? hidden,
     List<Playlist>? playlists,
+    List<MoodTag>? moodTags,
+    Map<String, List<String>>? songMoodIdsByFilename,
     Map<String, List<String>>? mergedGroups,
     Map<String, String?>? mergedGroupPriorities,
     Map<String, ({String? customTitle, bool isPinned})>?
@@ -118,6 +144,9 @@ class UserDataState {
       suggestLess: suggestLess ?? this.suggestLess,
       hidden: hidden ?? this.hidden,
       playlists: playlists ?? this.playlists,
+      moodTags: moodTags ?? this.moodTags,
+      songMoodIdsByFilename:
+          songMoodIdsByFilename ?? this.songMoodIdsByFilename,
       mergedGroups: mergedGroups ?? this.mergedGroups,
       mergedGroupPriorities:
           mergedGroupPriorities ?? this.mergedGroupPriorities,
@@ -134,6 +163,24 @@ class UserDataState {
 class UserDataNotifier extends Notifier<UserDataState> {
   bool _initialized = false;
   List<Song>? _latestSongs;
+  static const List<String> _presetMoods = [
+    'happy',
+    'sad',
+    'chill',
+    'energetic',
+    'angry',
+    'romantic',
+    'nostalgic',
+    'focus',
+    'party',
+    'dark',
+    'uplifting',
+    'calm',
+  ];
+
+  String _normalizeMoodName(String value) {
+    return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  }
 
   @override
   UserDataState build() {
@@ -155,6 +202,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final localSL = await DatabaseService.instance.getSuggestLess();
       final localHidden = await DatabaseService.instance.getHidden();
       final localPlaylists = await DatabaseService.instance.getPlaylists();
+      await ensurePresetMoodsSeeded();
+      final localMoodTags = await DatabaseService.instance.getMoodTags();
+      final localSongMoodMap = await DatabaseService.instance.getSongMoodMap();
       final localMergedGroups =
           await DatabaseService.instance.getMergedSongGroups();
       final localRecommendationPrefs =
@@ -170,29 +220,31 @@ class UserDataNotifier extends Notifier<UserDataState> {
         priorities[entry.key] = entry.value.priorityFilename;
       }
 
-    state = state.copyWith(
-      favorites: localFavs,
-      suggestLess: localSL,
-      hidden: localHidden,
+      state = state.copyWith(
+        favorites: localFavs,
+        suggestLess: localSL,
+        hidden: localHidden,
         playlists: localPlaylists,
+        moodTags: localMoodTags,
+        songMoodIdsByFilename: localSongMoodMap,
         mergedGroups: groups,
         mergedGroupPriorities: priorities,
         recommendationPreferences: localRecommendationPrefs,
-      removedRecommendations: localRemovedRecommendations,
-      isLoading: false,
-    );
-    _updateManager();
+        removedRecommendations: localRemovedRecommendations,
+        isLoading: false,
+      );
+      _updateManager();
 
-    if (_latestSongs != null) {
+      if (_latestSongs != null) {
+        await updateRecommendationPlaylists(force: true);
+      }
+
+      // Try to update recommendations if they are old or missing
       await updateRecommendationPlaylists(force: true);
+    } catch (e) {
+      debugPrint('Error loading local user data: $e');
     }
-
-    // Try to update recommendations if they are old or missing
-    await updateRecommendationPlaylists(force: true);
-  } catch (e) {
-    debugPrint('Error loading local user data: $e');
   }
-}
 
   void _updateManager() {
     ref.read(audioPlayerManagerProvider).setUserData(
@@ -211,6 +263,25 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     await _initLocal();
     await updateRecommendationPlaylists(force: force);
+  }
+
+  Future<void> ensurePresetMoodsSeeded() async {
+    final existing = await DatabaseService.instance.getMoodTags();
+    final existingNormalized =
+        existing.map((m) => m.normalizedName.toLowerCase()).toSet();
+    for (final mood in _presetMoods) {
+      final normalized = _normalizeMoodName(mood);
+      if (existingNormalized.contains(normalized)) continue;
+      await DatabaseService.instance.saveMoodTag(
+        MoodTag(
+          id: const Uuid().v4(),
+          name: mood,
+          normalizedName: normalized,
+          isPreset: true,
+          createdAt: DateTime.now().millisecondsSinceEpoch / 1000.0,
+        ),
+      );
+    }
   }
 
   /// Toggle favorite (local-only)
@@ -410,6 +481,208 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     state = state.copyWith(suggestLess: newSL);
     _updateManager();
+  }
+
+  // --- Mood Management ---
+
+  Future<String?> createMoodTag(String rawName) async {
+    final name = rawName.trim();
+    if (name.isEmpty) return null;
+    final normalized = _normalizeMoodName(name);
+    final exists = state.moodTags.any((m) => m.normalizedName == normalized);
+    if (exists) return null;
+
+    final mood = MoodTag(
+      id: const Uuid().v4(),
+      name: name,
+      normalizedName: normalized,
+      isPreset: false,
+      createdAt: DateTime.now().millisecondsSinceEpoch / 1000.0,
+    );
+    await DatabaseService.instance.saveMoodTag(mood);
+    final updated = List<MoodTag>.from(state.moodTags)..add(mood);
+    updated.sort((a, b) {
+      if (a.isPreset != b.isPreset) return a.isPreset ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    state = state.copyWith(moodTags: updated);
+    return mood.id;
+  }
+
+  Future<void> renameMoodTag(String moodId, String newName) async {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return;
+    final normalized = _normalizeMoodName(trimmed);
+    final duplicate = state.moodTags
+        .where((m) => m.id != moodId)
+        .any((m) => m.normalizedName == normalized);
+    if (duplicate) return;
+    await DatabaseService.instance.renameMoodTag(moodId, trimmed);
+    final updated = state.moodTags.map((m) {
+      if (m.id != moodId) return m;
+      return m.copyWith(name: trimmed, normalizedName: normalized);
+    }).toList()
+      ..sort((a, b) {
+        if (a.isPreset != b.isPreset) return a.isPreset ? -1 : 1;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    state = state.copyWith(moodTags: updated);
+  }
+
+  Future<void> deleteMoodTag(String moodId) async {
+    await DatabaseService.instance.deleteMoodTag(moodId);
+    final updatedTags = state.moodTags.where((m) => m.id != moodId).toList();
+    final updatedMap = <String, List<String>>{};
+    for (final entry in state.songMoodIdsByFilename.entries) {
+      final next = entry.value.where((id) => id != moodId).toList();
+      if (next.isNotEmpty) {
+        updatedMap[entry.key] = next;
+      }
+    }
+    state = state.copyWith(
+        moodTags: updatedTags, songMoodIdsByFilename: updatedMap);
+  }
+
+  Future<void> setSongMoods(String songFilename, List<String> moodIds) async {
+    final unique = moodIds.toSet().toList();
+    await DatabaseService.instance.setSongMoods(songFilename, unique);
+    final map = Map<String, List<String>>.from(state.songMoodIdsByFilename);
+    if (unique.isEmpty) {
+      map.remove(songFilename);
+    } else {
+      map[songFilename] = unique;
+    }
+    state = state.copyWith(songMoodIdsByFilename: map);
+  }
+
+  List<String> moodSuggestionPromptsForSong(
+    String filename, {
+    int limit = 3,
+    Map<String, int>? playCounts,
+  }) {
+    final availableMoodIds = state.moodTags.map((m) => m.id).toSet();
+    if (availableMoodIds.isEmpty) return const [];
+    final assigned = state.moodsForSong(filename).toSet();
+    final songs =
+        _latestSongs ?? ref.read(songsProvider).value ?? const <Song>[];
+    final songByFilename = {for (final song in songs) song.filename: song};
+    final currentSong = songByFilename[filename];
+    // Accept playCounts as parameter to avoid circular dependency.
+    // If not provided, fall back to reading directly (may cause issues).
+    final effectivePlayCounts =
+        playCounts ?? (ref.read(playCountsProvider).value ?? const <String, int>{});
+
+    final scoreByMood = <String, double>{};
+    for (final mood in state.moodTags) {
+      if (assigned.contains(mood.id)) continue;
+      var score = 0.0;
+
+      // Content cue: lexical match between mood and metadata tokens.
+      if (currentSong != null) {
+        final searchText =
+            '${currentSong.title} ${currentSong.artist} ${currentSong.album}'
+                .toLowerCase();
+        if (searchText.contains(mood.normalizedName)) score += 2.2;
+      }
+
+      // Neighbor cue: songs from same artist/album that already carry this mood.
+      if (currentSong != null) {
+        for (final song in songs) {
+          final songMoods = state.songMoodIdsByFilename[song.filename];
+          if (songMoods == null || !songMoods.contains(mood.id)) continue;
+          if (song.artist == currentSong.artist) score += 1.4;
+          if (song.album == currentSong.album) score += 1.0;
+        }
+      }
+
+      // Behavior cue: mood popularity weighted by favorites and play counts.
+      for (final entry in state.songMoodIdsByFilename.entries) {
+        if (!entry.value.contains(mood.id)) continue;
+        final taggedFile = entry.key;
+        score += 0.12;
+        if (state.isFavorite(taggedFile)) score += 0.35;
+        if (state.isSuggestLess(taggedFile)) score -= 0.25;
+        final plays = effectivePlayCounts[taggedFile] ?? 0;
+        score += min(0.8, log(plays + 1) / 6.0);
+      }
+
+      scoreByMood[mood.id] = score;
+    }
+
+    final sorted =
+        state.moodTags.where((m) => !assigned.contains(m.id)).toList()
+          ..sort((a, b) {
+            final aScore = scoreByMood[a.id] ?? 0.0;
+            final bScore = scoreByMood[b.id] ?? 0.0;
+            final cmp = bScore.compareTo(aScore);
+            if (cmp != 0) return cmp;
+            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          });
+
+    return sorted
+        .take(limit.clamp(1, 3))
+        .map((m) => '${m.name}?')
+        .toList(growable: false);
+  }
+
+  Future<List<Song>> generateMoodMix({
+    required List<String> moodIds,
+    int length = 25,
+    double diversity = 0.65,
+  }) async {
+    final songs =
+        _latestSongs ?? ref.read(songsProvider).value ?? const <Song>[];
+    final selectedMoodIds = moodIds.toSet();
+    if (songs.isEmpty || selectedMoodIds.isEmpty) return [];
+
+    final playCounts = await DatabaseService.instance.getPlayCounts();
+    final random = Random();
+    final candidates = songs.where((song) {
+      if (state.isHidden(song.filename)) return false;
+      final songMoods = state.moodsForSong(song.filename);
+      return songMoods.any(selectedMoodIds.contains);
+    }).toList();
+
+    if (candidates.isEmpty) return [];
+
+    final scored = candidates.map((song) {
+      final songMoodIds = state.moodsForSong(song.filename).toSet();
+      final overlap = songMoodIds.intersection(selectedMoodIds).length;
+      final overlapScore = overlap / selectedMoodIds.length;
+      final plays = playCounts[song.filename] ?? 0;
+      final noveltyScore = 1.0 / (1.0 + log(plays + 1));
+      var score = overlapScore * 5.5 + noveltyScore * 1.5;
+      if (state.isFavorite(song.filename)) score += 1.1;
+      if (state.isSuggestLess(song.filename)) score -= 1.4;
+      score += random.nextDouble() * 0.45;
+      return (song: song, score: score);
+    }).toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
+
+    final picked = <Song>[];
+    final artistHits = <String, int>{};
+    final albumHits = <String, int>{};
+    for (final entry in scored) {
+      if (picked.length >= length) break;
+      final artistPenalty = (artistHits[entry.song.artist] ?? 0) * diversity;
+      final albumPenalty =
+          (albumHits[entry.song.album] ?? 0) * (diversity * 0.7);
+      final effective = entry.score - artistPenalty - albumPenalty;
+      if (effective > 0.15 || picked.length < 4) {
+        picked.add(entry.song);
+        artistHits[entry.song.artist] =
+            (artistHits[entry.song.artist] ?? 0) + 1;
+        albumHits[entry.song.album] = (albumHits[entry.song.album] ?? 0) + 1;
+      }
+    }
+
+    if (picked.length < length) {
+      for (final entry in scored) {
+        if (picked.length >= length) break;
+        if (!picked.contains(entry.song)) picked.add(entry.song);
+      }
+    }
+    return picked.take(length).toList();
   }
 
   // --- Playlist Management ---
@@ -842,6 +1115,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     if (songsAsync is! AsyncData || songsAsync.value == null) return;
     final allSongs = songsAsync.value!;
+    _latestSongs = allSongs;
 
     // Read directly to avoid a provider self-dependency loop when this notifier
     // updates recommendations during initialization in debug mode.

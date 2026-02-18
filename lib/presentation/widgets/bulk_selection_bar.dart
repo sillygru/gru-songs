@@ -157,11 +157,13 @@ class BulkSelectionBar extends ConsumerWidget {
       label: allFavorited ? 'Unfavorite' : 'Favorite',
       color: allFavorited ? Colors.red : null,
       onTap: () {
+        if (!context.mounted) return;
         final filenames = songs.map((s) => s.filename).toList();
         ref
             .read(userDataProvider.notifier)
             .bulkToggleFavorite(filenames, !allFavorited);
         ref.read(selectionProvider.notifier).exitSelectionMode();
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text(allFavorited
@@ -178,6 +180,7 @@ class BulkSelectionBar extends ConsumerWidget {
       icon: Icons.playlist_add,
       label: 'Playlist',
       onTap: () {
+        if (!context.mounted) return;
         final filenames = songs.map((s) => s.filename).toList();
         final playlists = ref
             .read(userDataProvider)
@@ -195,6 +198,7 @@ class BulkSelectionBar extends ConsumerWidget {
               .read(userDataProvider.notifier)
               .bulkAddSongsToPlaylist(latest.id, filenames);
           ref.read(selectionProvider.notifier).exitSelectionMode();
+          if (!context.mounted) return;
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -218,6 +222,7 @@ class BulkSelectionBar extends ConsumerWidget {
       icon: Icons.share,
       label: 'Share',
       onTap: () {
+        if (!context.mounted) return;
         final xFiles = songs.map((s) => XFile(s.url)).toList();
         final text = songs.length == 1
             ? '${songs[0].title} by ${songs[0].artist}'
@@ -273,11 +278,13 @@ class BulkSelectionBar extends ConsumerWidget {
               ),
               TextButton(
                 onPressed: () {
+                  if (!ctx.mounted) return;
                   ref.read(userDataProvider.notifier).bulkHide(
                         songs.map((s) => s.filename).toList(),
                         true,
                       );
                   ref.read(selectionProvider.notifier).exitSelectionMode();
+                  if (!ctx.mounted) return;
                   Navigator.pop(ctx);
                 },
                 child: const Text('Hide'),
@@ -313,8 +320,10 @@ class BulkSelectionBar extends ConsumerWidget {
                 style:
                     FilledButton.styleFrom(backgroundColor: Colors.redAccent),
                 onPressed: () {
+                  if (!ctx.mounted) return;
                   ref.read(songsProvider.notifier).bulkDeleteSongs(songs);
                   ref.read(selectionProvider.notifier).exitSelectionMode();
+                  if (!ctx.mounted) return;
                   Navigator.pop(ctx);
                 },
                 child: const Text('Delete Permanently'),
@@ -332,6 +341,7 @@ class BulkSelectionBar extends ConsumerWidget {
       icon: Icons.queue,
       label: 'Play Next',
       onTap: () {
+        if (!context.mounted) return;
         final orderedFilenames =
             ref.read(selectionProvider.notifier).getOrderedSelection();
         final audioManager = ref.read(audioPlayerManagerProvider);
@@ -342,6 +352,7 @@ class BulkSelectionBar extends ConsumerWidget {
         }
 
         ref.read(selectionProvider.notifier).exitSelectionMode();
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Added ${songs.length} songs to queue')),
         );
@@ -359,11 +370,12 @@ class BulkSelectionBar extends ConsumerWidget {
           debugPrint("UI: Move Songs tapped for ${songs.length} songs");
         }
 
+        if (!context.mounted) return;
         final storage = ref.read(storageServiceProvider);
         final rootPath = await storage.getMusicFolderPath();
         if (rootPath == null) {
           if (kDebugMode) {
-            debugPrint("UI: ERROR - rootPath is null");
+            debugPrint("UI: rootPath is null");
           }
           return;
         }
@@ -384,6 +396,7 @@ class BulkSelectionBar extends ConsumerWidget {
                     .moveSong(song, targetPath);
               }
               ref.read(selectionProvider.notifier).exitSelectionMode();
+              if (!context.mounted) return;
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -422,11 +435,13 @@ class BulkSelectionBar extends ConsumerWidget {
       label: allSuggestLess ? 'Suggest More' : 'Suggest Less',
       color: allSuggestLess ? Colors.grey : null,
       onTap: () {
+        if (!context.mounted) return;
         final filenames = songs.map((s) => s.filename).toList();
         ref
             .read(userDataProvider.notifier)
             .bulkToggleSuggestLess(filenames, !allSuggestLess);
         ref.read(selectionProvider.notifier).exitSelectionMode();
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text(allSuggestLess
@@ -443,6 +458,7 @@ class BulkSelectionBar extends ConsumerWidget {
       icon: Icons.playlist_add_circle_outlined,
       label: 'New Playlist',
       onTap: () {
+        if (!context.mounted) return;
         final controller = TextEditingController();
         final filenames = songs.map((s) => s.filename).toList();
 
@@ -456,6 +472,7 @@ class BulkSelectionBar extends ConsumerWidget {
               autofocus: true,
               onSubmitted: (value) {
                 if (value.trim().isNotEmpty) {
+                  if (!dialogContext.mounted) return;
                   ref.read(userDataProvider.notifier).createPlaylist(
                       value.trim(),
                       filenames.isNotEmpty ? filenames.first : null);
@@ -468,8 +485,11 @@ class BulkSelectionBar extends ConsumerWidget {
                           filenames.skip(1).toList(),
                         );
                   }
+                  if (!dialogContext.mounted) return;
                   Navigator.pop(dialogContext);
+                  if (!context.mounted) return;
                   ref.read(selectionProvider.notifier).exitSelectionMode();
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Created playlist "$value"')),
                   );
@@ -483,6 +503,7 @@ class BulkSelectionBar extends ConsumerWidget {
               ),
               TextButton(
                 onPressed: () {
+                  if (!dialogContext.mounted) return;
                   final name = controller.text.trim();
                   if (name.isNotEmpty) {
                     ref.read(userDataProvider.notifier).createPlaylist(
@@ -498,8 +519,11 @@ class BulkSelectionBar extends ConsumerWidget {
                             filenames.skip(1).toList(),
                           );
                     }
+                    if (!dialogContext.mounted) return;
                     Navigator.pop(dialogContext);
+                    if (!context.mounted) return;
                     ref.read(selectionProvider.notifier).exitSelectionMode();
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Created playlist "$name"')),
                     );

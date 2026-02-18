@@ -61,6 +61,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   final ScrollController _lyricsScrollController = ScrollController();
   final GlobalKey _lyricsContainerKey = GlobalKey();
   final ValueNotifier<int> _currentLyricIndexNotifier = ValueNotifier<int>(-1);
+  final Map<int, GlobalKey> _lyricItemKeys = {};
   late TapGestureRecognizer _artistRecognizer;
   late TapGestureRecognizer _albumRecognizer;
   late AnimationController _playPauseController;
@@ -100,6 +101,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             _autoScrollEnabled = true;
             _currentLyricIndexNotifier.value = -1;
             _hasLyricsForCurrentSong = metadataHasLyrics;
+            _lyricItemKeys.clear();
           });
         }
         _refreshLyricsAvailability(songId,
@@ -162,16 +164,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _checkAndReenableAutoScroll() {
-    if (_currentLyricIndexNotifier.value == -1 ||
-        _lyricOffsets == null ||
-        !_showLyrics) {
+    if (_currentLyricIndexNotifier.value == -1 || !_showLyrics) {
       return;
     }
 
     final currentScroll = _lyricsScrollController.offset;
-    final targetScroll = _lyricOffsets![_currentLyricIndexNotifier.value] - 120;
+    final targetScroll = _getLyricTargetOffset(_currentLyricIndexNotifier.value);
 
-    if ((currentScroll - targetScroll).abs() < 150) {
+    if (targetScroll != null && (currentScroll - targetScroll).abs() < 150) {
       if (mounted && !_autoScrollEnabled) {
         setState(() => _autoScrollEnabled = true);
         _scrollToCurrentLyric();
@@ -180,19 +180,47 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _scrollToCurrentLyric() {
-    if (_lyricOffsets != null &&
-        _currentLyricIndexNotifier.value >= 0 &&
-        _currentLyricIndexNotifier.value < _lyricOffsets!.length) {
-      final targetOffset =
-          (_lyricOffsets![_currentLyricIndexNotifier.value] - 120)
-              .clamp(0.0, _lyricsScrollController.position.maxScrollExtent);
-
-      _lyricsScrollController.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+    final controller = _lyricsScrollController;
+    if (!controller.hasClients ||
+        _currentLyricIndexNotifier.value < 0 ||
+        _currentLyricIndexNotifier.value >= _lyrics!.length) {
+      return;
     }
+
+    final targetOffset = _getLyricTargetOffset(_currentLyricIndexNotifier.value);
+    if (targetOffset == null) return;
+
+    _lyricsScrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  double? _getLyricTargetOffset(int index) {
+    final key = _lyricItemKeys[index];
+    if (key == null || key.currentContext == null) return null;
+
+    final controller = _lyricsScrollController;
+    if (!controller.hasClients) return null;
+
+    final renderBox = key.currentContext!.findRenderObject() as RenderBox?;
+    if (renderBox == null) return null;
+
+    final viewportHeight = controller.position.viewportDimension;
+    final maxScroll = controller.position.maxScrollExtent;
+
+    final lyricTop = renderBox.localToGlobal(Offset.zero).dy;
+    final containerRenderObject = _lyricsContainerKey.currentContext?.findRenderObject() as RenderBox?;
+    final containerTop = containerRenderObject?.localToGlobal(Offset.zero).dy ?? 0;
+
+    final relativeTop = lyricTop - containerTop;
+    final idealOffset = relativeTop - 120;
+
+    final maxValidScroll =
+        (relativeTop - viewportHeight + 120).clamp(0.0, maxScroll);
+
+    return idealOffset.clamp(0.0, maxValidScroll);
   }
 
   void _showNextUpSheet(BuildContext context, ThemeState themeState) {
@@ -246,8 +274,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _albumRecognizer.dispose();
     super.dispose();
   }
-
-  List<double>? _lyricOffsets;
 
   void _handleMediaModeChanged() {
     final tag = player.sequenceState?.currentSource?.tag;
@@ -534,45 +560,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  void _calculateLyricOffsets() {
-    if (_lyrics == null || _lyrics!.isEmpty) return;
-
-    final containerContext = _lyricsContainerKey.currentContext;
-    if (containerContext == null) return;
-
-    final RenderBox containerBox =
-        containerContext.findRenderObject() as RenderBox;
-    final maxWidth = containerBox.size.width;
-
-    double currentOffset = 0;
-    final List<double> offsets = [];
-
-    for (final line in _lyrics!) {
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: line.text,
-          style: const TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w500,
-            height: 1.3,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        textAlign: TextAlign.center,
-      )..layout(maxWidth: maxWidth - 48);
-
-      final height = textPainter.size.height + 24;
-      offsets.add(currentOffset + height / 2);
-      currentOffset += height;
-    }
-
-    if (mounted) {
-      setState(() {
-        _lyricOffsets = offsets;
-      });
-    }
-  }
-
   void _toggleLyrics() async {
     if (!_showLyrics && !_hasLyricsForCurrentSong) return;
 
@@ -612,12 +599,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               _lyrics = parsedLyrics;
               _loadingLyrics = false;
               _hasLyricsForCurrentSong = parsedLyrics.isNotEmpty;
+              _lyricItemKeys.clear();
             });
 
             _updateCurrentLyricIndex(player.position);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && _showLyrics) {
-                _calculateLyricOffsets();
                 _scrollToCurrentLyric();
               }
             });
@@ -632,7 +619,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _updateCurrentLyricIndex(player.position);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _showLyrics) {
-          if (_lyricOffsets == null) _calculateLyricOffsets();
           _scrollToCurrentLyric();
         }
       });
@@ -1112,6 +1098,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                             .time !=
                                                                         Duration
                                                                             .zero;
+                                                                    final key = _lyricItemKeys.putIfAbsent(
+                                                                      index,
+                                                                      () => GlobalKey(),
+                                                                    );
                                                                     return ValueListenableBuilder<
                                                                         int>(
                                                                       valueListenable:
@@ -1125,6 +1115,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                         return RepaintBoundary(
                                                                           child:
                                                                               InkWell(
+                                                                            key: key,
                                                                             onTap: hasTime
                                                                                 ? () {
                                                                                     player.seek(_lyrics![index].time);

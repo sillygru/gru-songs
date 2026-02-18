@@ -16,6 +16,8 @@ import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import 'user_data_provider.dart';
 
+export 'auto_backup_provider.dart';
+
 enum SyncStatus { idle }
 
 enum MetadataSaveStatus { idle, saving, success, error }

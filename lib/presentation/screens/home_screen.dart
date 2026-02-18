@@ -14,7 +14,9 @@ import '../../models/song.dart';
 import '../../services/audio_player_manager.dart';
 import '../../providers/session_history_provider.dart';
 import '../../providers/mixed_playlists_provider.dart';
+import '../../providers/auto_mood_mix_provider.dart';
 import '../../models/playlist.dart';
+import '../../models/mood_tag.dart';
 import 'song_list_screen.dart';
 import 'session_detail_screen.dart';
 import '../widgets/folder_grid_image.dart';
@@ -217,6 +219,231 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAutoMoodMixCard(
+    ThemeData theme,
+    AutoMoodMixState moodMixState,
+  ) {
+    if (!moodMixState.hasEnoughData || moodMixState.selectedMood == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 20),
+      child: GestureDetector(
+        onTap: () {
+          if (moodMixState.songs.isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SongListScreen(
+                  title: moodMixState.displayName,
+                  songs: moodMixState.songs,
+                ),
+              ),
+            );
+          }
+        },
+        child: SizedBox(
+          width: 200,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      theme.colorScheme.primary.withValues(alpha: 0.85),
+                      theme.colorScheme.secondary.withValues(alpha: 0.85),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, size: 42, color: Colors.white),
+                    const SizedBox(height: 8),
+                    Text(
+                      moodMixState.selectedMood!.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                moodMixState.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                    letterSpacing: -0.5),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                moodMixState.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.white60,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMoodMixGenerator(
+    BuildContext context,
+    WidgetRef ref,
+    List<Song> songs,
+  ) async {
+    if (songs.isEmpty) return;
+    final userData = ref.read(userDataProvider);
+    if (userData.moodTags.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Create moods first from song options')),
+        );
+      }
+      return;
+    }
+
+    final selectedMoodIds = <String>{};
+    double length = 25;
+    double diversity = 0.65;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Mood Mix',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: userData.moodTags.map((mood) {
+                      final selected = selectedMoodIds.contains(mood.id);
+                      return FilterChip(
+                        label: Text(mood.name),
+                        selected: selected,
+                        onSelected: (_) {
+                          setModalState(() {
+                            if (selected) {
+                              selectedMoodIds.remove(mood.id);
+                            } else {
+                              selectedMoodIds.add(mood.id);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  Text('Tracks: ${length.round()}'),
+                  Slider(
+                    value: length,
+                    min: 10,
+                    max: 60,
+                    divisions: 10,
+                    label: length.round().toString(),
+                    onChanged: (value) => setModalState(() => length = value),
+                  ),
+                  Text('Diversity: ${(diversity * 100).round()}%'),
+                  Slider(
+                    value: diversity,
+                    min: 0.1,
+                    max: 1.0,
+                    divisions: 9,
+                    label: '${(diversity * 100).round()}%',
+                    onChanged: (value) =>
+                        setModalState(() => diversity = value),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: selectedMoodIds.isEmpty
+                          ? null
+                          : () async {
+                              final generated = await ref
+                                  .read(userDataProvider.notifier)
+                                  .generateMoodMix(
+                                    moodIds: selectedMoodIds.toList(),
+                                    length: length.round(),
+                                    diversity: diversity,
+                                  );
+                              if (!sheetContext.mounted) return;
+                              Navigator.pop(sheetContext);
+                              if (generated.isEmpty) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text('No songs match those moods')),
+                                  );
+                                }
+                                return;
+                              }
+                              if (context.mounted) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => SongListScreen(
+                                      title: 'Mood Mix',
+                                      songs: generated,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                      child: const Text('Generate'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -452,6 +679,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ref.read(songsProvider.notifier).refresh(),
                 ref.read(userDataProvider.notifier).refresh(force: true),
               ]);
+              // Invalidate auto mood mix to force regeneration on next watch
+              ref.invalidate(autoMoodMixProvider);
             },
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
@@ -655,34 +884,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 ],
-                if (mixedPlaylists.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                          child: Text(
-                            'For You',
-                            style: theme.textTheme.titleLarge,
-                          ),
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                        child: Text(
+                          'For You',
+                          style: theme.textTheme.titleLarge,
                         ),
-                        SizedBox(
-                          height: 300,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: mixedPlaylists.length,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemBuilder: (context, index) {
-                              final playlist = mixedPlaylists[index];
+                      ),
+                      SizedBox(
+                        height: 300,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: mixedPlaylists.length + 1,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemBuilder: (context, index) {
+                            final autoMoodMix = ref.watch(autoMoodMixProvider);
+                            if (index == 0 && autoMoodMix.hasEnoughData) {
+                              return _buildAutoMoodMixCard(theme, autoMoodMix);
+                            }
+                            final playlistIndex =
+                                autoMoodMix.hasEnoughData ? index - 1 : index;
+                            if (playlistIndex < mixedPlaylists.length) {
+                              final playlist = mixedPlaylists[playlistIndex];
                               return _buildAutoPlaylistCard(
                                   playlist, theme, audioManager, ref);
-                            },
-                          ),
+                            }
+                            return const SizedBox.shrink();
+                          },
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),

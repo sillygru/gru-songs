@@ -41,7 +41,7 @@ class ThemeNotifier extends Notifier<ThemeState> {
   @override
   ThemeState build() {
     _loadSettings();
-    return ThemeState(mode: AppThemeMode.defaultTheme);
+    return ThemeState(mode: AppThemeMode.matchCover);
   }
 
   Future<void> _loadSettings() async {
@@ -50,15 +50,14 @@ class ThemeNotifier extends Notifier<ThemeState> {
     final useCover = prefs.getBool('use_cover_color') ?? false;
     final applyAll = prefs.getBool('apply_cover_color_to_all') ?? false;
 
-    AppThemeMode mode = AppThemeMode.defaultTheme;
+    AppThemeMode mode = AppThemeMode.matchCover;
     if (themeName != null) {
       try {
         mode = AppThemeMode.values.firstWhere(
           (e) => e.toString() == themeName,
         );
       } catch (_) {
-        // Reset to default if theme no longer exists (e.g., ocean, sunset)
-        mode = AppThemeMode.defaultTheme;
+        mode = AppThemeMode.matchCover;
         await prefs.setString('theme_mode', mode.toString());
       }
     }

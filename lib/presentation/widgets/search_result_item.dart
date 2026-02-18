@@ -61,11 +61,15 @@ class SearchResultItem extends ConsumerWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: selectionState.isSelectionMode
-              ? () => ref
-                  .read(selectionProvider.notifier)
-                  .toggleSelection(song.filename)
+              ? () {
+                  if (!context.mounted) return;
+                  ref
+                      .read(selectionProvider.notifier)
+                      .toggleSelection(song.filename);
+                }
               : onTap,
           onLongPress: () {
+            if (!context.mounted) return;
             if (!selectionState.isSelectionMode) {
               ref
                   .read(selectionProvider.notifier)

@@ -39,6 +39,7 @@ class SearchFilterState extends Equatable {
   final bool artists;
   final bool albums;
   final bool lyrics;
+  final List<String> selectedMoodIds;
 
   const SearchFilterState({
     this.all = true,
@@ -46,6 +47,7 @@ class SearchFilterState extends Equatable {
     this.artists = false,
     this.albums = false,
     this.lyrics = false,
+    this.selectedMoodIds = const [],
   });
 
   /// Factory constructor for "All" filter (default)
@@ -53,6 +55,7 @@ class SearchFilterState extends Equatable {
 
   /// Returns true if any specific filter is selected (not "All")
   bool get hasSpecificFilters => songs || artists || albums || lyrics;
+  bool get hasMoodFilter => selectedMoodIds.isNotEmpty;
 
   /// Returns true if lyrics should be searched
   /// Lyrics are searched when "All" is selected OR when "Songs" is selected
@@ -100,6 +103,7 @@ class SearchFilterState extends Equatable {
       artists: artists ?? this.artists,
       albums: albums ?? this.albums,
       lyrics: lyrics ?? this.lyrics,
+      selectedMoodIds: selectedMoodIds,
     );
   }
 
@@ -115,6 +119,7 @@ class SearchFilterState extends Equatable {
           artists: artists,
           albums: albums,
           lyrics: lyrics,
+          selectedMoodIds: selectedMoodIds,
         );
       case SearchFilterType.artists:
         return SearchFilterState(
@@ -123,6 +128,7 @@ class SearchFilterState extends Equatable {
           artists: true,
           albums: albums,
           lyrics: lyrics,
+          selectedMoodIds: selectedMoodIds,
         );
       case SearchFilterType.albums:
         return SearchFilterState(
@@ -131,6 +137,7 @@ class SearchFilterState extends Equatable {
           artists: artists,
           albums: true,
           lyrics: lyrics,
+          selectedMoodIds: selectedMoodIds,
         );
       case SearchFilterType.lyrics:
         return SearchFilterState(
@@ -139,6 +146,7 @@ class SearchFilterState extends Equatable {
           artists: artists,
           albums: albums,
           lyrics: true,
+          selectedMoodIds: selectedMoodIds,
         );
     }
   }
@@ -156,6 +164,7 @@ class SearchFilterState extends Equatable {
           artists: artists,
           albums: albums,
           lyrics: lyrics,
+          selectedMoodIds: selectedMoodIds,
         );
         return newState._fallbackToAllIfEmpty();
       case SearchFilterType.artists:
@@ -165,6 +174,7 @@ class SearchFilterState extends Equatable {
           artists: false,
           albums: albums,
           lyrics: lyrics,
+          selectedMoodIds: selectedMoodIds,
         );
         return newState._fallbackToAllIfEmpty();
       case SearchFilterType.albums:
@@ -174,6 +184,7 @@ class SearchFilterState extends Equatable {
           artists: artists,
           albums: false,
           lyrics: lyrics,
+          selectedMoodIds: selectedMoodIds,
         );
         return newState._fallbackToAllIfEmpty();
       case SearchFilterType.lyrics:
@@ -183,6 +194,7 @@ class SearchFilterState extends Equatable {
           artists: artists,
           albums: albums,
           lyrics: false,
+          selectedMoodIds: selectedMoodIds,
         );
         return newState._fallbackToAllIfEmpty();
     }
@@ -191,9 +203,23 @@ class SearchFilterState extends Equatable {
   /// Falls back to "All" if no specific filters are selected
   SearchFilterState _fallbackToAllIfEmpty() {
     if (!hasSpecificFilters) {
-      return const SearchFilterState(all: true);
+      return SearchFilterState(
+        all: true,
+        selectedMoodIds: selectedMoodIds,
+      );
     }
     return this;
+  }
+
+  SearchFilterState withMoodIds(Iterable<String> moodIds) {
+    return SearchFilterState(
+      all: all,
+      songs: songs,
+      artists: artists,
+      albums: albums,
+      lyrics: lyrics,
+      selectedMoodIds: moodIds.toSet().toList(),
+    );
   }
 
   /// Returns true if the given filter type is selected
@@ -213,10 +239,17 @@ class SearchFilterState extends Equatable {
   }
 
   @override
-  List<Object?> get props => [all, songs, artists, albums, lyrics];
+  List<Object?> get props => [
+        all,
+        songs,
+        artists,
+        albums,
+        lyrics,
+        selectedMoodIds,
+      ];
 
   @override
   String toString() {
-    return 'SearchFilterState(all: $all, songs: $songs, artists: $artists, albums: $albums, lyrics: $lyrics)';
+    return 'SearchFilterState(all: $all, songs: $songs, artists: $artists, albums: $albums, lyrics: $lyrics, selectedMoodIds: $selectedMoodIds)';
   }
 }

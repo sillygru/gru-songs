@@ -17,6 +17,8 @@ class SettingsState {
   final double fadeInDuration;
   final double delayDuration;
   final QuickActionConfig quickActionConfig;
+  final int autoBackupFrequencyHours;
+  final int autoBackupDeleteAfterDays;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -31,6 +33,8 @@ class SettingsState {
     this.fadeInDuration = 0.0,
     this.delayDuration = 0.0,
     QuickActionConfig? quickActionConfig,
+    this.autoBackupFrequencyHours = 0,
+    this.autoBackupDeleteAfterDays = 0,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -46,6 +50,8 @@ class SettingsState {
     double? fadeInDuration,
     double? delayDuration,
     QuickActionConfig? quickActionConfig,
+    int? autoBackupFrequencyHours,
+    int? autoBackupDeleteAfterDays,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -63,6 +69,10 @@ class SettingsState {
       fadeInDuration: fadeInDuration ?? this.fadeInDuration,
       delayDuration: delayDuration ?? this.delayDuration,
       quickActionConfig: quickActionConfig ?? this.quickActionConfig,
+      autoBackupFrequencyHours:
+          autoBackupFrequencyHours ?? this.autoBackupFrequencyHours,
+      autoBackupDeleteAfterDays:
+          autoBackupDeleteAfterDays ?? this.autoBackupDeleteAfterDays,
     );
   }
 }
@@ -80,6 +90,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyFadeInDuration = 'fade_in_duration';
   static const _keyDelayDuration = 'delay_duration';
   static const _keyQuickActionConfig = 'quick_action_config';
+  static const _keyAutoBackupFrequencyHours = 'auto_backup_frequency_hours';
+  static const _keyAutoBackupDeleteAfterDays = 'auto_backup_delete_after_days';
   static const double maxDelayDuration = 12.0;
 
   @override
@@ -109,6 +121,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
       delayDuration: prefs.getDouble(_keyDelayDuration) ?? 0.0,
       quickActionConfig: QuickActionConfig.fromJsonString(
           prefs.getString(_keyQuickActionConfig) ?? ''),
+      autoBackupFrequencyHours:
+          prefs.getInt(_keyAutoBackupFrequencyHours) ?? 0,
+      autoBackupDeleteAfterDays: prefs.getInt(_keyAutoBackupDeleteAfterDays) ?? 0,
     );
   }
 
@@ -268,6 +283,18 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(quickActionConfig: config);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyQuickActionConfig, config.toJsonString());
+  }
+
+  Future<void> setAutoBackupFrequencyHours(int hours) async {
+    state = state.copyWith(autoBackupFrequencyHours: hours);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyAutoBackupFrequencyHours, hours);
+  }
+
+  Future<void> setAutoBackupDeleteAfterDays(int days) async {
+    state = state.copyWith(autoBackupDeleteAfterDays: days);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyAutoBackupDeleteAfterDays, days);
   }
 }
 

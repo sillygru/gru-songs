@@ -155,6 +155,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: displayResults.length,
           itemBuilder: (context, index) {
+            if (!context.mounted) return const SizedBox.shrink();
             final item = displayResults[index];
             return _buildResultItem(item, audioManager, context);
           },
@@ -370,6 +371,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _playSearchResult(SearchResult result, AudioPlayerManager audioManager) {
+    if (!mounted) return;
     // Get all search results to use as context queue
     final allResults = ref.read(searchResultsProvider(_query)).value ?? [];
     final songs = allResults.map((r) => r.song).toList();
