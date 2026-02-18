@@ -134,8 +134,14 @@ class ScannerService {
         // Check if a cached cover already exists (may have been created by a
         // parallel path we aren't aware of).
         String? existing;
-        for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp',
-            '_ffmpeg.jpg']) {
+        for (final ext in [
+          '.jpg',
+          '.png',
+          '.jpeg',
+          '.webp',
+          '.bmp',
+          '_ffmpeg.jpg'
+        ]) {
           final candidate =
               File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
           if (await candidate.exists()) {
@@ -166,8 +172,7 @@ class ScannerService {
           }
         }
       } catch (e) {
-        debugPrint(
-            'postProcessVideoThumbnails: failed for ${song.title}: $e');
+        debugPrint('postProcessVideoThumbnails: failed for ${song.title}: $e');
       }
 
       onProgress?.call((j + 1) / toProcess.length);
@@ -527,31 +532,100 @@ class ScannerService {
       await lockDir.create(recursive: true);
     }
 
-    final receivePort = ReceivePort();
-    await Isolate.spawn(
-        _isolateRebuildCovers,
-        _RebuildParams(
-          songs: songs,
-          coversDirPath: coversDir.path,
-          lockDirPath: lockDir.path,
-          sendPort: receivePort.sendPort,
-          force: force,
-        ));
-
-    final completer = Completer<Map<String, String?>>();
-    receivePort.listen((message) {
-      if (message is double) {
-        onProgress?.call(message);
-      } else if (message is Map) {
-        receivePort.close();
-        completer.complete(Map<String, String?>.from(message));
+    // Separate video files from audio files - video thumbnails must be extracted
+    // on the main thread via FFmpeg (platform channels don't work in isolates).
+    final videoSongs = <Song>[];
+    final otherSongs = <Song>[];
+    for (final song in songs) {
+      if (_isVideoFile(song.url)) {
+        videoSongs.add(song);
       } else {
-        receivePort.close();
-        completer.completeError(message);
+        otherSongs.add(song);
       }
-    });
+    }
 
-    return completer.future;
+    // Process audio files in isolate (fast)
+    final coverResults = <String, String?>{};
+    if (otherSongs.isNotEmpty) {
+      final receivePort = ReceivePort();
+      await Isolate.spawn(
+          _isolateRebuildCovers,
+          _RebuildParams(
+            songs: otherSongs,
+            coversDirPath: coversDir.path,
+            lockDirPath: lockDir.path,
+            sendPort: receivePort.sendPort,
+            force: force,
+          ));
+
+      final completer = Completer<Map<String, String?>>();
+      receivePort.listen((message) {
+        if (message is double) {
+          onProgress?.call(message * 0.7); // Audio files get 70% of progress
+        } else if (message is Map) {
+          receivePort.close();
+          completer.complete(Map<String, String?>.from(message));
+        } else {
+          receivePort.close();
+          completer.completeError(message);
+        }
+      });
+
+      final audioResults = await completer.future;
+      coverResults.addAll(audioResults);
+    }
+
+    // Process video files on main thread via FFmpeg (required for frame extraction)
+    if (videoSongs.isNotEmpty) {
+      final ffmpeg = FFmpegService();
+      for (int i = 0; i < videoSongs.length; i++) {
+        final song = videoSongs[i];
+        onProgress
+            ?.call(0.7 + (i / videoSongs.length) * 0.3); // Video files get 30%
+
+        final file = File(song.url);
+        if (!await file.exists()) continue;
+
+        final mtimeMs = song.mtime != null
+            ? (song.mtime! * 1000).round()
+            : (await file.stat()).modified.millisecondsSinceEpoch;
+        final hash = md5.convert(utf8.encode(file.path)).toString();
+
+        // Check existing cache first
+        String? existing;
+        for (final ext in [
+          '.jpg',
+          '.png',
+          '.jpeg',
+          '.webp',
+          '.bmp',
+          '_ffmpeg.jpg'
+        ]) {
+          final candidate =
+              File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+          if (await candidate.exists()) {
+            existing = candidate.path;
+            break;
+          }
+        }
+
+        if (existing != null && !force) {
+          coverResults[song.url] = existing;
+        } else {
+          final outputPath =
+              p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg');
+          final result = await ffmpeg.extractVideoThumbnail(
+            inputPath: file.path,
+            outputPath: outputPath,
+          );
+          if (result != null) {
+            coverResults[song.url] = result;
+          }
+        }
+      }
+    }
+
+    return coverResults;
   }
 
   static Future<void> _isolateRebuildCovers(_RebuildParams params) async {
