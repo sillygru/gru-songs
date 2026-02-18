@@ -428,7 +428,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   /// playback state, etc.). Triggers a rebuild so the video widget appears
   /// as soon as the first frame is decoded.
   void _onVideoControllerUpdated() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
   }
 
   Widget _buildMediaModePill(MediaItem metadata) {
@@ -565,24 +566,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       currentOffset += height;
     }
 
-    setState(() {
-      _lyricOffsets = offsets;
-    });
+    if (mounted) {
+      setState(() {
+        _lyricOffsets = offsets;
+      });
+    }
   }
 
   void _toggleLyrics() async {
     if (!_showLyrics && !_hasLyricsForCurrentSong) return;
 
     if (_showLyrics) {
-      setState(() => _showLyrics = false);
+      if (mounted) {
+        setState(() => _showLyrics = false);
+      }
       return;
     }
 
-    setState(() {
-      _showLyrics = true;
-      _autoScrollEnabled = true;
-      if (_lyrics == null) _loadingLyrics = true;
-    });
+    if (mounted) {
+      setState(() {
+        _showLyrics = true;
+        _autoScrollEnabled = true;
+        if (_lyrics == null) _loadingLyrics = true;
+      });
+    }
 
     if (_lyrics == null) {
       final sequenceState = player.sequenceState;
@@ -777,12 +784,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     MediaItem metadata,
     dynamic themeState,
   ) {
-    final canShowVideo = _audioManager.effectiveMediaMode ==
-            PlaybackMediaMode.video &&
-        _isVideoReady &&
-        _videoController != null &&
-        _videoSongId == metadata.id &&
-        _videoController!.value.isInitialized;
+    final canShowVideo =
+        _audioManager.effectiveMediaMode == PlaybackMediaMode.video &&
+            _isVideoReady &&
+            _videoController != null &&
+            _videoSongId == metadata.id &&
+            _videoController!.value.isInitialized;
 
     // When showing video use the video's real aspect ratio; otherwise square.
     final targetAspectRatio =
@@ -846,8 +853,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                               .value.size.width,
                                           height: _videoController!
                                               .value.size.height,
-                                          child:
-                                              VideoPlayer(_videoController!),
+                                          child: VideoPlayer(_videoController!),
                                         ),
                                       ),
                                     )
@@ -1005,7 +1011,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                             _toggleLyrics();
                                           }
                                         } else if (details.primaryDelta! > 5) {
-                                          if (_showLyrics) {
+                                          if (_showLyrics && mounted) {
                                             setState(() => _showLyrics = false);
                                           }
                                         }
@@ -1073,7 +1079,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                             .direction !=
                                                                         ScrollDirection
                                                                             .idle) {
-                                                                      if (_autoScrollEnabled) {
+                                                                      if (_autoScrollEnabled &&
+                                                                          mounted) {
                                                                         setState(() =>
                                                                             _autoScrollEnabled =
                                                                                 false);
@@ -1098,8 +1105,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                   itemCount:
                                                                       _lyrics!
                                                                           .length,
-                                                                  itemExtent:
-                                                                      60,
                                                                   itemBuilder:
                                                                       (context,
                                                                           index) {
@@ -1123,7 +1128,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                             onTap: hasTime
                                                                                 ? () {
                                                                                     player.seek(_lyrics![index].time);
-                                                                                    setState(() => _autoScrollEnabled = true);
+                                                                                    if (mounted) {
+                                                                                      setState(() => _autoScrollEnabled = true);
+                                                                                    }
                                                                                   }
                                                                                 : null,
                                                                             child:

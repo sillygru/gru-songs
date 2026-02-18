@@ -43,7 +43,9 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
 
   Future<void> _performClear() async {
     if (_isClearing) return;
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await CacheService.instance.clearCache();

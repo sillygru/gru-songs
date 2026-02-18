@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,11 +24,6 @@ class NextUpSheet extends ConsumerStatefulWidget {
 }
 
 class _NextUpSheetState extends ConsumerState<NextUpSheet> {
-  // Memoized queue list to prevent recalculation on every minor build
-  List<QueueItem>? _cachedUpcomingQueue;
-  int _cachedCurrentIndex = -1;
-  int _cachedQueueLength = -1;
-
   void _toggleSheetSize() {
     final controller = widget.sheetController;
     if (controller == null) return;
@@ -107,77 +104,80 @@ class _NextUpSheetState extends ConsumerState<NextUpSheet> {
         ],
       ),
       child: Column(
-          children: [
-            const SizedBox(height: 12),
-            // Grab Handle Area - Static
-            GestureDetector(
-              onTap: _toggleSheetSize,
-              onVerticalDragUpdate: _handleHeaderDragUpdate,
-              onVerticalDragEnd: _handleHeaderDragEnd,
-              behavior: HitTestBehavior.translucent,
-              child: SizedBox(
-                width: double.infinity,
-                height: 20,
-                child: Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: colorScheme.onSurface.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+        children: [
+          const SizedBox(height: 12),
+          // Grab Handle Area - Static
+          GestureDetector(
+            onTap: _toggleSheetSize,
+            onVerticalDragUpdate: _handleHeaderDragUpdate,
+            onVerticalDragEnd: _handleHeaderDragEnd,
+            behavior: HitTestBehavior.translucent,
+            child: SizedBox(
+              width: double.infinity,
+              height: 20,
+              child: Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurface.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
             ),
-            // Header Area with Dynamic Content
-            _NextUpHeader(
-              audioManager: audioManager,
-              onHeaderDragUpdate: _handleHeaderDragUpdate,
-              onHeaderDragEnd: _handleHeaderDragEnd,
-              onClearConfirm: () => _showClearConfirm(context, audioManager),
-            ),
-            // List Content - Only this part rebuilds frequently
-            Expanded(
-              child: ValueListenableBuilder<List<QueueItem>>(
-                valueListenable: audioManager.queueNotifier,
-                builder: (context, queue, child) {
-                  return StreamBuilder<int?>(
-                    stream: audioManager.player.currentIndexStream,
-                    initialData: audioManager.player.currentIndex,
-                    builder: (context, snapshot) {
-                      final currentIndex = snapshot.data ?? -1;
+          ),
+          // Header Area with Dynamic Content
+          _NextUpHeader(
+            audioManager: audioManager,
+            onHeaderDragUpdate: _handleHeaderDragUpdate,
+            onHeaderDragEnd: _handleHeaderDragEnd,
+            onClearConfirm: () => _showClearConfirm(context, audioManager),
+          ),
+          // List Content - Only this part rebuilds frequently
+          Expanded(
+            child: ValueListenableBuilder<List<QueueItem>>(
+              valueListenable: audioManager.queueNotifier,
+              builder: (context, queue, child) {
+                return StreamBuilder<int?>(
+                  stream: audioManager.player.currentIndexStream,
+                  initialData: audioManager.player.currentIndex,
+                  builder: (context, snapshot) {
+                    final currentIndex = snapshot.data ?? -1;
+                    final upcomingQueue = queue.skip(currentIndex + 1).toList();
 
-                      // Simple cache check to avoid expensive .skip().toList() on every frame if nothing changed
-                      if (_cachedUpcomingQueue == null ||
-                          _cachedCurrentIndex != currentIndex ||
-                          _cachedQueueLength != queue.length) {
-                        _cachedUpcomingQueue =
-                            queue.skip(currentIndex + 1).toList();
-                        _cachedCurrentIndex = currentIndex;
-                        _cachedQueueLength = queue.length;
-                      }
+                    if (upcomingQueue.isEmpty) {
+                      return const _EmptyQueue();
+                    }
 
-                      final upcomingQueue = _cachedUpcomingQueue!;
-
-                      if (upcomingQueue.isEmpty) {
-                        return const _EmptyQueue();
-                      }
-
-                      return _QueueListContent(
-                        upcomingQueue: upcomingQueue,
-                        currentIndex: currentIndex,
+                    return _QueueListContent(
+                      upcomingQueue: upcomingQueue,
+                      currentIndex: currentIndex,
+                      audioManager: audioManager,
+                      scrollController: widget.scrollController,
+                      onRemove: (absoluteIndex) => _handleRemoveTap(
+                        context: context,
                         audioManager: audioManager,
-                        scrollController: widget.scrollController,
-                      );
-                    },
-                  );
-                },
-              ),
+                        absoluteIndex: absoluteIndex,
+                      ),
+                    );
+                  },
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _handleRemoveTap({
+    required BuildContext context,
+    required AudioPlayerManager audioManager,
+    required int absoluteIndex,
+  }) async {
+    HapticFeedback.mediumImpact();
+    await audioManager.removeFromQueue(absoluteIndex);
   }
 
   void _showClearConfirm(
@@ -212,12 +212,14 @@ class _QueueListContent extends StatelessWidget {
   final int currentIndex;
   final AudioPlayerManager audioManager;
   final ScrollController? scrollController;
+  final ValueChanged<int> onRemove;
 
   const _QueueListContent({
     required this.upcomingQueue,
     required this.currentIndex,
     required this.audioManager,
     this.scrollController,
+    required this.onRemove,
   });
 
   @override
@@ -227,10 +229,10 @@ class _QueueListContent extends StatelessWidget {
       scrollController: scrollController,
       // PERFORMANCE: Fixed item height avoids constructing a prototype widget on every build
       itemExtent: 80.0,
-      cacheExtent: 400, // Reduced from 1000 — budget phones can't afford pre-rendering 15 items
+      cacheExtent:
+          400, // Reduced from 1000 — budget phones can't afford pre-rendering 15 items
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-      // IMPORTANT: Disabling default handles prevents the whole tile from being a drag target.
-      // This allows the Swipe gesture (Dismissible) to work everywhere EXCEPT the handle.
+      // Keep drag reorder scoped to the explicit handle only.
       buildDefaultDragHandles: false,
       onReorder: (oldIndex, newIndex) {
         HapticFeedback.selectionClick();
@@ -260,14 +262,18 @@ class _QueueListContent extends StatelessWidget {
       },
       itemBuilder: (context, index) {
         final item = upcomingQueue[index];
+        final absoluteIndex = currentIndex + 1 + index;
         return RepaintBoundary(
           key: ValueKey('repaint_${item.queueId}'),
           child: _NextUpItem(
             key: ValueKey(item.queueId),
             item: item,
             index: index,
-            currentIndex: currentIndex,
-            audioManager: audioManager,
+            onTogglePriority: () {
+              HapticFeedback.mediumImpact();
+              audioManager.togglePriority(absoluteIndex);
+            },
+            onRemove: () => onRemove(absoluteIndex),
           ),
         );
       },
@@ -324,7 +330,8 @@ class _NextUpHeader extends StatelessWidget {
                               children: [
                                 Text(
                                   'Up Next',
-                                  style: theme.textTheme.headlineSmall?.copyWith(
+                                  style:
+                                      theme.textTheme.headlineSmall?.copyWith(
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: -0.5,
                                   ),
@@ -403,8 +410,8 @@ class _HeaderAction extends StatelessWidget {
 class _NextUpItem extends StatelessWidget {
   final QueueItem item;
   final int index;
-  final int currentIndex;
-  final AudioPlayerManager audioManager;
+  final VoidCallback onTogglePriority;
+  final VoidCallback onRemove;
 
   // Pre-computed static colors to avoid per-item allocation during scroll
   static const _pinBorderOpacity = 0.3;
@@ -416,50 +423,19 @@ class _NextUpItem extends StatelessWidget {
     super.key,
     required this.item,
     required this.index,
-    required this.currentIndex,
-    required this.audioManager,
+    required this.onTogglePriority,
+    required this.onRemove,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Dismissible(
-        key: ValueKey('dismiss_${item.queueId}'),
-        direction: DismissDirection.horizontal,
-        dismissThresholds: const {
-          DismissDirection.startToEnd: 0.25,
-          DismissDirection.endToStart: 0.25,
-        },
-        background: _SwipeAction(
-          color: Theme.of(context).colorScheme.primary,
-          icon: item.isPriority
-              ? Icons.push_pin_rounded
-              : Icons.push_pin_outlined,
-          alignment: Alignment.centerLeft,
-          label: item.isPriority ? 'Unpin' : 'Pin to Top',
-        ),
-        secondaryBackground: const _SwipeAction(
-          color: Colors.redAccent,
-          icon: Icons.delete_outline_rounded,
-          alignment: Alignment.centerRight,
-          label: 'Remove',
-        ),
-        confirmDismiss: (direction) async {
-          if (direction == DismissDirection.startToEnd) {
-            HapticFeedback.mediumImpact();
-            audioManager.togglePriority(currentIndex + 1 + index);
-            return false;
-          }
-          return true;
-        },
-        onDismissed: (direction) {
-          if (direction == DismissDirection.endToStart) {
-            HapticFeedback.mediumImpact();
-            audioManager.removeFromQueue(currentIndex + 1 + index);
-          }
-        },
-        child: _NextUpItemContent(item: item, index: index),
+      child: _NextUpItemContent(
+        item: item,
+        index: index,
+        onTogglePriority: onTogglePriority,
+        onRemove: onRemove,
       ),
     );
   }
@@ -469,10 +445,14 @@ class _NextUpItem extends StatelessWidget {
 class _NextUpItemContent extends StatelessWidget {
   final QueueItem item;
   final int index;
+  final VoidCallback onTogglePriority;
+  final VoidCallback onRemove;
 
   const _NextUpItemContent({
     required this.item,
     required this.index,
+    required this.onTogglePriority,
+    required this.onRemove,
   });
 
   @override
@@ -556,69 +536,45 @@ class _NextUpItemContent extends StatelessWidget {
             fontSize: 13,
           ),
         ),
-        trailing: ReorderableDragStartListener(
-          index: index,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            color: Colors.transparent,
-            child: Icon(
-              Icons.drag_indicator_rounded,
-              color: dragHandleColor,
-              size: 20,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                item.isPriority
+                    ? Icons.push_pin_rounded
+                    : Icons.push_pin_outlined,
+                color: item.isPriority ? colorScheme.primary : dragHandleColor,
+                size: 20,
+              ),
+              tooltip: item.isPriority ? 'Unpin' : 'Pin to Top',
+              onPressed: onTogglePriority,
+              visualDensity: VisualDensity.compact,
             ),
-          ),
+            IconButton(
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                size: 20,
+                color: Colors.redAccent,
+              ),
+              tooltip: 'Remove',
+              onPressed: onRemove,
+              visualDensity: VisualDensity.compact,
+            ),
+            ReorderableDragStartListener(
+              index: index,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                color: Colors.transparent,
+                child: Icon(
+                  Icons.drag_indicator_rounded,
+                  color: dragHandleColor,
+                  size: 20,
+                ),
+              ),
+            ),
+          ],
         ),
-      ),
-    );
-  }
-}
-
-class _SwipeAction extends StatelessWidget {
-  final Color color;
-  final IconData icon;
-  final Alignment alignment;
-  final String label;
-
-  static const _backgroundOpacity = 0.15;
-
-  const _SwipeAction({
-    required this.color,
-    required this.icon,
-    required this.alignment,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isLeft = alignment == Alignment.centerLeft;
-    // Pre-compute background color once rather than inline
-    final bgColor = color.withValues(alpha: _backgroundOpacity);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      alignment: alignment,
-      padding: EdgeInsets.only(
-        left: isLeft ? 24 : 0,
-        right: isLeft ? 0 : 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 26),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
-            ),
-          ),
-        ],
       ),
     );
   }

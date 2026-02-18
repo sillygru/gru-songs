@@ -34,6 +34,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void _onSearchChanged(String value) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
       setState(() {
         _query = value.toLowerCase().trim();
       });

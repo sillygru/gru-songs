@@ -191,7 +191,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearDatabase();
@@ -223,7 +225,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearCoversCache();
@@ -255,7 +259,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearBackups();
@@ -287,7 +293,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearLibraryCache();
@@ -319,7 +327,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearSearchIndex();
@@ -351,7 +361,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearWaveformCache();
@@ -383,7 +395,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearColorCache();
@@ -415,7 +429,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearLyricsCache();
@@ -458,7 +474,9 @@ class _StorageManagementScreenState
 
     if (!confirmed || !mounted) return;
 
-    setState(() => _isClearing = true);
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
 
     try {
       await StorageAnalysisService.instance.clearAllUserData();

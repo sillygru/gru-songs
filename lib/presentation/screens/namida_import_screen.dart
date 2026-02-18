@@ -19,6 +19,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
   NamidaImportMode _importMode = NamidaImportMode.additive;
 
   Future<void> _selectAndImport() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _statusMessage = 'Validating backup file...';
@@ -30,18 +31,22 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
 
       if (validationResult == null) {
         // User cancelled file picker
-        setState(() {
-          _isLoading = false;
-          _statusMessage = null;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _statusMessage = null;
+          });
+        }
         return;
       }
 
       if (validationResult['valid'] != true) {
-        setState(() {
-          _isLoading = false;
-          _statusMessage = null;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _statusMessage = null;
+          });
+        }
         _showError(validationResult['error'] ?? 'Invalid backup file');
         return;
       }
@@ -54,28 +59,34 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
         if (confirmed != true) {
           // Cleanup temp directory
           await _cleanupTempDir(importPath);
-          setState(() {
-            _isLoading = false;
-            _statusMessage = null;
-          });
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _statusMessage = null;
+            });
+          }
           return;
         }
       }
 
-      setState(() {
-        _isImporting = true;
-        _statusMessage = 'Importing data...';
-      });
+      if (mounted) {
+        setState(() {
+          _isImporting = true;
+          _statusMessage = 'Importing data...';
+        });
+      }
 
       // Get music folder path for path mapping
       final musicFolder = await StorageService().getMusicFolderPath();
       if (musicFolder == null) {
         await _cleanupTempDir(importPath);
-        setState(() {
-          _isLoading = false;
-          _isImporting = false;
-          _statusMessage = null;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _isImporting = false;
+            _statusMessage = null;
+          });
+        }
         _showError(
             'Music folder not set. Please configure your music folder first.');
         return;
@@ -91,11 +102,13 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
         ),
       );
 
-      setState(() {
-        _isLoading = false;
-        _isImporting = false;
-        _statusMessage = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isImporting = false;
+          _statusMessage = null;
+        });
+      }
 
       if (result.success) {
         // Refresh user data
@@ -112,11 +125,13 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
         _showError(result.message);
       }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _isImporting = false;
-        _statusMessage = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isImporting = false;
+          _statusMessage = null;
+        });
+      }
       _showError('Import failed: $e');
     }
   }

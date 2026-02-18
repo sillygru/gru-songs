@@ -35,7 +35,7 @@ class _AudioVisualizerState extends State<AudioVisualizer>
       vsync: this,
       duration: const Duration(milliseconds: 150),
     )..addListener(() {
-        if (widget.isPlaying && _isAppActive) {
+        if (widget.isPlaying && _isAppActive && mounted) {
           setState(() {
             for (int i = 0; i < _barHeights.length; i++) {
               // Move current height towards target
@@ -82,9 +82,11 @@ class _AudioVisualizerState extends State<AudioVisualizer>
         _controller.repeat();
       } else {
         _controller.stop();
-        setState(() {
-          _barHeights.fillRange(0, _barHeights.length, 0.3);
-        });
+        if (mounted) {
+          setState(() {
+            _barHeights.fillRange(0, _barHeights.length, 0.3);
+          });
+        }
       }
     }
   }

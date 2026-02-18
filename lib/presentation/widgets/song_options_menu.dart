@@ -100,6 +100,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
   }
 
   void _goTo(_SongMenuView next) {
+    if (!mounted) return;
     final currentIndex = _viewIndex(_view);
     final nextIndex = _viewIndex(next);
     setState(() {
@@ -214,7 +215,8 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         action: SnackBarAction(
           label: 'Change',
           onPressed: () {
-            showPlaylistSelector(widget.parentContext, ref, widget.songFilename);
+            showPlaylistSelector(
+                widget.parentContext, ref, widget.songFilename);
           },
         ),
       ),
@@ -295,7 +297,8 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         action: SnackBarAction(
           label: 'Change',
           onPressed: () {
-            showPlaylistSelector(widget.parentContext, ref, widget.songFilename);
+            showPlaylistSelector(
+                widget.parentContext, ref, widget.songFilename);
           },
         ),
       ),
@@ -311,6 +314,11 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       widget.parentContext,
       MaterialPageRoute(builder: (context) => EditMetadataScreen(song: song)),
     );
+  }
+
+  void _handleManagePlaylists() {
+    _closePopup();
+    showPlaylistSelector(context, ref, widget.songFilename);
   }
 
   Future<void> _handleHideFromLibrary() async {
@@ -498,9 +506,8 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           title: 'Personalize',
           subtitle: 'Favorite and recommendation settings',
           onTap: () => _goTo(_SongMenuView.personalize),
-          accent: isFavorite
-              ? Colors.red
-              : Theme.of(context).colorScheme.secondary,
+          accent:
+              isFavorite ? Colors.red : Theme.of(context).colorScheme.secondary,
         ),
         if (hasSongActions) const SizedBox(height: 8),
         if (hasSongActions)
@@ -557,6 +564,12 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           subtitle: 'Move this file to another folder',
           onTap: _handleMoveToFolder,
         ),
+        _submenuEntry(
+          icon: Icons.playlist_add_check_rounded,
+          label: 'Manage Playlists',
+          subtitle: 'Add or remove from playlists',
+          onTap: _handleManagePlaylists,
+        ),
         Opacity(
           opacity: isCurrentlyPlaying ? 0.45 : 1,
           child: IgnorePointer(
@@ -585,8 +598,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         _submenuEntry(
           icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border,
           iconColor: isFavorite ? Colors.red : null,
-          label:
-              isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+          label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
           subtitle: 'Tune your favorite songs list',
           onTap: () => _toggleFavorite(isFavorite),
         ),
@@ -740,8 +752,8 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color:
-                          theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+                      color: theme.colorScheme.outlineVariant
+                          .withValues(alpha: 0.35),
                     ),
                   ),
                 ),

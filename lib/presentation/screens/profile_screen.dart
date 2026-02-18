@@ -30,6 +30,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _getAppVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
+    if (!mounted) return;
     setState(() {
       _appVersion = packageInfo.version;
     });

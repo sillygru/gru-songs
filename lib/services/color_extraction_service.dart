@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:palette_generator/palette_generator.dart';
+import 'package:image/image.dart' as img;
 
 class ExtractedPalette {
   final Color? used;
@@ -138,10 +137,6 @@ class ColorExtractionService {
   static Directory? _paletteDir;
   static bool _initialized = false;
 
-  static const int _resizeHeight = 240;
-  static const int _maximumColorCount = 28;
-  static const Duration _timeout = Duration(seconds: 5);
-
   static Future<void> init() async {
     if (_initialized) return;
     try {
@@ -204,76 +199,125 @@ class ColorExtractionService {
     File imageFile, {
     bool useIsolate = false,
   }) async {
-    final imageProvider = ResizeImage(
-      FileImage(imageFile),
-      height: _resizeHeight,
-    );
-
     try {
+      final bytes = await imageFile.readAsBytes();
       if (useIsolate) {
-        return await _extractPaletteInIsolate(imageProvider);
+        return await compute(_extractKMeansPalette, bytes);
       } else {
-        final palette = await PaletteGenerator.fromImageProvider(
-          imageProvider,
-          filters: const [],
-          maximumColorCount: _maximumColorCount,
-          timeout: _timeout,
-        );
-        return palette.colors.toList();
+        return _extractKMeansPalette(bytes);
       }
     } catch (_) {
       return null;
     }
   }
 
-  static Future<List<Color>?> _extractPaletteInIsolate(
-      ImageProvider imageProvider) async {
-    final ImageStream stream = imageProvider.resolve(
-      const ImageConfiguration(size: null, devicePixelRatio: 1.0),
-    );
-    final Completer<ui.Image> imageCompleter = Completer<ui.Image>();
-    Timer? loadFailureTimeout;
-    late ImageStreamListener listener;
-    listener = ImageStreamListener((ImageInfo info, bool synchronousCall) {
-      loadFailureTimeout?.cancel();
-      stream.removeListener(listener);
-      imageCompleter.complete(info.image);
-    });
+  static List<Color> _extractKMeansPalette(Uint8List bytes) {
+    var image = img.decodeImage(bytes);
+    if (image == null) return [];
 
-    loadFailureTimeout = Timer(_timeout, () {
-      stream.removeListener(listener);
-      imageCompleter.completeError(
-        TimeoutException('Timeout occurred trying to load image'),
-      );
-    });
+    image = img.copyResize(image, height: 100);
+    image = img.gaussianBlur(image, radius: 2);
 
-    stream.addListener(listener);
+    final pixels = _imageToPixelList(image);
+    if (pixels.isEmpty) return [];
 
-    try {
-      final ui.Image image = await imageCompleter.future;
-      final ByteData? imageData = await image.toByteData();
-      if (imageData == null) return null;
+    final clusters = _kMeansClustering(pixels, k: 5, maxIterations: 20);
 
-      final encImg = EncodedImage(
-        imageData,
-        width: image.width,
-        height: image.height,
-      );
+    clusters.sort((a, b) => b.population.compareTo(a.population));
 
-      final colors = await compute(_extractPaletteCompute, encImg);
-      return colors;
-    } catch (e) {
-      return null;
-    }
+    return clusters
+        .map((c) =>
+            Color.fromARGB(255, c.centroid.r, c.centroid.g, c.centroid.b))
+        .toList();
   }
 
-  static Future<List<Color>> _extractPaletteCompute(EncodedImage encImg) async {
-    final result = await PaletteGenerator.fromByteData(
-      encImg,
-      filters: const [],
-      maximumColorCount: _maximumColorCount,
+  static List<_Pixel> _imageToPixelList(img.Image image) {
+    final pixels = <_Pixel>[];
+    for (var y = 0; y < image.height; y++) {
+      for (var x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        pixels.add(_Pixel(
+          r: pixel.r.toInt(),
+          g: pixel.g.toInt(),
+          b: pixel.b.toInt(),
+        ));
+      }
+    }
+    return pixels;
+  }
+
+  static List<_Cluster> _kMeansClustering(
+    List<_Pixel> pixels, {
+    required int k,
+    required int maxIterations,
+  }) {
+    if (pixels.isEmpty || k <= 0) return [];
+    if (k > pixels.length) k = pixels.length;
+
+    final random = Random();
+    final clusters = <_Cluster>[];
+
+    for (var i = 0; i < k; i++) {
+      final pixel = pixels[random.nextInt(pixels.length)];
+      clusters.add(_Cluster(centroid: pixel));
+    }
+
+    for (var iteration = 0; iteration < maxIterations; iteration++) {
+      for (final cluster in clusters) {
+        cluster.pixels.clear();
+      }
+
+      for (final pixel in pixels) {
+        _Cluster? nearest;
+        var minDistance = double.infinity;
+
+        for (final cluster in clusters) {
+          final distance = _colorDistance(pixel, cluster.centroid);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearest = cluster;
+          }
+        }
+
+        nearest?.pixels.add(pixel);
+      }
+
+      var moved = false;
+      for (final cluster in clusters) {
+        if (cluster.pixels.isNotEmpty) {
+          final newCentroid = _calculateCentroid(cluster.pixels);
+          if (_colorDistance(cluster.centroid, newCentroid) > 1) {
+            cluster.centroid = newCentroid;
+            moved = true;
+          }
+        }
+      }
+
+      if (!moved) break;
+    }
+
+    return clusters.where((c) => c.pixels.isNotEmpty).toList();
+  }
+
+  static double _colorDistance(_Pixel a, _Pixel b) {
+    final dr = a.r - b.r;
+    final dg = a.g - b.g;
+    final db = a.b - b.b;
+    return sqrt(dr * dr + dg * dg + db * db);
+  }
+
+  static _Pixel _calculateCentroid(List<_Pixel> pixels) {
+    var r = 0, g = 0, b = 0;
+    for (final p in pixels) {
+      r += p.r;
+      g += p.g;
+      b += p.b;
+    }
+    return _Pixel(
+      r: r ~/ pixels.length,
+      g: g ~/ pixels.length,
+      b: b ~/ pixels.length,
     );
-    return result.colors.toList();
   }
 
   static Future<Color?> extractColor(
@@ -347,4 +391,21 @@ class ColorExtractionService {
   static void cancelBatchExtraction() {
     _batchCancelled = true;
   }
+}
+
+class _Pixel {
+  final int r;
+  final int g;
+  final int b;
+
+  _Pixel({required this.r, required this.g, required this.b});
+}
+
+class _Cluster {
+  _Pixel centroid;
+  final List<_Pixel> pixels = [];
+
+  _Cluster({required this.centroid});
+
+  int get population => pixels.length;
 }

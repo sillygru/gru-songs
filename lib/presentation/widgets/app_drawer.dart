@@ -870,11 +870,14 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
   }
 
   Future<void> _loadHistory() async {
+    if (!mounted) return;
     try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _error = null;
+        });
+      }
 
       // Create a mutable copy of events
       final events = List<Map<String, dynamic>>.from(
@@ -888,15 +891,19 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
         return bTime.compareTo(aTime);
       });
 
-      setState(() {
-        _events = events;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _events = events;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
     }
   }
 
