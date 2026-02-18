@@ -1,14 +1,10 @@
-import 'dart:io';
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../services/data_export_service.dart';
 import '../../services/telemetry_service.dart';
-import '../../services/database_optimizer_service.dart';
-import '../widgets/optimization_options_dialog.dart';
 import 'namida_import_screen.dart';
+import 'backup_management_screen.dart';
 
 class DataManagementSettingsScreen extends ConsumerStatefulWidget {
   const DataManagementSettingsScreen({super.key});
@@ -77,23 +73,17 @@ class _DataManagementSettingsScreenState
                   );
                 },
               ),
-            ],
-          ),
-          _buildSettingsGroup(
-            title: 'Maintenance',
-            icon: Icons.build_rounded,
-            children: [
               _buildListTile(
-                icon: Icons.search_rounded,
-                title: 'Re-index All',
-                subtitle: 'Rebuild search index from cached songs',
-                onTap: () => _showReindexDialog(),
-              ),
-              _buildListTile(
-                icon: Icons.build_rounded,
-                title: 'Optimize Database',
-                subtitle: 'Check and fix database issues',
-                onTap: () => _showOptimizeDatabaseDialog(),
+                icon: Icons.backup_rounded,
+                title: 'Manage Backups',
+                subtitle: 'Create, restore, and manage app backups',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const BackupManagementScreen()),
+                  );
+                },
               ),
             ],
           ),
@@ -177,144 +167,6 @@ class _DataManagementSettingsScreenState
       trailing: const Icon(Icons.chevron_right, size: 20),
       onTap: onTap,
     );
-  }
-
-  Future<void> _showReindexDialog() async {
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.search_rounded, color: Colors.blue, size: 48),
-        title: const Text('Re-index Search Data'),
-        content: const Text(
-          'This will rebuild the search index from your cached songs.\n\n'
-          'This operation is faster than full database optimization and only affects search functionality.\n\n'
-          'Would you like to proceed?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Re-index'),
-          ),
-        ],
-      ),
-    );
-
-    if (proceed != true || !mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Text('Re-indexing search data...'),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      final optimizer = DatabaseOptimizerService();
-      final result = await optimizer.reindexSearchOnly();
-
-      if (mounted) {
-        Navigator.pop(context);
-
-        await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: Icon(
-              result.success ? Icons.check_circle : Icons.error,
-              color: result.success ? Colors.green : Colors.red,
-              size: 48,
-            ),
-            title: Text(
-                result.success ? 'Re-indexing Complete' : 'Re-indexing Issues'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(result.message),
-                  if (result.issuesFound.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Issues Found:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.issuesFound.map((issue) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('• '),
-                              Expanded(child: Text(issue)),
-                            ],
-                          ),
-                        )),
-                  ],
-                  if (result.fixesApplied.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Operations Performed:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.fixesApplied.map((fix) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.check,
-                                  size: 16, color: Colors.green),
-                              const SizedBox(width: 4),
-                              Expanded(child: Text(fix)),
-                            ],
-                          ),
-                        )),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: const Icon(Icons.error, color: Colors.red, size: 48),
-            title: const Text('Re-indexing Failed'),
-            content: Text('An error occurred during re-indexing: $e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    }
   }
 
   Future<void> _handleImport() async {
@@ -408,192 +260,6 @@ class _DataManagementSettingsScreenState
         if (Navigator.canPop(context)) Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Import failed: $e")),
-        );
-      }
-    }
-  }
-
-  Future<void> _showRestartDialog() async {
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.restart_alt, color: Colors.blue, size: 48),
-        title: const Text('Restart Required'),
-        content: const Text(
-          'Database optimization has been completed successfully.\n\n'
-          'The app needs to restart to apply all changes properly.',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _restartApp();
-            },
-            child: const Text('Restart Now'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _restartApp() async {
-    if (Platform.isAndroid) {
-      try {
-        const platform = MethodChannel('gru_songs/app');
-        await platform.invokeMethod('restartApp');
-      } catch (e) {
-        exit(0);
-      }
-    } else {
-      exit(0);
-    }
-  }
-
-  Future<void> _showOptimizeDatabaseDialog() async {
-    final options = await showDialog<OptimizationOptions>(
-      context: context,
-      builder: (context) => const OptimizationOptionsDialog(),
-    );
-
-    if (options == null || !mounted) return;
-
-    final progressNotifier = ValueNotifier<double>(0.0);
-    final messageNotifier = ValueNotifier<String>('Starting optimization...');
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ValueListenableBuilder<String>(
-              valueListenable: messageNotifier,
-              builder: (context, message, _) =>
-                  Text(message, textAlign: TextAlign.center),
-            ),
-            const SizedBox(height: 20),
-            ValueListenableBuilder<double>(
-              valueListenable: progressNotifier,
-              builder: (context, progress, _) =>
-                  LinearProgressIndicator(value: progress),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      final optimizer = DatabaseOptimizerService();
-      final result = await optimizer.optimizeDatabases(
-        options: options,
-        onProgress: (message, progress) {
-          messageNotifier.value = message;
-          progressNotifier.value = progress;
-        },
-      );
-
-      if (mounted) {
-        Navigator.pop(context);
-
-        await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: Icon(
-              result.success ? Icons.check_circle : Icons.error,
-              color: result.success ? Colors.green : Colors.red,
-              size: 48,
-            ),
-            title: Text(result.success
-                ? 'Optimization Complete'
-                : 'Optimization Issues'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(result.message),
-                  if (result.issuesFound.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Issues Found:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.issuesFound.map((issue) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('• '),
-                              Expanded(child: Text(issue)),
-                            ],
-                          ),
-                        )),
-                  ],
-                  if (result.fixesApplied.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Fixes Applied:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...result.fixesApplied.map((fix) => Padding(
-                          padding: const EdgeInsets.only(left: 8, bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.check,
-                                  size: 16, color: Colors.green),
-                              const SizedBox(width: 4),
-                              Expanded(child: Text(fix)),
-                            ],
-                          ),
-                        )),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-
-        if (result.fixesApplied.isNotEmpty) {
-          ref.invalidate(userDataProvider);
-
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted) {
-              _showRestartDialog();
-            }
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: const Icon(Icons.error, color: Colors.red, size: 48),
-            title: const Text('Optimization Failed'),
-            content: Text('An error occurred during optimization: $e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
         );
       }
     }

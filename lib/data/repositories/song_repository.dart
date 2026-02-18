@@ -68,6 +68,13 @@ class SongRepository {
     return lyrics != null && lyrics.isNotEmpty;
   }
 
+  /// Checks if a lyrics cache entry exists for this song (regardless of whether it has lyrics or not).
+  /// This is useful for rebuild operations to know if a song has already been checked.
+  Future<bool> hasLyricsCacheEntry(Song song) async {
+    final cacheEntry = await _readLyricsCache(song);
+    return cacheEntry != null && cacheEntry.isFresh;
+  }
+
   Future<void> clearLyricsCache() async {
     final dir = await _getLyricsCacheDirectory();
     if (await dir.exists()) {
@@ -113,7 +120,8 @@ class SongRepository {
       final file = File(song.url);
       if (!await file.exists()) return;
       final mtime = await file.lastModified();
-      final hasLyrics = hasLyricsOverride ?? (lyrics != null && lyrics.isNotEmpty);
+      final hasLyrics =
+          hasLyricsOverride ?? (lyrics != null && lyrics.isNotEmpty);
 
       final cacheFile = await _getCacheFileForSong(song);
       await cacheFile.parent.create(recursive: true);
@@ -135,7 +143,8 @@ class SongRepository {
 
   Future<Directory> _getLyricsCacheDirectory() async {
     final supportDir = await getApplicationSupportDirectory();
-    return Directory(p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheFolder));
+    return Directory(
+        p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheFolder));
   }
 }
 

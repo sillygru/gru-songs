@@ -8,6 +8,7 @@ import 'playback_settings_screen.dart';
 import 'appearance_settings_screen.dart';
 import 'data_management_settings_screen.dart';
 import 'misc_settings_screen.dart';
+import 'indexer_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -28,7 +29,7 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           _buildCategoryTile(
             context: context,
-            icon: Icons.library_music_outlined,
+            icon: const Icon(Icons.library_music_outlined),
             title: 'Library',
             subtitle: 'Music folders, scanning, storage',
             color: Colors.blue,
@@ -40,7 +41,7 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildCategoryTile(
             context: context,
-            icon: Icons.play_circle_outline,
+            icon: const Icon(Icons.play_circle_outline),
             title: 'Playback',
             subtitle: 'Audio settings, transitions',
             color: Colors.green,
@@ -52,7 +53,7 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildCategoryTile(
             context: context,
-            icon: Icons.palette_outlined,
+            icon: const Icon(Icons.palette_outlined),
             title: 'Appearance',
             subtitle: 'Theme, display options',
             color: Colors.purple,
@@ -65,7 +66,7 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildCategoryTile(
             context: context,
-            icon: Icons.settings_backup_restore_rounded,
+            icon: const Icon(Icons.settings_backup_restore_rounded),
             title: 'Data Management',
             subtitle: 'Backup, restore, optimize, re-index',
             color: Colors.teal,
@@ -78,7 +79,34 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildCategoryTile(
             context: context,
-            icon: Icons.miscellaneous_services_outlined,
+            icon: Builder(
+              builder: (context) => Transform.rotate(
+                angle: 0.785398,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: IconTheme.of(context).color ?? Colors.black,
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              ),
+            ),
+            title: 'Indexer',
+            subtitle: 'Manage and rebuild all app indexes and caches',
+            color: Colors.orange,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const IndexerScreen()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryTile(
+            context: context,
+            icon: const Icon(Icons.miscellaneous_services_outlined),
             title: 'Misc',
             subtitle: 'Privacy, behavior',
             color: Colors.grey,
@@ -95,7 +123,7 @@ class SettingsScreen extends ConsumerWidget {
 
   Widget _buildCategoryTile({
     required BuildContext context,
-    required IconData icon,
+    required Widget icon,
     required String title,
     required String subtitle,
     required Color color,
@@ -116,7 +144,8 @@ class SettingsScreen extends ConsumerWidget {
             color: color.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, color: color, size: 28),
+          child: IconTheme(
+              data: IconThemeData(color: color, size: 28), child: icon),
         ),
         title: Text(
           title,
