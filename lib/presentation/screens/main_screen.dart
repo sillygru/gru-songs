@@ -191,6 +191,11 @@ class _MainScreenState extends ConsumerState<MainScreen>
     WidgetsBinding.instance.addObserver(this);
     // Track app launch (Level 1)
     TelemetryService.instance.trackEvent('app_launch', {}, requiredLevel: 1);
+    
+    // Check and run auto-backup on initial app launch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
+    });
   }
 
   @override
@@ -205,7 +210,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
       // Trigger background refresh when app returns to foreground
       // This will use the optimized scanner we just implemented
       ref.read(songsProvider.notifier).refresh(isBackground: true);
-      
+
       // Check and run auto-backup if needed
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
     }

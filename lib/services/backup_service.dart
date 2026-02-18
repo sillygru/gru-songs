@@ -25,19 +25,27 @@ class BackupOptions {
   final Set<BackupContentType> contentTypes;
 
   BackupOptions({Set<BackupContentType>? contentTypes})
-      : contentTypes = contentTypes ?? {
-          BackupContentType.userStats,
-          BackupContentType.userData,
-        };
+      : contentTypes = contentTypes ??
+            {
+              BackupContentType.userStats,
+              BackupContentType.userData,
+            };
 
-  bool get includeUserStats => contentTypes.contains(BackupContentType.userStats);
+  bool get includeUserStats =>
+      contentTypes.contains(BackupContentType.userStats);
   bool get includeUserData => contentTypes.contains(BackupContentType.userData);
-  bool get includeCoverCache => contentTypes.contains(BackupContentType.coverCache);
-  bool get includeLibraryCache => contentTypes.contains(BackupContentType.libraryCache);
-  bool get includeSearchIndex => contentTypes.contains(BackupContentType.searchIndex);
-  bool get includeWaveformCache => contentTypes.contains(BackupContentType.waveformCache);
-  bool get includeColorCache => contentTypes.contains(BackupContentType.colorCache);
-  bool get includeLyricsCache => contentTypes.contains(BackupContentType.lyricsCache);
+  bool get includeCoverCache =>
+      contentTypes.contains(BackupContentType.coverCache);
+  bool get includeLibraryCache =>
+      contentTypes.contains(BackupContentType.libraryCache);
+  bool get includeSearchIndex =>
+      contentTypes.contains(BackupContentType.searchIndex);
+  bool get includeWaveformCache =>
+      contentTypes.contains(BackupContentType.waveformCache);
+  bool get includeColorCache =>
+      contentTypes.contains(BackupContentType.colorCache);
+  bool get includeLyricsCache =>
+      contentTypes.contains(BackupContentType.lyricsCache);
 }
 
 class BackupDiff {
@@ -82,15 +90,27 @@ class BackupInfo {
   }
 
   String _formatDateTime(DateTime dt) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     final month = months[dt.month - 1];
     final day = dt.day;
     final year = dt.year;
     final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
     final minute = dt.minute.toString().padLeft(2, '0');
     final amPm = dt.hour >= 12 ? 'PM' : 'AM';
-    
+
     return '$month $day, $year at $hour:$minute $amPm';
   }
 }
@@ -179,7 +199,7 @@ class BackupService {
 
   Future<String> createBackup([BackupOptions? options]) async {
     options ??= BackupOptions();
-    
+
     try {
       final backupsDir = await _backupsDir;
       final backupNumber = await _getNextBackupNumber();
@@ -205,7 +225,7 @@ class BackupService {
             await statsDb.copy(p.join(dataDir.path, 'wispie_stats.db'));
           }
         }
-        
+
         if (options.includeUserData) {
           final dataDb = File(p.join(appDir.path, 'wispie_data.db'));
           if (await dataDb.exists()) {
@@ -263,51 +283,59 @@ class BackupService {
         }
 
         // Include cache files based on options
-        if (options.includeCoverCache || options.includeLibraryCache || 
-            options.includeSearchIndex || options.includeWaveformCache || 
-            options.includeColorCache || options.includeLyricsCache) {
+        if (options.includeCoverCache ||
+            options.includeLibraryCache ||
+            options.includeSearchIndex ||
+            options.includeWaveformCache ||
+            options.includeColorCache ||
+            options.includeLyricsCache) {
           final supportDir = await getApplicationSupportDirectory();
           final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
-          
+
           if (await cacheDir.exists()) {
             final cacheDataDir = Directory(p.join(dataDir.path, 'cache'));
             await cacheDataDir.create(recursive: true);
-            
+
             await for (final entity in cacheDir.list(recursive: true)) {
               if (entity is File) {
                 final filename = p.basename(entity.path);
                 final parentDir = p.basename(p.dirname(entity.path));
-                
+
                 bool include = false;
-                
+
                 if (options.includeLyricsCache && parentDir == 'lyrics_cache') {
                   include = true;
                 }
-                
-                if (options.includeWaveformCache && filename.contains('waveform')) {
+
+                if (options.includeWaveformCache &&
+                    filename.contains('waveform')) {
                   include = true;
                 }
-                
+
                 if (options.includeColorCache && filename.contains('color')) {
                   include = true;
                 }
-                
-                if (options.includeLibraryCache && filename == 'cached_songs.json') {
+
+                if (options.includeLibraryCache &&
+                    filename == 'cached_songs.json') {
                   include = true;
                 }
-                
-                if (options.includeSearchIndex && filename.contains('_search_index.db')) {
+
+                if (options.includeSearchIndex &&
+                    filename.contains('_search_index.db')) {
                   include = true;
                 }
-                
-                if (options.includeCoverCache && 
+
+                if (options.includeCoverCache &&
                     (filename.endsWith('.jpg') || filename.endsWith('.png'))) {
                   include = true;
                 }
-                
+
                 if (include) {
-                  final relativePath = p.relative(entity.path, from: cacheDir.path);
-                  final targetDir = p.join(cacheDataDir.path, p.dirname(relativePath));
+                  final relativePath =
+                      p.relative(entity.path, from: cacheDir.path);
+                  final targetDir =
+                      p.join(cacheDataDir.path, p.dirname(relativePath));
                   await Directory(targetDir).create(recursive: true);
                   await entity.copy(p.join(targetDir, filename));
                 }

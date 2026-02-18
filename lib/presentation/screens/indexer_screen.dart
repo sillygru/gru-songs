@@ -410,7 +410,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
       );
 
       if (confirmed != true) return;
-      await _startOperation(operation, force: false, warningMessage: warningMessage);
+      await _startOperation(operation,
+          force: false, warningMessage: warningMessage);
       return;
     }
 

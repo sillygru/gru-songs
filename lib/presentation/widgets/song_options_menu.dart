@@ -830,14 +830,16 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     final userData = ref.watch(userDataProvider);
     final isFavorite = userData.isFavorite(widget.songFilename);
     final isSuggestLess = userData.isSuggestLess(widget.songFilename);
-    final playCounts = ref.watch(playCountsProvider).value ?? const <String, int>{};
+    final playCounts =
+        ref.watch(playCountsProvider).value ?? const <String, int>{};
 
     final currentSong =
         ref.read(audioPlayerManagerProvider).currentSongNotifier.value;
     final isCurrentlyPlaying = currentSong?.filename == widget.songFilename;
     final moodPrompts = ref
         .read(userDataProvider.notifier)
-        .moodSuggestionPromptsForSong(widget.songFilename, limit: 3, playCounts: playCounts);
+        .moodSuggestionPromptsForSong(widget.songFilename,
+            limit: 3, playCounts: playCounts);
 
     final theme = Theme.of(context);
     final canGoBack = _view != _SongMenuView.root;

@@ -331,10 +331,12 @@ class DatabaseOptimizerService {
       // Delete sessions under 1 minute
       final shortSessionsResult = await _deleteShortSessionsViaService();
       if (shortSessionsResult['deletedSessions'] > 0) {
-        fixes.add('Deleted ${shortSessionsResult['deletedSessions']} sessions under 1 minute');
+        fixes.add(
+            'Deleted ${shortSessionsResult['deletedSessions']} sessions under 1 minute');
       }
       if (shortSessionsResult['deletedEvents'] > 0) {
-        fixes.add('Deleted ${shortSessionsResult['deletedEvents']} orphaned play events');
+        fixes.add(
+            'Deleted ${shortSessionsResult['deletedEvents']} orphaned play events');
       }
       details['short_sessions_cleanup'] = shortSessionsResult['details'];
 
@@ -431,7 +433,11 @@ class DatabaseOptimizerService {
       final statsDb = DatabaseService.instance.getStatsDatabase();
       if (statsDb == null) {
         details['error'] = 'Stats database not available';
-        return {'deletedSessions': deletedSessions, 'deletedEvents': deletedEvents, 'details': details};
+        return {
+          'deletedSessions': deletedSessions,
+          'deletedEvents': deletedEvents,
+          'details': details
+        };
       }
 
       deletedSessions = await statsDb.rawDelete('''
@@ -452,7 +458,11 @@ class DatabaseOptimizerService {
       details['error'] = e.toString();
     }
 
-    return {'deletedSessions': deletedSessions, 'deletedEvents': deletedEvents, 'details': details};
+    return {
+      'deletedSessions': deletedSessions,
+      'deletedEvents': deletedEvents,
+      'details': details
+    };
   }
 
   /// Fixes event type categorization based on new rules with priority hierarchy:

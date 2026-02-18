@@ -195,8 +195,8 @@ class FFmpegService {
         '-y',
         '-ss', seekSeconds.toStringAsFixed(3),
         '-i', inputPath,
-        '-vframes', '1',       // exactly one output frame
-        '-q:v', '3',           // JPEG quality 1–31, lower = better
+        '-vframes', '1', // exactly one output frame
+        '-q:v', '3', // JPEG quality 1–31, lower = better
         '-vf', 'scale=\'min(640,iw)\':-2', // cap width at 640 px, keep AR
         outputPath,
       ]);
@@ -220,10 +220,14 @@ class FFmpegService {
 
       final session2 = await FFmpegKit.executeWithArguments([
         '-y',
-        '-i', inputPath,
-        '-vframes', '1',
-        '-q:v', '3',
-        '-vf', 'scale=\'min(640,iw)\':-2',
+        '-i',
+        inputPath,
+        '-vframes',
+        '1',
+        '-q:v',
+        '3',
+        '-vf',
+        'scale=\'min(640,iw)\':-2',
         outputPath,
       ]);
 

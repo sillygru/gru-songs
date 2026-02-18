@@ -52,7 +52,8 @@ class AutoBackupNotifier extends Notifier<AutoBackupState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final frequencyHours = prefs.getInt('auto_backup_frequency_hours') ?? 0;
-      final deleteAfterDays = prefs.getInt('auto_backup_delete_after_days') ?? 0;
+      final deleteAfterDays =
+          prefs.getInt('auto_backup_delete_after_days') ?? 0;
       final lastBackupMs = prefs.getInt('last_auto_backup_timestamp');
 
       DateTime? lastAutoBackup;
@@ -153,6 +154,7 @@ class AutoBackupNotifier extends Notifier<AutoBackupState> {
   }
 }
 
-final autoBackupProvider = NotifierProvider<AutoBackupNotifier, AutoBackupState>(
+final autoBackupProvider =
+    NotifierProvider<AutoBackupNotifier, AutoBackupState>(
   AutoBackupNotifier.new,
 );

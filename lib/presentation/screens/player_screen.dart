@@ -169,7 +169,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     final currentScroll = _lyricsScrollController.offset;
-    final targetScroll = _getLyricTargetOffset(_currentLyricIndexNotifier.value);
+    final targetScroll =
+        _getLyricTargetOffset(_currentLyricIndexNotifier.value);
 
     if (targetScroll != null && (currentScroll - targetScroll).abs() < 150) {
       if (mounted && !_autoScrollEnabled) {
@@ -187,7 +188,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return;
     }
 
-    final targetOffset = _getLyricTargetOffset(_currentLyricIndexNotifier.value);
+    final targetOffset =
+        _getLyricTargetOffset(_currentLyricIndexNotifier.value);
     if (targetOffset == null) return;
 
     _lyricsScrollController.animateTo(
@@ -211,8 +213,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final maxScroll = controller.position.maxScrollExtent;
 
     final lyricTop = renderBox.localToGlobal(Offset.zero).dy;
-    final containerRenderObject = _lyricsContainerKey.currentContext?.findRenderObject() as RenderBox?;
-    final containerTop = containerRenderObject?.localToGlobal(Offset.zero).dy ?? 0;
+    final containerRenderObject =
+        _lyricsContainerKey.currentContext?.findRenderObject() as RenderBox?;
+    final containerTop =
+        containerRenderObject?.localToGlobal(Offset.zero).dy ?? 0;
 
     final relativeTop = lyricTop - containerTop;
     final idealOffset = relativeTop - 120;
@@ -1098,9 +1102,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                             .time !=
                                                                         Duration
                                                                             .zero;
-                                                                    final key = _lyricItemKeys.putIfAbsent(
+                                                                    final key =
+                                                                        _lyricItemKeys
+                                                                            .putIfAbsent(
                                                                       index,
-                                                                      () => GlobalKey(),
+                                                                      () =>
+                                                                          GlobalKey(),
                                                                     );
                                                                     return ValueListenableBuilder<
                                                                         int>(
@@ -1115,7 +1122,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                         return RepaintBoundary(
                                                                           child:
                                                                               InkWell(
-                                                                            key: key,
+                                                                            key:
+                                                                                key,
                                                                             onTap: hasTime
                                                                                 ? () {
                                                                                     player.seek(_lyrics![index].time);

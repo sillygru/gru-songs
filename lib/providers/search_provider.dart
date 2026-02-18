@@ -62,7 +62,7 @@ final searchResultsProvider =
     FutureProvider.family<List<SearchResult>, String>((ref, query) async {
   // Watch filter state - this is the primary dependency
   final filterState = ref.watch(searchFilterProvider);
-  
+
   // Read songs and user data without watching to avoid circular dependencies
   final songsAsync = ref.watch(songsProvider);
   final userData = ref.watch(userDataProvider);

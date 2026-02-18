@@ -275,7 +275,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.auto_awesome_rounded, size: 42, color: Colors.white),
+                    Icon(Icons.auto_awesome_rounded,
+                        size: 42, color: Colors.white),
                     const SizedBox(height: 8),
                     Text(
                       moodMixState.selectedMood!.name,

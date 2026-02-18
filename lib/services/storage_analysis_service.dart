@@ -148,8 +148,8 @@ class StorageAnalysisService {
   Future<int> getLyricsCacheSize() async {
     try {
       final supportDir = await getApplicationSupportDirectory();
-      final lyricsDir =
-          Directory(p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheDirName));
+      final lyricsDir = Directory(
+          p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheDirName));
       if (await lyricsDir.exists()) {
         return await _getDirSize(lyricsDir);
       }
@@ -298,8 +298,8 @@ class StorageAnalysisService {
   Future<void> clearLyricsCache() async {
     try {
       final supportDir = await getApplicationSupportDirectory();
-      final lyricsDir =
-          Directory(p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheDirName));
+      final lyricsDir = Directory(
+          p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheDirName));
       if (await lyricsDir.exists()) {
         await lyricsDir.delete(recursive: true);
       }

@@ -10,12 +10,12 @@ import 'session_history_provider.dart';
 const _minSongsWithMoods = 20;
 
 /// Auto-generated mood mix provider
-/// 
+///
 /// Automatically generates a "Feeling [Mood]?" mix based on:
 /// - Time of day
 /// - Recent listening history
 /// - Available mood-tagged songs
-/// 
+///
 /// Only generates if there are enough songs with mood tags (>= 20)
 final autoMoodMixProvider = Provider<AutoMoodMixState>((ref) {
   final userData = ref.watch(userDataProvider);
@@ -47,7 +47,7 @@ final autoMoodMixProvider = Provider<AutoMoodMixState>((ref) {
 
   // Select mood based on time and history
   final selectedMood = _selectMood(userData.moodTags, sessionHistory);
-  
+
   if (selectedMood == null) {
     return AutoMoodMixState(
       isLoading: false,
@@ -132,9 +132,8 @@ MoodTag? _selectMood(List<MoodTag> moodTags, List<dynamic> sessionHistory) {
 
   // Find moods that match time-appropriate suggestions
   final timeMatchedMoods = moodTags.where((mood) {
-    return timeAppropriateMoods.any((tm) => 
-      mood.normalizedName.contains(tm) || tm.contains(mood.normalizedName)
-    );
+    return timeAppropriateMoods.any((tm) =>
+        mood.normalizedName.contains(tm) || tm.contains(mood.normalizedName));
   }).toList();
 
   // If we have time-matched moods, prefer them
@@ -146,16 +145,15 @@ MoodTag? _selectMood(List<MoodTag> moodTags, List<dynamic> sessionHistory) {
   if (sessionHistory.isNotEmpty) {
     final recentSessionIds = sessionHistory.take(10).toList();
     final moodFrequency = <String, int>{};
-    
+
     for (final session in recentSessionIds) {
       // Extract mood information from session if available
       // For now, we'll just use random selection
     }
-    
+
     if (moodFrequency.isNotEmpty) {
-      final topMood = moodFrequency.entries.reduce((a, b) => 
-        a.value > b.value ? a : b
-      ).key;
+      final topMood =
+          moodFrequency.entries.reduce((a, b) => a.value > b.value ? a : b).key;
       final matchingMood = moodTags.firstWhere(
         (m) => m.id == topMood,
         orElse: () => moodTags[random.nextInt(moodTags.length)],
@@ -176,7 +174,7 @@ List<Song> _generateMoodMix(
 }) {
   final playCounts = {}; // Could be fetched from DB if needed
   final random = Random();
-  
+
   final candidates = allSongs.where((song) {
     if (userData.isHidden(song.filename)) return false;
     final songMoodIds = userData.moodsForSong(song.filename);
@@ -189,7 +187,8 @@ List<Song> _generateMoodMix(
     final songMoodIds = userData.moodsForSong(song.filename).toSet();
     final overlapScore = songMoodIds.contains(moodId) ? 1.0 : 0.0;
     final plays = playCounts[song.filename] ?? 0;
-    final noveltyScore = 1.0 / (1.0 + (plays > 0 ? (plays).toDouble().log() : 0));
+    final noveltyScore =
+        1.0 / (1.0 + (plays > 0 ? (plays).toDouble().log() : 0));
     var score = overlapScore * 5.5 + noveltyScore * 1.5;
     if (userData.isFavorite(song.filename)) score += 1.1;
     if (userData.isSuggestLess(song.filename)) score -= 1.4;
@@ -202,7 +201,7 @@ List<Song> _generateMoodMix(
   final artistHits = <String, int>{};
   final albumHits = <String, int>{};
   final diversity = 0.65;
-  
+
   for (final entry in scored) {
     if (picked.length >= length) break;
     final artistPenalty = (artistHits[entry.song.artist] ?? 0) * diversity;
@@ -222,6 +221,6 @@ List<Song> _generateMoodMix(
       if (!picked.contains(entry.song)) picked.add(entry.song);
     }
   }
-  
+
   return picked.take(length).toList();
 }

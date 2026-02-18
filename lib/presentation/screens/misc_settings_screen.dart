@@ -241,7 +241,9 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
         }).toList(),
         onChanged: (val) async {
           if (val != null) {
-            await ref.read(settingsProvider.notifier).setAutoBackupFrequencyHours(val);
+            await ref
+                .read(settingsProvider.notifier)
+                .setAutoBackupFrequencyHours(val);
             await ref.read(autoBackupProvider.notifier).setFrequencyHours(val);
 
             await TelemetryService.instance.trackEvent(
@@ -284,7 +286,9 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
         }).toList(),
         onChanged: (val) async {
           if (val != null) {
-            await ref.read(settingsProvider.notifier).setAutoBackupDeleteAfterDays(val);
+            await ref
+                .read(settingsProvider.notifier)
+                .setAutoBackupDeleteAfterDays(val);
             await ref.read(autoBackupProvider.notifier).setDeleteAfterDays(val);
 
             await TelemetryService.instance.trackEvent(

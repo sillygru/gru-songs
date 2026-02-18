@@ -44,11 +44,11 @@ class AutoBackupService {
       }
 
       final lastBackup = DateTime.fromMillisecondsSinceEpoch(lastBackupMs);
-      
+
       if (!await _lastAutoBackupStillExists(lastBackup)) {
         return true;
       }
-      
+
       final now = DateTime.now();
       final hoursSince = now.difference(lastBackup).inHours;
 
@@ -73,14 +73,14 @@ class AutoBackupService {
       if (backups.isEmpty) {
         return false;
       }
-      
+
       final newestBackup = backups.first;
       final timeDiff = newestBackup.timestamp.difference(lastBackup).abs();
-      
+
       if (timeDiff.inMinutes < 1) {
         return true;
       }
-      
+
       return false;
     } catch (e) {
       debugPrint('Error checking if last auto-backup still exists: $e');
@@ -107,7 +107,8 @@ class AutoBackupService {
       final backupFilename = await BackupService.instance.createBackup();
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_lastAutoBackupKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(
+          _lastAutoBackupKey, DateTime.now().millisecondsSinceEpoch);
 
       await _autoDeleteOldBackups();
 
@@ -164,7 +165,8 @@ class AutoBackupService {
   Future<void> _autoDeleteOldBackups() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final deleteAfterDays = prefs.getInt('auto_backup_delete_after_days') ?? 0;
+      final deleteAfterDays =
+          prefs.getInt('auto_backup_delete_after_days') ?? 0;
 
       if (deleteAfterDays == 0) {
         return;
@@ -175,7 +177,8 @@ class AutoBackupService {
         return;
       }
 
-      final cutoffDate = DateTime.now().subtract(Duration(days: deleteAfterDays));
+      final cutoffDate =
+          DateTime.now().subtract(Duration(days: deleteAfterDays));
 
       for (final backup in backups) {
         if (backup.timestamp.isBefore(cutoffDate)) {

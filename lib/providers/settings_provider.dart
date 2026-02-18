@@ -121,9 +121,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
       delayDuration: prefs.getDouble(_keyDelayDuration) ?? 0.0,
       quickActionConfig: QuickActionConfig.fromJsonString(
           prefs.getString(_keyQuickActionConfig) ?? ''),
-      autoBackupFrequencyHours:
-          prefs.getInt(_keyAutoBackupFrequencyHours) ?? 0,
-      autoBackupDeleteAfterDays: prefs.getInt(_keyAutoBackupDeleteAfterDays) ?? 0,
+      autoBackupFrequencyHours: prefs.getInt(_keyAutoBackupFrequencyHours) ?? 0,
+      autoBackupDeleteAfterDays:
+          prefs.getInt(_keyAutoBackupDeleteAfterDays) ?? 0,
     );
   }
 

@@ -676,7 +676,7 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return AlertDialog(
       contentPadding: EdgeInsets.zero,
       title: Row(
@@ -688,7 +688,8 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
               color: theme.colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.backup_rounded, color: theme.colorScheme.primary, size: 22),
+            child: Icon(Icons.backup_rounded,
+                color: theme.colorScheme.primary, size: 22),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -715,7 +716,8 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
         constraints: const BoxConstraints(maxWidth: 380),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+          color:
+              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -739,7 +741,8 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
                         height: 34,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                              ? theme.colorScheme.primary
+                                  .withValues(alpha: 0.12)
                               : theme.colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -785,7 +788,8 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
                             : Icons.circle_outlined,
                         color: isSelected
                             ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                            : theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.4),
                         size: 20,
                       ),
                     ],

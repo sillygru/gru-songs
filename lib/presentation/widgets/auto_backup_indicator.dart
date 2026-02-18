@@ -139,7 +139,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.warning_rounded, size: 14, color: Colors.white),
+                  const Icon(Icons.warning_rounded,
+                      size: 14, color: Colors.white),
                   const SizedBox(width: 8),
                   const Text(
                     'Permission required for auto-backup',
@@ -166,7 +167,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator> {
                     ),
                     child: const Text(
                       'Give Permission',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
