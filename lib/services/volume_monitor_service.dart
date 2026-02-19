@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
@@ -11,6 +12,7 @@ class VolumeMonitorService {
   double _currentVolume = 1.0;
   bool _isAutoPauseEnabled = false;
   bool _wasPlayingBeforeMute = false;
+  Timer? _volumeZeroDebounceTimer;
 
   final VoidCallback? onVolumeZero;
   final VoidCallback? onVolumeRestored;
@@ -48,15 +50,27 @@ class VolumeMonitorService {
 
     // Check if volume changed to 0 (muted)
     if (previousVolume > epsilon && volume <= epsilon) {
-      onVolumeZero?.call();
-      _wasPlayingBeforeMute = true;
+      // Start debounce timer - only pause if volume stays at 0 for 500ms
+      _volumeZeroDebounceTimer?.cancel();
+      _volumeZeroDebounceTimer = Timer(
+        const Duration(milliseconds: 500),
+        () {
+          onVolumeZero?.call();
+          _wasPlayingBeforeMute = true;
+          _volumeZeroDebounceTimer = null;
+        },
+      );
     }
-    // Check if volume restored from 0
-    else if (previousVolume <= epsilon &&
-        volume > epsilon &&
-        _wasPlayingBeforeMute) {
-      onVolumeRestored?.call();
-      _wasPlayingBeforeMute = false;
+    // Check if volume restored from 0 - cancel pending pause
+    else if (previousVolume <= epsilon && volume > epsilon) {
+      _volumeZeroDebounceTimer?.cancel();
+      _volumeZeroDebounceTimer = null;
+
+      // If we had paused due to mute, resume playback
+      if (_wasPlayingBeforeMute) {
+        onVolumeRestored?.call();
+        _wasPlayingBeforeMute = false;
+      }
     }
   }
 
@@ -74,5 +88,7 @@ class VolumeMonitorService {
   void dispose() {
     _volumeSubscription?.cancel();
     _volumeSubscription = null;
+    _volumeZeroDebounceTimer?.cancel();
+    _volumeZeroDebounceTimer = null;
   }
 }

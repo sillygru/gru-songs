@@ -166,16 +166,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
   static const List<String> _presetMoods = [
     'happy',
     'sad',
-    'chill',
-    'energetic',
-    'angry',
-    'romantic',
-    'nostalgic',
-    'focus',
-    'party',
-    'dark',
-    'uplifting',
     'calm',
+    'dark',
+    'nostalgic',
+    'romantic',
   ];
 
   String _normalizeMoodName(String value) {
@@ -203,14 +197,30 @@ class UserDataNotifier extends Notifier<UserDataState> {
       final localHidden = await DatabaseService.instance.getHidden();
       final localPlaylists = await DatabaseService.instance.getPlaylists();
       await ensurePresetMoodsSeeded();
-      final localMoodTags = await DatabaseService.instance.getMoodTags();
-      final localSongMoodMap = await DatabaseService.instance.getSongMoodMap();
+      final allMoodTags = await DatabaseService.instance.getMoodTags();
+      final allSongMoodMap = await DatabaseService.instance.getSongMoodMap();
       final localMergedGroups =
           await DatabaseService.instance.getMergedSongGroups();
       final localRecommendationPrefs =
           await DatabaseService.instance.getRecommendationPreferences();
       final localRemovedRecommendations =
           await DatabaseService.instance.getRemovedRecommendations();
+
+      // Filter to only preset moods (ignore custom moods)
+      final localMoodTags =
+          allMoodTags.where((m) => m.isPreset).toList();
+      final presetMoodIds = localMoodTags.map((m) => m.id).toSet();
+
+      // Filter song mood mappings to only include valid preset mood IDs
+      final localSongMoodMap = <String, List<String>>{};
+      for (final entry in allSongMoodMap.entries) {
+        final validMoodIds = entry.value
+            .where((id) => presetMoodIds.contains(id))
+            .toList();
+        if (validMoodIds.isNotEmpty) {
+          localSongMoodMap[entry.key] = validMoodIds;
+        }
+      }
 
       // Extract groups and priorities from the new format
       final groups = <String, List<String>>{};
@@ -484,30 +494,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   // --- Mood Management ---
-
-  Future<String?> createMoodTag(String rawName) async {
-    final name = rawName.trim();
-    if (name.isEmpty) return null;
-    final normalized = _normalizeMoodName(name);
-    final exists = state.moodTags.any((m) => m.normalizedName == normalized);
-    if (exists) return null;
-
-    final mood = MoodTag(
-      id: const Uuid().v4(),
-      name: name,
-      normalizedName: normalized,
-      isPreset: false,
-      createdAt: DateTime.now().millisecondsSinceEpoch / 1000.0,
-    );
-    await DatabaseService.instance.saveMoodTag(mood);
-    final updated = List<MoodTag>.from(state.moodTags)..add(mood);
-    updated.sort((a, b) {
-      if (a.isPreset != b.isPreset) return a.isPreset ? -1 : 1;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-    state = state.copyWith(moodTags: updated);
-    return mood.id;
-  }
 
   Future<void> renameMoodTag(String moodId, String newName) async {
     final trimmed = newName.trim();

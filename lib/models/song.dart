@@ -101,8 +101,13 @@ class Song extends Equatable {
 class LyricLine extends Equatable {
   final Duration time;
   final String text;
+  final bool isSynced;
 
-  const LyricLine({required this.time, required this.text});
+  const LyricLine({
+    required this.time,
+    required this.text,
+    this.isSynced = false,
+  });
 
   /// Parses LRC format lyrics content
   /// Format: [mm:ss.xx]Lyric text
@@ -157,7 +162,7 @@ class LyricLine extends Equatable {
         }
 
         if (text.isNotEmpty) {
-          lyrics.add(LyricLine(time: duration, text: text));
+          lyrics.add(LyricLine(time: duration, text: text, isSynced: true));
         }
       }
     }
@@ -193,5 +198,5 @@ class LyricLine extends Equatable {
   }
 
   @override
-  List<Object?> get props => [time, text];
+  List<Object?> get props => [time, text, isSynced];
 }

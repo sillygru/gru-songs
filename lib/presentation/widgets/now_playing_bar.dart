@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'album_art_image.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
-import '../screens/player_screen.dart';
+import '../routes/player_route.dart';
 import 'audio_visualizer.dart';
 
 class NowPlayingBar extends ConsumerStatefulWidget {
@@ -19,6 +19,10 @@ class NowPlayingBar extends ConsumerStatefulWidget {
 
 class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
   String? _lastSongId;
+
+  void _openPlayer(BuildContext context, MediaItem metadata) {
+    Navigator.of(context).push(PlayerPageRoute(songId: metadata.id));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,14 +49,7 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
         }
 
         return GestureDetector(
-          onTap: () {
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (context) => const PlayerScreen(),
-            );
-          },
+          onTap: () => _openPlayer(context, metadata),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: ClipRRect(

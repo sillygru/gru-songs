@@ -58,4 +58,7 @@ This was originally a personal side project, so there might be leftovers of old 
 
 ## License
 
-Copyright © 2026 gru This project is source-available for personal and educational use only. Commercial use, redistribution, or republishing of this project (in whole or substantial part) is not permitted. See the LICENSE file for full terms. Contact: gru@gru0.dev
+Copyright © 2026 gru — source-available, custom terms.
+Personal use and small code snippets are welcome. Commercial use,
+redistribution, and republishing are not permitted.
+See [LICENSE](LICENSE) for full terms · gru@gru0.dev

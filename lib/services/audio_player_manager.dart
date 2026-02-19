@@ -397,7 +397,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       final remaining = totalDuration - position;
 
       // Handle gap mode - pause before end, resume after delay
-      if (settings.delayDuration > 0 && !_isInGap && _player.playing) {
+      if (settings.delayDuration > 0 &&
+          !_isInGap &&
+          _player.playing &&
+          _gapTimer == null) {
         _handleGapTrigger(
           remaining: remaining,
           delayDuration: settings.delayDuration,
@@ -587,6 +590,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _pausedByGap = false;
     _currentGapSongId = null;
     _gapTimer = null;
+    _wasPausedByMute = false;
 
     // Verify we're still on the same song
     final currentItem = _player.sequenceState?.currentSource?.tag;
@@ -595,13 +599,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       return;
     }
 
-    // Skip to next song after gap
+    // Skip to next song after gap and resume playback
     if (_player.hasNext) {
       _player.seekToNext();
     }
-    if (!_wasPausedByMute) {
-      _player.play();
-    }
+    _player.play();
   }
 
   void _handleFadeMode({
@@ -1531,8 +1533,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final bool isConsistentMode =
         config.personality == ShufflePersonality.consistent;
     final bool isCustomMode = config.personality == ShufflePersonality.custom;
-    final bool shouldAvoidRepeatingSongs =
-        isCustomMode ? config.avoidRepeatingSongs : !isConsistentMode;
+    final bool shouldAvoidRepeatingSongs = config.antiRepeatEnabled &&
+        (isCustomMode ? config.avoidRepeatingSongs : !isConsistentMode);
 
     if (shouldAvoidRepeatingSongs && playHistory.isNotEmpty) {
       int historyIndex = -1;
@@ -1616,7 +1618,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    if (prev != null) {
+    if (config.streakBreakerEnabled && prev != null) {
       final prevArtist = prev.representative.song.artist.toLowerCase().trim();
       final currentArtist = representative.song.artist.toLowerCase().trim();
 

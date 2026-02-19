@@ -149,8 +149,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     final notifier = ref.read(userDataProvider.notifier);
     final userData = ref.read(userDataProvider);
     final selectedMoodIds = userData.moodsForSong(widget.songFilename).toSet();
-    var moodTags = List.of(userData.moodTags);
-    final customController = TextEditingController();
+    final moodTags = List.of(userData.moodTags);
 
     _closePopup();
 
@@ -160,23 +159,14 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            Future<void> addMood() async {
-              final createdId =
-                  await notifier.createMoodTag(customController.text.trim());
-              if (createdId == null) return;
-              customController.clear();
-              final nextState = ref.read(userDataProvider);
-              moodTags = List.of(nextState.moodTags);
-              selectedMoodIds.add(createdId);
-              setModalState(() {});
-            }
-
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
                 top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom +
+                    MediaQuery.of(context).padding.bottom +
+                    16,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -206,27 +196,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: customController,
-                          decoration: const InputDecoration(
-                            hintText: 'Create mood',
-                            border: OutlineInputBorder(),
-                          ),
-                          onSubmitted: (_) => addMood(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: addMood,
-                        child: const Text('Add'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(

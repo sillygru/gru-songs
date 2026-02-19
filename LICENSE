@@ -1,29 +1,53 @@
 Copyright (c) 2026 gru (sillygru)
-Contact: [gru@gru0.dev](mailto:gru@gru0.dev)
+Contact: gru@gru0.dev
+https://github.com/sillygru/wispie/
 
-This project is source-available software.
+This is source-available software licensed under custom terms.
 
-Permission is granted to any person to view, study, and use this source code for personal, educational, and non-commercial purposes, subject to the following conditions:
+────────────────────────────────────────────────────────────
 
-Allowed:
+PERMITTED
+  - Reading and studying the source code
+  - Running the software for personal use
+  - Modifying the software for your own personal use
+    (modified builds must remain private and for yourself only)
+  - Copying small snippets of code (10–20 lines or fewer) freely,
+    no credit required
+  - Forking this repository, provided your fork clearly credits
+    the original project and links to https://github.com/sillygru/wispie/
 
-* Viewing and studying the source code
-* Running and modifying the software for personal or educational use
-* Copying and reusing small portions of the code (e.g., individual functions, classes, or snippets) in other projects
+FORBIDDEN
+  - Commercial use of this project or any derivative
+  - Selling, licensing, or monetizing this project or any modified version
+  - Distributing this project publicly, in whole or in substantial part
+  - Presenting this project or modified versions as your own work
+  - Publishing a modified version as a separate application
+  - Copying a whole feature or large self-contained section of code
+    without explicit written permission from the author
 
-Not allowed:
+────────────────────────────────────────────────────────────
 
-* Commercial use of this project or any derivative work
-* Selling, licensing, or monetizing this project or any modified version
-* Redistributing this project, in whole or in substantial part, whether modified or unmodified
-* Rebranding, republishing, or presenting this project as your own work
-* Publishing modified versions of this project as a separate application
+SNIPPETS
+  Small snippets (roughly 10–20 lines or fewer): free to use, no
+  credit needed.
 
-If you wish to use this project commercially or distribute it publicly, you must obtain written permission from the author.
+  Larger excerpts (a few hundred lines or more): not outright
+  forbidden, but please reach out at gru@gru0.dev — feedback on
+  what you're building is appreciated.
 
-Attribution:
-Small code excerpts reused under this license should include reasonable credit to:
-gru (https://github.com/sillygru)
+  Whole features or substantial self-contained sections of code:
+  not permitted without explicit written permission.
 
-Disclaimer:
-This software is provided "as is", without warranty of any kind, express or implied. The author shall not be liable for any damages arising from the use of this software.
+FORKS
+  Public forks are allowed as long as the fork's README clearly
+  states it is a fork of Wispie and includes a link to the
+  original project: https://github.com/sillygru/wispie/
+
+EXCEPTIONS
+  For anything not covered above, or for custom exception permission, contact me at gru@gru0.dev.
+
+────────────────────────────────────────────────────────────
+
+DISCLAIMER
+  This software is provided "as is", without warranty of any kind.
+  The author is not liable for any damages arising from its use.

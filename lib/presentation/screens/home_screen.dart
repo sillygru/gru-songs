@@ -326,7 +326,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (userData.moodTags.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Create moods first from song options')),
+          const SnackBar(content: Text('No moods available. Tag some songs first.')),
         );
       }
       return;

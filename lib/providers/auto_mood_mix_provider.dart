@@ -108,20 +108,20 @@ MoodTag? _selectMood(List<MoodTag> moodTags, List<dynamic> sessionHistory) {
   // Time-based mood suggestions
   List<String> timeAppropriateMoods;
   if (hour >= 5 && hour < 9) {
-    // Morning: calm, focus, uplifting
-    timeAppropriateMoods = ['calm', 'focus', 'uplifting'];
+    // Morning: calm, happy
+    timeAppropriateMoods = ['calm', 'happy'];
   } else if (hour >= 9 && hour < 12) {
-    // Late morning: focus, energetic, uplifting
-    timeAppropriateMoods = ['focus', 'energetic', 'uplifting'];
+    // Late morning: calm, happy
+    timeAppropriateMoods = ['calm', 'happy'];
   } else if (hour >= 12 && hour < 14) {
-    // Lunch: energetic, party, happy
-    timeAppropriateMoods = ['energetic', 'party', 'happy'];
+    // Lunch: happy, calm
+    timeAppropriateMoods = ['happy', 'calm'];
   } else if (hour >= 14 && hour < 17) {
-    // Afternoon: focus, energetic
-    timeAppropriateMoods = ['focus', 'energetic'];
+    // Afternoon: calm, happy
+    timeAppropriateMoods = ['calm', 'happy'];
   } else if (hour >= 17 && hour < 20) {
-    // Evening: party, energetic, happy
-    timeAppropriateMoods = ['party', 'energetic', 'happy'];
+    // Evening: happy, calm
+    timeAppropriateMoods = ['happy', 'calm'];
   } else if (hour >= 20 && hour < 23) {
     // Night: calm, romantic, nostalgic
     timeAppropriateMoods = ['calm', 'romantic', 'nostalgic'];
