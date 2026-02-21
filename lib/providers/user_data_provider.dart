@@ -176,6 +176,24 @@ class UserDataNotifier extends Notifier<UserDataState> {
     return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
   }
 
+  Playlist? _playlistById(String playlistId) {
+    for (final playlist in state.playlists) {
+      if (playlist.id == playlistId) return playlist;
+    }
+    return null;
+  }
+
+  bool _isRecommendationPlaylistMutationBlocked(
+      String playlistId, String operation) {
+    final playlist = _playlistById(playlistId);
+    if (playlist?.isRecommendation == true) {
+      debugPrint(
+          'UserDataNotifier: blocked $operation for recommendation playlist $playlistId');
+      return true;
+    }
+    return false;
+  }
+
   @override
   UserDataState build() {
     if (!_initialized) {
@@ -207,16 +225,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
           await DatabaseService.instance.getRemovedRecommendations();
 
       // Filter to only preset moods (ignore custom moods)
-      final localMoodTags =
-          allMoodTags.where((m) => m.isPreset).toList();
+      final localMoodTags = allMoodTags.where((m) => m.isPreset).toList();
       final presetMoodIds = localMoodTags.map((m) => m.id).toSet();
 
       // Filter song mood mappings to only include valid preset mood IDs
       final localSongMoodMap = <String, List<String>>{};
       for (final entry in allSongMoodMap.entries) {
-        final validMoodIds = entry.value
-            .where((id) => presetMoodIds.contains(id))
-            .toList();
+        final validMoodIds =
+            entry.value.where((id) => presetMoodIds.contains(id)).toList();
         if (validMoodIds.isNotEmpty) {
           localSongMoodMap[entry.key] = validMoodIds;
         }
@@ -695,6 +711,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> addSongToPlaylist(String playlistId, String songFilename,
       {bool sync = false}) async {
+    if (_isRecommendationPlaylistMutationBlocked(
+        playlistId, 'addSongToPlaylist')) {
+      return;
+    }
+
     // Update local database
     await DatabaseService.instance.addSongToPlaylist(playlistId, songFilename);
 
@@ -717,6 +738,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> bulkAddSongsToPlaylist(
       String playlistId, List<String> filenames) async {
+    if (_isRecommendationPlaylistMutationBlocked(
+        playlistId, 'bulkAddSongsToPlaylist')) {
+      return;
+    }
+
     await DatabaseService.instance
         .bulkAddSongsToPlaylist(playlistId, filenames);
 
@@ -740,6 +766,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> bulkRemoveSongsFromPlaylist(
       String playlistId, List<String> filenames) async {
+    if (_isRecommendationPlaylistMutationBlocked(
+        playlistId, 'bulkRemoveSongsFromPlaylist')) {
+      return;
+    }
+
     await DatabaseService.instance
         .bulkRemoveSongsFromPlaylist(playlistId, filenames);
 
@@ -758,6 +789,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   Future<void> removeSongFromPlaylist(String playlistId, String songFilename,
       {bool sync = false}) async {
+    if (_isRecommendationPlaylistMutationBlocked(
+        playlistId, 'removeSongFromPlaylist')) {
+      return;
+    }
+
     // Update local database
     await DatabaseService.instance
         .removeSongFromPlaylist(playlistId, songFilename);
@@ -777,6 +813,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   Future<void> deletePlaylist(String playlistId) async {
+    if (_isRecommendationPlaylistMutationBlocked(
+        playlistId, 'deletePlaylist')) {
+      return;
+    }
+
     // Update local database
     await DatabaseService.instance.deletePlaylist(playlistId);
     final newPlaylists =
@@ -785,6 +826,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   Future<void> updatePlaylistName(String playlistId, String newName) async {
+    if (_isRecommendationPlaylistMutationBlocked(
+        playlistId, 'updatePlaylistName')) {
+      return;
+    }
+
     // Update local database
     await DatabaseService.instance.updatePlaylistName(playlistId, newName);
 

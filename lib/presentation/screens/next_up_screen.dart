@@ -22,14 +22,32 @@ class NextUpScreen extends ConsumerStatefulWidget {
 }
 
 class _NextUpScreenState extends ConsumerState<NextUpScreen> {
+  static const double _queueRowHeight = 76;
+
   _PendingRemoval? _pendingRemoval;
   Timer? _undoTimer;
   final Set<String> _locallyDismissedQueueIds = <String>{};
+  final ScrollController _scrollController = ScrollController();
+  bool _didAutoScrollToCurrent = false;
 
   @override
   void dispose() {
     _undoTimer?.cancel();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _autoScrollToCurrentIfNeeded(int currentIndex) {
+    if (_didAutoScrollToCurrent || currentIndex < 0) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final targetOffset =
+          (currentIndex * _queueRowHeight).clamp(0, double.infinity).toDouble();
+      final maxOffset = _scrollController.position.maxScrollExtent;
+      _scrollController.jumpTo(targetOffset.clamp(0, maxOffset));
+      _didAutoScrollToCurrent = true;
+    });
   }
 
   Future<void> _removeWithUndo({
@@ -170,6 +188,7 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                   initialData: audioManager.player.currentIndex,
                   builder: (context, snapshot) {
                     final currentIndex = snapshot.data ?? -1;
+                    _autoScrollToCurrentIfNeeded(currentIndex);
                     final playedQueue = currentIndex > 0
                         ? queue.take(currentIndex).toList()
                         : <QueueItem>[];
@@ -186,6 +205,7 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                         .toList();
 
                     return CustomScrollView(
+                      controller: _scrollController,
                       physics: const BouncingScrollPhysics(),
                       slivers: [
                         if (playedQueue.isNotEmpty)
@@ -271,62 +291,59 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                                 return const SizedBox.shrink();
                               }
 
-                              return Dismissible(
-                                key: ValueKey('dismiss_${item.queueId}'),
-                                direction: DismissDirection.horizontal,
-                                movementDuration:
-                                    const Duration(milliseconds: 170),
-                                resizeDuration:
-                                    const Duration(milliseconds: 130),
-                                dismissThresholds: const {
-                                  DismissDirection.startToEnd: 0.25,
-                                  DismissDirection.endToStart: 0.25,
-                                },
-                                background:
-                                    Container(color: Colors.transparent),
-                                secondaryBackground:
-                                    Container(color: Colors.transparent),
-                                onDismissed: (_) {
-                                  HapticFeedback.lightImpact();
-                                  setState(() {
-                                    _locallyDismissedQueueIds.add(item.queueId);
-                                  });
-                                  _removeWithUndo(
-                                    audioManager: audioManager,
-                                    item: item,
-                                    absoluteIndex: absoluteIndex,
-                                  );
-                                },
-                                child: _QueueRow(
-                                  key: ValueKey(item.queueId),
-                                  item: item,
-                                  isCurrent: false,
-                                  showActions: true,
-                                  onTap: () => _onQueueRowTap(
-                                    audioManager: audioManager,
-                                    currentIndex: currentIndex,
-                                    tappedIndex: absoluteIndex,
-                                  ),
-                                  onTogglePriority: () {
-                                    HapticFeedback.mediumImpact();
-                                    audioManager.togglePriority(absoluteIndex);
+                              return ReorderableDelayedDragStartListener(
+                                key: ValueKey('reorder_${item.queueId}'),
+                                index: index,
+                                child: Dismissible(
+                                  key: ValueKey('dismiss_${item.queueId}'),
+                                  direction: DismissDirection.horizontal,
+                                  movementDuration:
+                                      const Duration(milliseconds: 170),
+                                  resizeDuration:
+                                      const Duration(milliseconds: 130),
+                                  dismissThresholds: const {
+                                    DismissDirection.startToEnd: 0.25,
+                                    DismissDirection.endToStart: 0.25,
                                   },
-                                  onRemove: () {
-                                    HapticFeedback.mediumImpact();
+                                  background:
+                                      Container(color: Colors.transparent),
+                                  secondaryBackground:
+                                      Container(color: Colors.transparent),
+                                  onDismissed: (_) {
+                                    HapticFeedback.lightImpact();
+                                    setState(() {
+                                      _locallyDismissedQueueIds
+                                          .add(item.queueId);
+                                    });
                                     _removeWithUndo(
                                       audioManager: audioManager,
                                       item: item,
                                       absoluteIndex: absoluteIndex,
                                     );
                                   },
-                                  dragHandle: ReorderableDragStartListener(
-                                    index: index,
-                                    child: const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(horizontal: 8),
-                                      child: Icon(Icons.drag_indicator_rounded,
-                                          size: 20),
+                                  child: _QueueRow(
+                                    key: ValueKey(item.queueId),
+                                    item: item,
+                                    isCurrent: false,
+                                    showActions: true,
+                                    onTap: () => _onQueueRowTap(
+                                      audioManager: audioManager,
+                                      currentIndex: currentIndex,
+                                      tappedIndex: absoluteIndex,
                                     ),
+                                    onTogglePriority: () {
+                                      HapticFeedback.mediumImpact();
+                                      audioManager
+                                          .togglePriority(absoluteIndex);
+                                    },
+                                    onRemove: () {
+                                      HapticFeedback.mediumImpact();
+                                      _removeWithUndo(
+                                        audioManager: audioManager,
+                                        item: item,
+                                        absoluteIndex: absoluteIndex,
+                                      );
+                                    },
                                   ),
                                 ),
                               );
@@ -406,7 +423,6 @@ class _QueueRow extends StatelessWidget {
   final VoidCallback? onRemove;
   final VoidCallback? onTap;
   final VoidCallback? onCurrentIndicatorTap;
-  final Widget? dragHandle;
 
   const _QueueRow({
     super.key,
@@ -419,7 +435,6 @@ class _QueueRow extends StatelessWidget {
     this.onRemove,
     this.onTap,
     this.onCurrentIndicatorTap,
-    this.dragHandle,
   });
 
   @override
@@ -507,7 +522,6 @@ class _QueueRow extends StatelessWidget {
                   tooltip: 'Remove',
                   onPressed: onRemove,
                 ),
-                if (dragHandle != null) dragHandle!,
               ] else
                 const SizedBox(width: 12),
             ],

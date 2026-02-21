@@ -328,6 +328,14 @@ class DatabaseOptimizerService {
       }
       details['event_fixes'] = fixResult;
 
+      // Delete tiny immediate follow-up events after near-full repeats
+      final shortFollowUpResult = await _deleteShortFollowUpsViaService();
+      if (shortFollowUpResult['deleted'] > 0) {
+        fixes.add(
+            'Deleted ${shortFollowUpResult['deleted']} tiny immediate follow-up play events');
+      }
+      details['short_followups_cleanup'] = shortFollowUpResult['details'];
+
       // Delete sessions under 1 minute
       final shortSessionsResult = await _deleteShortSessionsViaService();
       if (shortSessionsResult['deletedSessions'] > 0) {
@@ -463,6 +471,104 @@ class DatabaseOptimizerService {
       'deletedEvents': deletedEvents,
       'details': details
     };
+  }
+
+  /// Deletes tiny immediate follow-up events after near-full/multi-full plays.
+  ///
+  /// Example:
+  /// - Song total_length=210s, previous duration=211s (within ±10s of 1*length)
+  /// - Next event for same song is 2s and happens immediately after
+  ///   -> delete the 2s event
+  ///
+  /// Also supports multi-repeat durations (2x, 3x, ...) within ±10s.
+  Future<Map<String, dynamic>> _deleteShortFollowUpsViaService() async {
+    int deleted = 0;
+    final details = <String, dynamic>{};
+
+    try {
+      final statsDb = DatabaseService.instance.getStatsDatabase();
+      if (statsDb == null) {
+        details['error'] = 'Stats database not available';
+        return {'deleted': deleted, 'details': details};
+      }
+
+      // Keep ordering deterministic even when timestamps are equal.
+      final events = await statsDb.rawQuery('''
+        SELECT id, song_filename, timestamp, duration_played, total_length
+        FROM playevent
+        ORDER BY timestamp ASC, id ASC
+      ''');
+
+      final idsToDelete = <int>[];
+
+      String? prevSong;
+      int? prevId;
+      double? prevTimestamp;
+      double? prevDuration;
+      double? prevTotalLength;
+
+      for (final row in events) {
+        final currentId = row['id'] as int?;
+        final currentSong = row['song_filename'] as String?;
+        final currentTimestamp = (row['timestamp'] as num?)?.toDouble();
+        final currentDuration = (row['duration_played'] as num?)?.toDouble();
+
+        if (currentId == null ||
+            currentSong == null ||
+            currentTimestamp == null ||
+            currentDuration == null) {
+          continue;
+        }
+
+        bool shouldDelete = false;
+        if (prevId != null &&
+            prevSong == currentSong &&
+            prevDuration != null &&
+            prevTotalLength != null &&
+            prevTotalLength! > 0 &&
+            currentDuration < 10.0) {
+          final multiplier = (prevDuration! / prevTotalLength!).round();
+          if (multiplier >= 1) {
+            final expected = multiplier * prevTotalLength!;
+            final isNearFullMultiple = (prevDuration! - expected).abs() <= 10.0;
+            shouldDelete = isNearFullMultiple;
+          }
+        }
+
+        if (shouldDelete) {
+          idsToDelete.add(currentId);
+          continue;
+        }
+
+        prevSong = currentSong;
+        prevId = currentId;
+        prevTimestamp = currentTimestamp;
+        prevDuration = currentDuration;
+        prevTotalLength = (row['total_length'] as num?)?.toDouble();
+      }
+
+      if (idsToDelete.isNotEmpty) {
+        await statsDb.transaction((txn) async {
+          final batch = txn.batch();
+          for (final id in idsToDelete) {
+            batch.delete('playevent', where: 'id = ?', whereArgs: [id]);
+          }
+          await batch.commit(noResult: true);
+        });
+        deleted = idsToDelete.length;
+      }
+
+      details['events_scanned'] = events.length;
+      details['events_deleted'] = deleted;
+      details['max_followup_duration_seconds'] = 10.0;
+      details['full_multiple_tolerance_seconds'] = 10.0;
+      details['immediate_definition'] = 'next playevent row in timestamp order';
+    } catch (e) {
+      debugPrint('Error deleting tiny short follow-up events: $e');
+      details['error'] = e.toString();
+    }
+
+    return {'deleted': deleted, 'details': details};
   }
 
   /// Fixes event type categorization based on new rules with priority hierarchy:

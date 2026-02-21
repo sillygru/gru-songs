@@ -191,7 +191,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
     WidgetsBinding.instance.addObserver(this);
     // Track app launch (Level 1)
     TelemetryService.instance.trackEvent('app_launch', {}, requiredLevel: 1);
-    
+
     // Check and run auto-backup on initial app launch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();

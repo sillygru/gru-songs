@@ -60,6 +60,42 @@ class FFmpegService {
     }
   }
 
+  Future<void> embedLyrics({
+    required String inputPath,
+    required String outputPath,
+    required String? lyrics,
+  }) async {
+    final normalizedLyrics = lyrics?.trim() ?? '';
+    final args = [
+      '-y',
+      '-i',
+      inputPath,
+      '-map',
+      '0',
+      '-c',
+      'copy',
+      '-map_metadata',
+      '0',
+      '-metadata',
+      'lyrics=$normalizedLyrics',
+      '-metadata',
+      'unsynced_lyrics=$normalizedLyrics',
+      outputPath,
+    ];
+
+    final session = await FFmpegKit.executeWithArguments(args);
+    final rc = await session.getReturnCode();
+    if (!ReturnCode.isSuccess(rc)) {
+      final logs = await session.getAllLogsAsString();
+      throw Exception('FFmpeg lyrics write failed: $rc\n$logs');
+    }
+
+    final outFile = File(outputPath);
+    if (!await outFile.exists() || await outFile.length() == 0) {
+      throw Exception('FFmpeg lyrics write produced empty output: $outputPath');
+    }
+  }
+
   /// Reads lyrics from audio file metadata using FFprobe.
   /// Returns the lyrics string if found, null otherwise.
   Future<String?> getLyrics(String filePath) async {
@@ -102,13 +138,49 @@ class FFmpegService {
         return null;
       }
 
-      // Check for lyrics tag (could be 'lyrics', 'LYRICS', or 'unsynced_lyrics')
-      final lyrics =
-          tags['lyrics'] ?? tags['LYRICS'] ?? tags['unsynced_lyrics'];
+      String? _coerceLyrics(dynamic value) {
+        final text = value?.toString();
+        if (text == null) return null;
+        final trimmed = text.trim();
+        return trimmed.isEmpty ? null : trimmed;
+      }
 
-      if (lyrics != null && lyrics.toString().isNotEmpty) {
+      final directLyrics = _coerceLyrics(
+        tags['lyrics'] ??
+            tags['LYRICS'] ??
+            tags['unsynced_lyrics'] ??
+            tags['UNSYNCED_LYRICS'] ??
+            tags['©lyr'] ??
+            tags['USLT'],
+      );
+
+      if (directLyrics != null) {
         if (kDebugMode) debugPrint('FFmpegService: Found lyrics in: $filePath');
-        return lyrics.toString();
+        return directLyrics;
+      }
+
+      if (tags is Map) {
+        for (final entry in tags.entries) {
+          final key = entry.key?.toString() ?? '';
+          final normalizedKey =
+              key.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+          const lyricKeys = {
+            'lyrics',
+            'lyric',
+            'unsyncedlyrics',
+            'uslt',
+            'lyr',
+          };
+          if (!lyricKeys.contains(normalizedKey)) continue;
+          final value = _coerceLyrics(entry.value);
+          if (value != null) {
+            if (kDebugMode) {
+              debugPrint(
+                  'FFmpegService: Found lyrics via key "$key" in: $filePath');
+            }
+            return value;
+          }
+        }
       }
 
       if (kDebugMode) {
@@ -118,6 +190,24 @@ class FFmpegService {
     } catch (e) {
       if (kDebugMode) debugPrint('FFmpegService: Error reading lyrics: $e');
       return null;
+    }
+  }
+
+  Future<bool> hasAudioStream(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists() || await file.length() == 0) return false;
+
+      final input = _q(filePath);
+      final cmd =
+          '-v error -select_streams a -show_entries stream=codec_type -of csv=p=0 $input';
+      final session = await FFprobeKit.execute(cmd);
+      final rc = await session.getReturnCode();
+      if (!ReturnCode.isSuccess(rc)) return false;
+      final output = await session.getOutput();
+      return output != null && output.trim().isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 

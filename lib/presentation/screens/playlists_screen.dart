@@ -343,7 +343,8 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
     if (userData.moodTags.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No moods available. Tag some songs first.')),
+          const SnackBar(
+              content: Text('No moods available. Tag some songs first.')),
         );
       }
       return;

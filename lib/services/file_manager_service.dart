@@ -88,7 +88,7 @@ class FileManagerService {
   /// Updates lyrics for a song by embedding them into the audio file metadata.
   Future<void> updateLyrics(Song song, String lyricsContent) async {
     try {
-      await updateMetadataInternal(song.url, lyrics: lyricsContent);
+      await _updateLyricsWithFFmpeg(song.url, lyricsContent);
       debugPrint("Updated embedded lyrics for ${song.filename}");
     } catch (e) {
       throw Exception("Failed to update lyrics: $e");
@@ -300,6 +300,65 @@ class FileManagerService {
     }
   }
 
+  Future<void> _updateLyricsWithFFmpeg(String fileUrl, String lyrics) async {
+    final matchingFolder = await _getMatchingMusicFolder(fileUrl);
+    final treeUri = matchingFolder?['treeUri'];
+    final rootPath = matchingFolder?['path'];
+
+    final tempDir = await Directory.systemTemp.createTemp('gru_lyrics_');
+    final ext = p.extension(fileUrl).toLowerCase();
+    final tempOut = File(p.join(tempDir.path, 'out$ext'));
+    final ffmpeg = FFmpegService();
+
+    try {
+      await ffmpeg.embedLyrics(
+        inputPath: fileUrl,
+        outputPath: tempOut.path,
+        lyrics: lyrics,
+      );
+
+      final hasAudio = await ffmpeg.hasAudioStream(tempOut.path);
+      if (!hasAudio) {
+        throw Exception('Validation failed: output has no audio stream');
+      }
+
+      if (Platform.isAndroid &&
+          treeUri != null &&
+          treeUri.isNotEmpty &&
+          rootPath != null &&
+          rootPath.isNotEmpty) {
+        if (!p.isWithin(rootPath, fileUrl) &&
+            !p.equals(rootPath, p.dirname(fileUrl))) {
+          throw Exception('Source file is outside the music folder.');
+        }
+        final sourceRelativePath = p.relative(fileUrl, from: rootPath);
+        await AndroidStorageService.writeFileFromPath(
+          treeUri: treeUri,
+          sourceRelativePath: sourceRelativePath,
+          sourcePath: tempOut.path,
+        );
+      } else {
+        final original = File(fileUrl);
+        final backup = File('$fileUrl.bak');
+        if (await backup.exists()) {
+          await backup.delete();
+        }
+        await original.rename(backup.path);
+        try {
+          await tempOut.rename(original.path);
+          await backup.delete();
+        } catch (e) {
+          if (!await original.exists() && await backup.exists()) {
+            await backup.rename(original.path);
+          }
+          rethrow;
+        }
+      }
+    } finally {
+      await tempDir.delete(recursive: true);
+    }
+  }
+
   /// Gets the bytes for exporting the song cover (as JPG).
   Future<Uint8List> getCoverExportBytes(Song song) async {
     if (song.coverUrl == null) {
@@ -488,7 +547,6 @@ class FileManagerService {
       {String? title,
       String? artist,
       String? album,
-      String? lyrics,
       Picture? picture,
       bool removePicture = false}) async {
     try {
@@ -569,7 +627,6 @@ class FileManagerService {
     String? title,
     String? artist,
     String? album,
-    String? lyrics,
     Picture? picture,
     bool removePicture = false,
   }) async {
@@ -612,11 +669,6 @@ class FileManagerService {
               metadata.pictures = [amrPicture];
             }
           }
-
-          // Set lyrics using extension method if provided
-          if (lyrics != null) {
-            metadata.setLyrics(lyrics);
-          }
         });
 
         // The library writes to a_new.* - rename it back to original
@@ -649,11 +701,12 @@ class FileManagerService {
       } finally {
         Directory.current = originalDir;
       }
+    }
 
-      // If only updating cover (no text changes), skip MetadataGod to avoid corrupting audio
-      if (title == null && artist == null && album == null) {
-        return;
-      }
+    // If there are no MetadataGod-supported text changes, skip MetadataGod.
+    // This avoids clobbering lyric-only writes.
+    if (title == null && artist == null && album == null) {
+      return;
     }
 
     // Use MetadataGod for text metadata (works reliably)

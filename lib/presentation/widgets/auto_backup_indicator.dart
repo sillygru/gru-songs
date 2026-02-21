@@ -204,8 +204,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                                 subtitle,
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   fontSize: 12,
-                                  color:
-                                      theme.colorScheme.onSurfaceVariant,
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -310,7 +309,9 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                     ),
                     FilledButton(
                       onPressed: () {
-                        ref.read(autoBackupProvider.notifier).requestPermission();
+                        ref
+                            .read(autoBackupProvider.notifier)
+                            .requestPermission();
                       },
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.orange,
@@ -325,7 +326,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                       ),
                       child: const Text(
                         'Grant',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],

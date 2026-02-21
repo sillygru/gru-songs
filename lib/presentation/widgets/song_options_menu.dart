@@ -265,7 +265,11 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
   void _handleAddToPlaylist() {
     _closePopup();
 
-    final playlists = ref.read(userDataProvider).playlists;
+    final playlists = ref
+        .read(userDataProvider)
+        .playlists
+        .where((p) => !p.isRecommendation)
+        .toList();
     final sorted = List.of(playlists)
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 

@@ -61,6 +61,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Previous session tracking for ignoring quick skips of resumed songs
   String? _previousSessionSongFilename;
   bool _isResumedFromPreviousSession = false;
+  double? _pendingResumedSongStartSec;
+
+  // Session-only first-song baseline tracking (RAM only)
+  bool _sessionFirstSongCaptured = false;
+  String? _sessionFirstSongFilename;
+  double? _sessionFirstSongStartSec;
 
   // Volume monitoring
   VolumeMonitorService? _volumeMonitorService;
@@ -351,6 +357,21 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
 
         if (_currentSongFilename != newFilename) {
+          final liveStartSec =
+              max(0.0, _player.position.inMilliseconds / 1000.0);
+          double songStartSec = liveStartSec;
+          if (_pendingResumedSongStartSec != null &&
+              _isResumedFromPreviousSession &&
+              _previousSessionSongFilename == newFilename) {
+            songStartSec = max(songStartSec, _pendingResumedSongStartSec!);
+            _pendingResumedSongStartSec = null;
+          }
+          if (!_sessionFirstSongCaptured) {
+            _sessionFirstSongCaptured = true;
+            _sessionFirstSongFilename = newFilename;
+            _sessionFirstSongStartSec = songStartSec;
+          }
+
           _isCompleting = false;
           _currentSongFilename = newFilename;
           _foregroundDuration = 0.0;
@@ -880,14 +901,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final song = _songMap[_currentSongFilename!];
     final totalLength =
         (song?.duration?.inMilliseconds.toDouble() ?? 0.0) / 1000.0;
+    double effectiveTotalLength = totalLength;
+    final firstSongStartSec = _sessionFirstSongStartSec;
+    final isFirstSongMidStart =
+        _currentSongFilename == _sessionFirstSongFilename &&
+            firstSongStartSec != null &&
+            firstSongStartSec > 0;
+    if (isFirstSongMidStart && totalLength > 0) {
+      final adjustedLength = max(0.0, totalLength - firstSongStartSec);
+      if (adjustedLength > 0) {
+        effectiveTotalLength = adjustedLength;
+      }
+    }
 
     double finalDuration = _foregroundDuration + _backgroundDuration;
 
     String finalEventType = eventType;
 
-    if (totalLength > 0) {
-      final double ratio = finalDuration / totalLength;
-      final double remaining = totalLength - finalDuration;
+    if (effectiveTotalLength > 0) {
+      final double ratio = finalDuration / effectiveTotalLength;
+      final double remaining = effectiveTotalLength - finalDuration;
 
       if (remaining <= 10.0 || ratio >= 1.0) {
         finalEventType = 'complete';
@@ -903,7 +936,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         'event_type': finalEventType,
         'foreground_duration': _foregroundDuration,
         'background_duration': _backgroundDuration,
-        'total_length': totalLength,
+        'total_length': effectiveTotalLength,
       });
 
       if (finalEventType == 'complete' || finalDuration > 5.0) {
@@ -996,6 +1029,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
               resumePosition = Duration(milliseconds: savedPositionMs);
               _previousSessionSongFilename = lastSongFilename;
               _isResumedFromPreviousSession = true;
+              _pendingResumedSongStartSec =
+                  max(0.0, resumePosition.inMilliseconds / 1000.0);
             } else {
               initialIndex = 0;
             }

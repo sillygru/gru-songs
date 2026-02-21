@@ -616,14 +616,14 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
   }
 
   Future<void> _loadLyrics() async {
-    if (!widget.song.hasLyrics) {
-      setState(() => _isLoading = false);
-      return;
-    }
-
     try {
       final repo = ref.read(songRepositoryProvider);
-      final content = await repo.getLyrics(widget.song);
+      final songs = ref.read(songsProvider).asData?.value ?? const <Song>[];
+      final currentSong = songs.firstWhere(
+        (s) => s.filename == widget.song.filename,
+        orElse: () => widget.song,
+      );
+      final content = await repo.getLyrics(currentSong);
       if (mounted) {
         setState(() {
           _controller.text = content ?? "";
