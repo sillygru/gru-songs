@@ -143,13 +143,10 @@ MoodTag? _selectMood(List<MoodTag> moodTags, List<dynamic> sessionHistory) {
 
   // Fallback to recent history analysis
   if (sessionHistory.isNotEmpty) {
-    final recentSessionIds = sessionHistory.take(10).toList();
     final moodFrequency = <String, int>{};
 
-    for (final session in recentSessionIds) {
-      // Extract mood information from session if available
-      // For now, we'll just use random selection
-    }
+    // Extract mood information from session if available
+    // For now, we'll just use random selection
 
     if (moodFrequency.isNotEmpty) {
       final topMood =

@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../models/queue_item.dart';
-import '../../models/song.dart';
 import '../../services/audio_player_manager.dart';
 import 'album_art_image.dart' show StaticAlbumArtImage;
 

@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
-import '../../services/audio_player_manager.dart';
 import '../widgets/lyrics_line.dart';
 import '../widgets/album_art_image.dart';
 
@@ -249,8 +248,6 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     if (renderObject == null) return null;
 
     final viewport = RenderAbstractViewport.of(renderObject);
-    if (viewport == null) return null;
-
     final reveal = viewport.getOffsetToReveal(renderObject, 0.4);
     return reveal.offset.clamp(0.0, maxScroll).toDouble();
   }

@@ -582,9 +582,9 @@ class IndexerNotifier extends Notifier<IndexerState> {
     _updateFailedItems('rebuild_cover_caches', failedItems);
 
     return IndexerResult(
-      success: coverMap.length > 0,
-      message: 'Rebuilt covers for ${coverMap.length} songs' +
-          (failedItems.isNotEmpty ? ' (${failedItems.length} failed)' : ''),
+      success: coverMap.isNotEmpty,
+      message:
+          'Rebuilt covers for ${coverMap.length} songs${failedItems.isNotEmpty ? ' (${failedItems.length} failed)' : ''}',
       warnings: failedItems.isNotEmpty ? failedItems : null,
     );
   }
@@ -601,7 +601,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       await searchService.rebuildIndex(songs);
       final stats = await searchService.getIndexStats();
       final failedCount =
-          (songs.length - stats.totalEntries).clamp(0, songs.length) as int;
+          (songs.length - stats.totalEntries).clamp(0, songs.length);
       final failedItems = failedCount > 0
           ? List<String>.generate(
               failedCount,
@@ -614,8 +614,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       return IndexerResult(
         success: true,
         message:
-            'Search index rebuilt with ${stats.totalEntries}/${songs.length} entries' +
-                (failedCount > 0 ? ' ($failedCount failed)' : ''),
+            'Search index rebuilt with ${stats.totalEntries}/${songs.length} entries${failedCount > 0 ? ' ($failedCount failed)' : ''}',
         warnings: failedItems.isNotEmpty ? failedItems : null,
       );
     } catch (e) {
@@ -696,9 +695,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
     _updateFailedItems('rebuild_lyrics_cache', failedItems);
 
-    final message = 'Cached $cached new lyrics' +
-        (skipped > 0 ? ', skipped $skipped already cached' : '') +
-        (failedItems.isNotEmpty ? ', ${failedItems.length} failed' : '');
+    final message =
+        'Cached $cached new lyrics${skipped > 0 ? ', skipped $skipped already cached' : ''}${failedItems.isNotEmpty ? ', ${failedItems.length} failed' : ''}';
 
     return IndexerResult(
       success: failedItems.length < songs.length / 2,
@@ -779,9 +777,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
     _updateFailedItems('rebuild_waveform_cache', failedItems);
 
-    final message = 'Cached $cached new waveforms' +
-        (skipped > 0 ? ', skipped $skipped already cached' : '') +
-        (failedItems.isNotEmpty ? ', ${failedItems.length} failed' : '');
+    final message =
+        'Cached $cached new waveforms${skipped > 0 ? ', skipped $skipped already cached' : ''}${failedItems.isNotEmpty ? ', ${failedItems.length} failed' : ''}';
 
     return IndexerResult(
       success: failedItems.length < songs.length / 2,
@@ -859,9 +856,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
     _updateFailedItems('rebuild_color_cache', failedItems);
 
-    final message = 'Extracted $cached color palettes' +
-        (skipped > 0 ? ', skipped $skipped already cached' : '') +
-        (failedItems.isNotEmpty ? ', ${failedItems.length} failed' : '');
+    final message =
+        'Extracted $cached color palettes${skipped > 0 ? ', skipped $skipped already cached' : ''}${failedItems.isNotEmpty ? ', ${failedItems.length} failed' : ''}';
 
     return IndexerResult(
       success: failedItems.length < imagePaths.length / 2,

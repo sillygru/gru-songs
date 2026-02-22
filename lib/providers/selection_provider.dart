@@ -1,18 +1,17 @@
-import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class SelectionState {
   final bool isSelectionMode;
-  final LinkedHashSet<String> selectedFilenames;
+  final Set<String> selectedFilenames;
 
   SelectionState({
     this.isSelectionMode = false,
-    LinkedHashSet<String>? selectedFilenames,
-  }) : selectedFilenames = selectedFilenames ?? LinkedHashSet<String>();
+    Set<String>? selectedFilenames,
+  }) : selectedFilenames = selectedFilenames ?? {};
 
   SelectionState copyWith({
     bool? isSelectionMode,
-    LinkedHashSet<String>? selectedFilenames,
+    Set<String>? selectedFilenames,
   }) {
     return SelectionState(
       isSelectionMode: isSelectionMode ?? this.isSelectionMode,
@@ -30,12 +29,12 @@ class SelectionNotifier extends Notifier<SelectionState> {
   void toggleSelectionMode() {
     state = SelectionState(
       isSelectionMode: !state.isSelectionMode,
-      selectedFilenames: LinkedHashSet<String>(),
+      selectedFilenames: {},
     );
   }
 
   void enterSelectionMode(String initialFilename) {
-    final newSet = LinkedHashSet<String>();
+    final newSet = <String>{};
     newSet.add(initialFilename);
     state = SelectionState(
       isSelectionMode: true,
@@ -48,7 +47,7 @@ class SelectionNotifier extends Notifier<SelectionState> {
   }
 
   void toggleSelection(String filename) {
-    final current = LinkedHashSet<String>.from(state.selectedFilenames);
+    final current = <String>{...state.selectedFilenames};
     if (current.contains(filename)) {
       current.remove(filename);
       if (current.isEmpty) {
@@ -62,7 +61,7 @@ class SelectionNotifier extends Notifier<SelectionState> {
   }
 
   void selectAll(List<String> filenames) {
-    state = state.copyWith(selectedFilenames: LinkedHashSet.from(filenames));
+    state = state.copyWith(selectedFilenames: <String>{...filenames});
   }
 
   List<String> getOrderedSelection() {

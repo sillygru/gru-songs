@@ -595,7 +595,7 @@ class _BackupOptionsDialog extends StatefulWidget {
 }
 
 class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
-  Set<BackupContentType> _selectedTypes = {
+  final Set<BackupContentType> _selectedTypes = {
     BackupContentType.userStats,
     BackupContentType.userData,
   };

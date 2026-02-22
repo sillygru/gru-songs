@@ -503,7 +503,6 @@ class DatabaseOptimizerService {
 
       String? prevSong;
       int? prevId;
-      double? prevTimestamp;
       double? prevDuration;
       double? prevTotalLength;
 
@@ -525,12 +524,12 @@ class DatabaseOptimizerService {
             prevSong == currentSong &&
             prevDuration != null &&
             prevTotalLength != null &&
-            prevTotalLength! > 0 &&
+            prevTotalLength > 0 &&
             currentDuration < 10.0) {
-          final multiplier = (prevDuration! / prevTotalLength!).round();
+          final multiplier = (prevDuration / prevTotalLength).round();
           if (multiplier >= 1) {
-            final expected = multiplier * prevTotalLength!;
-            final isNearFullMultiple = (prevDuration! - expected).abs() <= 10.0;
+            final expected = multiplier * prevTotalLength;
+            final isNearFullMultiple = (prevDuration - expected).abs() <= 10.0;
             shouldDelete = isNearFullMultiple;
           }
         }
@@ -542,7 +541,6 @@ class DatabaseOptimizerService {
 
         prevSong = currentSong;
         prevId = currentId;
-        prevTimestamp = currentTimestamp;
         prevDuration = currentDuration;
         prevTotalLength = (row['total_length'] as num?)?.toDouble();
       }

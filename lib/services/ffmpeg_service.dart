@@ -138,14 +138,14 @@ class FFmpegService {
         return null;
       }
 
-      String? _coerceLyrics(dynamic value) {
+      String? coerceLyrics(dynamic value) {
         final text = value?.toString();
         if (text == null) return null;
         final trimmed = text.trim();
         return trimmed.isEmpty ? null : trimmed;
       }
 
-      final directLyrics = _coerceLyrics(
+      final directLyrics = coerceLyrics(
         tags['lyrics'] ??
             tags['LYRICS'] ??
             tags['unsynced_lyrics'] ??
@@ -172,7 +172,7 @@ class FFmpegService {
             'lyr',
           };
           if (!lyricKeys.contains(normalizedKey)) continue;
-          final value = _coerceLyrics(entry.value);
+          final value = coerceLyrics(entry.value);
           if (value != null) {
             if (kDebugMode) {
               debugPrint(

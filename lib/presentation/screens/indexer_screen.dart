@@ -24,9 +24,6 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final indexerState = ref.watch(indexerProvider);
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Indexer'),
@@ -175,10 +172,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
         subtitle = 'Completed';
       } else {
         subtitle =
-            'Completed - ${operation.processedCount}/${operation.totalCount} cached' +
-                (operation.failedCount > 0
-                    ? ' (${operation.failedCount} failed)'
-                    : '');
+            'Completed - ${operation.processedCount}/${operation.totalCount} cached${operation.failedCount > 0 ? ' (${operation.failedCount} failed)' : ''}';
       }
     } else {
       // Not running and not completed
@@ -188,10 +182,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
         subtitle = '0/${operation.totalCount} cached';
       } else {
         subtitle =
-            '${operation.processedCount}/${operation.totalCount} cached' +
-                (operation.failedCount > 0
-                    ? ' (${operation.failedCount} failed)'
-                    : '');
+            '${operation.processedCount}/${operation.totalCount} cached${operation.failedCount > 0 ? ' (${operation.failedCount} failed)' : ''}';
       }
     }
 
@@ -383,7 +374,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          warningMessage!,
+                          warningMessage,
                           style: TextStyle(
                             color: Colors.orange.shade900,
                             fontSize: 13,

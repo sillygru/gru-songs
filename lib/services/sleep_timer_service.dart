@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'audio_player_manager.dart';
 
@@ -186,8 +184,8 @@ class SleepTimerService {
           _playbackEventSub = null;
           _enableStopAtEndOfSong(audioManager);
         }
-      } else if (_lastIndex == null) {
-        _lastIndex = currentIndex;
+      } else {
+        _lastIndex ??= currentIndex;
       }
     });
 
@@ -247,7 +245,7 @@ class SleepTimerService {
     _sequenceStateSub = audioManager.player.sequenceStateStream.listen((state) {
       if (_isShuttingDown) return;
 
-      final currentIndex = state?.currentIndex;
+      final currentIndex = state.currentIndex;
       if (_stopAtEndIndex != null &&
           currentIndex != null &&
           currentIndex != _stopAtEndIndex) {

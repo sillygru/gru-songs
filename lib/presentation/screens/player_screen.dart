@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:video_player/video_player.dart';
@@ -46,7 +45,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late AnimationController _controlsController;
   late Animation<double> _artScaleAnimation;
   late Animation<double> _fadeAnimation;
-  late Animation<double> _slideAnimation;
   static const Set<String> _videoExtensions = {
     '.mp4',
     '.m4v',
@@ -106,13 +104,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     ).animate(CurvedAnimation(
       parent: _expansionController,
       curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
-    ));
-    _slideAnimation = Tween<double>(
-      begin: 30.0,
-      end: 0.0,
-    ).animate(CurvedAnimation(
-      parent: _expansionController,
-      curve: const Interval(0.2, 0.7, curve: Curves.easeOutCubic),
     ));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -232,7 +223,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _handleMediaModeChanged() {
-    final tag = player.sequenceState?.currentSource?.tag;
+    final tag = player.sequenceState.currentSource?.tag;
     final mediaItem = tag is MediaItem ? tag : null;
     unawaited(_syncVideoForCurrentTrack(mediaItem));
   }
@@ -246,7 +237,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (mediaItem == null) return null;
 
     final song = _findSongById(mediaItem.id);
-    if (song?.coverUrl != null && song!.coverUrl!.isNotEmpty) {
+    if (song != null && song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       return song.coverUrl;
     }
 
@@ -520,20 +511,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!_hasLyricsForCurrentSong) return;
 
     final sequenceState = player.sequenceState;
-    final currentSource = sequenceState?.currentSource;
+    final currentSource = sequenceState.currentSource;
     final tag = currentSource?.tag;
     if (tag is MediaItem) {
       final songs = ref.read(songsProvider).asData?.value ?? [];
-      final currentSong = songs.cast<Song?>().firstWhere(
-            (s) => s?.filename == tag.id,
-            orElse: () => null,
-          );
+      Song? currentSong;
+      try {
+        currentSong = songs.firstWhere((s) => s.filename == tag.id);
+      } catch (e) {
+        currentSong = null;
+      }
       if (currentSong == null) return;
+
+      // Promote to non-null before async operations
+      late final Song song = currentSong!;
 
       List<LyricLine> parsedLyrics = _lyrics ?? [];
       if (parsedLyrics.isEmpty) {
         final repo = ref.read(songRepositoryProvider);
-        final lyricsContent = await repo.getLyrics(currentSong);
+        final lyricsContent = await repo.getLyrics(song);
         if (lyricsContent != null) {
           parsedLyrics = LyricLine.parse(lyricsContent);
           _lyrics = parsedLyrics;
@@ -547,11 +543,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) {
               return FullScreenLyrics(
-                songId: currentSong.filename,
-                songTitle: currentSong.title,
-                songArtist: currentSong.artist.isEmpty
-                    ? 'Unknown Artist'
-                    : currentSong.artist,
+                songId: song.filename,
+                songTitle: song.title,
+                songArtist:
+                    song.artist.isEmpty ? 'Unknown Artist' : song.artist,
                 lyrics: parsedLyrics,
                 extractedColor: themeState.extractedColor,
                 initialPosition: player.position,

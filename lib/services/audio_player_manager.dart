@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
 import 'dart:math';
-import 'dart:convert';
 import 'dart:async'; // For Timer
 import '../models/song.dart';
 import '../models/queue_item.dart';
@@ -77,10 +76,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   bool _isInGap = false;
   bool _pausedByGap = false;
   String? _lastFadedFilename;
-  String? _currentGapSongId;
   Timer? _fadeTimer;
   Timer? _gapTimer;
-  DateTime? _gapStartTime;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<SequenceState?>? _sequenceSubscription;
   Future<void> _queueMutationChain = Future<void>.value();
@@ -462,7 +459,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _lastFadedFilename = newFilename;
           // Reset gap state on new song
           _isInGap = false;
-          _currentGapSongId = null;
           _gapTimer?.cancel();
           _isFadingOut = false;
 
@@ -586,10 +582,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _triggerSimpleGap({required double delayDuration}) {
     if (_isInGap) return;
 
-    final currentItem = _player.sequenceState?.currentSource?.tag;
+    final sequenceState = _player.sequenceState;
+    final currentItem = sequenceState.currentSource?.tag;
     if (currentItem is! MediaItem) return;
 
-    _currentGapSongId = currentItem.id;
     _isInGap = true;
     _pausedByGap = true;
 
@@ -609,12 +605,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // Clear gap state
     _isInGap = false;
     _pausedByGap = false;
-    _currentGapSongId = null;
     _gapTimer = null;
     _wasPausedByMute = false;
 
     // Verify we're still on the same song
-    final currentItem = _player.sequenceState?.currentSource?.tag;
+    final sequenceState = _player.sequenceState;
+    final currentItem = sequenceState.currentSource?.tag;
     if (currentItem is! MediaItem || currentItem.id != expectedSongId) {
       // User skipped/changed song during gap
       return;
@@ -730,8 +726,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _cancelGap() {
     _isInGap = false;
     _pausedByGap = false;
-    _currentGapSongId = null;
-    _gapStartTime = null;
     _gapTimer?.cancel();
     _clearGapState();
   }
@@ -742,22 +736,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   // ==================== GAP STATE PERSISTENCE ====================
-
-  Future<void> _persistGapState({
-    required String songId,
-    required int delayMs,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final resumeTimestamp = DateTime.now().millisecondsSinceEpoch + delayMs;
-
-      await prefs.setString(_keyGapSongId, songId);
-      await prefs.setInt(_keyGapResumeTimestamp, resumeTimestamp);
-      await prefs.setBool(_keyGapIsActive, true);
-    } catch (e) {
-      debugPrint('AudioPlayerManager: Failed to persist gap state: $e');
-    }
-  }
 
   Future<void> _clearGapState() async {
     try {
@@ -796,14 +774,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       // We're still in a gap from before
       // Check if we're on the same song
-      final currentItem = _player.sequenceState?.currentSource?.tag;
+      final sequenceState = _player.sequenceState;
+      final currentItem = sequenceState.currentSource?.tag;
       if (currentItem is! MediaItem || currentItem.id != songId) {
         await _clearGapState();
         return;
       }
 
       // Restore gap state
-      _currentGapSongId = songId;
       _isInGap = true;
 
       // Schedule resume - just_audio will auto-advance to next song
