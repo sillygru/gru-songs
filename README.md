@@ -40,9 +40,8 @@ User data in Wispie is tied to the music file's name. If you rename a file outsi
 </p>
 
 ## Others
-### *"Don't mind half broken features"*
-This is a vibe coded project, if features are half-broken, that is... unfortunate. - Will try to keep it stable tho.
-This was originally a personal side project, so there might be leftovers of old features or configurations that are no longer relevant.
+I do not hide the fact that this is a vibe coded project. Though, from personal daily use, it is stable and functional.
+This was originally a personal side project, so there might be leftovers of old features that are no longer relevant.
 
 ## For developers
 ### Run the app

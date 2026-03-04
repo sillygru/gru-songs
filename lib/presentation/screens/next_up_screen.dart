@@ -42,8 +42,18 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
+      
+      // Position current song at ~30% from top (about 3 songs above it)
+      final visibleSongsAbove = 3;
+      final songsAboveCurrent = currentIndex;
+      final effectiveSongsAbove = songsAboveCurrent < visibleSongsAbove 
+          ? songsAboveCurrent 
+          : visibleSongsAbove;
+      
       final targetOffset =
-          (currentIndex * _queueRowHeight).clamp(0, double.infinity).toDouble();
+          ((currentIndex - effectiveSongsAbove) * _queueRowHeight)
+              .clamp(0, double.infinity)
+              .toDouble();
       final maxOffset = _scrollController.position.maxScrollExtent;
       _scrollController.jumpTo(targetOffset.clamp(0, maxOffset));
       _didAutoScrollToCurrent = true;
@@ -388,11 +398,14 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
   }
 }
 
-class _BackdropLayer extends StatelessWidget {
+class _BackdropLayer extends ConsumerWidget {
   const _BackdropLayer();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final extractedColor = ref.watch(themeProvider).extractedColor;
+    final accentColor = extractedColor ?? Colors.blueGrey;
+
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -400,7 +413,7 @@ class _BackdropLayer extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             Colors.black.withValues(alpha: 0.9),
-            Colors.blueGrey.shade900.withValues(alpha: 0.86),
+            accentColor.withValues(alpha: 0.86),
             Colors.black.withValues(alpha: 0.92),
           ],
         ),
@@ -496,13 +509,17 @@ class _QueueRow extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTap: onCurrentIndicatorTap,
                     child: showAnimatedWave
-                        ? const AudioVisualizer(
+                        ? AudioVisualizer(
                             width: 16,
                             height: 16,
-                            color: Colors.white,
+                            color: currentAccent ?? Colors.white,
                             isPlaying: true,
                           )
-                        : const Icon(Icons.graphic_eq_rounded, size: 18),
+                        : Icon(
+                            Icons.graphic_eq_rounded,
+                            size: 18,
+                            color: currentAccent ?? Colors.white,
+                          ),
                   ),
                 ),
               if (showActions) ...[
