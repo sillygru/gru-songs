@@ -84,7 +84,7 @@ class IndexerOperation {
   bool get isFullyCached =>
       processedCount > 0 && processedCount == totalCount && totalCount > 0;
   bool get isDatabaseOperation =>
-      id == 'optimize_stats_db' || id == 'optimize_user_data_db';
+      id == 'optimize_databases';
 }
 
 /// State for all indexer operations
@@ -143,18 +143,10 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
   IndexerState _initializeOperations() {
     final operations = {
-      'optimize_stats_db': const IndexerOperation(
-        id: 'optimize_stats_db',
-        name: 'Optimize Stats Database',
-        description: 'Clean and optimize play stats database',
-        processedCount: -1,
-        isBlocking: true,
-        requiresRestart: true,
-      ),
-      'optimize_user_data_db': const IndexerOperation(
-        id: 'optimize_user_data_db',
-        name: 'Optimize User Data Database',
-        description: 'Clean and optimize user data database',
+      'optimize_databases': const IndexerOperation(
+        id: 'optimize_databases',
+        name: 'Optimize Databases',
+        description: 'Clean and optimize all app databases',
         processedCount: -1,
         isBlocking: true,
         requiresRestart: true,
@@ -214,13 +206,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
         Map<String, IndexerOperation>.from(state.operations);
 
     // Database operations show "Ready to optimize" with processedCount = -1
-    updatedOperations['optimize_stats_db'] =
-        updatedOperations['optimize_stats_db']!.copyWith(
-      totalCount: totalSongs,
-    );
-
-    updatedOperations['optimize_user_data_db'] =
-        updatedOperations['optimize_user_data_db']!.copyWith(
+    updatedOperations['optimize_databases'] =
+        updatedOperations['optimize_databases']!.copyWith(
       totalCount: totalSongs,
     );
 
@@ -439,10 +426,12 @@ class IndexerNotifier extends Notifier<IndexerState> {
     final songs = await DatabaseService.instance.getAllSongs();
 
     switch (operationId) {
+      case 'optimize_databases':
+        return await _optimizeDatabases();
       case 'optimize_stats_db':
-        return await _optimizeStatsDatabase();
+        return await _optimizeDatabases();
       case 'optimize_user_data_db':
-        return await _optimizeUserDataDatabase();
+        return await _optimizeDatabases();
       case 'rebuild_cover_caches':
         return await _rebuildCoverCaches(songs, force: force);
       case 'rebuild_search_indexes':
@@ -459,27 +448,15 @@ class IndexerNotifier extends Notifier<IndexerState> {
     }
   }
 
-  Future<IndexerResult> _optimizeStatsDatabase() async {
+  Future<IndexerResult> _optimizeDatabases() async {
     final optimizer = DatabaseOptimizerService();
     final result = await optimizer.optimizeDatabases(
       options: const OptimizationOptions(
         automaticMode: false,
-        selectedTypes: {OptimizationType.statsDatabase},
-      ),
-    );
-    return IndexerResult(
-      success: result.success,
-      message: result.message,
-      warnings: result.issuesFound,
-    );
-  }
-
-  Future<IndexerResult> _optimizeUserDataDatabase() async {
-    final optimizer = DatabaseOptimizerService();
-    final result = await optimizer.optimizeDatabases(
-      options: const OptimizationOptions(
-        automaticMode: false,
-        selectedTypes: {OptimizationType.userDataDatabase},
+        selectedTypes: {
+          OptimizationType.statsDatabase,
+          OptimizationType.userDataDatabase,
+        },
       ),
     );
     return IndexerResult(

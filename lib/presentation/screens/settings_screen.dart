@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../../providers/settings_provider.dart';
 import '../widgets/scanning_progress_bar.dart';
 import 'folder_management_screen.dart';
-import 'storage_management_screen.dart';
 import 'playback_settings_screen.dart';
 import 'appearance_settings_screen.dart';
 import 'data_management_settings_screen.dart';
@@ -31,7 +31,7 @@ class SettingsScreen extends ConsumerWidget {
             context: context,
             icon: const Icon(Icons.library_music_outlined),
             title: 'Library',
-            subtitle: 'Music folders, scanning, storage',
+            subtitle: 'Music folders, scanning',
             color: Colors.blue,
             onTap: () => Navigator.push(
               context,
@@ -68,7 +68,7 @@ class SettingsScreen extends ConsumerWidget {
             context: context,
             icon: const Icon(Icons.settings_backup_restore_rounded),
             title: 'Data Management',
-            subtitle: 'Backup, restore, optimize, re-index',
+            subtitle: 'Backup, restore, storage, optimize',
             color: Colors.teal,
             onTap: () => Navigator.push(
               context,
@@ -171,11 +171,90 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class LibrarySettingsScreen extends StatelessWidget {
+class LibrarySettingsScreen extends ConsumerWidget {
   const LibrarySettingsScreen({super.key});
 
+  // Discrete steps for file size slider (in bytes)
+  static const List<int> _fileSizeSteps = [
+    0,
+    10240,
+    51200,
+    102400,
+    204800,
+    512000,
+    1048576,
+    2097152,
+    5242880,
+    10485760,
+    26214400,
+    52428800,
+    104857600,
+  ];
+
+  // Discrete steps for track duration slider (in milliseconds)
+  static const List<int> _durationSteps = [
+    0,
+    5000,
+    10000,
+    15000,
+    20000,
+    30000,
+    45000,
+    60000,
+    120000,
+    300000,
+  ];
+
+  static int _nearestFileSizeIndex(int bytes) {
+    int best = 0;
+    int bestDiff = (bytes - _fileSizeSteps[0]).abs();
+    for (int i = 1; i < _fileSizeSteps.length; i++) {
+      final diff = (bytes - _fileSizeSteps[i]).abs();
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  static int _nearestDurationIndex(int ms) {
+    int best = 0;
+    int bestDiff = (ms - _durationSteps[0]).abs();
+    for (int i = 1; i < _durationSteps.length; i++) {
+      final diff = (ms - _durationSteps[i]).abs();
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  static String _formatFileSize(int bytes) {
+    if (bytes == 0) return 'None';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1048576) {
+      final kb = bytes / 1024;
+      return '${kb == kb.truncateToDouble() ? kb.toInt() : kb.toStringAsFixed(2)} KB';
+    }
+    final mb = bytes / 1048576;
+    return '${mb == mb.truncateToDouble() ? mb.toInt() : mb.toStringAsFixed(1)} MB';
+  }
+
+  static String _formatDuration(int ms) {
+    if (ms == 0) return 'None';
+    if (ms < 60000) return '${(ms / 1000).round()} s';
+    final min = ms ~/ 60000;
+    final sec = (ms % 60000) ~/ 1000;
+    return sec == 0 ? '$min min' : '${min}m ${sec}s';
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Library"),
@@ -214,18 +293,49 @@ class LibrarySettingsScreen extends StatelessWidget {
                   );
                 },
               ),
-              _buildListTile(
+            ],
+          ),
+          _buildSettingsGroup(
+            context: context,
+            title: 'Filters',
+            icon: Icons.filter_list_rounded,
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.video_library_outlined),
+                title: const Text('Include Videos'),
+                subtitle: const Text(
+                  'Show video files in your song library',
+                ),
+                value: settings.includeVideos,
+                onChanged: (val) => notifier.setIncludeVideos(val),
+              ),
+              _buildCompactSlider(
                 context: context,
-                icon: Icons.storage_outlined,
-                title: 'Manage Storage',
-                subtitle: 'Disk usage and data management',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const StorageManagementScreen()),
-                  );
-                },
+                icon: Icons.data_usage_rounded,
+                title: 'Minimum File Size',
+                valueLabel: _formatFileSize(settings.minimumFileSizeBytes),
+                sliderValue:
+                    _nearestFileSizeIndex(settings.minimumFileSizeBytes)
+                        .toDouble(),
+                min: 0,
+                max: (_fileSizeSteps.length - 1).toDouble(),
+                divisions: _fileSizeSteps.length - 1,
+                onChanged: (val) => notifier
+                    .setMinimumFileSizeBytes(_fileSizeSteps[val.round()]),
+              ),
+              _buildCompactSlider(
+                context: context,
+                icon: Icons.timer_outlined,
+                title: 'Minimum Duration',
+                valueLabel: _formatDuration(settings.minimumTrackDurationMs),
+                sliderValue:
+                    _nearestDurationIndex(settings.minimumTrackDurationMs)
+                        .toDouble(),
+                min: 0,
+                max: (_durationSteps.length - 1).toDouble(),
+                divisions: _durationSteps.length - 1,
+                onChanged: (val) => notifier
+                    .setMinimumTrackDurationMs(_durationSteps[val.round()]),
               ),
             ],
           ),
@@ -310,6 +420,61 @@ class LibrarySettingsScreen extends StatelessWidget {
           : null,
       trailing: const Icon(Icons.chevron_right, size: 20),
       onTap: onTap,
+    );
+  }
+
+  Widget _buildCompactSlider({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String valueLabel,
+    required double sliderValue,
+    required double min,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const Spacer(),
+              Text(
+                valueLabel,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            ),
+            child: Slider(
+              value: sliderValue,
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

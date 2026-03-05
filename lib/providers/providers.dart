@@ -15,6 +15,7 @@ import '../services/cache_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import 'user_data_provider.dart';
+import 'settings_provider.dart';
 
 export 'auto_backup_provider.dart';
 
@@ -233,6 +234,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     ref.read(scanProgressProvider.notifier).state = 0.0;
 
     try {
+      final settings = ref.read(settingsProvider);
       final List<Song> allSongs = [];
 
       // Scan each music folder
@@ -250,18 +252,39 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             final overallProgress = (i + progress) / musicFolders.length;
             ref.read(scanProgressProvider.notifier).state = overallProgress;
           },
+          includeVideos: settings.includeVideos,
+          minimumFileSizeBytes: settings.minimumFileSizeBytes,
         );
 
         allSongs.addAll(folderSongs);
       }
 
-      // De-duplicate by filename
-      final seenFilenames = <String>{};
-      final uniqueSongs = allSongs.where((s) {
-        if (seenFilenames.contains(s.filename)) return false;
-        seenFilenames.add(s.filename);
-        return true;
-      }).toList();
+      // De-duplicate by filename (base name) when enabled
+      List<Song> uniqueSongs;
+      if (settings.preventDuplicateTracks) {
+        final seenFilenames = <String>{};
+        uniqueSongs = allSongs.where((s) {
+          if (seenFilenames.contains(s.filename)) return false;
+          seenFilenames.add(s.filename);
+          return true;
+        }).toList();
+      } else {
+        uniqueSongs = allSongs;
+      }
+
+      // Filter by minimum track duration (keep songs with unknown duration)
+      if (settings.minimumTrackDurationMs > 0) {
+        uniqueSongs = uniqueSongs
+            .where((s) =>
+                s.duration == null ||
+                s.duration!.inMilliseconds >= settings.minimumTrackDurationMs)
+            .toList();
+      }
+
+      // Extract feat. artists from titles (in-memory transform only)
+      if (settings.extractFeatArtists) {
+        uniqueSongs = uniqueSongs.map(_extractFeatFromSong).toList();
+      }
 
       await DatabaseService.instance.insertSongsBatch(uniqueSongs);
 
@@ -846,6 +869,38 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       rethrow;
     }
   }
+}
+
+Song _extractFeatFromSong(Song song) {
+  // Matches patterns like: "ft. Artist", "feat. Artist", "(ft. Artist)", "(feat. Artist)"
+  // at the end of the title or as a parenthesized/bracketed segment
+  final regex = RegExp(
+    r'\s*[\(\[]?\s*(?:feat\.?|ft\.?)\s*[:\.]?\s*([^\)\]\n]+?)[\)\]]?\s*$',
+    caseSensitive: false,
+  );
+  final match = regex.firstMatch(song.title);
+  if (match == null) return song;
+
+  final featArtist = match.group(1)!.trim();
+  final cleanTitle = song.title.substring(0, match.start).trim();
+  if (cleanTitle.isEmpty) return song;
+
+  final newArtist = song.artist == 'Unknown Artist'
+      ? featArtist
+      : '${song.artist}, $featArtist';
+
+  return Song(
+    title: cleanTitle,
+    artist: newArtist,
+    album: song.album,
+    filename: song.filename,
+    url: song.url,
+    coverUrl: song.coverUrl,
+    hasLyrics: song.hasLyrics,
+    playCount: song.playCount,
+    duration: song.duration,
+    mtime: song.mtime,
+  );
 }
 
 final songsProvider =

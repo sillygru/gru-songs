@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../services/backup_service.dart';
+import '../../services/database_service.dart';
 import '../../providers/providers.dart';
 
 class BackupManagementScreen extends ConsumerStatefulWidget {
@@ -58,6 +59,7 @@ class _BackupManagementScreenState
     });
 
     try {
+      await ref.read(audioPlayerManagerProvider).savePlaybackState();
       final backupFilename = await BackupService.instance.createBackup(options);
       await _loadBackups();
 
@@ -159,7 +161,11 @@ class _BackupManagementScreenState
       // Refresh data without full scan
       await ref.read(userDataProvider.notifier).refresh();
       await ref.read(songsProvider.notifier).refreshPlayCounts();
-      ref.invalidate(audioPlayerManagerProvider);
+
+      // Reload the audio manager's queue and position from the restored playback state
+      // Use unfiltered songs to ensure the current song is restored even if it was hidden
+      final songs = await DatabaseService.instance.getAllSongs();
+      await ref.read(audioPlayerManagerProvider).init(songs);
 
       if (mounted) {
         Navigator.pop(context); // Pop loading dialog

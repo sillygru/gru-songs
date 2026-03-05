@@ -42,14 +42,14 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      
+
       // Position current song at ~30% from top (about 3 songs above it)
       final visibleSongsAbove = 3;
       final songsAboveCurrent = currentIndex;
-      final effectiveSongsAbove = songsAboveCurrent < visibleSongsAbove 
-          ? songsAboveCurrent 
+      final effectiveSongsAbove = songsAboveCurrent < visibleSongsAbove
+          ? songsAboveCurrent
           : visibleSongsAbove;
-      
+
       final targetOffset =
           ((currentIndex - effectiveSongsAbove) * _queueRowHeight)
               .clamp(0, double.infinity)
@@ -133,11 +133,7 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
 
   void _onCurrentWaveTap(AudioPlayerManager audioManager) {
     HapticFeedback.selectionClick();
-    if (audioManager.player.playing) {
-      unawaited(audioManager.player.pause());
-      return;
-    }
-    unawaited(audioManager.player.play());
+    audioManager.togglePlayPause();
   }
 
   void _onQueueRowTap({

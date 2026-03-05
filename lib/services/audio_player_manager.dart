@@ -82,6 +82,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   StreamSubscription<SequenceState?>? _sequenceSubscription;
   Future<void> _queueMutationChain = Future<void>.value();
 
+  // Play/pause fade state (separate from track-transition fades)
+  // ignore: unused_field
+  bool _isPlayPauseFading = false;
+  Timer? _playPauseFadeTimer;
+
   // Fade state tracking
   double _targetVolume = 1.0;
   DateTime? _fadeStartTime;
@@ -101,6 +106,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   );
   final ValueNotifier<List<QueueItem>> queueNotifier = ValueNotifier([]);
   final ValueNotifier<Song?> currentSongNotifier = ValueNotifier(null);
+  final ValueNotifier<bool> playingNotifier = ValueNotifier(false);
   final ValueNotifier<PlaybackMediaMode> preferredMediaModeNotifier =
       ValueNotifier(PlaybackMediaMode.audio);
   final ValueNotifier<PlaybackMediaMode> effectiveMediaModeNotifier =
@@ -257,9 +263,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         lastItem: selectedItem,
       );
       _effectiveQueue = [selectedItem, ...shuffledOthers];
+      _updateQueueNotifier();
       await _rebuildQueue(initialIndex: 0, startPlaying: startPlaying);
     } else {
       _effectiveQueue = List.from(_originalQueue);
+      _updateQueueNotifier();
       await _rebuildQueue(
         initialIndex: originalIdx,
         startPlaying: startPlaying,
@@ -291,6 +299,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
 
       wasPlaying = state.playing;
+
+      // Keep playingNotifier in sync with actual player state
+      // (unless a fade is in progress, in which case it was already set)
+      if (!_isPlayPauseFading) {
+        playingNotifier.value = state.playing;
+      }
 
       if (state.playing) {
         _playStartTime ??= DateTime.now();
@@ -702,10 +716,91 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
+  /// Toggles playback with optional fade based on settings.
+  void togglePlayPause() {
+    if (_player.playing) {
+      fadeAndPause();
+    } else {
+      fadeAndPlay();
+    }
+  }
+
+  /// Fades volume to 0 over pauseFadeDuration, then pauses and restores volume.
+  void fadeAndPause() {
+    if (!_player.playing) return;
+    _playPauseFadeTimer?.cancel();
+
+    final settings = _ref?.read(settingsProvider);
+    final fadeDurationMs =
+        ((settings?.pauseFadeDuration ?? 0.0) * 1000).toInt();
+
+    if (fadeDurationMs <= 0) {
+      _player.pause();
+      return;
+    }
+
+    // Show paused state in UI immediately, before the fade completes
+    playingNotifier.value = false;
+    _isPlayPauseFading = true;
+    final startTime = DateTime.now();
+    final startVolume = _targetVolume;
+
+    _playPauseFadeTimer =
+        Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+      if (elapsed >= fadeDurationMs || !_player.playing) {
+        timer.cancel();
+        _isPlayPauseFading = false;
+        _player.pause();
+        _setVolumeWithSafety(1.0);
+        return;
+      }
+      final progress = elapsed / fadeDurationMs;
+      final curved = startVolume * (1.0 - pow(progress, 0.5));
+      _setVolumeWithSafety(curved.toDouble());
+    });
+  }
+
+  /// Starts playback at volume 0 then fades up over playFadeDuration.
+  void fadeAndPlay() {
+    _playPauseFadeTimer?.cancel();
+
+    final settings = _ref?.read(settingsProvider);
+    final fadeDurationMs = ((settings?.playFadeDuration ?? 0.0) * 1000).toInt();
+
+    if (fadeDurationMs <= 0) {
+      _player.play();
+      return;
+    }
+
+    // Show playing state in UI immediately, before the fade starts
+    playingNotifier.value = true;
+    _setVolumeWithSafety(0.0);
+    _player.play();
+    _isPlayPauseFading = true;
+    final startTime = DateTime.now();
+
+    _playPauseFadeTimer =
+        Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+      if (elapsed >= fadeDurationMs) {
+        timer.cancel();
+        _isPlayPauseFading = false;
+        _setVolumeWithSafety(1.0);
+        return;
+      }
+      final progress = elapsed / fadeDurationMs;
+      final curved = pow(progress, 0.5).toDouble();
+      _setVolumeWithSafety(curved);
+    });
+  }
+
   void _resetFading() {
     _fadeTimer?.cancel();
+    _playPauseFadeTimer?.cancel();
     _isFadingIn = false;
     _isFadingOut = false;
+    _isPlayPauseFading = false;
     _fadeStartTime = null;
     _fadeDurationMs = null;
     _targetVolume = 1.0;
@@ -715,8 +810,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _cancelTransitions() {
     _cancelGap();
     _fadeTimer?.cancel();
+    _playPauseFadeTimer?.cancel();
     _isFadingIn = false;
     _isFadingOut = false;
+    _isPlayPauseFading = false;
     _fadeStartTime = null;
     _fadeDurationMs = null;
     _targetVolume = 1.0;
@@ -858,6 +955,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     };
 
     await _storageService.savePlaybackState(state);
+  }
+
+  Future<void> savePlaybackState() async {
+    await _savePlaybackState();
   }
 
   void _updateDurations() {
@@ -1031,10 +1132,32 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _effectiveQueue = List.from(_originalQueue);
 
     int initialIndex = 0;
-    if (autoSelect && songs.isNotEmpty) {
+    Duration? resumePosition;
+
+    if (savedState != null) {
+      final lastSongFilename = savedState['last_song_filename'] as String?;
+      final savedPositionMs = savedState['last_position_ms'] as int?;
+      if (lastSongFilename != null && savedPositionMs != null) {
+        final songIndex =
+            songs.indexWhere((s) => s.filename == lastSongFilename);
+        if (songIndex != -1) {
+          initialIndex = songIndex;
+          resumePosition = Duration(milliseconds: savedPositionMs);
+          _previousSessionSongFilename = lastSongFilename;
+          _isResumedFromPreviousSession = true;
+          _pendingResumedSongStartSec =
+              max(0.0, resumePosition.inMilliseconds / 1000.0);
+        }
+      }
+    }
+
+    if (autoSelect && songs.isNotEmpty && resumePosition == null) {
       initialIndex = Random().nextInt(songs.length);
     }
-    await _rebuildQueue(initialIndex: initialIndex, startPlaying: false);
+    await _rebuildQueue(
+        initialIndex: initialIndex,
+        startPlaying: false,
+        initialPosition: resumePosition);
     _updateEffectivePlaybackMode();
   }
 

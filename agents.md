@@ -34,12 +34,6 @@ The project follows a **Local-First** approach, functioning as a fully offline m
     - `services/search_service.dart`: Logic for filtering and searching the library.
 - `lib/models/`: Core entities used across the app (`Song`, `Playlist`, `QueueItem`, `ShuffleConfig`).
 
-### Testing (`test/`)
-- `test/shuffle_logic_test.dart`: Critical for validating shuffle behavior.
-- `test/scanner_service_test.dart`: Validates filesystem scanning.
-- `test/test_helpers.dart`: Contains mocks and setup for unit tests.
-- `test/selection_sync_test.dart`: Validates selection logic.
-
 ## How to Search This Repo
 
 1.  **Playback & Shuffle**: `lib/services/audio_player_manager.dart` is the heart of playback.
@@ -84,7 +78,7 @@ Always run `test/shuffle_logic_test.dart` and `test/personality_logic_test.dart`
 - **Offline Only**: Do not add features that require an internet connection unless explicitly requested.
 - **File-Based Identity**: User data (stats, favorites) is linked to filenames. Do not change this unless explicitly told to.
 - **Provider Decoupling**: Avoid circular dependencies. `AudioPlayerManager` and `UserDataNotifier` are intentionally kept separate; updates should be pushed, not pulled via cross-injection.
-- **No git commits**: You are only allowed to use git commands to *READ*, you are *NOT* allowed to make git commits *NOR* other write operations within git.
+- **No git commands**: Git commands are NOT allowed.
 - **Comments**: Keep comments minimal. Explain *why*, not *what*. Do not talk to yourself during comments. Do not add LLM specific comments such as "// added this line" or "// per user request", do not add too many comments per function, explain function at beginning then fully implement it with no more comments.
 - **Emojis**: Do *NOT* *EVER* use emojis in code, code comments or messages.
 - **No building**: Do *NOT* *EVER* build the project *UNLESS* explicitly requested.

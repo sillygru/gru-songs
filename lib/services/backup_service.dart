@@ -263,7 +263,6 @@ class BackupService {
           if (options.includeUserData) {
             final userData = await storage.loadUserData();
             final shuffleState = await storage.loadShuffleState();
-            final playbackState = await storage.loadPlaybackState();
 
             if (userData != null) {
               await File(p.join(dataDir.path, 'user_data.json'))
@@ -274,7 +273,11 @@ class BackupService {
               await File(p.join(dataDir.path, 'shuffle_state.json'))
                   .writeAsString(encodeJson(shuffleState));
             }
+          }
 
+          // Always back up playback state (queue + position) when including any user data
+          if (options.includeUserData || options.includeUserStats) {
+            final playbackState = await storage.loadPlaybackState();
             if (playbackState != null) {
               await File(p.join(dataDir.path, 'playback_state.json'))
                   .writeAsString(encodeJson(playbackState));

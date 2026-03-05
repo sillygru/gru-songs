@@ -157,14 +157,16 @@ class _FolderManagementScreenState
                           },
                         ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _addFolder,
-                      icon: const Icon(Icons.add),
-                      label: const Text("Add Folder"),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _addFolder,
+                        icon: const Icon(Icons.add),
+                        label: const Text("Add Folder"),
+                      ),
                     ),
                   ),
                 ),

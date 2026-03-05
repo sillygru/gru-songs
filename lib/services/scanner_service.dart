@@ -22,6 +22,8 @@ class _ScanParams {
   final String lockDirPath;
   final Map<String, int> playCounts;
   final SendPort sendPort;
+  final bool includeVideos;
+  final int minimumFileSizeBytes;
 
   _ScanParams({
     required this.paths,
@@ -31,6 +33,8 @@ class _ScanParams {
     required this.lockDirPath,
     required this.playCounts,
     required this.sendPort,
+    this.includeVideos = true,
+    this.minimumFileSizeBytes = 0,
   });
 }
 
@@ -204,6 +208,8 @@ class ScannerService {
     Map<String, int>? playCounts,
     void Function(double progress)? onProgress,
     void Function(List<Song>)? onComplete,
+    bool includeVideos = true,
+    int minimumFileSizeBytes = 0,
   }) async {
     // Check for storage permission
     if (Platform.isAndroid) {
@@ -248,6 +254,8 @@ class ScannerService {
       lockDirPath: lockDir.path,
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
+      includeVideos: includeVideos,
+      minimumFileSizeBytes: minimumFileSizeBytes,
     );
 
     await Isolate.spawn(_isolateScan, params);
@@ -744,6 +752,12 @@ class ScannerService {
                 continue;
               }
 
+              // Skip video files if includeVideos is off
+              if (!params.includeVideos &&
+                  _videoExtensions.contains(p.extension(path).toLowerCase())) {
+                continue;
+              }
+
               // Check if path is in excluded folder
               bool isExcluded = false;
               for (final excluded in excludedSet) {
@@ -769,6 +783,15 @@ class ScannerService {
         final file = audioFiles[i];
         final fileStat = file.statSync();
         final currentMtime = fileStat.modified.millisecondsSinceEpoch / 1000.0;
+
+        // Skip files below minimum size
+        if (params.minimumFileSizeBytes > 0 &&
+            fileStat.size < params.minimumFileSizeBytes) {
+          if (i % 10 == 0) {
+            params.sendPort.send((i + 1) / audioFiles.length);
+          }
+          continue;
+        }
 
         // Check if we can reuse existing song data
         final existingSong = existingSongsMap[file.path];

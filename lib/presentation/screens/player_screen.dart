@@ -158,13 +158,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     _playerStateSubscription = player.playerStateStream.listen((state) {
       if (!mounted) return;
-      if (state.playing) {
-        _playPauseController.forward();
-      } else {
-        _playPauseController.reverse();
-      }
+      // Only sync animation from stream when not fading (fading updates playingNotifier directly)
       _syncVideoPlaybackState();
     });
+
+    _audioManager.playingNotifier.addListener(_onPlayingNotifierChanged);
+    // Initialize controller to current state
+    if (_audioManager.playingNotifier.value) {
+      _playPauseController.forward();
+    } else {
+      _playPauseController.reverse();
+    }
 
     _positionSubscription = player.positionStream.listen((position) {
       if (!mounted) return;
@@ -172,6 +176,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
     _audioManager.effectiveMediaModeNotifier
         .addListener(_handleMediaModeChanged);
+  }
+
+  void _onPlayingNotifierChanged() {
+    if (!mounted) return;
+    if (_audioManager.playingNotifier.value) {
+      _playPauseController.forward();
+    } else {
+      _playPauseController.reverse();
+    }
   }
 
   void _openNextUpScreen(BuildContext context, ThemeState themeState) {
@@ -211,6 +224,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _positionSubscription?.cancel();
     _audioManagerInstance?.effectiveMediaModeNotifier
         .removeListener(_handleMediaModeChanged);
+    _audioManagerInstance?.playingNotifier
+        .removeListener(_onPlayingNotifierChanged);
     unawaited(_disposeVideoController(notify: false));
     _playPauseController.dispose();
     _dragController.dispose();
@@ -1172,7 +1187,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                     .isFavorite(
                                                                         metadata
                                                                             .id)));
-                                                        return GestureDetector(
+                                                        return _AnimatedFavoriteButton(
+                                                          isFav: isFav,
+                                                          onToggle: () {
+                                                            ref
+                                                                .read(userDataProvider
+                                                                    .notifier)
+                                                                .toggleFavorite(
+                                                                    metadata
+                                                                        .id);
+                                                          },
                                                           onLongPress: () {
                                                             showHeartContextMenu(
                                                               context: context,
@@ -1184,25 +1208,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                       .title,
                                                             );
                                                           },
-                                                          child: IconButton(
-                                                            icon: Icon(isFav
-                                                                ? Icons.favorite
-                                                                : Icons
-                                                                    .favorite_border),
-                                                            color: isFav
-                                                                ? Colors
-                                                                    .redAccent
-                                                                : Colors.white,
-                                                            onPressed: () {
-                                                              ref
-                                                                  .read(userDataProvider
-                                                                      .notifier)
-                                                                  .toggleFavorite(
-                                                                      metadata
-                                                                          .id);
-                                                            },
-                                                            iconSize: 28,
-                                                          ),
                                                         );
                                                       },
                                                     ),
@@ -1415,12 +1420,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                 .playerStateStream,
                                                             builder: (context,
                                                                 snapshot) {
-                                                              final playerState =
-                                                                  snapshot.data;
-                                                              final playing =
-                                                                  playerState
-                                                                          ?.playing ??
-                                                                      false;
                                                               return Container(
                                                                 height: 75,
                                                                 width: 100,
@@ -1460,11 +1459,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                                     color: Colors
                                                                         .white,
                                                                   ),
-                                                                  onPressed: playing
-                                                                      ? player
-                                                                          .pause
-                                                                      : player
-                                                                          .play,
+                                                                  onPressed: () => ref
+                                                                      .read(
+                                                                          audioPlayerManagerProvider)
+                                                                      .togglePlayPause(),
                                                                 ),
                                                               );
                                                             },
@@ -1561,6 +1559,100 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ),
           );
         }),
+      ),
+    );
+  }
+}
+
+class _AnimatedFavoriteButton extends StatefulWidget {
+  final bool isFav;
+  final VoidCallback onToggle;
+  final VoidCallback onLongPress;
+
+  const _AnimatedFavoriteButton({
+    required this.isFav,
+    required this.onToggle,
+    required this.onLongPress,
+  });
+
+  @override
+  State<_AnimatedFavoriteButton> createState() =>
+      _AnimatedFavoriteButtonState();
+}
+
+class _AnimatedFavoriteButtonState extends State<_AnimatedFavoriteButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+    );
+    _scaleAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.45)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.45, end: 0.9)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.9, end: 1.0)
+            .chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 30,
+      ),
+    ]).animate(_controller);
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedFavoriteButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isFav != widget.isFav) {
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPress: widget.onLongPress,
+      child: AnimatedBuilder(
+        animation: _scaleAnim,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _scaleAnim.value,
+            child: child,
+          );
+        },
+        child: IconButton(
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            transitionBuilder: (child, animation) => ScaleTransition(
+              scale: animation,
+              child: child,
+            ),
+            child: Icon(
+              widget.isFav ? Icons.favorite : Icons.favorite_border,
+              key: ValueKey(widget.isFav),
+            ),
+          ),
+          color: widget.isFav ? Colors.redAccent : Colors.white,
+          onPressed: widget.onToggle,
+          iconSize: 28,
+        ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import '../../services/data_export_service.dart';
 import '../../services/telemetry_service.dart';
 import 'namida_import_screen.dart';
 import 'backup_management_screen.dart';
+import 'storage_management_screen.dart';
 
 class DataManagementSettingsScreen extends ConsumerStatefulWidget {
   const DataManagementSettingsScreen({super.key});
@@ -82,6 +83,24 @@ class _DataManagementSettingsScreenState
                     context,
                     MaterialPageRoute(
                         builder: (_) => const BackupManagementScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+          _buildSettingsGroup(
+            title: 'Storage',
+            icon: Icons.storage_outlined,
+            children: [
+              _buildListTile(
+                icon: Icons.storage_rounded,
+                title: 'Manage Storage',
+                subtitle: 'Disk usage and data management',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const StorageManagementScreen()),
                   );
                 },
               ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/indexer_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../widgets/indexer_choice_dialog.dart';
 
 class IndexerScreen extends ConsumerStatefulWidget {
@@ -24,6 +25,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Indexer'),
@@ -33,18 +36,36 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         children: [
           _buildSettingsGroup(
+            title: 'Indexer Settings',
+            icon: Icons.manage_search_rounded,
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.content_copy_outlined),
+                title: const Text('Prevent Duplicate Tracks'),
+                subtitle: const Text(
+                  'Hide songs with the same filename across folders',
+                ),
+                value: settings.preventDuplicateTracks,
+                onChanged: (val) => notifier.setPreventDuplicateTracks(val),
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.person_add_alt_1_outlined),
+                title: const Text('Extract Featured Artists'),
+                subtitle: const Text(
+                  'Move "ft./feat." artists from title to artist field',
+                ),
+                value: settings.extractFeatArtists,
+                onChanged: (val) => notifier.setExtractFeatArtists(val),
+              ),
+            ],
+          ),
+          _buildSettingsGroup(
             title: 'Database Operations',
             icon: Icons.storage_rounded,
             children: [
               _buildOperationTile(
-                id: 'optimize_stats_db',
-                icon: Icons.analytics_rounded,
-                warningMessage:
-                    'This operation requires an app restart to apply changes.',
-              ),
-              _buildOperationTile(
-                id: 'optimize_user_data_db',
-                icon: Icons.people_rounded,
+                id: 'optimize_databases',
+                icon: Icons.storage_rounded,
                 warningMessage:
                     'This operation requires an app restart to apply changes.',
               ),

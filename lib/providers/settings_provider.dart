@@ -19,6 +19,13 @@ class SettingsState {
   final QuickActionConfig quickActionConfig;
   final int autoBackupFrequencyHours;
   final int autoBackupDeleteAfterDays;
+  final bool preventDuplicateTracks;
+  final bool extractFeatArtists;
+  final int minimumFileSizeBytes;
+  final int minimumTrackDurationMs;
+  final bool includeVideos;
+  final double playFadeDuration;
+  final double pauseFadeDuration;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -35,6 +42,13 @@ class SettingsState {
     QuickActionConfig? quickActionConfig,
     this.autoBackupFrequencyHours = 0,
     this.autoBackupDeleteAfterDays = 0,
+    this.preventDuplicateTracks = true,
+    this.extractFeatArtists = false,
+    this.minimumFileSizeBytes = 102400,
+    this.minimumTrackDurationMs = 10000,
+    this.includeVideos = true,
+    this.playFadeDuration = 0.3,
+    this.pauseFadeDuration = 0.3,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -52,6 +66,13 @@ class SettingsState {
     QuickActionConfig? quickActionConfig,
     int? autoBackupFrequencyHours,
     int? autoBackupDeleteAfterDays,
+    bool? preventDuplicateTracks,
+    bool? extractFeatArtists,
+    int? minimumFileSizeBytes,
+    int? minimumTrackDurationMs,
+    bool? includeVideos,
+    double? playFadeDuration,
+    double? pauseFadeDuration,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -73,6 +94,15 @@ class SettingsState {
           autoBackupFrequencyHours ?? this.autoBackupFrequencyHours,
       autoBackupDeleteAfterDays:
           autoBackupDeleteAfterDays ?? this.autoBackupDeleteAfterDays,
+      preventDuplicateTracks:
+          preventDuplicateTracks ?? this.preventDuplicateTracks,
+      extractFeatArtists: extractFeatArtists ?? this.extractFeatArtists,
+      minimumFileSizeBytes: minimumFileSizeBytes ?? this.minimumFileSizeBytes,
+      minimumTrackDurationMs:
+          minimumTrackDurationMs ?? this.minimumTrackDurationMs,
+      includeVideos: includeVideos ?? this.includeVideos,
+      playFadeDuration: playFadeDuration ?? this.playFadeDuration,
+      pauseFadeDuration: pauseFadeDuration ?? this.pauseFadeDuration,
     );
   }
 }
@@ -92,6 +122,13 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyQuickActionConfig = 'quick_action_config';
   static const _keyAutoBackupFrequencyHours = 'auto_backup_frequency_hours';
   static const _keyAutoBackupDeleteAfterDays = 'auto_backup_delete_after_days';
+  static const _keyPreventDuplicateTracks = 'prevent_duplicate_tracks';
+  static const _keyExtractFeatArtists = 'extract_feat_artists';
+  static const _keyMinimumFileSizeBytes = 'minimum_file_size_bytes';
+  static const _keyMinimumTrackDurationMs = 'minimum_track_duration_ms';
+  static const _keyIncludeVideos = 'include_videos';
+  static const _keyPlayFadeDuration = 'play_fade_duration';
+  static const _keyPauseFadeDuration = 'pause_fade_duration';
   static const double maxDelayDuration = 12.0;
 
   @override
@@ -124,6 +161,13 @@ class SettingsNotifier extends Notifier<SettingsState> {
       autoBackupFrequencyHours: prefs.getInt(_keyAutoBackupFrequencyHours) ?? 0,
       autoBackupDeleteAfterDays:
           prefs.getInt(_keyAutoBackupDeleteAfterDays) ?? 0,
+      preventDuplicateTracks: prefs.getBool(_keyPreventDuplicateTracks) ?? true,
+      extractFeatArtists: prefs.getBool(_keyExtractFeatArtists) ?? false,
+      minimumFileSizeBytes: prefs.getInt(_keyMinimumFileSizeBytes) ?? 102400,
+      minimumTrackDurationMs: prefs.getInt(_keyMinimumTrackDurationMs) ?? 10000,
+      includeVideos: prefs.getBool(_keyIncludeVideos) ?? true,
+      playFadeDuration: prefs.getDouble(_keyPlayFadeDuration) ?? 0.3,
+      pauseFadeDuration: prefs.getDouble(_keyPauseFadeDuration) ?? 0.3,
     );
   }
 
@@ -295,6 +339,48 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(autoBackupDeleteAfterDays: days);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyAutoBackupDeleteAfterDays, days);
+  }
+
+  Future<void> setPreventDuplicateTracks(bool enabled) async {
+    state = state.copyWith(preventDuplicateTracks: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyPreventDuplicateTracks, enabled);
+  }
+
+  Future<void> setExtractFeatArtists(bool enabled) async {
+    state = state.copyWith(extractFeatArtists: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyExtractFeatArtists, enabled);
+  }
+
+  Future<void> setMinimumFileSizeBytes(int bytes) async {
+    state = state.copyWith(minimumFileSizeBytes: bytes);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyMinimumFileSizeBytes, bytes);
+  }
+
+  Future<void> setMinimumTrackDurationMs(int ms) async {
+    state = state.copyWith(minimumTrackDurationMs: ms);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyMinimumTrackDurationMs, ms);
+  }
+
+  Future<void> setIncludeVideos(bool enabled) async {
+    state = state.copyWith(includeVideos: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyIncludeVideos, enabled);
+  }
+
+  Future<void> setPlayFadeDuration(double value) async {
+    state = state.copyWith(playFadeDuration: value.clamp(0.0, 1.0));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyPlayFadeDuration, value.clamp(0.0, 1.0));
+  }
+
+  Future<void> setPauseFadeDuration(double value) async {
+    state = state.copyWith(pauseFadeDuration: value.clamp(0.0, 1.0));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyPauseFadeDuration, value.clamp(0.0, 1.0));
   }
 }
 

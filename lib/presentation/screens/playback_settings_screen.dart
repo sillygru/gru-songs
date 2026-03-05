@@ -104,6 +104,30 @@ class _PlaybackSettingsScreenState
               ),
             ],
           ),
+          _buildSettingsGroup(
+            title: 'Play / Pause',
+            icon: Icons.play_circle_outline_rounded,
+            children: [
+              _buildFadeSlider(
+                context: context,
+                icon: Icons.play_arrow_rounded,
+                title: 'Fade on Play',
+                value: settings.playFadeDuration,
+                onChanged: (val) => ref
+                    .read(settingsProvider.notifier)
+                    .setPlayFadeDuration(val),
+              ),
+              _buildFadeSlider(
+                context: context,
+                icon: Icons.pause_rounded,
+                title: 'Fade on Pause',
+                value: settings.pauseFadeDuration,
+                onChanged: (val) => ref
+                    .read(settingsProvider.notifier)
+                    .setPauseFadeDuration(val),
+              ),
+            ],
+          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -226,6 +250,59 @@ class _PlaybackSettingsScreenState
             max: 12,
             divisions: 24,
             onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFadeSlider({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final String label = value == 0
+        ? 'Off'
+        : value >= 1.0
+            ? '1.0 s'
+            : '${(value * 1000).round()} ms';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+              const Spacer(),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            ),
+            child: Slider(
+              value: value,
+              min: 0,
+              max: 1.0,
+              divisions: 20,
+              onChanged: onChanged,
+            ),
           ),
         ],
       ),

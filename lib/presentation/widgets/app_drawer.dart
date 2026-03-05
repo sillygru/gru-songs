@@ -239,22 +239,23 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Center(
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: SizedBox(
+                  width: 64,
+                  height: 64,
                   child: Image.asset(
                     'assets/app_icon.png',
-                    width: 48,
-                    height: 48,
-                    errorBuilder: (context, error, stackTrace) => Icon(
-                        Icons.music_note,
-                        color: colorScheme.primary,
-                        size: 32),
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 64,
+                      height: 64,
+                      color: colorScheme.primary.withValues(alpha: 0.1),
+                      child: Icon(Icons.music_note,
+                          color: colorScheme.primary, size: 32),
+                    ),
                   ),
                 ),
               ),

@@ -217,8 +217,9 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                             : Icons.play_arrow_rounded,
                                         size: 34,
                                         color: Colors.white),
-                                    onPressed:
-                                        playing ? player.pause : player.play,
+                                    onPressed: () => ref
+                                        .read(audioPlayerManagerProvider)
+                                        .togglePlayPause(),
                                   );
                                 },
                               ),
