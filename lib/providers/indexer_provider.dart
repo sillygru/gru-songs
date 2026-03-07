@@ -83,8 +83,7 @@ class IndexerOperation {
   String get progressText => '$processedCount/$targetCount';
   bool get isFullyCached =>
       processedCount > 0 && processedCount == totalCount && totalCount > 0;
-  bool get isDatabaseOperation =>
-      id == 'optimize_databases';
+  bool get isDatabaseOperation => id == 'optimize_databases';
 }
 
 /// State for all indexer operations

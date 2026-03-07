@@ -159,7 +159,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         _buildStatColumn(
                             'Favorites', userData.favorites.length.toString()),
                         _buildStatColumn(
-                            'Playlists', userData.playlists.where((p) => !p.isRecommendation).length.toString()),
+                            'Playlists',
+                            userData.playlists
+                                .where((p) => !p.isRecommendation)
+                                .length
+                                .toString()),
                         _buildStatColumn(
                             'Hidden', userData.hidden.length.toString()),
                         _buildStatColumn('Suggest-less',
