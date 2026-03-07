@@ -59,7 +59,9 @@ class _BackupManagementScreenState
     });
 
     try {
-      await ref.read(audioPlayerManagerProvider).savePlaybackState();
+      final audioManager = ref.read(audioPlayerManagerProvider);
+      audioManager.forceFlushCurrentStats();
+      await audioManager.savePlaybackState();
       final backupFilename = await BackupService.instance.createBackup(options);
       await _loadBackups();
 
@@ -158,14 +160,14 @@ class _BackupManagementScreenState
     try {
       await BackupService.instance.restoreFromBackup(backupInfo);
 
+      // Reload queue + position immediately so restored playback_state.json is consumed
+      // before any downstream refresh path can overwrite it.
+      final songs = await DatabaseService.instance.getAllSongs();
+      await ref.read(audioPlayerManagerProvider).init(songs);
+
       // Refresh data without full scan
       await ref.read(userDataProvider.notifier).refresh();
       await ref.read(songsProvider.notifier).refreshPlayCounts();
-
-      // Reload the audio manager's queue and position from the restored playback state
-      // Use unfiltered songs to ensure the current song is restored even if it was hidden
-      final songs = await DatabaseService.instance.getAllSongs();
-      await ref.read(audioPlayerManagerProvider).init(songs);
 
       if (mounted) {
         Navigator.pop(context); // Pop loading dialog
