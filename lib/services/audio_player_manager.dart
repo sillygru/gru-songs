@@ -85,6 +85,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Play/pause fade state (separate from track-transition fades)
   // ignore: unused_field
   bool _isPlayPauseFading = false;
+  bool _isPausingByFade = false;
   Timer? _playPauseFadeTimer;
 
   // Fade state tracking
@@ -94,6 +95,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // Feature coordination state
   bool _wasPausedByMute = false;
+  bool _isGeneratingNext = false;
 
   // New stats counters
   double _foregroundDuration = 0.0;
@@ -282,9 +284,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     bool wasPlaying = false;
 
     _player.playerStateStream.listen((state) {
+      // Confirm fade-pause completion before checking for manual intervention
+      if (_isPausingByFade && !state.playing) {
+        _isPausingByFade = false;
+      }
+
       // Detect manual pause (user pressed pause button)
-      // Don't cancel transitions if we are in a gap (expected pause)
-      if (wasPlaying && !state.playing && !_isInGap && !_pausedByGap) {
+      // Don't cancel transitions if we are in a gap (expected pause) or completing a fade
+      if (wasPlaying &&
+          !state.playing &&
+          !_isInGap &&
+          !_pausedByGap &&
+          !_isPausingByFade) {
         _handleManualIntervention();
       }
 
@@ -293,8 +304,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _cancelGap();
       }
 
-      // Reset pausedByGap after the state settles
-      if (!wasPlaying && !state.playing) {
+      // Reset pausedByGap after the state settles, but only outside a gap
+      if (!wasPlaying && !state.playing && !_isInGap) {
         _pausedByGap = false;
       }
 
@@ -340,11 +351,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _syncEffectiveQueueWithPlayerSequence(state);
       final currentItem = state.currentSource?.tag;
 
-      // Pre-fetch logic
+      // Pre-fetch logic: only extend queue in radio mode (no active loop)
       final currentIndex = state.currentIndex;
       if (currentIndex != null && _effectiveQueue.isNotEmpty) {
         if (currentIndex >= _effectiveQueue.length - 2) {
-          if (_shuffleState.config.enabled) {
+          if (_shuffleState.config.enabled &&
+              _player.loopMode == LoopMode.off) {
             _generateOfflineNext();
           }
         }
@@ -497,40 +509,45 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _generateOfflineNext() async {
-    // Pick a random song from _allSongs using local weights
+    if (_isGeneratingNext) return;
+    if (_player.loopMode != LoopMode.off) return;
     if (_allSongs.isEmpty) return;
 
-    final currentIndex = _player.currentIndex ?? -1;
-    if (currentIndex < 0) return;
+    _isGeneratingNext = true;
+    try {
+      final currentIndex = _player.currentIndex ?? -1;
+      if (currentIndex < 0) return;
 
-    final currentItem = _effectiveQueue[currentIndex];
-    final existingIds = _effectiveQueue.map((e) => e.song.filename).toSet();
+      final currentItem = _effectiveQueue[currentIndex];
+      final existingIds = _effectiveQueue.map((e) => e.song.filename).toSet();
 
-    // Filter candidates
-    final List<QueueItem> candidateItems;
-    if (_isRestrictedToOriginal) {
-      candidateItems = _originalQueue
-          .where((q) => !existingIds.contains(q.song.filename))
-          .toList();
-    } else {
-      candidateItems = _allSongs
-          .where((s) => !existingIds.contains(s.filename))
-          .map((s) => QueueItem(song: s))
-          .toList();
-    }
+      final List<QueueItem> candidateItems;
+      if (_isRestrictedToOriginal) {
+        candidateItems = _originalQueue
+            .where((q) => !existingIds.contains(q.song.filename))
+            .toList();
+      } else {
+        candidateItems = _allSongs
+            .where((s) => !existingIds.contains(s.filename))
+            .map((s) => QueueItem(song: s))
+            .toList();
+      }
 
-    if (candidateItems.isEmpty) return;
-    final shuffled = await _weightedShuffle(
-      candidateItems,
-      lastItem: currentItem,
-    );
+      if (candidateItems.isEmpty) return;
+      final shuffled = await _weightedShuffle(
+        candidateItems,
+        lastItem: currentItem,
+      );
 
-    if (shuffled.isNotEmpty) {
-      final nextItem = shuffled.first;
-      _effectiveQueue.add(nextItem);
-      final source = await _createAudioSource(nextItem);
-      await _player.addAudioSource(source);
-      _updateQueueNotifier();
+      if (shuffled.isNotEmpty) {
+        final nextItem = shuffled.first;
+        _effectiveQueue.add(nextItem);
+        final source = await _createAudioSource(nextItem);
+        await _player.addAudioSource(source);
+        _updateQueueNotifier();
+      }
+    } finally {
+      _isGeneratingNext = false;
     }
   }
 
@@ -735,11 +752,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         ((settings?.pauseFadeDuration ?? 0.0) * 1000).toInt();
 
     if (fadeDurationMs <= 0) {
+      _isPausingByFade = true;
       _player.pause();
       return;
     }
-
-    // Show paused state in UI immediately, before the fade completes
     playingNotifier.value = false;
     _isPlayPauseFading = true;
     final startTime = DateTime.now();
@@ -751,6 +767,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       if (elapsed >= fadeDurationMs || !_player.playing) {
         timer.cancel();
         _isPlayPauseFading = false;
+        _isPausingByFade = true;
         _player.pause();
         _setVolumeWithSafety(1.0);
         return;
@@ -764,6 +781,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   /// Starts playback at volume 0 then fades up over playFadeDuration.
   void fadeAndPlay() {
     _playPauseFadeTimer?.cancel();
+    _wasPausedByMute = false;
 
     final settings = _ref?.read(settingsProvider);
     final fadeDurationMs = ((settings?.playFadeDuration ?? 0.0) * 1000).toInt();
@@ -801,6 +819,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _isFadingIn = false;
     _isFadingOut = false;
     _isPlayPauseFading = false;
+    _isPausingByFade = false;
     _fadeStartTime = null;
     _fadeDurationMs = null;
     _targetVolume = 1.0;
@@ -814,6 +833,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _isFadingIn = false;
     _isFadingOut = false;
     _isPlayPauseFading = false;
+    _isPausingByFade = false;
     _fadeStartTime = null;
     _fadeDurationMs = null;
     _targetVolume = 1.0;
@@ -1188,8 +1208,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (currentIdx != null && currentItemBefore != null) {
       final currentItemAfter = _effectiveQueue[currentIdx];
       if (currentItemBefore.song.url != currentItemAfter.song.url ||
-          currentItemBefore.song.filename != currentItemAfter.song.filename ||
-          currentItemBefore.song.coverUrl != currentItemAfter.song.coverUrl) {
+          currentItemBefore.song.filename != currentItemAfter.song.filename) {
         _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
       }
     }

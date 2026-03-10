@@ -55,11 +55,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.invalidate(songsProvider);
   }
 
-  Widget _buildQuickPickTile(
-      Song song, ThemeData theme, AudioPlayerManager audioManager) {
+  Widget _buildQuickPickTile(Song song, ThemeData theme,
+      AudioPlayerManager audioManager, List<Song> contextSongs) {
     return GestureDetector(
       onTap: () {
-        audioManager.playSong(song, playlistId: 'quick_picks');
+        audioManager.playSong(
+          song,
+          contextQueue: contextSongs,
+          playlistId: 'quick_picks',
+        );
       },
       child: Container(
         decoration: BoxDecoration(
@@ -622,8 +626,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             itemCount: topRecommendations.length.clamp(0, 6),
                             itemBuilder: (context, index) {
                               final song = topRecommendations[index];
+                              final contextSongs =
+                                  topRecommendations.take(6).toList();
                               return _buildQuickPickTile(
-                                  song, theme, audioManager);
+                                  song, theme, audioManager, contextSongs);
                             },
                           ),
                         ],

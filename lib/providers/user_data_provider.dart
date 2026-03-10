@@ -196,6 +196,33 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   @override
   UserDataState build() {
+    ref.listen(songsProvider, (previous, next) {
+      if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
+        final library = next.value!;
+        // Deep-validate DB entries first: re-reads every row with the same casts
+        // used at runtime. If any single entry is corrupt or unreadable, force
+        // regeneration immediately rather than silently displaying nothing.
+        DatabaseService.instance
+            .validateRecommendationPlaylists()
+            .then((dbValid) {
+          if (!dbValid) {
+            updateRecommendationPlaylists(force: true);
+            return;
+          }
+          // Even with valid DB rows, the filenames might not resolve to real
+          // library songs (e.g. files were moved/deleted after the old bug).
+          final anyResolve = state.playlists.any((p) {
+            if (!p.isRecommendation || p.songs.isEmpty) return false;
+            return p.songs
+                .any((ps) => library.any((s) => s.filename == ps.songFilename));
+          });
+          if (!anyResolve) {
+            updateRecommendationPlaylists(force: true);
+          }
+        });
+      }
+    });
+
     if (!_initialized) {
       _initialized = true;
       Future.microtask(() => _initLocal());
@@ -1201,7 +1228,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
       // DO NOT update if it's currently playing OR if it's pinned (pinned ones are kept)
       if (type.id == currentPlaylistId || isPinned) continue;
 
-      bool shouldUpdate = force || existing == null;
+      // Update if:
+      // 1. Force is true
+      // 2. Playlist doesn't exist
+      // 3. Existing playlist has no songs (was blank due to a bug or empty scan)
+      bool shouldUpdate = force || existing == null || existing.songs.isEmpty;
       if (!shouldUpdate) {
         // Update if older than 24 hours
         if (now - existing.updatedAt > 86400) {

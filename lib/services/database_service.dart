@@ -764,6 +764,57 @@ class DatabaseService {
     });
   }
 
+  // Deep validation of all recommendation playlist DB entries.
+  // Re-reads every row and every song entry using the same casts as getPlaylists().
+  // Returns false if even one field fails to parse correctly, triggering a regeneration.
+  Future<bool> validateRecommendationPlaylists() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return false;
+    try {
+      final plMaps = await _userDataDatabase!.query(
+        'playlist',
+        where: 'is_recommendation = 1',
+      );
+
+      if (plMaps.isEmpty) return false;
+
+      for (final plMap in plMaps) {
+        final id = plMap['id'];
+        final name = plMap['name'];
+        final isRec = plMap['is_recommendation'];
+        final createdAt = plMap['created_at'];
+        final updatedAt = plMap['updated_at'];
+
+        if (id == null || id is! String || id.isEmpty) return false;
+        if (name == null || name is! String) return false;
+        if (isRec == null || isRec is! int) return false;
+        if (createdAt == null || createdAt is! num) return false;
+        if (updatedAt == null || updatedAt is! num) return false;
+
+        final songMaps = await _userDataDatabase!.query(
+          'playlist_song',
+          where: 'playlist_id = ?',
+          whereArgs: [id],
+        );
+
+        for (final s in songMaps) {
+          final filename = s['song_filename'];
+          final addedAt = s['added_at'];
+
+          if (filename == null || filename is! String || filename.isEmpty) {
+            return false;
+          }
+          if (addedAt == null || addedAt is! num) return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Recommendation DB validation error: $e');
+      return false;
+    }
+  }
+
   Future<void> deletePlaylist(String playlistId) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
@@ -2077,6 +2128,194 @@ class DatabaseService {
       FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
     );
   ''';
+
+  /// Canonical CREATE TABLE statements for wispie_data.db, keyed by table name.
+  /// This is the single source of truth used by DatabaseOptimizerService.
+  static const Map<String, String> userDataTableSql = {
+    'userdata': '''CREATE TABLE IF NOT EXISTS userdata (
+      username TEXT PRIMARY KEY,
+      password_hash TEXT,
+      created_at REAL
+    )''',
+    'favorite': '''CREATE TABLE IF NOT EXISTS favorite (
+      filename TEXT PRIMARY KEY,
+      added_at REAL
+    )''',
+    'suggestless': '''CREATE TABLE IF NOT EXISTS suggestless (
+      filename TEXT PRIMARY KEY,
+      added_at REAL
+    )''',
+    'hidden': '''CREATE TABLE IF NOT EXISTS hidden (
+      filename TEXT PRIMARY KEY,
+      hidden_at REAL
+    )''',
+    'song': '''CREATE TABLE IF NOT EXISTS song (
+      filename TEXT PRIMARY KEY,
+      title TEXT,
+      artist TEXT,
+      album TEXT,
+      url TEXT,
+      cover_url TEXT,
+      has_lyrics INTEGER,
+      play_count INTEGER,
+      duration_ms INTEGER,
+      mtime REAL
+    )''',
+    'playlist': '''CREATE TABLE IF NOT EXISTS playlist (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      description TEXT,
+      is_recommendation INTEGER DEFAULT 0,
+      created_at REAL,
+      updated_at REAL
+    )''',
+    'playlist_song': '''CREATE TABLE IF NOT EXISTS playlist_song (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      playlist_id TEXT,
+      song_filename TEXT,
+      added_at REAL,
+      FOREIGN KEY (playlist_id) REFERENCES playlist (id)
+    )''',
+    'merged_song_group': '''CREATE TABLE IF NOT EXISTS merged_song_group (
+      id TEXT PRIMARY KEY,
+      priority_filename TEXT,
+      created_at REAL
+    )''',
+    'merged_song': '''CREATE TABLE IF NOT EXISTS merged_song (
+      filename TEXT PRIMARY KEY,
+      group_id TEXT,
+      added_at REAL,
+      FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
+    )''',
+    'recommendation_preference':
+        '''CREATE TABLE IF NOT EXISTS recommendation_preference (
+      id TEXT PRIMARY KEY,
+      custom_title TEXT,
+      is_pinned INTEGER DEFAULT 0,
+      updated_at REAL
+    )''',
+    'recommendation_removal':
+        '''CREATE TABLE IF NOT EXISTS recommendation_removal (
+      id TEXT PRIMARY KEY,
+      removed_at REAL
+    )''',
+    'mood_tag': '''CREATE TABLE IF NOT EXISTS mood_tag (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      normalized_name TEXT UNIQUE NOT NULL,
+      is_preset INTEGER DEFAULT 0,
+      created_at REAL
+    )''',
+    'song_mood': '''CREATE TABLE IF NOT EXISTS song_mood (
+      song_filename TEXT NOT NULL,
+      mood_id TEXT NOT NULL,
+      added_at REAL,
+      source TEXT DEFAULT 'manual',
+      PRIMARY KEY (song_filename, mood_id),
+      FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
+    )''',
+  };
+
+  /// Expected columns per table for ALTER TABLE ADD COLUMN operations.
+  /// Maps table name → (column name → type fragment used in ALTER TABLE ADD COLUMN).
+  static const Map<String, Map<String, String>> userDataExpectedColumns = {
+    'userdata': {
+      'username': 'TEXT',
+      'password_hash': 'TEXT',
+      'created_at': 'REAL',
+    },
+    'favorite': {
+      'filename': 'TEXT',
+      'added_at': 'REAL',
+    },
+    'suggestless': {
+      'filename': 'TEXT',
+      'added_at': 'REAL',
+    },
+    'hidden': {
+      'filename': 'TEXT',
+      'hidden_at': 'REAL',
+    },
+    'song': {
+      'filename': 'TEXT',
+      'title': 'TEXT',
+      'artist': 'TEXT',
+      'album': 'TEXT',
+      'url': 'TEXT',
+      'cover_url': 'TEXT',
+      'has_lyrics': 'INTEGER',
+      'play_count': 'INTEGER',
+      'duration_ms': 'INTEGER',
+      'mtime': 'REAL',
+    },
+    'playlist': {
+      'id': 'TEXT',
+      'name': 'TEXT',
+      'description': 'TEXT',
+      'is_recommendation': 'INTEGER DEFAULT 0',
+      'created_at': 'REAL',
+      'updated_at': 'REAL',
+    },
+    'playlist_song': {
+      'id': 'INTEGER',
+      'playlist_id': 'TEXT',
+      'song_filename': 'TEXT',
+      'added_at': 'REAL',
+    },
+    'merged_song_group': {
+      'id': 'TEXT',
+      'priority_filename': 'TEXT',
+      'created_at': 'REAL',
+    },
+    'merged_song': {
+      'filename': 'TEXT',
+      'group_id': 'TEXT',
+      'added_at': 'REAL',
+    },
+    'recommendation_preference': {
+      'id': 'TEXT',
+      'custom_title': 'TEXT',
+      'is_pinned': 'INTEGER DEFAULT 0',
+      'updated_at': 'REAL',
+    },
+    'recommendation_removal': {
+      'id': 'TEXT',
+      'removed_at': 'REAL',
+    },
+    'mood_tag': {
+      'id': 'TEXT',
+      'name': 'TEXT',
+      'normalized_name': 'TEXT',
+      'is_preset': 'INTEGER DEFAULT 0',
+      'created_at': 'REAL',
+    },
+    'song_mood': {
+      'song_filename': 'TEXT',
+      'mood_id': 'TEXT',
+      'added_at': 'REAL',
+      'source': "TEXT DEFAULT 'manual'",
+    },
+  };
+
+  /// Expected performance indexes for wispie_data.db, keyed by index name.
+  static const Map<String, String> userDataIndexSql = {
+    'idx_song_artist':
+        'CREATE INDEX IF NOT EXISTS idx_song_artist ON song(artist)',
+    'idx_song_album':
+        'CREATE INDEX IF NOT EXISTS idx_song_album ON song(album)',
+    'idx_song_mtime':
+        'CREATE INDEX IF NOT EXISTS idx_song_mtime ON song(mtime)',
+    'idx_song_mood_song_filename':
+        'CREATE INDEX IF NOT EXISTS idx_song_mood_song_filename ON song_mood(song_filename)',
+    'idx_song_mood_mood_id':
+        'CREATE INDEX IF NOT EXISTS idx_song_mood_mood_id ON song_mood(mood_id)',
+    'idx_mood_tag_normalized_name':
+        'CREATE INDEX IF NOT EXISTS idx_mood_tag_normalized_name ON mood_tag(normalized_name)',
+    'idx_merged_song_group_id':
+        'CREATE INDEX IF NOT EXISTS idx_merged_song_group_id ON merged_song(group_id)',
+    'idx_playlist_song_playlist_id':
+        'CREATE INDEX IF NOT EXISTS idx_playlist_song_playlist_id ON playlist_song(playlist_id)',
+  };
 
   Future<void> importData({
     required String statsDbPath,

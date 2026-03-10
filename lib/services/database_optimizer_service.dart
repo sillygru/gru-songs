@@ -657,7 +657,7 @@ class DatabaseOptimizerService {
       details['indexes'] = indexResult['details'];
 
       // Step 4: Fix orphaned records
-      final orphanResult = await _fixOrphanedRecordsViaService();
+      final orphanResult = await _fixOrphanedRecords(userDataDb);
       if (orphanResult['issuesFound'] > 0) {
         issues.add('Found ${orphanResult['issuesFound']} orphaned records');
         fixes.add('Removed ${orphanResult['issuesFixed']} orphaned records');
@@ -665,7 +665,7 @@ class DatabaseOptimizerService {
       details['orphaned_records'] = orphanResult;
 
       // Step 5: Fix duplicate entries
-      final duplicateResult = await _fixDuplicatesViaService();
+      final duplicateResult = await _fixDuplicateRecords(userDataDb);
       if (duplicateResult['issuesFound'] > 0) {
         issues.add('Found ${duplicateResult['issuesFound']} duplicate entries');
         fixes
@@ -693,255 +693,86 @@ class DatabaseOptimizerService {
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
-  /// Creates the full schema for user data database
-  Future<void> _createUserDataSchema(Database db) async {
-    // favorite table
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS favorite (
-        filename TEXT PRIMARY KEY,
-        added_at REAL
-      )
-    ''');
-
-    // suggestless table
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS suggestless (
-        filename TEXT PRIMARY KEY,
-        added_at REAL
-      )
-    ''');
-
-    // hidden table
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS hidden (
-        filename TEXT PRIMARY KEY,
-        hidden_at REAL
-      )
-    ''');
-
-    // playlist table
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS playlist (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        created_at REAL,
-        updated_at REAL
-      )
-    ''');
-
-    // playlist_song table
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS playlist_song (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        playlist_id TEXT,
-        song_filename TEXT,
-        added_at REAL,
-        FOREIGN KEY (playlist_id) REFERENCES playlist (id)
-      )
-    ''');
-
-    // merged_song_group table
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS merged_song_group (
-        id TEXT PRIMARY KEY,
-        priority_filename TEXT,
-        created_at REAL
-      )
-    ''');
-
-    // merged_song table
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS merged_song (
-        filename TEXT PRIMARY KEY,
-        group_id TEXT,
-        added_at REAL,
-        FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS mood_tag (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        normalized_name TEXT UNIQUE NOT NULL,
-        is_preset INTEGER DEFAULT 0,
-        created_at REAL
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS song_mood (
-        song_filename TEXT NOT NULL,
-        mood_id TEXT NOT NULL,
-        added_at REAL,
-        source TEXT DEFAULT 'manual',
-        PRIMARY KEY (song_filename, mood_id),
-        FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
-      )
-    ''');
-  }
-
-  /// Ensures all user data tables exist
+  /// Dynamically checks the DB against the canonical schema, creates missing
+  /// tables and drops unrecognized ones.
   Future<Map<String, dynamic>> _ensureUserDataTables(Database db) async {
     final issues = <String>[];
     final fixes = <String>[];
     final details = <String, dynamic>{};
 
-    final tables = [
-      'favorite',
-      'suggestless',
-      'hidden',
-      'playlist',
-      'playlist_song',
-      'merged_song_group',
-      'merged_song',
-      'mood_tag',
-      'song_mood',
-    ];
+    final actualResult = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    );
+    final actualTables = actualResult.map((r) => r['name'] as String).toSet();
+    final expectedTables = DatabaseService.userDataTableSql.keys.toSet();
 
-    for (final tableName in tables) {
-      final tableInfo = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        [tableName],
-      );
-
-      if (tableInfo.isEmpty) {
+    for (final tableName in expectedTables) {
+      if (!actualTables.contains(tableName)) {
         issues.add('Table $tableName is missing');
-        // Create just this table
-        await _createSingleTable(db, tableName);
-        fixes.add('Created missing table $tableName');
-        details[tableName] = {'created': true};
+        try {
+          await db.execute(DatabaseService.userDataTableSql[tableName]!);
+          fixes.add('Created missing table $tableName');
+          details[tableName] = {'created': true};
+        } catch (e) {
+          issues.add('Failed to create table $tableName: $e');
+          details[tableName] = {'created': false, 'error': e.toString()};
+        }
       } else {
         details[tableName] = {'exists': true};
+      }
+    }
+
+    for (final tableName in actualTables) {
+      if (!expectedTables.contains(tableName)) {
+        issues.add('Unrecognized table $tableName found');
+        try {
+          await db.execute('DROP TABLE IF EXISTS $tableName');
+          fixes.add('Dropped unrecognized table $tableName');
+          details[tableName] = {'dropped': true};
+        } catch (e) {
+          issues.add('Failed to drop table $tableName: $e');
+          details[tableName] = {'dropped': false, 'error': e.toString()};
+        }
       }
     }
 
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
-  /// Creates a single table by name
-  Future<void> _createSingleTable(Database db, String tableName) async {
-    switch (tableName) {
-      case 'favorite':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS favorite (
-            filename TEXT PRIMARY KEY,
-            added_at REAL
-          )
-        ''');
-        break;
-      case 'suggestless':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS suggestless (
-            filename TEXT PRIMARY KEY,
-            added_at REAL
-          )
-        ''');
-        break;
-      case 'hidden':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS hidden (
-            filename TEXT PRIMARY KEY,
-            hidden_at REAL
-          )
-        ''');
-        break;
-      case 'playlist':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS playlist (
-            id TEXT PRIMARY KEY,
-            name TEXT,
-            created_at REAL,
-            updated_at REAL
-          )
-        ''');
-        break;
-      case 'playlist_song':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS playlist_song (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            playlist_id TEXT,
-            song_filename TEXT,
-            added_at REAL,
-            FOREIGN KEY (playlist_id) REFERENCES playlist (id)
-          )
-        ''');
-        break;
-      case 'merged_song_group':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS merged_song_group (
-            id TEXT PRIMARY KEY,
-            priority_filename TEXT,
-            created_at REAL
-          )
-        ''');
-        break;
-      case 'merged_song':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS merged_song (
-            filename TEXT PRIMARY KEY,
-            group_id TEXT,
-            added_at REAL,
-            FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
-          )
-        ''');
-        break;
-      case 'mood_tag':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS mood_tag (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            normalized_name TEXT UNIQUE NOT NULL,
-            is_preset INTEGER DEFAULT 0,
-            created_at REAL
-          )
-        ''');
-        break;
-      case 'song_mood':
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS song_mood (
-            song_filename TEXT NOT NULL,
-            mood_id TEXT NOT NULL,
-            added_at REAL,
-            source TEXT DEFAULT 'manual',
-            PRIMARY KEY (song_filename, mood_id),
-            FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
-          )
-        ''');
-        break;
-    }
-  }
-
-  /// Ensures all columns exist in user data tables
+  /// Dynamically checks every canonical table's columns: adds missing ones and
+  /// drops unrecognized ones. Columns that are part of a PRIMARY KEY or are
+  /// referenced by an index cannot be dropped by SQLite and are skipped with a warning.
   Future<Map<String, dynamic>> _ensureUserDataColumns(Database db) async {
     final issues = <String>[];
     final fixes = <String>[];
     final details = <String, dynamic>{};
 
-    // Define expected columns for each table
-    final expectedColumns = <String, List<Map<String, dynamic>>>{
-      'merged_song_group': [
-        {'name': 'id', 'type': 'TEXT'},
-        {'name': 'priority_filename', 'type': 'TEXT'},
-        {'name': 'created_at', 'type': 'REAL'},
-      ],
-    };
-
-    for (final entry in expectedColumns.entries) {
+    for (final entry in DatabaseService.userDataExpectedColumns.entries) {
       final tableName = entry.key;
-      final columns = entry.value;
+      final expectedCols = entry.value;
 
-      // Get existing columns
-      final existingCols = await db.rawQuery('PRAGMA table_info($tableName)');
+      final tableExists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [tableName],
+      );
+      if (tableExists.isEmpty) continue;
+
+      final existingColInfo =
+          await db.rawQuery('PRAGMA table_info($tableName)');
       final existingNames =
-          existingCols.map((c) => c['name'] as String).toSet();
+          existingColInfo.map((c) => c['name'] as String).toSet();
+      final pkColNames = existingColInfo
+          .where((c) => (c['pk'] as int? ?? 0) > 0)
+          .map((c) => c['name'] as String)
+          .toSet();
 
-      for (final col in columns) {
-        final colName = col['name'] as String;
+      // Add missing columns
+      for (final colEntry in expectedCols.entries) {
+        final colName = colEntry.key;
+        final colType = colEntry.value;
         if (!existingNames.contains(colName)) {
           issues.add('Table $tableName is missing column $colName');
           try {
-            final colType = col['type'] as String;
             await db
                 .execute('ALTER TABLE $tableName ADD COLUMN $colName $colType');
             fixes.add('Added column $colName to $tableName');
@@ -950,51 +781,72 @@ class DatabaseOptimizerService {
           }
         }
       }
+
+      // Drop unrecognized columns
+      for (final colName in existingNames) {
+        if (expectedCols.containsKey(colName)) continue;
+
+        if (pkColNames.contains(colName)) {
+          // SQLite cannot drop a PK column — it would require recreating the table
+          issues.add(
+              'Unrecognized PK column $colName in $tableName (cannot auto-drop)');
+          continue;
+        }
+
+        issues.add('Unrecognized column $colName in $tableName');
+        try {
+          await db.execute('ALTER TABLE $tableName DROP COLUMN $colName');
+          fixes.add('Dropped unrecognized column $colName from $tableName');
+        } catch (e) {
+          // Column may be referenced by an index or constraint — log but continue
+          issues.add(
+              'Failed to drop column $colName from $tableName (may be in use): $e');
+        }
+      }
+
+      details[tableName] = {'columns_checked': expectedCols.length};
     }
 
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
-  /// Ensures all indexes exist (call AFTER ensuring tables exist)
+  /// Dynamically checks performance indexes against the canonical set,
+  /// creates missing ones and drops unrecognized user-created indexes.
   Future<Map<String, dynamic>> _ensureUserDataIndexes(Database db) async {
     final issues = <String>[];
     final fixes = <String>[];
     final details = <String, dynamic>{};
 
-    // Get existing indexes
-    final existingIndexes = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='index'",
+    final actualResult = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
     );
-    final indexNames = existingIndexes.map((i) => i['name'] as String).toSet();
-
-    // Define expected indexes - only for tables in user_data.db
-    final expectedIndexes = <String, String>{
-      'idx_merged_song_group_id':
-          'CREATE INDEX idx_merged_song_group_id ON merged_song(group_id)',
-      'idx_playlist_song_playlist_id':
-          'CREATE INDEX idx_playlist_song_playlist_id ON playlist_song(playlist_id)',
-      'idx_song_mood_song_filename':
-          'CREATE INDEX idx_song_mood_song_filename ON song_mood(song_filename)',
-      'idx_song_mood_mood_id':
-          'CREATE INDEX idx_song_mood_mood_id ON song_mood(mood_id)',
-      'idx_mood_tag_normalized_name':
-          'CREATE INDEX idx_mood_tag_normalized_name ON mood_tag(normalized_name)',
-    };
+    final actualIndexes = actualResult.map((r) => r['name'] as String).toSet();
+    final expectedIndexes = DatabaseService.userDataIndexSql;
 
     for (final entry in expectedIndexes.entries) {
       final indexName = entry.key;
       final createSql = entry.value;
-
-      if (!indexNames.contains(indexName)) {
+      if (!actualIndexes.contains(indexName)) {
         issues.add('Index $indexName is missing');
         try {
           await db.execute(createSql);
           fixes.add('Created missing index $indexName');
         } catch (e) {
-          // Don't report as issue if table doesn't exist (shouldn't happen)
           if (!e.toString().contains('no such table')) {
             issues.add('Failed to create index $indexName: $e');
           }
+        }
+      }
+    }
+
+    for (final indexName in actualIndexes) {
+      if (!expectedIndexes.containsKey(indexName)) {
+        issues.add('Unrecognized index $indexName found');
+        try {
+          await db.execute('DROP INDEX IF EXISTS $indexName');
+          fixes.add('Dropped unrecognized index $indexName');
+        } catch (e) {
+          issues.add('Failed to drop index $indexName: $e');
         }
       }
     }
@@ -1003,138 +855,120 @@ class DatabaseOptimizerService {
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
-  /// Fixes orphaned records using DatabaseService singleton
-  Future<Map<String, dynamic>> _fixOrphanedRecordsViaService() async {
+  /// Dynamically discovers FK relationships via PRAGMA and removes orphaned rows.
+  Future<Map<String, dynamic>> _fixOrphanedRecords(Database db) async {
     int issuesFound = 0;
     int issuesFixed = 0;
 
     try {
-      final userDataDb = DatabaseService.instance.getUserDataDatabase();
-      if (userDataDb == null) {
-        return {'issuesFound': 0, 'issuesFixed': 0};
-      }
+      final tablesResult = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+      );
 
-      // Check for orphaned playlist_song records
-      final orphanedSongs = await userDataDb.rawQuery('''
-        SELECT ps.id FROM playlist_song ps
-        LEFT JOIN playlist p ON ps.playlist_id = p.id
-        WHERE p.id IS NULL
-      ''');
+      for (final tableRow in tablesResult) {
+        final tableName = tableRow['name'] as String;
+        final fkList = await db.rawQuery('PRAGMA foreign_key_list($tableName)');
 
-      if (orphanedSongs.isNotEmpty) {
-        issuesFound += orphanedSongs.length;
-        for (final row in orphanedSongs) {
-          final id = row['id'];
-          await userDataDb
-              .delete('playlist_song', where: 'id = ?', whereArgs: [id]);
+        for (final fk in fkList) {
+          final fromCol = fk['from'] as String;
+          final parentTable = fk['table'] as String;
+          final toCol = (fk['to'] as String?) ?? 'id';
+
+          try {
+            final orphans = await db.rawQuery('''
+              SELECT t.$fromCol FROM $tableName t
+              LEFT JOIN $parentTable p ON t.$fromCol = p.$toCol
+              WHERE p.$toCol IS NULL AND t.$fromCol IS NOT NULL
+            ''');
+
+            if (orphans.isNotEmpty) {
+              issuesFound += orphans.length;
+              for (final row in orphans) {
+                final val = row[fromCol];
+                await db.delete(
+                  tableName,
+                  where: '$fromCol = ?',
+                  whereArgs: [val],
+                );
+              }
+              issuesFixed += orphans.length;
+            }
+          } catch (e) {
+            debugPrint('Error checking orphans in $tableName.$fromCol: $e');
+          }
         }
-        issuesFixed += orphanedSongs.length;
-      }
-
-      // Check for orphaned merged_song records
-      final orphanedMerged = await userDataDb.rawQuery('''
-        SELECT ms.filename FROM merged_song ms
-        LEFT JOIN merged_song_group msg ON ms.group_id = msg.id
-        WHERE msg.id IS NULL
-      ''');
-
-      if (orphanedMerged.isNotEmpty) {
-        issuesFound += orphanedMerged.length;
-        for (final row in orphanedMerged) {
-          final filename = row['filename'] as String;
-          await userDataDb.delete('merged_song',
-              where: 'filename = ?', whereArgs: [filename]);
-        }
-        issuesFixed += orphanedMerged.length;
       }
     } catch (e) {
-      debugPrint('Error fixing orphaned records via service: $e');
+      debugPrint('Error fixing orphaned records: $e');
     }
 
-    return {
-      'issuesFound': issuesFound,
-      'issuesFixed': issuesFixed,
-    };
+    return {'issuesFound': issuesFound, 'issuesFixed': issuesFixed};
   }
 
-  /// Fixes duplicate entries using DatabaseService singleton
-  Future<Map<String, dynamic>> _fixDuplicatesViaService() async {
+  /// Dynamically finds tables with a `filename` column and a timestamp column,
+  /// then removes duplicate rows by filename keeping the most recent.
+  Future<Map<String, dynamic>> _fixDuplicateRecords(Database db) async {
     int issuesFound = 0;
     int issuesFixed = 0;
 
     try {
-      final userDataDb = DatabaseService.instance.getUserDataDatabase();
-      if (userDataDb == null) {
-        return {'issuesFound': 0, 'issuesFixed': 0};
-      }
+      final tablesResult = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+      );
 
-      // Fix duplicate favorites (keep most recent)
-      final dupFavorites = await userDataDb.rawQuery('''
-        SELECT filename, COUNT(*) as cnt, MAX(added_at) as max_time
-        FROM favorite
-        GROUP BY filename
-        HAVING cnt > 1
-      ''');
+      for (final tableRow in tablesResult) {
+        final tableName = tableRow['name'] as String;
+        final colInfo = await db.rawQuery('PRAGMA table_info($tableName)');
 
-      for (final dup in dupFavorites) {
-        final filename = dup['filename'] as String;
-        final maxTime = dup['max_time'] as double?;
+        final colNames = colInfo.map((c) => c['name'] as String).toSet();
+        if (!colNames.contains('filename')) continue;
 
-        if (maxTime != null) {
-          final deleted = await userDataDb.delete(
-            'favorite',
-            where: 'filename = ? AND added_at < ?',
+        final tsCol = colInfo
+            .where((c) =>
+                (c['name'] as String).endsWith('_at') ||
+                c['name'] == 'timestamp')
+            .map((c) => c['name'] as String)
+            .firstOrNull;
+        if (tsCol == null) continue;
+
+        final duplicates = await db.rawQuery('''
+          SELECT filename, COUNT(*) as cnt, MAX($tsCol) as max_time
+          FROM $tableName
+          GROUP BY filename
+          HAVING cnt > 1
+        ''');
+
+        for (final dup in duplicates) {
+          final filename = dup['filename'] as String;
+          final maxTime = dup['max_time'];
+          if (maxTime == null) continue;
+
+          final deleted = await db.delete(
+            tableName,
+            where: 'filename = ? AND $tsCol < ?',
             whereArgs: [filename, maxTime],
           );
-
-          issuesFound += ((dup['cnt'] as num) - 1).toInt();
-          issuesFixed += deleted;
-        }
-      }
-
-      // Fix duplicate suggestless entries
-      final dupSuggestless = await userDataDb.rawQuery('''
-        SELECT filename, COUNT(*) as cnt, MAX(added_at) as max_time
-        FROM suggestless
-        GROUP BY filename
-        HAVING cnt > 1
-      ''');
-
-      for (final dup in dupSuggestless) {
-        final filename = dup['filename'] as String;
-        final maxTime = dup['max_time'] as double?;
-
-        if (maxTime != null) {
-          final deleted = await userDataDb.delete(
-            'suggestless',
-            where: 'filename = ? AND added_at < ?',
-            whereArgs: [filename, maxTime],
-          );
-
           issuesFound += ((dup['cnt'] as num) - 1).toInt();
           issuesFixed += deleted;
         }
       }
     } catch (e) {
-      debugPrint('Error fixing duplicates via service: $e');
+      debugPrint('Error fixing duplicate records: $e');
     }
 
-    return {
-      'issuesFound': issuesFound,
-      'issuesFixed': issuesFixed,
-    };
+    return {'issuesFound': issuesFound, 'issuesFixed': issuesFixed};
   }
 
   /// Recovers a corrupted user data database by backing it up and creating a new one
   Future<void> _recoverCorruptedUserDataDatabase(String dbPath) async {
-    // Backup the corrupted file
     final backupPath =
         '$dbPath.corrupted.${DateTime.now().millisecondsSinceEpoch}';
     await File(dbPath).rename(backupPath);
 
-    // Create new database with proper schema
     final db = await openDatabase(dbPath, version: 1);
-    await _createUserDataSchema(db);
+    for (final sql in DatabaseService.userDataTableSql.values) {
+      await db.execute(sql);
+    }
     await db.close();
 
     debugPrint(
@@ -1236,4 +1070,28 @@ class DatabaseOptimizerService {
       );
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Test-visible wrappers (internal use only)
+  // ---------------------------------------------------------------------------
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> ensureUserDataTablesForTest(Database db) =>
+      _ensureUserDataTables(db);
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> ensureUserDataColumnsForTest(Database db) =>
+      _ensureUserDataColumns(db);
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> ensureUserDataIndexesForTest(Database db) =>
+      _ensureUserDataIndexes(db);
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> fixOrphanedRecordsForTest(Database db) =>
+      _fixOrphanedRecords(db);
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> fixDuplicateRecordsForTest(Database db) =>
+      _fixDuplicateRecords(db);
 }

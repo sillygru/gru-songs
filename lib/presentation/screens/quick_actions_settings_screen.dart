@@ -131,35 +131,36 @@ class _QuickActionsSettingsScreenState
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: CustomScrollView(
+        slivers: [
           if (enabledActions.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.check_circle,
-                    size: 16,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'ENABLED (${enabledActions.length})',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      size: 16,
                       color: Theme.of(context).colorScheme.primary,
-                      letterSpacing: 1.2,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      'ENABLED (${enabledActions.length})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            Expanded(
-              flex: 3,
-              child: ReorderableListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverReorderableList(
                 itemCount: enabledActions.length,
                 onReorder: (oldIndex, newIndex) {
                   setState(() {
@@ -186,46 +187,51 @@ class _QuickActionsSettingsScreenState
             ),
           ],
           if (disabledActions.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.disabled_by_default,
-                    size: 16,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'DISABLED (${disabledActions.length})',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.disabled_by_default,
+                      size: 16,
                       color: Theme.of(context).colorScheme.outline,
-                      letterSpacing: 1.2,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      'DISABLED (${disabledActions.length})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.outline,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            Expanded(
-              flex: 2,
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: disabledActions.length,
-                itemBuilder: (context, index) {
-                  final action = disabledActions[index];
-                  return _buildActionTile(
-                    key: ValueKey(action),
-                    action: action,
-                    enabled: false,
-                    index: index,
-                  );
-                },
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final action = disabledActions[index];
+                    return _buildActionTile(
+                      key: ValueKey(action),
+                      action: action,
+                      enabled: false,
+                      index: index,
+                    );
+                  },
+                  childCount: disabledActions.length,
+                ),
               ),
             ),
           ],
-          const SizedBox(height: 16),
+          const SliverToBoxAdapter(
+            child: SizedBox(height: 100),
+          ),
         ],
       ),
     );

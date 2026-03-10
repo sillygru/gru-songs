@@ -105,6 +105,16 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
               ),
             ],
           ),
+          _buildSettingsGroup(
+            title: 'Recommendations',
+            icon: Icons.auto_awesome_rounded,
+            children: [
+              _buildOperationTile(
+                id: 'rebuild_recommendations',
+                icon: Icons.auto_awesome_rounded,
+              ),
+            ],
+          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -189,7 +199,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     } else if (hasError) {
       subtitle = 'Error: ${operation.errorMessage ?? 'Unknown error'}';
     } else if (isCompleted) {
-      if (operation.isDatabaseOperation) {
+      if (operation.isDatabaseOperation ||
+          operation.isRecommendationOperation) {
         subtitle = 'Completed';
       } else {
         subtitle =
@@ -197,8 +208,9 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
       }
     } else {
       // Not running and not completed
-      if (operation.isDatabaseOperation) {
-        subtitle = 'Ready to optimize';
+      if (operation.isDatabaseOperation ||
+          operation.isRecommendationOperation) {
+        subtitle = 'Ready to rebuild';
       } else if (operation.processedCount == 0 && operation.totalCount > 0) {
         subtitle = '0/${operation.totalCount} cached';
       } else {
@@ -363,8 +375,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
       return;
     }
 
-    // For database operations, just show cancel/do-it dialog
-    if (operation.isDatabaseOperation) {
+    // For database or recommendation operations, just show cancel/do-it dialog
+    if (operation.isDatabaseOperation || operation.isRecommendationOperation) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -423,7 +435,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
 
       if (confirmed != true) return;
       await _startOperation(operation,
-          force: false, warningMessage: warningMessage);
+          force: operation.isRecommendationOperation,
+          warningMessage: warningMessage);
       return;
     }
 

@@ -13,6 +13,7 @@ import '../services/cache_service.dart';
 import '../services/database_optimizer_service.dart';
 import '../domain/services/search_service.dart';
 import '../data/repositories/song_repository.dart';
+import 'providers.dart';
 
 /// Represents the state of an indexer operation
 enum IndexerOperationState {
@@ -84,6 +85,7 @@ class IndexerOperation {
   bool get isFullyCached =>
       processedCount > 0 && processedCount == totalCount && totalCount > 0;
   bool get isDatabaseOperation => id == 'optimize_databases';
+  bool get isRecommendationOperation => id == 'rebuild_recommendations';
 }
 
 /// State for all indexer operations
@@ -185,6 +187,13 @@ class IndexerNotifier extends Notifier<IndexerState> {
         isBlocking: false,
         requiresRestart: false,
       ),
+      'rebuild_recommendations': const IndexerOperation(
+        id: 'rebuild_recommendations',
+        name: 'Rebuild Recommendations',
+        description: 'Force rebuild all recommendation playlists',
+        isBlocking: false,
+        requiresRestart: false,
+      ),
     };
 
     return IndexerState(operations: operations, isInitialized: true);
@@ -243,6 +252,13 @@ class IndexerNotifier extends Notifier<IndexerState> {
       processedCount: colorCount,
       totalCount: totalSongs,
       targetCount: totalSongs - colorCount,
+    );
+
+    updatedOperations['rebuild_recommendations'] =
+        updatedOperations['rebuild_recommendations']!.copyWith(
+      processedCount: 0,
+      totalCount: 6, // 6 recommendation types
+      targetCount: 6,
     );
 
     state = state.copyWith(operations: updatedOperations);
@@ -441,9 +457,29 @@ class IndexerNotifier extends Notifier<IndexerState> {
         return await _rebuildWaveformCache(songs, force: force);
       case 'rebuild_color_cache':
         return await _rebuildColorCache(songs, force: force);
+      case 'rebuild_recommendations':
+        return await _rebuildRecommendations();
       default:
         return const IndexerResult(
             success: false, message: 'Unknown operation');
+    }
+  }
+
+  Future<IndexerResult> _rebuildRecommendations() async {
+    try {
+      await ref
+          .read(userDataProvider.notifier)
+          .updateRecommendationPlaylists(force: true);
+      _updateProgress('rebuild_recommendations', 6, 6);
+      return const IndexerResult(
+        success: true,
+        message: 'Recommendation playlists successfully rebuilt',
+      );
+    } catch (e) {
+      return IndexerResult(
+        success: false,
+        message: 'Error rebuilding recommendations: $e',
+      );
     }
   }
 
