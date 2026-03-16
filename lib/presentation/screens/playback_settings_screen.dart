@@ -56,6 +56,19 @@ class _PlaybackSettingsScreenState
                       .setAutoResumeOnVolumeRestore(val);
                 },
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.screen_lock_portrait_outlined),
+                title: const Text('Keep Screen Awake on Lyrics'),
+                subtitle: const Text(
+                  'Prevent screen sleep while full-screen lyrics is open',
+                ),
+                value: settings.keepScreenAwakeOnLyrics,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setKeepScreenAwakeOnLyrics(val);
+                },
+              ),
             ],
           ),
           _buildSettingsGroup(

@@ -9,6 +9,7 @@ import '../screens/playlists_screen.dart';
 import '../screens/artists_screen.dart';
 import '../screens/albums_screen.dart';
 import '../screens/session_history_screen.dart';
+import '../screens/queue_history_screen.dart';
 
 class AppDrawer extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -200,6 +201,14 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                             color: Colors.tealAccent,
                             onTap: () =>
                                 _navigateTo(const SessionHistoryScreen()),
+                          ),
+                          _buildNavItem(
+                            context,
+                            icon: Icons.queue_music_rounded,
+                            label: 'Queue History',
+                            color: Colors.amberAccent,
+                            onTap: () =>
+                                _navigateTo(const QueueHistoryScreen()),
                           ),
                           const Padding(
                             padding: EdgeInsets.symmetric(

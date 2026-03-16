@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/song.dart';
 import '../../providers/settings_provider.dart';
 import 'theme_selection_screen.dart';
 import 'quick_actions_settings_screen.dart';
@@ -74,6 +75,32 @@ class _AppearanceSettingsScreenState
                 onChanged: (val) {
                   ref.read(settingsProvider.notifier).setShowSongDuration(val);
                 },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_size_select_large_outlined),
+                title: const Text('Player Cover Sizing'),
+                subtitle:
+                    const Text('Auto-fit or preserve source aspect ratio'),
+                trailing: DropdownButton<PlayerCoverSizingMode>(
+                  value: settings.coverSizingMode,
+                  underline: const SizedBox.shrink(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setCoverSizingMode(value);
+                  },
+                  items: const [
+                    DropdownMenuItem(
+                      value: PlayerCoverSizingMode.autoFit,
+                      child: Text('Auto Fit'),
+                    ),
+                    DropdownMenuItem(
+                      value: PlayerCoverSizingMode.sourceAspect,
+                      child: Text('Source Size'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

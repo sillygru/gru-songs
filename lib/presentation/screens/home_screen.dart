@@ -11,16 +11,18 @@ import '../../services/android_storage_service.dart';
 import '../../services/telemetry_service.dart';
 import '../../services/library_logic.dart';
 import '../../models/song.dart';
+import '../../models/queue_snapshot.dart';
 import '../../services/audio_player_manager.dart';
-import '../../providers/session_history_provider.dart';
+import '../../providers/queue_history_provider.dart';
 import '../../providers/mixed_playlists_provider.dart';
 import '../../providers/auto_mood_mix_provider.dart';
 import '../../models/playlist.dart';
 import 'song_list_screen.dart';
-import 'session_detail_screen.dart';
+import 'queue_history_screen.dart';
 import '../widgets/folder_grid_image.dart';
 import '../widgets/sort_menu.dart';
 import 'search_screen.dart';
+import 'player_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -319,9 +321,181 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  void _showMixOptions(BuildContext context, WidgetRef ref, String id,
-      String currentTitle, String? description, List<Song> songs, bool isPinned,
-      {bool isSession = false}) {
+  Widget _buildQueueCard(
+    BuildContext context,
+    WidgetRef ref,
+    QueueSnapshot snapshot,
+    AudioPlayerManager audioManager,
+    ThemeData theme,
+  ) {
+    final colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: GestureDetector(
+        onTap: () {
+          _showQueueApplySheet(
+              context, ref, snapshot, audioManager, colorScheme);
+        },
+        child: SizedBox(
+          width: 120,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  Icons.queue_music_rounded,
+                  size: 48,
+                  color: colorScheme.onSecondaryContainer,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                snapshot.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              Text(
+                snapshot.displayDate,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: Colors.white54, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showQueueApplySheet(
+    BuildContext context,
+    WidgetRef ref,
+    QueueSnapshot snapshot,
+    AudioPlayerManager audioManager,
+    ColorScheme colorScheme,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Consumer(
+        builder: (ctx, innerRef, _) {
+          final songsAsync =
+              innerRef.watch(queueSnapshotSongsProvider(snapshot.id));
+          return Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            padding: const EdgeInsets.all(20),
+            child: songsAsync.when(
+              loading: () => const SizedBox(
+                height: 100,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (_, __) => const SizedBox(height: 80),
+              data: (songs) => SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      snapshot.name,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${songs.length} ${songs.length == 1 ? 'track' : 'tracks'} · ${snapshot.displayDate}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        audioManager.replaceQueue(songs,
+                            playlistId: snapshot.source, forceLinear: true);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Playing ${songs.length} tracks'),
+                            action: SnackBarAction(
+                              label: 'Open Player',
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const PlayerScreen()),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text('Play Now'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 52),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        audioManager.setPendingQueueReplacement(songs,
+                            playlistId: snapshot.source);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                '${songs.length} tracks will play after current song'),
+                            action: SnackBarAction(
+                              label: 'Cancel',
+                              onPressed:
+                                  audioManager.cancelPendingQueueReplacement,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.skip_next_rounded),
+                      label: const Text('Play After Current Song'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showMixOptions(
+      BuildContext context,
+      WidgetRef ref,
+      String id,
+      String currentTitle,
+      String? description,
+      List<Song> songs,
+      bool isPinned) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -516,26 +690,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           final topRecommendations = ref.watch(recommendationsProvider);
           final mixedPlaylists = ref.watch(mixedPlaylistsProvider);
-          final sessionHistory = ref.watch(sessionHistoryProvider).value ?? [];
+          final queueHistory = ref.watch(queueHistoryProvider).value ?? [];
 
-          final recentSessions = sessionHistory.where((s) {
-            if (s.songCount <= 0) return false;
-            if (userData.removedRecommendations.contains(s.id)) return false;
-            return true;
-          }).toList();
-
-          // Sort recent sessions: Pinned ones first
-          recentSessions.sort((a, b) {
-            final aPinned =
-                userData.recommendationPreferences[a.id]?.isPinned ?? false;
-            final bPinned =
-                userData.recommendationPreferences[b.id]?.isPinned ?? false;
-            if (aPinned && !bPinned) return -1;
-            if (!aPinned && bPinned) return 1;
-            return 0;
-          });
-
-          final displaySessions = recentSessions.take(10).toList();
+          final displayQueues = queueHistory.take(10).toList();
 
           return RefreshIndicator(
             onRefresh: () async {
@@ -637,121 +794,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 ),
-                if (displaySessions.isNotEmpty) ...[
+                if (displayQueues.isNotEmpty) ...[
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                      child: Text(
-                        'Repeat previous queue?',
-                        style: theme.textTheme.titleLarge,
+                      padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Recent Queues',
+                            style: theme.textTheme.titleLarge,
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const QueueHistoryScreen()),
+                            ),
+                            child: const Text('See All'),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: SizedBox(
-                      height: 180,
+                      height: 160,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: displaySessions.length,
+                        itemCount: displayQueues.length,
                         itemBuilder: (context, index) {
-                          final session = displaySessions[index];
-                          final sessionSongs = (session.events ?? [])
-                              .map((e) => e.song)
-                              .whereType<Song>()
-                              .toList();
-
-                          if (sessionSongs.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-
-                          final pref =
-                              userData.recommendationPreferences[session.id];
-                          final isPinned = pref?.isPinned ?? false;
-                          final displayTitle =
-                              pref?.customTitle ?? session.displayDate;
-
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        SessionDetailScreen(session: session),
-                                  ),
-                                );
-                              },
-                              onLongPress: () {
-                                _showMixOptions(context, ref, session.id,
-                                    displayTitle, null, sessionSongs, isPinned,
-                                    isSession: true);
-                              },
-                              child: SizedBox(
-                                width: 120,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Stack(
-                                      children: [
-                                        Container(
-                                          width: 120,
-                                          height: 120,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.05),
-                                            borderRadius:
-                                                BorderRadius.circular(20),
-                                          ),
-                                          child: FolderGridImage(
-                                            songs: sessionSongs,
-                                            size: 120,
-                                          ),
-                                        ),
-                                        if (isPinned)
-                                          Positioned(
-                                            top: 8,
-                                            right: 8,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black
-                                                    .withValues(alpha: 0.6),
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: Icon(
-                                                  Icons.push_pin_rounded,
-                                                  size: 12,
-                                                  color: theme
-                                                      .colorScheme.primary),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      displayTitle,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13),
-                                    ),
-                                    Text(
-                                      '${sessionSongs.length} tracks',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                              color: Colors.white54,
-                                              fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
+                          final snapshot = displayQueues[index];
+                          return _buildQueueCard(
+                              context, ref, snapshot, audioManager, theme);
                         },
                       ),
                     ),

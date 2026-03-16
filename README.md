@@ -57,7 +57,5 @@ This was originally a personal side project, so there might be leftovers of old 
 
 ## License
 
-Copyright © 2026 gru — source-available, custom terms.
-Personal use and small code snippets are welcome. Commercial use,
-redistribution, and republishing are not permitted.
-See [LICENSE](LICENSE) for full terms · gru@gru0.dev
+Copyright (c) 2026 gru — Licensed under PolyForm Noncommercial License 1.0.0.
+See [LICENSE](LICENSE) for full terms.

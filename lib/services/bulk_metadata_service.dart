@@ -88,6 +88,8 @@ class BulkMetadataPlan {
       playCount: song.playCount,
       duration: song.duration,
       mtime: song.mtime,
+      createdEpochSec: song.createdEpochSec,
+      songDateEpochSec: song.songDateEpochSec,
     );
   }
 

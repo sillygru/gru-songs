@@ -426,6 +426,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         playCount: newCount,
         duration: s.duration,
         mtime: s.mtime,
+        createdEpochSec: s.createdEpochSec,
+        songDateEpochSec: s.songDateEpochSec,
       );
     }).toList();
 
@@ -575,6 +577,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
                   playCount: s.playCount,
                   duration: s.duration,
                   mtime: s.mtime,
+                  createdEpochSec: s.createdEpochSec,
+                  songDateEpochSec: s.songDateEpochSec,
                 )
               else
                 s,
@@ -614,6 +618,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
                   playCount: s.playCount,
                   duration: s.duration,
                   mtime: s.mtime,
+                  createdEpochSec: s.createdEpochSec,
+                  songDateEpochSec: s.songDateEpochSec,
                 )
               else
                 s,
@@ -675,6 +681,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
                 playCount: s.playCount,
                 duration: s.duration,
                 mtime: newMtime,
+                createdEpochSec: s.createdEpochSec,
+                songDateEpochSec: s.songDateEpochSec,
               )
             else
               s,
@@ -900,6 +908,8 @@ Song _extractFeatFromSong(Song song) {
     playCount: song.playCount,
     duration: song.duration,
     mtime: song.mtime,
+    createdEpochSec: song.createdEpochSec,
+    songDateEpochSec: song.songDateEpochSec,
   );
 }
 

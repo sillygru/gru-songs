@@ -148,6 +148,14 @@ class LibraryLogic {
         sorted.sort((a, b) => calculateScore(b).compareTo(calculateScore(a)));
 
         break;
+
+      case SongSortOrder.songDate:
+        sorted.sort((a, b) {
+          final songDateA = a.songDateEpochSec ?? 0;
+          final songDateB = b.songDateEpochSec ?? 0;
+          return songDateB.compareTo(songDateA); // Newest release first
+        });
+        break;
     }
 
     return sorted;

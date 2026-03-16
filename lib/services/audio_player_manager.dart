@@ -8,6 +8,7 @@ import 'dart:math';
 import 'dart:async'; // For Timer
 import '../models/song.dart';
 import '../models/queue_item.dart';
+import '../models/queue_snapshot.dart';
 import '../models/shuffle_config.dart';
 import 'stats_service.dart';
 import 'storage_service.dart';
@@ -39,6 +40,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // Flag to restrict auto-generation to original queue (e.g. for folder shuffle)
   bool _isRestrictedToOriginal = false;
+
+  // Active queue snapshot ID for auto-save tracking
+  String? _currentQueueSnapshotId;
+
+  // Pending queue replacement (fires when current song ends)
+  List<Song>? _pendingQueueSongs;
+  String? _pendingQueuePlaylistId;
+  final ValueNotifier<bool> pendingQueueNotifier = ValueNotifier(false);
 
   // User data for weighting (Fallback / Offline)
   List<String> _favorites = [];
@@ -277,6 +286,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
 
     _savePlaybackState();
+
+    if (contextQueue != null) {
+      await _saveQueueSnapshot(contextQueue, playlistId: playlistId);
+    }
   }
 
   void _initStatsListeners() {
@@ -405,6 +418,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _updateEffectivePlaybackMode(song);
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
+
+          // Apply pending queue replacement on song change
+          if (_pendingQueueSongs != null) {
+            final pendingSongs = _pendingQueueSongs!;
+            final pendingPlaylistId = _pendingQueuePlaylistId;
+            _pendingQueueSongs = null;
+            _pendingQueuePlaylistId = null;
+            pendingQueueNotifier.value = false;
+            replaceQueue(pendingSongs,
+                playlistId: pendingPlaylistId, forceLinear: true);
+          }
 
           // Extract color from cover
           if (song != null && _ref != null) {
@@ -1418,6 +1442,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
       _isRestrictedToOriginal = false;
       await playSong(songs[randomIdx], startPlaying: true);
+      await _saveQueueSnapshot(songs, playlistId: null);
     }
   }
 
@@ -1435,6 +1460,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     List<Song> songs, {
     String? playlistId,
     bool forceLinear = false,
+    bool saveSnapshot = true,
   }) async {
     if (songs.isEmpty) return;
     _currentPlaylistId = playlistId;
@@ -1468,8 +1494,77 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
+    if (saveSnapshot) {
+      await _saveQueueSnapshot(songs, playlistId: playlistId);
+    }
+
     _savePlaybackState();
     _updateQueueNotifier();
+  }
+
+  Future<void> _saveQueueSnapshot(List<Song> songs,
+      {String? playlistId}) async {
+    final snapshot = QueueSnapshot.create(
+      name: _buildSnapshotName(songs, playlistId: playlistId),
+      songFilenames: songs.map((s) => s.filename).toList(),
+      source: playlistId ?? 'shuffle',
+    );
+    _currentQueueSnapshotId = snapshot.id;
+    try {
+      await DatabaseService.instance.saveQueueSnapshot(
+        snapshot.id,
+        snapshot.name,
+        snapshot.createdAt,
+        snapshot.source,
+        snapshot.songFilenames,
+      );
+    } catch (e) {
+      debugPrint('Failed to save queue snapshot: $e');
+    }
+  }
+
+  String _buildSnapshotName(List<Song> songs, {String? playlistId}) {
+    if (playlistId != null && playlistId != 'quick_picks') {
+      if (songs.isNotEmpty) {
+        final artists = songs.map((s) => s.artist).whereType<String>().toSet();
+        if (artists.length == 1) return artists.first;
+        if (artists.length <= 3) return artists.join(', ');
+      }
+    }
+    if (songs.isNotEmpty) {
+      final firstSong = songs.first;
+      if (firstSong.album.isNotEmpty) {
+        return firstSong.album;
+      }
+    }
+    final now = DateTime.now();
+    final h = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final m = now.minute.toString().padLeft(2, '0');
+    final ampm = now.hour >= 12 ? 'PM' : 'AM';
+    return 'Queue at $h:$m $ampm';
+  }
+
+  Future<void> _updateCurrentSnapshotSongs() async {
+    final id = _currentQueueSnapshotId;
+    if (id == null) return;
+    final filenames = _effectiveQueue.map((q) => q.song.filename).toList();
+    try {
+      await DatabaseService.instance.updateQueueSnapshotSongs(id, filenames);
+    } catch (e) {
+      debugPrint('Failed to update queue snapshot: $e');
+    }
+  }
+
+  void setPendingQueueReplacement(List<Song> songs, {String? playlistId}) {
+    _pendingQueueSongs = songs;
+    _pendingQueuePlaylistId = playlistId;
+    pendingQueueNotifier.value = true;
+  }
+
+  void cancelPendingQueueReplacement() {
+    _pendingQueueSongs = null;
+    _pendingQueuePlaylistId = null;
+    pendingQueueNotifier.value = false;
   }
 
   Future<void> _applyShuffle(int currentIndex) async {
@@ -1922,6 +2017,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
+      _updateCurrentSnapshotSongs();
     });
   }
 
@@ -1946,6 +2042,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
+      _updateCurrentSnapshotSongs();
     });
   }
 
@@ -1963,6 +2060,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
+      _updateCurrentSnapshotSongs();
     });
   }
 
@@ -1979,6 +2077,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
+      _updateCurrentSnapshotSongs();
     });
   }
 
@@ -2001,6 +2100,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       _updateQueueNotifier();
       _savePlaybackState();
+      _updateCurrentSnapshotSongs();
     });
   }
 

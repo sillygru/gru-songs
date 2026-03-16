@@ -7,6 +7,12 @@ enum SongSortOrder {
   album,
   playCount,
   recommended,
+  songDate,
+}
+
+enum PlayerCoverSizingMode {
+  autoFit,
+  sourceAspect,
 }
 
 class Song extends Equatable {
@@ -30,6 +36,8 @@ class Song extends Equatable {
   final int playCount;
   final Duration? duration;
   final double? mtime;
+  final double? createdEpochSec;
+  final double? songDateEpochSec;
 
   const Song({
     required this.title,
@@ -42,6 +50,8 @@ class Song extends Equatable {
     this.playCount = 0,
     this.duration,
     this.mtime,
+    this.createdEpochSec,
+    this.songDateEpochSec,
   });
 
   factory Song.fromJson(Map<String, dynamic> json) {
@@ -58,6 +68,8 @@ class Song extends Equatable {
           ? Duration(milliseconds: (json['duration'] * 1000).round())
           : null,
       mtime: json['mtime']?.toDouble(),
+      createdEpochSec: json['created_epoch_sec']?.toDouble(),
+      songDateEpochSec: json['song_date_epoch_sec']?.toDouble(),
     );
   }
 
@@ -73,6 +85,8 @@ class Song extends Equatable {
       'play_count': playCount,
       if (duration != null) 'duration': duration!.inMilliseconds / 1000.0,
       if (mtime != null) 'mtime': mtime,
+      if (createdEpochSec != null) 'created_epoch_sec': createdEpochSec,
+      if (songDateEpochSec != null) 'song_date_epoch_sec': songDateEpochSec,
     };
   }
 
@@ -87,7 +101,9 @@ class Song extends Equatable {
         hasLyrics,
         playCount,
         duration,
-        mtime
+        mtime,
+        createdEpochSec,
+        songDateEpochSec,
       ];
 
   bool get hasVideo {

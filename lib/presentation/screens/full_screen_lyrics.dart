@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../providers/settings_provider.dart';
+import '../../services/screen_wake_lock_service.dart';
 import '../widgets/lyrics_line.dart';
 import '../widgets/album_art_image.dart';
 
@@ -39,14 +42,21 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   bool _autoScrollEnabled = true;
   bool _isAutoScrolling = false;
   bool _isUserInteracting = false;
+  bool _isTransitioningSong = false;
   int _currentLyricIndex = -1;
   Duration _lastKnownPlayerPosition = Duration.zero;
   DateTime _lastAutoScrollAt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastUserInteractionAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _autoResumeTimer;
   StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<SequenceState?>? _sequenceSubscription;
   Timer? _positionPollTimer;
   double _dismissOverscrollAccumulator = 0;
+  ProviderSubscription<SettingsState>? _settingsSubscription;
+  bool _lyricsWakeLockHeld = false;
+
+  late String _activeSongId;
+  late List<LyricLine> _activeLyrics;
 
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
 
@@ -67,9 +77,12 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   @override
   void initState() {
     super.initState();
+    _activeSongId = widget.songId;
+    _activeLyrics = List<LyricLine>.from(widget.lyrics);
+
     final initialPosition = widget.initialPosition ?? player.position;
     _lastKnownPlayerPosition = initialPosition;
-    if (widget.lyrics.isNotEmpty) {
+    if (_activeLyrics.isNotEmpty) {
       final initialIndex =
           _findLyricIndexAt(initialPosition + _positionLookAhead);
       if (initialIndex >= 0) {
@@ -77,7 +90,15 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
         _currentIndexNotifier.value = initialIndex;
       }
     }
+
     _setupPositionListener();
+    _setupSequenceListener();
+    _settingsSubscription = ref.listenManual<SettingsState>(
+      settingsProvider,
+      (_, __) => unawaited(_syncLyricsWakeLock()),
+    );
+    unawaited(_syncLyricsWakeLock());
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncToCurrentPosition(forceScroll: true);
       Future.delayed(const Duration(milliseconds: 120), () {
@@ -92,16 +113,84 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
       _updateCurrentLyricIndex(position);
     });
 
-    // Position stream can be bursty on some devices after seek/scrub.
-    // A light poll keeps lyric highlight and blur in lockstep with playback.
     _positionPollTimer = Timer.periodic(_positionPollInterval, (_) {
       if (!mounted) return;
       _updateCurrentLyricIndex(player.position);
     });
   }
 
+  void _setupSequenceListener() {
+    _sequenceSubscription = player.sequenceStateStream.listen((state) {
+      if (!mounted || _isTransitioningSong) return;
+      final tag = state.currentSource?.tag;
+      if (tag is! MediaItem || tag.id == _activeSongId) return;
+      unawaited(_handleSongChange(tag.id));
+    });
+  }
+
+  Future<void> _syncLyricsWakeLock() async {
+    final shouldKeepAwake = ref.read(settingsProvider).keepScreenAwakeOnLyrics;
+    if (shouldKeepAwake && !_lyricsWakeLockHeld) {
+      _lyricsWakeLockHeld = true;
+      await ScreenWakeLockService.instance.acquire('lyrics_screen');
+    } else if (!shouldKeepAwake && _lyricsWakeLockHeld) {
+      _lyricsWakeLockHeld = false;
+      await ScreenWakeLockService.instance.release('lyrics_screen');
+    }
+  }
+
+  Future<void> _handleSongChange(String newSongId) async {
+    _isTransitioningSong = true;
+    try {
+      final songs = ref.read(songsProvider).asData?.value ?? const <Song>[];
+      Song? nextSong;
+      for (final song in songs) {
+        if (song.filename == newSongId) {
+          nextSong = song;
+          break;
+        }
+      }
+      if (!mounted) return;
+      if (nextSong == null) {
+        Navigator.of(context).maybePop();
+        return;
+      }
+
+      final repo = ref.read(songRepositoryProvider);
+      final lyricsContent = await repo.getLyrics(nextSong);
+      if (!mounted) return;
+
+      final parsedLyrics = lyricsContent == null
+          ? const <LyricLine>[]
+          : LyricLine.parse(lyricsContent);
+      if (parsedLyrics.isEmpty) {
+        Navigator.of(context).maybePop();
+        return;
+      }
+      _lineKeys.clear();
+      _dismissOverscrollAccumulator = 0;
+      _lastKnownPlayerPosition = player.position;
+
+      setState(() {
+        _activeSongId = nextSong!.filename;
+        _activeLyrics = parsedLyrics;
+        _autoScrollEnabled = true;
+        _isUserInteracting = false;
+        _currentLyricIndex = -1;
+        _currentIndexNotifier.value = -1;
+      });
+
+      _syncToCurrentPosition(forceScroll: true);
+      Future.delayed(const Duration(milliseconds: 120), () {
+        if (mounted) _syncToCurrentPosition(forceScroll: true);
+      });
+    } finally {
+      _isTransitioningSong = false;
+    }
+  }
+
   void _updateCurrentLyricIndex(Duration position) {
-    if (widget.lyrics.isEmpty) return;
+    if (_activeLyrics.isEmpty) return;
     final adjustedPosition = position + _positionLookAhead;
     final newIndex = _findLyricIndexAt(adjustedPosition);
     final positionDelta = position - _lastKnownPlayerPosition;
@@ -140,9 +229,9 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
 
   int _findLyricIndexAt(Duration position) {
     int result = -1;
-    for (int i = 0; i < widget.lyrics.length; i++) {
-      final lineTime = widget.lyrics[i].time;
-      if (!widget.lyrics[i].isSynced) continue;
+    for (int i = 0; i < _activeLyrics.length; i++) {
+      final lineTime = _activeLyrics[i].time;
+      if (!_activeLyrics[i].isSynced) continue;
       if (lineTime <= position) {
         result = i;
       } else {
@@ -238,8 +327,8 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     final maxScroll = _scrollController.position.maxScrollExtent;
     final context = key?.currentContext;
     if (context == null) {
-      if (widget.lyrics.length <= 1) return 0;
-      return (maxScroll * (index / (widget.lyrics.length - 1)))
+      if (_activeLyrics.length <= 1) return 0;
+      return (maxScroll * (index / (_activeLyrics.length - 1)))
           .clamp(0.0, maxScroll)
           .toDouble();
     }
@@ -253,12 +342,10 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   }
 
   void _seekToLyric(int index) {
-    if (index < 0 || index >= widget.lyrics.length) return;
-    if (!widget.lyrics[index].isSynced) return;
-    final time = widget.lyrics[index].time;
+    if (index < 0 || index >= _activeLyrics.length) return;
+    if (!_activeLyrics[index].isSynced) return;
+    final time = _activeLyrics[index].time;
 
-    // Optimistically update UI for immediate feedback, then reconcile via
-    // position stream/poll after the player seek settles.
     if (index != _currentIndexNotifier.value) {
       _currentIndexNotifier.value = index;
       setState(() => _currentLyricIndex = index);
@@ -282,6 +369,12 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     _autoResumeTimer?.cancel();
     _positionSubscription?.cancel();
     _positionPollTimer?.cancel();
+    _sequenceSubscription?.cancel();
+    _settingsSubscription?.close();
+    if (_lyricsWakeLockHeld) {
+      unawaited(ScreenWakeLockService.instance.release('lyrics_screen'));
+      _lyricsWakeLockHeld = false;
+    }
     super.dispose();
   }
 
@@ -292,7 +385,7 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   @override
   Widget build(BuildContext context) {
     final extractedColor = _getExtractedColor();
-    final hasTimedLyrics = widget.lyrics.any((l) => l.isSynced);
+    final hasTimedLyrics = _activeLyrics.any((l) => l.isSynced);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -311,7 +404,7 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
         Positioned.fill(
           child: AlbumArtImage(
             url: '',
-            filename: widget.songId,
+            filename: _activeSongId,
             fit: BoxFit.cover,
           ),
         ),
@@ -364,9 +457,23 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
           Column(
             children: [
               Expanded(
-                child: widget.lyrics.isEmpty
-                    ? _buildEmptyState()
-                    : _buildLyricsList(hasTimedLyrics),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+                  child: _activeLyrics.isEmpty
+                      ? KeyedSubtree(
+                          key: const ValueKey('lyrics-empty'),
+                          child: _buildEmptyState(),
+                        )
+                      : KeyedSubtree(
+                          key: ValueKey('lyrics$_activeSongId'),
+                          child: _buildLyricsList(hasTimedLyrics),
+                        ),
+                ),
               ),
             ],
           ),
@@ -454,12 +561,12 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
           child: ListView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.fromLTRB(8, 88, 8, 136),
-            itemCount: widget.lyrics.length,
+            itemCount: _activeLyrics.length,
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             itemBuilder: (context, index) {
-              final line = widget.lyrics[index];
+              final line = _activeLyrics[index];
               final hasTime = line.isSynced;
               final key = _lineKeys.putIfAbsent(
                 index,

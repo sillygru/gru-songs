@@ -26,6 +26,8 @@ class SettingsState {
   final bool includeVideos;
   final double playFadeDuration;
   final double pauseFadeDuration;
+  final bool keepScreenAwakeOnLyrics;
+  final PlayerCoverSizingMode coverSizingMode;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -49,6 +51,8 @@ class SettingsState {
     this.includeVideos = true,
     this.playFadeDuration = 0.3,
     this.pauseFadeDuration = 0.3,
+    this.keepScreenAwakeOnLyrics = true,
+    this.coverSizingMode = PlayerCoverSizingMode.autoFit,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -73,6 +77,8 @@ class SettingsState {
     bool? includeVideos,
     double? playFadeDuration,
     double? pauseFadeDuration,
+    bool? keepScreenAwakeOnLyrics,
+    PlayerCoverSizingMode? coverSizingMode,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -103,6 +109,9 @@ class SettingsState {
       includeVideos: includeVideos ?? this.includeVideos,
       playFadeDuration: playFadeDuration ?? this.playFadeDuration,
       pauseFadeDuration: pauseFadeDuration ?? this.pauseFadeDuration,
+      keepScreenAwakeOnLyrics:
+          keepScreenAwakeOnLyrics ?? this.keepScreenAwakeOnLyrics,
+      coverSizingMode: coverSizingMode ?? this.coverSizingMode,
     );
   }
 }
@@ -129,6 +138,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyIncludeVideos = 'include_videos';
   static const _keyPlayFadeDuration = 'play_fade_duration';
   static const _keyPauseFadeDuration = 'pause_fade_duration';
+  static const _keyKeepScreenAwakeOnLyrics = 'keep_screen_awake_on_lyrics';
+  static const _keyCoverSizingMode = 'cover_sizing_mode';
   static const double maxDelayDuration = 12.0;
 
   @override
@@ -140,6 +151,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final sortOrderIndex = prefs.getInt(_keySortOrder);
+    final coverSizingModeIndex = prefs.getInt(_keyCoverSizingMode);
     state = SettingsState(
       visualizerEnabled: prefs.getBool(_keyVisualizerEnabled) ?? true,
       telemetryLevel: prefs.getInt(_keyTelemetryLevel) ?? 1,
@@ -168,6 +180,13 @@ class SettingsNotifier extends Notifier<SettingsState> {
       includeVideos: prefs.getBool(_keyIncludeVideos) ?? true,
       playFadeDuration: prefs.getDouble(_keyPlayFadeDuration) ?? 0.3,
       pauseFadeDuration: prefs.getDouble(_keyPauseFadeDuration) ?? 0.3,
+      keepScreenAwakeOnLyrics:
+          prefs.getBool(_keyKeepScreenAwakeOnLyrics) ?? true,
+      coverSizingMode: coverSizingModeIndex != null &&
+              coverSizingModeIndex >= 0 &&
+              coverSizingModeIndex < PlayerCoverSizingMode.values.length
+          ? PlayerCoverSizingMode.values[coverSizingModeIndex]
+          : PlayerCoverSizingMode.autoFit,
     );
   }
 
@@ -381,6 +400,18 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(pauseFadeDuration: value.clamp(0.0, 1.0));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyPauseFadeDuration, value.clamp(0.0, 1.0));
+  }
+
+  Future<void> setKeepScreenAwakeOnLyrics(bool enabled) async {
+    state = state.copyWith(keepScreenAwakeOnLyrics: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyKeepScreenAwakeOnLyrics, enabled);
+  }
+
+  Future<void> setCoverSizingMode(PlayerCoverSizingMode mode) async {
+    state = state.copyWith(coverSizingMode: mode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyCoverSizingMode, mode.index);
   }
 }
 

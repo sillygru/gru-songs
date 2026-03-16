@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../services/audio_player_manager.dart';
+import '../../services/screen_wake_lock_service.dart';
 import '../widgets/heart_context_menu.dart';
 import '../widgets/waveform_progress_bar.dart';
 import '../widgets/basic_progress_bar.dart';
@@ -74,6 +75,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   VideoPlayerController? _videoController;
   String? _videoSongId;
   bool _isVideoReady = false;
+  bool _videoWakeLockHeld = false;
 
   AudioPlayerManager? _audioManagerInstance;
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
@@ -176,6 +178,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
     _audioManager.effectiveMediaModeNotifier
         .addListener(_handleMediaModeChanged);
+    unawaited(_syncVideoWakeLock());
   }
 
   void _onPlayingNotifierChanged() {
@@ -226,6 +229,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         .removeListener(_handleMediaModeChanged);
     _audioManagerInstance?.playingNotifier
         .removeListener(_onPlayingNotifierChanged);
+    if (_videoWakeLockHeld) {
+      unawaited(ScreenWakeLockService.instance.release('video_mode'));
+      _videoWakeLockHeld = false;
+    }
     unawaited(_disposeVideoController(notify: false));
     _playPauseController.dispose();
     _dragController.dispose();
@@ -240,7 +247,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _handleMediaModeChanged() {
     final tag = player.sequenceState.currentSource?.tag;
     final mediaItem = tag is MediaItem ? tag : null;
+    unawaited(_syncVideoWakeLock());
     unawaited(_syncVideoForCurrentTrack(mediaItem));
+  }
+
+  Future<void> _syncVideoWakeLock() async {
+    final shouldKeepAwake =
+        _audioManager.effectiveMediaMode == PlaybackMediaMode.video;
+    if (shouldKeepAwake && !_videoWakeLockHeld) {
+      _videoWakeLockHeld = true;
+      await ScreenWakeLockService.instance.acquire('video_mode');
+    } else if (!shouldKeepAwake && _videoWakeLockHeld) {
+      _videoWakeLockHeld = false;
+      await ScreenWakeLockService.instance.release('video_mode');
+    }
   }
 
   bool _hasVideoExtension(String path) {
@@ -347,9 +367,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (isNetworkPath) {
       controller = VideoPlayerController.networkUrl(
         Uri.parse(track.mediaPath!),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
     } else {
-      controller = VideoPlayerController.file(File(track.mediaPath!));
+      controller = VideoPlayerController.file(
+        File(track.mediaPath!),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
     }
 
     try {
@@ -807,6 +831,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     MediaItem metadata,
     ThemeState themeState,
   ) {
+    final coverSizingMode = ref.watch(
+      settingsProvider.select((s) => s.coverSizingMode),
+    );
+    final coverFit = coverSizingMode == PlayerCoverSizingMode.autoFit
+        ? BoxFit.cover
+        : BoxFit.contain;
     final canShowVideo =
         _audioManager.effectiveMediaMode == PlaybackMediaMode.video &&
             _isVideoReady &&
@@ -854,6 +884,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                 duration: const Duration(milliseconds: 380),
                                 curve: Curves.easeInOut,
                                 decoration: BoxDecoration(
+                                  color: coverFit == BoxFit.contain
+                                      ? Colors.black
+                                      : Colors.transparent,
                                   borderRadius: BorderRadius.circular(radius),
                                   boxShadow: canShowVideo
                                       ? []
@@ -871,7 +904,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                   child: canShowVideo
                                       ? SizedBox.expand(
                                           child: FittedBox(
-                                            fit: BoxFit.cover,
+                                            fit: coverFit,
                                             clipBehavior: Clip.hardEdge,
                                             child: SizedBox(
                                               width: _videoController!
@@ -890,7 +923,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                           width: constraints.maxWidth,
                                           height: constraints.maxWidth,
                                           cacheWidth: 800,
-                                          fit: BoxFit.cover,
+                                          fit: coverFit,
                                         ),
                                 ),
                               ),
@@ -1584,29 +1617,39 @@ class _AnimatedFavoriteButtonState extends State<_AnimatedFavoriteButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnim;
+  late Animation<double> _rotationAnim;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 380),
+      duration: const Duration(milliseconds: 450),
     );
+
     _scaleAnim = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.45)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 40,
+        tween: Tween(begin: 1.0, end: 1.4)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 35,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.45, end: 0.9)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 30,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 0.9, end: 1.0)
+        tween: Tween(begin: 1.4, end: 1.0)
             .chain(CurveTween(curve: Curves.elasticOut)),
-        weight: 30,
+        weight: 65,
+      ),
+    ]).animate(_controller);
+
+    _rotationAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 0.18)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.18, end: 0.0)
+            .chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 65,
       ),
     ]).animate(_controller);
   }
@@ -1627,29 +1670,37 @@ class _AnimatedFavoriteButtonState extends State<_AnimatedFavoriteButton>
 
   @override
   Widget build(BuildContext context) {
+    final themeColor = Theme.of(context).colorScheme.primary;
+
     return GestureDetector(
       onLongPress: widget.onLongPress,
       child: AnimatedBuilder(
-        animation: _scaleAnim,
+        animation: _controller,
         builder: (context, child) {
           return Transform.scale(
             scale: _scaleAnim.value,
-            child: child,
+            child: Transform.rotate(
+              angle: _rotationAnim.value,
+              child: child,
+            ),
           );
         },
         child: IconButton(
           icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
+            duration: const Duration(milliseconds: 250),
             transitionBuilder: (child, animation) => ScaleTransition(
               scale: animation,
-              child: child,
+              child: FadeTransition(
+                opacity: animation,
+                child: child,
+              ),
             ),
             child: Icon(
               widget.isFav ? Icons.favorite : Icons.favorite_border,
               key: ValueKey(widget.isFav),
+              color: widget.isFav ? themeColor : Colors.white,
             ),
           ),
-          color: widget.isFav ? Colors.redAccent : Colors.white,
           onPressed: widget.onToggle,
           iconSize: 28,
         ),

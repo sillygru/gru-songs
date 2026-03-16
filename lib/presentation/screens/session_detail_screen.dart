@@ -378,7 +378,7 @@ class SessionDetailScreen extends ConsumerWidget {
     ColorScheme colorScheme,
   ) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border(
@@ -388,30 +388,52 @@ class SessionDetailScreen extends ConsumerWidget {
         ),
       ),
       child: SafeArea(
-        child: FilledButton.icon(
-          onPressed: () => _repeatQueue(context, ref, events),
-          icon: const Icon(Icons.repeat),
-          label: const Text(
-            'Repeat Queue',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+        child: Column(
+          children: [
+            FilledButton.icon(
+              onPressed: () =>
+                  _repeatQueue(context, ref, events, whenSongEnds: false),
+              icon: const Icon(Icons.repeat),
+              label: const Text(
+                'Repeat Queue Now',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
             ),
-          ),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(double.infinity, 56),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _repeatQueue(context, ref, events, whenSongEnds: true),
+              icon: const Icon(Icons.skip_next_rounded),
+              label: const Text(
+                'Play After Current Song',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );
   }
 
   Future<void> _repeatQueue(
-      BuildContext context, WidgetRef ref, List<SessionEvent> events) async {
-    // Get songs from events (in order, oldest to newest)
+      BuildContext context, WidgetRef ref, List<SessionEvent> events,
+      {bool whenSongEnds = false}) async {
     final songs =
         events.where((e) => e.song != null).map((e) => e.song!).toList();
 
@@ -424,8 +446,23 @@ class SessionDetailScreen extends ConsumerWidget {
 
     final audioManager = ref.read(audioPlayerManagerProvider);
 
-    // Replace queue - the audio manager will handle skipping the first song
-    // if it's currently playing
+    if (whenSongEnds) {
+      audioManager.setPendingQueueReplacement(songs, playlistId: session.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${songs.length} ${songs.length == 1 ? 'song' : 'songs'} will play after current song'),
+          action: SnackBarAction(
+            label: 'Cancel',
+            onPressed: audioManager.cancelPendingQueueReplacement,
+          ),
+        ),
+      );
+      Navigator.pop(context);
+      return;
+    }
+
     await audioManager.replaceQueue(songs,
         playlistId: session.id, forceLinear: true);
 

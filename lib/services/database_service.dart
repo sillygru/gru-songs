@@ -212,7 +212,9 @@ class DatabaseService {
           has_lyrics INTEGER,
           play_count INTEGER,
           duration_ms INTEGER,
-          mtime REAL
+          mtime REAL,
+          created_epoch_sec REAL,
+          song_date_epoch_sec REAL
         )
     ''');
     await db.execute('''
@@ -282,6 +284,24 @@ class DatabaseService {
           FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
         )
     ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS queue_snapshot (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at REAL NOT NULL,
+          source TEXT NOT NULL,
+          song_count INTEGER NOT NULL DEFAULT 0
+        )
+    ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS queue_snapshot_song (
+          snapshot_id TEXT NOT NULL,
+          song_filename TEXT NOT NULL,
+          position INTEGER NOT NULL,
+          PRIMARY KEY (snapshot_id, position),
+          FOREIGN KEY (snapshot_id) REFERENCES queue_snapshot (id) ON DELETE CASCADE
+        )
+    ''');
 
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
     await _addColumnIfNotExists(
@@ -289,6 +309,8 @@ class DatabaseService {
     await _addColumnIfNotExists(db, 'playlist', 'description', 'TEXT');
     await _addColumnIfNotExists(
         db, 'playlist', 'is_recommendation', 'INTEGER DEFAULT 0');
+    await _addColumnIfNotExists(db, 'song', 'created_epoch_sec', 'REAL');
+    await _addColumnIfNotExists(db, 'song', 'song_date_epoch_sec', 'REAL');
 
     // 3. Create indexes for the song table
     await db
@@ -298,11 +320,19 @@ class DatabaseService {
     await db
         .execute('CREATE INDEX IF NOT EXISTS idx_song_mtime ON song(mtime)');
     await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_song_created_epoch_sec ON song(created_epoch_sec)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_song_date_epoch_sec ON song(song_date_epoch_sec)');
+    await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_song_mood_song_filename ON song_mood(song_filename)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_song_mood_mood_id ON song_mood(mood_id)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_mood_tag_normalized_name ON mood_tag(normalized_name)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_queue_snapshot_created_at ON queue_snapshot(created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_queue_snapshot_song_snapshot_id ON queue_snapshot_song(snapshot_id)');
   }
 
   // ignore: unused_element
@@ -452,6 +482,125 @@ class DatabaseService {
   }
 
   // ==========================================================================
+  // QUEUE SNAPSHOT QUERIES
+  // ==========================================================================
+
+  Future<void> saveQueueSnapshot(String id, String name, double createdAt,
+      String source, List<String> songFilenames) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.insert(
+        'queue_snapshot',
+        {
+          'id': id,
+          'name': name,
+          'created_at': createdAt,
+          'source': source,
+          'song_count': songFilenames.length,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      await txn.delete('queue_snapshot_song',
+          where: 'snapshot_id = ?', whereArgs: [id]);
+
+      final batch = txn.batch();
+      for (int i = 0; i < songFilenames.length; i++) {
+        batch.insert('queue_snapshot_song', {
+          'snapshot_id': id,
+          'song_filename': songFilenames[i],
+          'position': i,
+        });
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<void> updateQueueSnapshotSongs(
+      String id, List<String> songFilenames) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('queue_snapshot_song',
+          where: 'snapshot_id = ?', whereArgs: [id]);
+
+      final batch = txn.batch();
+      for (int i = 0; i < songFilenames.length; i++) {
+        batch.insert('queue_snapshot_song', {
+          'snapshot_id': id,
+          'song_filename': songFilenames[i],
+          'position': i,
+        });
+      }
+      await batch.commit(noResult: true);
+
+      await txn.update(
+        'queue_snapshot',
+        {'song_count': songFilenames.length},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getQueueSnapshots() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+
+    try {
+      return await _userDataDatabase!.query(
+        'queue_snapshot',
+        orderBy: 'created_at DESC',
+      );
+    } catch (e) {
+      debugPrint('Error getting queue snapshots: $e');
+      return [];
+    }
+  }
+
+  Future<List<String>> getQueueSnapshotSongs(String snapshotId) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+
+    try {
+      final results = await _userDataDatabase!.query(
+        'queue_snapshot_song',
+        where: 'snapshot_id = ?',
+        whereArgs: [snapshotId],
+        orderBy: 'position ASC',
+      );
+      return results.map((r) => r['song_filename'] as String).toList();
+    } catch (e) {
+      debugPrint('Error getting queue snapshot songs: $e');
+      return [];
+    }
+  }
+
+  Future<void> deleteQueueSnapshot(String id) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('queue_snapshot_song',
+          where: 'snapshot_id = ?', whereArgs: [id]);
+      await txn.delete('queue_snapshot', where: 'id = ?', whereArgs: [id]);
+    });
+  }
+
+  Future<void> clearQueueHistory() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('queue_snapshot_song');
+      await txn.delete('queue_snapshot');
+    });
+  }
+
+  // ==========================================================================
   // SONG QUERIES
   // ==========================================================================
 
@@ -475,6 +624,8 @@ class DatabaseService {
             'play_count': song.playCount,
             'duration_ms': song.duration?.inMilliseconds,
             'mtime': song.mtime,
+            'created_epoch_sec': song.createdEpochSec,
+            'song_date_epoch_sec': song.songDateEpochSec,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -553,6 +704,8 @@ class DatabaseService {
           ? Duration(milliseconds: r['duration_ms'] as int)
           : null,
       mtime: (r['mtime'] as num?)?.toDouble(),
+      createdEpochSec: (r['created_epoch_sec'] as num?)?.toDouble(),
+      songDateEpochSec: (r['song_date_epoch_sec'] as num?)?.toDouble(),
     );
   }
 
@@ -2159,7 +2312,9 @@ class DatabaseService {
       has_lyrics INTEGER,
       play_count INTEGER,
       duration_ms INTEGER,
-      mtime REAL
+      mtime REAL,
+      created_epoch_sec REAL,
+      song_date_epoch_sec REAL
     )''',
     'playlist': '''CREATE TABLE IF NOT EXISTS playlist (
       id TEXT PRIMARY KEY,
@@ -2247,6 +2402,8 @@ class DatabaseService {
       'play_count': 'INTEGER',
       'duration_ms': 'INTEGER',
       'mtime': 'REAL',
+      'created_epoch_sec': 'REAL',
+      'song_date_epoch_sec': 'REAL',
     },
     'playlist': {
       'id': 'TEXT',
@@ -2305,6 +2462,10 @@ class DatabaseService {
         'CREATE INDEX IF NOT EXISTS idx_song_album ON song(album)',
     'idx_song_mtime':
         'CREATE INDEX IF NOT EXISTS idx_song_mtime ON song(mtime)',
+    'idx_song_created_epoch_sec':
+        'CREATE INDEX IF NOT EXISTS idx_song_created_epoch_sec ON song(created_epoch_sec)',
+    'idx_song_date_epoch_sec':
+        'CREATE INDEX IF NOT EXISTS idx_song_date_epoch_sec ON song(song_date_epoch_sec)',
     'idx_song_mood_song_filename':
         'CREATE INDEX IF NOT EXISTS idx_song_mood_song_filename ON song_mood(song_filename)',
     'idx_song_mood_mood_id':

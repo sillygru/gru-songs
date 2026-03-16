@@ -505,6 +505,14 @@ class IndexerNotifier extends Notifier<IndexerState> {
       {bool force = false}) async {
     int processed = 0;
     final failedItems = <String>[];
+    Future<bool> hasValidCache(File file) async {
+      try {
+        if (!await file.exists()) return false;
+        return await file.length() > 0;
+      } catch (_) {
+        return false;
+      }
+    }
 
     // Pre-calculate target count by checking which songs don't have cached covers
     int targetCount = songs.length;
@@ -529,7 +537,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
             '_ffmpeg.jpg'
           ]) {
             final cachedFile = File('${coversDir.path}/${hash}_$mtimeMs$ext');
-            if (await cachedFile.exists()) {
+            if (await hasValidCache(cachedFile)) {
               hasCover = true;
               break;
             }
@@ -580,6 +588,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
             playCount: song.playCount,
             duration: song.duration,
             mtime: song.mtime,
+            createdEpochSec: song.createdEpochSec,
+            songDateEpochSec: song.songDateEpochSec,
           ));
         }
       } catch (e) {

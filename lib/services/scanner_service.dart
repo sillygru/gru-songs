@@ -89,6 +89,15 @@ class ScannerService {
     return _videoExtensions.contains(ext);
   }
 
+  static Future<bool> _isValidCoverFile(File file) async {
+    try {
+      if (!await file.exists()) return false;
+      return await file.length() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Extracts video thumbnails (via FFmpeg frame grab) for any video-format
   /// songs that still have no cover art. This must be called on the main thread
   /// after scanning because FFmpegService uses platform channels.
@@ -113,7 +122,7 @@ class ScannerService {
       if (!_isVideoFile(song.url)) continue;
       if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
         final existing = File(song.coverUrl!);
-        if (await existing.exists()) continue;
+        if (await _isValidCoverFile(existing)) continue;
       }
       toProcess.add(i);
     }
@@ -148,7 +157,7 @@ class ScannerService {
         ]) {
           final candidate =
               File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-          if (await candidate.exists()) {
+          if (await _isValidCoverFile(candidate)) {
             existing = candidate.path;
             break;
           }
@@ -197,6 +206,8 @@ class ScannerService {
       playCount: song.playCount,
       duration: song.duration,
       mtime: song.mtime,
+      createdEpochSec: song.createdEpochSec,
+      songDateEpochSec: song.songDateEpochSec,
     );
   }
 
@@ -611,7 +622,7 @@ class ScannerService {
         ]) {
           final candidate =
               File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-          if (await candidate.exists()) {
+          if (await _isValidCoverFile(candidate)) {
             existing = candidate.path;
             break;
           }
@@ -665,7 +676,7 @@ class ScannerService {
             for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
               final cachedFile =
                   File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-              if (await cachedFile.exists()) {
+              if (await _isValidCoverFile(cachedFile)) {
                 resolvedCoverUrl = cachedFile.path;
                 break;
               }
@@ -812,6 +823,8 @@ class ScannerService {
             playCount: updatedPlayCount,
             duration: existingSong.duration,
             mtime: currentMtime,
+            createdEpochSec: existingSong.createdEpochSec,
+            songDateEpochSec: existingSong.songDateEpochSec,
           ));
         } else {
           RandomAccessFile? lockHandle;
@@ -865,14 +878,16 @@ class ScannerService {
     Duration? duration;
     String? coverUrl;
     bool hasLyrics = false;
+    double? songDateEpochSec;
+    final fileStat = await file.stat();
+    final createdEpochSec = fileStat.changed.millisecondsSinceEpoch / 1000.0;
 
     // Calculate mtimeMs for cache lookup
     int mtimeMs;
     if (mtime != null) {
       mtimeMs = (mtime * 1000).round();
     } else {
-      final stat = await file.stat();
-      mtimeMs = stat.modified.millisecondsSinceEpoch;
+      mtimeMs = fileStat.modified.millisecondsSinceEpoch;
     }
 
     final hash = md5.convert(utf8.encode(file.path)).toString();
@@ -880,7 +895,7 @@ class ScannerService {
     // Check for valid cache first (hash_mtimeMs.ext)
     for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
       final cachedFile = File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-      if (await cachedFile.exists()) {
+      if (await _isValidCoverFile(cachedFile)) {
         coverUrl = cachedFile.path;
         break;
       }
@@ -896,6 +911,10 @@ class ScannerService {
         if (metadata.title?.isNotEmpty == true) title = metadata.title!;
         if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
         if (metadata.album?.isNotEmpty == true) album = metadata.album!;
+        if (metadata.year != null) {
+          songDateEpochSec =
+              metadata.year!.millisecondsSinceEpoch.toDouble() / 1000.0;
+        }
         duration = metadata.duration;
 
         // Check for embedded lyrics using audio_metadata_reader
@@ -945,8 +964,9 @@ class ScannerService {
       hasLyrics: hasLyrics,
       playCount: playCounts[filename] ?? 0,
       duration: duration,
-      mtime:
-          mtime ?? (await file.stat()).modified.millisecondsSinceEpoch / 1000.0,
+      mtime: mtime ?? fileStat.modified.millisecondsSinceEpoch / 1000.0,
+      createdEpochSec: createdEpochSec,
+      songDateEpochSec: songDateEpochSec,
     );
   }
 
