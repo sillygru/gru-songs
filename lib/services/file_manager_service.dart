@@ -139,7 +139,7 @@ class FileManagerService {
       final isMp4Container = ext == '.m4a' || ext == '.mp4';
 
       // 1. Update metadata in the actual song file
-      if (isMp4Container && Platform.isAndroid) {
+      if (isMp4Container) {
         await _updateCoverWithFFmpeg(song.url, imagePath);
       } else {
         await updateMetadataInternal(song.url,

@@ -1,0 +1,42 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      - name: Set iOS Info.plist values
+        run: |
+          flutter build ios --release --no-codesign
+      
+      - name: Find IPA
+        id: find_ipa
+        run: |
+          IPA_PATH=$(find build/ios/iphoneos -name "*.ipa" 2>/dev/null | head -1)
+          if [ -z "$IPA_PATH" ]; then
+            IPA_PATH=$(find build -name "*.ipa" 2>/dev/null | head -1)
+          fi
+          echo "Found IPA at: $IPA_PATH"
+          echo "ipa_path=$IPA_PATH" >> $GITHUB_OUTPUT
+      
+      - name: Upload IPA
+        if: steps.find_ipa.outputs.ipa_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: wispie-release-ipa
+          path: ${{ steps.find_ipa.outputs.ipa_path }}
+          retention-days: 7

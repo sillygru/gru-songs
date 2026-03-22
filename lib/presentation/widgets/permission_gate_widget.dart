@@ -18,6 +18,15 @@ class PermissionGateWidget extends StatelessWidget {
       } else if (status.isPermanentlyDenied) {
         await openAppSettings();
       }
+    } else if (Platform.isIOS) {
+      final status = await Permission.photos.request();
+      if (status.isGranted || status.isLimited) {
+        onPermissionGranted();
+      } else if (status.isPermanentlyDenied) {
+        await openAppSettings();
+      } else {
+        onPermissionGranted();
+      }
     } else {
       onPermissionGranted();
     }
