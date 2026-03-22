@@ -20,6 +20,7 @@ class SettingsState {
   final int autoBackupFrequencyHours;
   final int autoBackupDeleteAfterDays;
   final bool preventDuplicateTracks;
+  final bool preventMergedDuplicates;
   final bool extractFeatArtists;
   final int minimumFileSizeBytes;
   final int minimumTrackDurationMs;
@@ -45,6 +46,7 @@ class SettingsState {
     this.autoBackupFrequencyHours = 0,
     this.autoBackupDeleteAfterDays = 0,
     this.preventDuplicateTracks = true,
+    this.preventMergedDuplicates = true,
     this.extractFeatArtists = false,
     this.minimumFileSizeBytes = 102400,
     this.minimumTrackDurationMs = 10000,
@@ -71,6 +73,7 @@ class SettingsState {
     int? autoBackupFrequencyHours,
     int? autoBackupDeleteAfterDays,
     bool? preventDuplicateTracks,
+    bool? preventMergedDuplicates,
     bool? extractFeatArtists,
     int? minimumFileSizeBytes,
     int? minimumTrackDurationMs,
@@ -102,6 +105,8 @@ class SettingsState {
           autoBackupDeleteAfterDays ?? this.autoBackupDeleteAfterDays,
       preventDuplicateTracks:
           preventDuplicateTracks ?? this.preventDuplicateTracks,
+      preventMergedDuplicates:
+          preventMergedDuplicates ?? this.preventMergedDuplicates,
       extractFeatArtists: extractFeatArtists ?? this.extractFeatArtists,
       minimumFileSizeBytes: minimumFileSizeBytes ?? this.minimumFileSizeBytes,
       minimumTrackDurationMs:
@@ -132,6 +137,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyAutoBackupFrequencyHours = 'auto_backup_frequency_hours';
   static const _keyAutoBackupDeleteAfterDays = 'auto_backup_delete_after_days';
   static const _keyPreventDuplicateTracks = 'prevent_duplicate_tracks';
+  static const _keyPreventMergedDuplicates = 'prevent_merged_duplicates';
   static const _keyExtractFeatArtists = 'extract_feat_artists';
   static const _keyMinimumFileSizeBytes = 'minimum_file_size_bytes';
   static const _keyMinimumTrackDurationMs = 'minimum_track_duration_ms';
@@ -174,6 +180,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
       autoBackupDeleteAfterDays:
           prefs.getInt(_keyAutoBackupDeleteAfterDays) ?? 0,
       preventDuplicateTracks: prefs.getBool(_keyPreventDuplicateTracks) ?? true,
+      preventMergedDuplicates:
+          prefs.getBool(_keyPreventMergedDuplicates) ?? true,
       extractFeatArtists: prefs.getBool(_keyExtractFeatArtists) ?? false,
       minimumFileSizeBytes: prefs.getInt(_keyMinimumFileSizeBytes) ?? 102400,
       minimumTrackDurationMs: prefs.getInt(_keyMinimumTrackDurationMs) ?? 10000,
@@ -364,6 +372,12 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(preventDuplicateTracks: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyPreventDuplicateTracks, enabled);
+  }
+
+  Future<void> setPreventMergedDuplicates(bool enabled) async {
+    state = state.copyWith(preventMergedDuplicates: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyPreventMergedDuplicates, enabled);
   }
 
   Future<void> setExtractFeatArtists(bool enabled) async {

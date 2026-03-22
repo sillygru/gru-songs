@@ -265,74 +265,91 @@ class FFmpegService {
   /// Grabs a single video frame and saves it as a JPEG thumbnail.
   ///
   /// Unlike [extractCover] (which does a stream-copy suited for audio files
-  /// with an attached-picture stream), this method seeks to [seekSeconds] and
-  /// decodes exactly one frame from the video track.  This is the correct
+  /// with an attached-picture stream), this method decodes and captures a
+  /// specific frame from the video track. This is the correct
   /// approach for real video files (MP4, MKV, WebM, MOV, AVI, etc.) where
   /// stream 0:v:0 is H.264/VP9/etc. and cannot be "copied" into a JPEG.
   ///
-  /// [seekSeconds] defaults to 5 s.  If the file is shorter the seek is
-  /// clamped to 0 by FFmpeg automatically, so it is safe to use this value
-  /// unconditionally.
+  /// [frameNumber] is 1-based and defaults to 5, so the generated thumbnail
+  /// comes from the 5th decoded frame.
   Future<String?> extractVideoThumbnail({
     required String inputPath,
     required String outputPath,
-    double seekSeconds = 5.0,
+    int frameNumber = 5,
   }) async {
     try {
-      // Input-side seek (-ss before -i) is fast: FFmpeg jumps to the nearest
-      // keyframe before seekSeconds without decoding every prior frame.
-      final session = await FFmpegKit.executeWithArguments([
+      final normalizedFrameNumber = frameNumber < 1 ? 1 : frameNumber;
+
+      // 1) Try stream-copy first. This is fast and succeeds if the source has
+      // an attached picture stream.
+      final copySession = await FFmpegKit.executeWithArguments([
         '-y',
-        '-ss', seekSeconds.toStringAsFixed(3),
-        '-i', inputPath,
-        '-vframes', '1', // exactly one output frame
-        '-q:v', '3', // JPEG quality 1–31, lower = better
-        '-vf', 'scale=\'min(640,iw)\':-2', // cap width at 640 px, keep AR
+        '-i',
+        inputPath,
+        '-map',
+        '0:v:0',
+        '-c',
+        'copy',
         outputPath,
       ]);
-
-      final rc = await session.getReturnCode();
-      if (ReturnCode.isSuccess(rc)) {
-        final file = File(outputPath);
-        if (await file.exists() && await file.length() > 0) {
+      final copyRc = await copySession.getReturnCode();
+      if (ReturnCode.isSuccess(copyRc)) {
+        final copiedFile = File(outputPath);
+        if (await copiedFile.exists() && await copiedFile.length() > 0) {
           return outputPath;
         }
       }
 
-      // Fallback: seek at 0 (in case the file is very short or the keyframe
-      // at 5 s is unavailable).
-      if (kDebugMode) {
-        final logs = await session.getAllLogsAsString();
-        debugPrint(
-            'FFmpegService.extractVideoThumbnail: seek@${seekSeconds}s failed, '
-            'retrying at 0\n$logs');
+      // 2) Prefer a frame around 10% in to avoid blank/intro frames.
+      final durationSec = await _getMediaDurationSeconds(inputPath);
+      final seekSec =
+          durationSec != null && durationSec > 0 ? (durationSec * 0.1) : 0.0;
+      final seekSession = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-ss',
+        seekSec.toStringAsFixed(3),
+        '-i',
+        inputPath,
+        '-frames:v',
+        '1',
+        '-q:v',
+        '3',
+        outputPath,
+      ]);
+      final seekRc = await seekSession.getReturnCode();
+      if (ReturnCode.isSuccess(seekRc)) {
+        final seekFile = File(outputPath);
+        if (await seekFile.exists() && await seekFile.length() > 0) {
+          return outputPath;
+        }
       }
 
-      final session2 = await FFmpegKit.executeWithArguments([
+      // 3) Fallback to selecting a specific decoded frame index.
+      final zeroBasedFrameIndex = normalizedFrameNumber - 1;
+      final selectSession = await FFmpegKit.executeWithArguments([
         '-y',
         '-i',
         inputPath,
+        '-vf',
+        "select='eq(n\\,$zeroBasedFrameIndex)',scale='min(640,iw)':-2",
         '-vframes',
         '1',
         '-q:v',
         '3',
-        '-vf',
-        'scale=\'min(640,iw)\':-2',
         outputPath,
       ]);
-
-      final rc2 = await session2.getReturnCode();
-      if (ReturnCode.isSuccess(rc2)) {
+      final selectRc = await selectSession.getReturnCode();
+      if (ReturnCode.isSuccess(selectRc)) {
         final file = File(outputPath);
         if (await file.exists() && await file.length() > 0) {
           return outputPath;
         }
       }
-
       if (kDebugMode) {
-        final logs2 = await session2.getAllLogsAsString();
+        final logs2 = await selectSession.getAllLogsAsString();
         debugPrint(
-            'FFmpegService.extractVideoThumbnail: fallback also failed\n$logs2');
+            'FFmpegService.extractVideoThumbnail: extraction failed for frame '
+            '$normalizedFrameNumber\n$logs2');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -341,6 +358,22 @@ class FFmpegService {
     }
 
     return null;
+  }
+
+  Future<double?> _getMediaDurationSeconds(String filePath) async {
+    try {
+      final input = _q(filePath);
+      final cmd =
+          '-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $input';
+      final session = await FFprobeKit.execute(cmd);
+      final rc = await session.getReturnCode();
+      if (!ReturnCode.isSuccess(rc)) return null;
+      final output = await session.getOutput();
+      if (output == null) return null;
+      return double.tryParse(output.trim());
+    } catch (_) {
+      return null;
+    }
   }
 
   String _q(String path) {

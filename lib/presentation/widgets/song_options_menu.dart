@@ -611,6 +611,26 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           onTap: _handlePlayNext,
         ),
         _submenuEntry(
+          icon: Icons.queue_music_rounded,
+          label: 'Play Next (Allow Duplicate)',
+          subtitle: 'Add again even if already in queue',
+          onTap: () async {
+            _closePopup();
+            if (widget.song == null) return;
+            ref
+                .read(audioPlayerManagerProvider)
+                .playNext(widget.song!, allowDuplicate: true);
+            if (widget.parentContext.mounted) {
+              ScaffoldMessenger.of(widget.parentContext).showSnackBar(
+                SnackBar(
+                  content: Text('Added to Next Up: ${widget.song!.title}'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            }
+          },
+        ),
+        _submenuEntry(
           icon: Icons.playlist_add_rounded,
           label: 'Add to Playlist',
           subtitle: 'Quick add to your most recent playlist',

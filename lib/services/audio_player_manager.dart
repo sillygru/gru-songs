@@ -208,6 +208,29 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (mergedGroups != null) _mergedGroups = mergedGroups;
   }
 
+  List<String> _getMergedSiblings(String filename) {
+    for (final group in _mergedGroups.values) {
+      if (group.contains(filename)) {
+        return group.where((f) => f != filename).toList();
+      }
+    }
+    return [];
+  }
+
+  int _findSongInQueue(String filename, {bool checkMergedSiblings = false}) {
+    final queueFilenames = _effectiveQueue.map((e) => e.song.filename).toList();
+    final idx = queueFilenames.indexOf(filename);
+    if (idx != -1) return idx;
+    if (checkMergedSiblings) {
+      final siblings = _getMergedSiblings(filename);
+      for (final sibling in siblings) {
+        final siblingIdx = queueFilenames.indexOf(sibling);
+        if (siblingIdx != -1) return siblingIdx;
+      }
+    }
+    return -1;
+  }
+
   Future<void> updateShuffleConfig(ShuffleConfig config) async {
     _shuffleState = _shuffleState.copyWith(config: config);
     shuffleStateNotifier.value = _shuffleState;
@@ -2002,10 +2025,35 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _updateQueueNotifier();
   }
 
-  Future<void> playNext(Song song) async {
+  Future<void> playNext(Song song, {bool allowDuplicate = false}) async {
     await _runSerializedQueueMutation(() async {
       final currentIndex = _player.currentIndex ?? -1;
       final targetIndex = (currentIndex + 1).clamp(0, _effectiveQueue.length);
+
+      final preventMerged =
+          _ref?.read(settingsProvider).preventMergedDuplicates ?? true;
+      final checkMergedSiblings = !allowDuplicate && preventMerged;
+
+      final existingIdx = _findSongInQueue(song.filename,
+          checkMergedSiblings: checkMergedSiblings);
+      if (existingIdx != -1) {
+        final existingItem = _effectiveQueue.removeAt(existingIdx);
+        final actualTargetIndex =
+            (existingIdx >= targetIndex) ? targetIndex : targetIndex - 1;
+        _effectiveQueue.insert(actualTargetIndex, existingItem);
+        try {
+          await _player.moveAudioSource(existingIdx, actualTargetIndex);
+        } catch (e) {
+          _effectiveQueue.removeAt(actualTargetIndex);
+          _effectiveQueue.insert(existingIdx, existingItem);
+          rethrow;
+        }
+        _updateQueueNotifier();
+        _savePlaybackState();
+        _updateCurrentSnapshotSongs();
+        return;
+      }
+
       final item = QueueItem(song: song, isPriority: true);
       _effectiveQueue.insert(targetIndex, item);
       try {

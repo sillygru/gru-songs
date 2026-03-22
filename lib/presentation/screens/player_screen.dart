@@ -41,7 +41,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen>
-    with TickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   late AnimationController _expansionController;
   late AnimationController _controlsController;
   late Animation<double> _artScaleAnimation;
@@ -76,6 +76,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   String? _videoSongId;
   bool _isVideoReady = false;
   bool _videoWakeLockHeld = false;
+  bool _isAppForeground = true;
+  DateTime? _lastVideoDriftCorrectionAt;
+  static const Duration _videoDriftCorrectionInterval =
+      Duration(milliseconds: 1800);
+  static const int _videoDriftCorrectionThresholdMs = 1400;
+  static const int _videoPausedCorrectionThresholdMs = 120;
 
   AudioPlayerManager? _audioManagerInstance;
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
@@ -85,6 +91,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _expansionController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 420),
@@ -162,6 +169,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (!mounted) return;
       // Only sync animation from stream when not fading (fading updates playingNotifier directly)
       _syncVideoPlaybackState();
+      _syncVideoPosition(player.position, force: true);
     });
 
     _audioManager.playingNotifier.addListener(_onPlayingNotifierChanged);
@@ -222,6 +230,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sequenceSubscription?.cancel();
     _playerStateSubscription?.cancel();
     _positionSubscription?.cancel();
@@ -251,8 +260,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(_syncVideoForCurrentTrack(mediaItem));
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final isForeground = state == AppLifecycleState.resumed;
+    if (_isAppForeground == isForeground) return;
+    _isAppForeground = isForeground;
+    unawaited(_syncVideoWakeLock());
+
+    final tag = player.sequenceState.currentSource?.tag;
+    final mediaItem = tag is MediaItem ? tag : null;
+    unawaited(_syncVideoForCurrentTrack(mediaItem));
+  }
+
   Future<void> _syncVideoWakeLock() async {
-    final shouldKeepAwake =
+    final shouldKeepAwake = _isAppForeground &&
         _audioManager.effectiveMediaMode == PlaybackMediaMode.video;
     if (shouldKeepAwake && !_videoWakeLockHeld) {
       _videoWakeLockHeld = true;
@@ -340,7 +361,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final isVideoMode =
         _audioManager.effectiveMediaMode == PlaybackMediaMode.video;
 
-    if (!isVideoMode ||
+    if (!_isAppForeground ||
+        !isVideoMode ||
         track.songId.isEmpty ||
         !track.hasVideo ||
         track.mediaPath == null ||
@@ -353,7 +375,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _videoController != null &&
         _isVideoReady) {
       _syncVideoPlaybackState();
-      _syncVideoPosition(player.position);
+      _syncVideoPosition(player.position, force: true);
       return;
     }
 
@@ -384,6 +406,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       await controller.setLooping(false);
       await controller.setVolume(0.0);
       await controller.seekTo(player.position);
+      _lastVideoDriftCorrectionAt = null;
       _videoController = controller;
       _videoSongId = track.songId;
       _isVideoReady = true;
@@ -402,7 +425,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _syncVideoPlaybackState() {
     final controller = _videoController;
     if (controller == null || !_isVideoReady) return;
-    if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
+    if (!_isAppForeground ||
+        _audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
       controller.pause();
       return;
     }
@@ -413,15 +437,38 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
-  void _syncVideoPosition(Duration position) {
+  void _syncVideoPosition(Duration position, {bool force = false}) {
     final controller = _videoController;
     if (controller == null || !_isVideoReady) return;
-    if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) return;
+    if (!_isAppForeground ||
+        _audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
+      return;
+    }
 
     final videoPosition = controller.value.position;
-    if ((videoPosition - position).abs().inMilliseconds > 350) {
-      controller.seekTo(position);
+    final driftMs = (videoPosition - position).abs().inMilliseconds;
+    if (!player.playing) {
+      if (driftMs > _videoPausedCorrectionThresholdMs) {
+        controller.seekTo(position);
+      }
+      return;
     }
+    if (force) {
+      if (driftMs > 350) {
+        _lastVideoDriftCorrectionAt = DateTime.now();
+        controller.seekTo(position);
+      }
+      return;
+    }
+    if (driftMs < _videoDriftCorrectionThresholdMs) return;
+    final now = DateTime.now();
+    if (_lastVideoDriftCorrectionAt != null &&
+        now.difference(_lastVideoDriftCorrectionAt!) <
+            _videoDriftCorrectionInterval) {
+      return;
+    }
+    _lastVideoDriftCorrectionAt = now;
+    controller.seekTo(position);
   }
 
   Future<void> _disposeVideoController({bool notify = true}) async {
@@ -429,6 +476,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _videoController = null;
     _videoSongId = null;
     _isVideoReady = false;
+    _lastVideoDriftCorrectionAt = null;
     if (controller != null) {
       controller.removeListener(_onVideoControllerUpdated);
       await controller.dispose();
@@ -442,6 +490,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _onVideoControllerUpdated() {
     if (!mounted) return;
     setState(() {});
+  }
+
+  bool _canRenderVideoFor(MediaItem metadata) {
+    return _audioManager.effectiveMediaMode == PlaybackMediaMode.video &&
+        _isVideoReady &&
+        _videoController != null &&
+        _videoSongId == metadata.id &&
+        _videoController!.value.isInitialized;
+  }
+
+  double _currentVideoAspectRatio() {
+    final controller = _videoController;
+    if (controller == null || !controller.value.isInitialized) return 1.0;
+    final ratio = controller.value.aspectRatio;
+    if (ratio <= 0) return 1.0;
+    return ratio;
+  }
+
+  Widget _buildVideoSurface(BoxFit fit) {
+    if (_videoController == null) return const SizedBox.shrink();
+    return SizedBox.expand(
+      child: FittedBox(
+        fit: fit,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: _videoController!.value.size.width,
+          height: _videoController!.value.size.height,
+          child: VideoPlayer(_videoController!),
+        ),
+      ),
+    );
   }
 
   Widget _buildMediaModePill(MediaItem metadata) {
@@ -837,15 +916,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final coverFit = coverSizingMode == PlayerCoverSizingMode.autoFit
         ? BoxFit.cover
         : BoxFit.contain;
-    final canShowVideo =
-        _audioManager.effectiveMediaMode == PlaybackMediaMode.video &&
-            _isVideoReady &&
-            _videoController != null &&
-            _videoSongId == metadata.id &&
-            _videoController!.value.isInitialized;
-
-    final targetAspectRatio =
-        canShowVideo ? _videoController!.value.aspectRatio : 1.0;
+    final canShowVideo = _canRenderVideoFor(metadata);
+    final targetAspectRatio = canShowVideo ? _currentVideoAspectRatio() : 1.0;
     final targetRadius = canShowVideo ? 8.0 : 28.0;
 
     return Center(
@@ -902,20 +974,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(radius),
                                   child: canShowVideo
-                                      ? SizedBox.expand(
-                                          child: FittedBox(
-                                            fit: coverFit,
-                                            clipBehavior: Clip.hardEdge,
-                                            child: SizedBox(
-                                              width: _videoController!
-                                                  .value.size.width,
-                                              height: _videoController!
-                                                  .value.size.height,
-                                              child: VideoPlayer(
-                                                  _videoController!),
-                                            ),
-                                          ),
-                                        )
+                                      ? _buildVideoSurface(coverFit)
                                       : AlbumArtImage(
                                           key: ValueKey('art_${metadata.id}'),
                                           url: _resolveCoverUrl(metadata) ?? '',

@@ -575,8 +575,9 @@ class IndexerNotifier extends Notifier<IndexerState> {
       if (_currentCancelToken?.isCancelled ?? false) break;
 
       try {
+        final hasResolvedCover = coverMap.containsKey(song.url);
         final newCoverUrl = coverMap[song.url];
-        if (newCoverUrl != null && newCoverUrl != song.coverUrl) {
+        if (hasResolvedCover && newCoverUrl != song.coverUrl) {
           updatedSongs.add(Song(
             title: song.title,
             artist: song.artist,

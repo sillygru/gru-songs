@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:audio_metadata_reader/audio_metadata_reader.dart' as amr;
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
+import 'package:image/image.dart' as img;
 import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
@@ -89,10 +90,19 @@ class ScannerService {
     return _videoExtensions.contains(ext);
   }
 
-  static Future<bool> _isValidCoverFile(File file) async {
+  static Future<bool> _isValidCoverFile(
+    File file, {
+    bool requireDecodable = false,
+  }) async {
     try {
       if (!await file.exists()) return false;
-      return await file.length() > 0;
+      if (await file.length() <= 0) return false;
+      if (!requireDecodable) return true;
+
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return false;
+      final decoded = img.decodeImage(bytes);
+      return decoded != null && decoded.width > 0 && decoded.height > 0;
     } catch (_) {
       return false;
     }
@@ -120,9 +130,24 @@ class ScannerService {
     for (int i = 0; i < songs.length; i++) {
       final song = songs[i];
       if (!_isVideoFile(song.url)) continue;
-      if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
-        final existing = File(song.coverUrl!);
-        if (await _isValidCoverFile(existing)) continue;
+      final file = File(song.url);
+      if (!await file.exists()) continue;
+
+      final mtimeMs = song.mtime != null
+          ? (song.mtime! * 1000).round()
+          : (await file.stat()).modified.millisecondsSinceEpoch;
+      final hash = md5.convert(utf8.encode(file.path)).toString();
+      final expectedPrefix = '${hash}_$mtimeMs';
+
+      final existingCoverPath = song.coverUrl;
+      if (existingCoverPath != null && existingCoverPath.isNotEmpty) {
+        final existing = File(existingCoverPath);
+        final isSongScopedCachedCover =
+            p.basename(existingCoverPath).startsWith(expectedPrefix);
+        if (isSongScopedCachedCover &&
+            await _isValidCoverFile(existing, requireDecodable: true)) {
+          continue;
+        }
       }
       toProcess.add(i);
     }
@@ -157,7 +182,7 @@ class ScannerService {
         ]) {
           final candidate =
               File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-          if (await _isValidCoverFile(candidate)) {
+          if (await _isValidCoverFile(candidate, requireDecodable: true)) {
             existing = candidate.path;
             break;
           }
@@ -172,11 +197,12 @@ class ScannerService {
           // extractCover does a stream-copy of 0:v:0 which works for audio
           // files whose video stream is an attached picture, but for real
           // video files that stream is H.264/VP9/etc. and cannot be copied
-          // into a JPEG.  extractVideoThumbnail seeks to 5 s and grabs one
-          // decoded frame instead.
-          final result = await ffmpeg.extractVideoThumbnail(
+          // into a JPEG. extractVideoThumbnail grabs the 5th decoded frame
+          // instead.
+          final result = await _extractVideoThumbnailWithFallback(
             inputPath: file.path,
             outputPath: outputPath,
+            ffmpeg: ffmpeg,
           );
           if (result != null) {
             updated[idx] = _songWithCover(song, result);
@@ -477,30 +503,33 @@ class ScannerService {
     bool useFFmpegFallback = false,
   }) async {
     if (!await file.exists()) return null;
+    final isVideo = _isVideoFile(file.path);
 
-    // Try metadata extraction first
-    try {
-      final metadata = amr.readMetadata(file);
-      if (metadata.pictures.isNotEmpty) {
-        final picture = metadata.pictures.first;
-        final coverExt = _getExtFromMime(picture.mimetype);
-        final coverFile =
-            File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
-        await coverFile.writeAsBytes(picture.bytes);
-        return coverFile.path;
+    // Try metadata extraction first (audio files only).
+    if (!isVideo) {
+      try {
+        final metadata = amr.readMetadata(file);
+        if (metadata.pictures.isNotEmpty) {
+          final picture = metadata.pictures.first;
+          final coverExt = _getExtFromMime(picture.mimetype);
+          final coverFile =
+              File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+          await coverFile.writeAsBytes(picture.bytes);
+          return coverFile.path;
+        }
+      } catch (e) {
+        debugPrint('extractCoverForFile: metadata read failed: $e');
       }
-    } catch (e) {
-      debugPrint('extractCoverForFile: metadata read failed: $e');
-    }
 
-    // Try manual byte-level extraction
-    final manual =
-        await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
-    if (manual != null) return manual;
+      // Try manual byte-level extraction
+      final manual =
+          await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+      if (manual != null) return manual;
+    }
 
     // (Old comment about enabling FFmpeg fallback for Main Isolate only)
     // Actually, we want to try this whenever manual extraction fails, provided we can trust FFmpegService.
-    if (useFFmpegFallback) {
+    if (useFFmpegFallback || isVideo) {
       try {
         debugPrint(
             'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
@@ -510,7 +539,7 @@ class ScannerService {
         String? extracted;
         if (_isVideoFile(file.path)) {
           // For real video files we need a frame-grab, not a stream-copy.
-          extracted = await FFmpegService().extractVideoThumbnail(
+          extracted = await _extractVideoThumbnailWithFallback(
             inputPath: file.path,
             outputPath: coverFile.path,
           );
@@ -622,7 +651,7 @@ class ScannerService {
         ]) {
           final candidate =
               File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-          if (await _isValidCoverFile(candidate)) {
+          if (await _isValidCoverFile(candidate, requireDecodable: true)) {
             existing = candidate.path;
             break;
           }
@@ -633,13 +662,12 @@ class ScannerService {
         } else {
           final outputPath =
               p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg');
-          final result = await ffmpeg.extractVideoThumbnail(
+          final result = await _extractVideoThumbnailWithFallback(
             inputPath: file.path,
             outputPath: outputPath,
+            ffmpeg: ffmpeg,
           );
-          if (result != null) {
-            coverResults[song.url] = result;
-          }
+          coverResults[song.url] = result;
         }
       }
     }
@@ -730,6 +758,23 @@ class ScannerService {
       }
     }
     params.sendPort.send(coverResults);
+  }
+
+  static Future<String?> _extractVideoThumbnailWithFallback({
+    required String inputPath,
+    required String outputPath,
+    FFmpegService? ffmpeg,
+  }) async {
+    final service = ffmpeg ?? FFmpegService();
+    final ffmpegResult = await service.extractVideoThumbnail(
+      inputPath: inputPath,
+      outputPath: outputPath,
+    );
+    if (ffmpegResult != null &&
+        await _isValidCoverFile(File(ffmpegResult), requireDecodable: true)) {
+      return ffmpegResult;
+    }
+    return null;
   }
 
   static Future<void> _isolateScan(_ScanParams params) async {
@@ -881,6 +926,7 @@ class ScannerService {
     double? songDateEpochSec;
     final fileStat = await file.stat();
     final createdEpochSec = fileStat.changed.millisecondsSinceEpoch / 1000.0;
+    final isVideo = _isVideoFile(file.path);
 
     // Calculate mtimeMs for cache lookup
     int mtimeMs;
@@ -895,13 +941,11 @@ class ScannerService {
     // Check for valid cache first (hash_mtimeMs.ext)
     for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
       final cachedFile = File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
-      if (await _isValidCoverFile(cachedFile)) {
+      if (await _isValidCoverFile(cachedFile, requireDecodable: isVideo)) {
         coverUrl = cachedFile.path;
         break;
       }
     }
-
-    final isVideo = _isVideoFile(file.path);
 
     if (!isVideo) {
       // Only use audio_metadata_reader for non-video files — it can crash or
@@ -939,13 +983,13 @@ class ScannerService {
       }
     }
 
-    // For audio: try manual byte-level extraction as fallback.
-    // For video: some MP4s embed a JPEG poster frame in the file header;
-    //            this may find it. Full frame extraction requires FFmpeg
-    //            and must be done post-scan on the main thread via
-    //            [postProcessVideoThumbnails].
-    coverUrl ??=
-        await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+    // Manual byte-level extraction is only used for audio files.
+    // Video files are handled later by postProcessVideoThumbnails on the main
+    // thread via FFmpeg frame extraction to avoid false-positive embedded data.
+    if (!isVideo) {
+      coverUrl ??=
+          await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+    }
 
     if (coverUrl == null) {
       if (!folderCoverCache.containsKey(parentPath)) {
