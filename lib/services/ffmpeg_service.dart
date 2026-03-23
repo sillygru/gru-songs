@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
@@ -358,6 +359,39 @@ class FFmpegService {
     }
 
     return null;
+  }
+
+  Future<bool> generateBlurredImage({
+    required String inputPath,
+    required String outputPath,
+    int width = 60,
+    int height = 60,
+    int blurSigma = 10,
+  }) async {
+    try {
+      String normalizedInput = inputPath;
+      if (inputPath.startsWith('file://')) {
+        normalizedInput = Uri.parse(inputPath).toFilePath();
+      }
+
+      final bytes = await File(normalizedInput).readAsBytes();
+      var image = img.decodeImage(bytes);
+      if (image == null) return false;
+
+      image = img.copyResize(image, width: width, height: height);
+      image = img.gaussianBlur(image, radius: blurSigma);
+
+      final jpgBytes = img.encodeJpg(image, quality: 80);
+      await File(outputPath).writeAsBytes(jpgBytes);
+
+      final file = File(outputPath);
+      return await file.exists() && await file.length() > 0;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('FFmpegService: generateBlurredImage failed: $e');
+      }
+    }
+    return false;
   }
 
   Future<double?> _getMediaDurationSeconds(String filePath) async {

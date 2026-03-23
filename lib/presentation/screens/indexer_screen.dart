@@ -103,6 +103,10 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                 id: 'rebuild_color_cache',
                 icon: Icons.palette_rounded,
               ),
+              _buildOperationTile(
+                id: 'rebuild_blurred_cache',
+                icon: Icons.blur_on_rounded,
+              ),
             ],
           ),
           _buildSettingsGroup(

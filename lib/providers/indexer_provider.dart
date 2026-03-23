@@ -10,6 +10,7 @@ import '../services/scanner_service.dart';
 import '../services/waveform_service.dart';
 import '../services/color_extraction_service.dart';
 import '../services/cache_service.dart';
+import '../services/ffmpeg_service.dart';
 import '../services/database_optimizer_service.dart';
 import '../domain/services/search_service.dart';
 import '../data/repositories/song_repository.dart';
@@ -187,6 +188,13 @@ class IndexerNotifier extends Notifier<IndexerState> {
         isBlocking: false,
         requiresRestart: false,
       ),
+      'rebuild_blurred_cache': const IndexerOperation(
+        id: 'rebuild_blurred_cache',
+        name: 'Rebuild Blurred Background Cache',
+        description: 'Pre-generate optimized blurred backgrounds',
+        isBlocking: false,
+        requiresRestart: false,
+      ),
       'rebuild_recommendations': const IndexerOperation(
         id: 'rebuild_recommendations',
         name: 'Rebuild Recommendations',
@@ -208,6 +216,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
     final lyricsCount = await _getLyricsCacheCount();
     final waveformCount = await _getWaveformCacheCount();
     final colorCount = await _getColorCacheCount();
+    final blurredCount = await CacheService.instance.getBlurredCacheCount();
     final searchCount = await _getSearchIndexCount();
 
     final updatedOperations =
@@ -252,6 +261,13 @@ class IndexerNotifier extends Notifier<IndexerState> {
       processedCount: colorCount,
       totalCount: totalSongs,
       targetCount: totalSongs - colorCount,
+    );
+
+    updatedOperations['rebuild_blurred_cache'] =
+        updatedOperations['rebuild_blurred_cache']!.copyWith(
+      processedCount: blurredCount,
+      totalCount: totalSongs,
+      targetCount: totalSongs - blurredCount,
     );
 
     updatedOperations['rebuild_recommendations'] =
@@ -457,6 +473,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
         return await _rebuildWaveformCache(songs, force: force);
       case 'rebuild_color_cache':
         return await _rebuildColorCache(songs, force: force);
+      case 'rebuild_blurred_cache':
+        return await _rebuildBlurredCache(songs, force: force);
       case 'rebuild_recommendations':
         return await _rebuildRecommendations();
       default:
@@ -885,6 +903,98 @@ class IndexerNotifier extends Notifier<IndexerState> {
     return IndexerResult(
       success: failedItems.length < imagePaths.length / 2,
       message: message,
+      warnings: failedItems.isNotEmpty ? failedItems : null,
+    );
+  }
+
+  Future<IndexerResult> _rebuildBlurredCache(List<Song> songs,
+      {bool force = false}) async {
+    int processed = 0;
+    int cached = 0;
+    int skipped = 0;
+    final failedItems = <String>[];
+
+    final cacheService = CacheService.instance;
+
+    // Pre-calculate target count
+    int targetCount = songs.length;
+    if (!force) {
+      int missingCount = 0;
+      for (final song in songs) {
+        final cacheFile = await cacheService.getBlurredCacheFile(song.filename);
+        if (!await cacheFile.exists()) {
+          missingCount++;
+        }
+      }
+      targetCount = missingCount;
+    }
+
+    final operations = Map<String, IndexerOperation>.from(state.operations);
+    final op = operations['rebuild_blurred_cache'];
+    if (op != null) {
+      operations['rebuild_blurred_cache'] =
+          op.copyWith(targetCount: targetCount);
+      state = state.copyWith(operations: operations);
+    }
+
+    // We use FFmpeg to generate the blurred image efficiently
+    final ffmpeg = FFmpegService();
+
+    for (int i = 0; i < songs.length; i++) {
+      if (_currentCancelToken?.isCancelled ?? false) break;
+      final song = songs[i];
+
+      try {
+        final cacheFile = await cacheService.getBlurredCacheFile(song.filename);
+        if (!force && await cacheFile.exists()) {
+          skipped++;
+          continue;
+        }
+
+        // We need a source image to blur. If no cover, skip.
+        if (song.coverUrl == null || song.coverUrl!.isEmpty) {
+          skipped++;
+          continue;
+        }
+
+        final sourceFile = File(song.coverUrl!);
+        if (!await sourceFile.exists()) {
+          skipped++;
+          continue;
+        }
+
+        // Generate blurred version using Dart image package:
+        // 1. Scale down to 60x60 (matching our widget's memCacheWidth)
+        // 2. Apply Gaussian blur
+        final success = await ffmpeg.generateBlurredImage(
+          inputPath: song.coverUrl!,
+          outputPath: cacheFile.path,
+          width: 60,
+          height: 60,
+          blurSigma: 10, // FFmpeg's boxblur radius
+        );
+
+        if (success) {
+          cached++;
+        } else {
+          failedItems.add(song.filename);
+        }
+
+        processed++;
+        _updateProgress('rebuild_blurred_cache', processed, targetCount);
+      } catch (e) {
+        failedItems.add(song.filename);
+        processed++;
+        _updateProgress('rebuild_blurred_cache', processed, targetCount);
+      }
+    }
+
+    _updateFailedItems('rebuild_blurred_cache', failedItems);
+
+    return IndexerResult(
+      success: true,
+      message:
+          'Generated $cached blurred backgrounds${skipped > 0 ? ', skipped $skipped' : ''}${failedItems.isNotEmpty ? ', ${failedItems.length} failed' : ''}',
       warnings: failedItems.isNotEmpty ? failedItems : null,
     );
   }

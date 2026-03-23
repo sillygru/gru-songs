@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +10,7 @@ import '../../providers/theme_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/album_art_image.dart';
+import '../widgets/blurred_background.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
@@ -1089,39 +1089,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               children: [
                                 if (metadata != null)
                                   Positioned.fill(
-                                    child: RepaintBoundary(
-                                      child: Stack(
-                                        children: [
-                                          Positioned.fill(
-                                            child: AlbumArtImage(
-                                              url: _resolveCoverUrl(metadata) ??
-                                                  '',
-                                              filename: metadata.id,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                          Positioned.fill(
-                                            child: BackdropFilter(
-                                              filter: ImageFilter.blur(
-                                                  sigmaX: 25, sigmaY: 25),
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.topCenter,
-                                                    end: Alignment.bottomCenter,
-                                                    colors: [
-                                                      Colors.black.withValues(
-                                                          alpha: 0.5),
-                                                      Colors.black.withValues(
-                                                          alpha: 0.8),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                    child: BlurredBackground(
+                                      key: ValueKey('bg_${metadata.id}'),
+                                      url: _resolveCoverUrl(metadata) ?? '',
+                                      filename: metadata.id,
+                                      sigma: 25,
+                                      gradientColors: [
+                                        Colors.black.withValues(alpha: 0.5),
+                                        Colors.black.withValues(alpha: 0.8),
+                                      ],
                                     ),
                                   ),
                                 RepaintBoundary(

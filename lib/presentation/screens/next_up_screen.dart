@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 
 import '../../models/queue_item.dart';
 import '../../providers/providers.dart';
@@ -12,6 +11,7 @@ import '../../providers/settings_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/audio_player_manager.dart';
 import '../widgets/album_art_image.dart' show StaticAlbumArtImage;
+import '../widgets/blurred_background.dart';
 import '../widgets/audio_visualizer.dart';
 
 class NextUpScreen extends ConsumerStatefulWidget {
@@ -402,6 +402,42 @@ class _BackdropLayer extends ConsumerWidget {
     final extractedColor = ref.watch(themeProvider).extractedColor;
     final accentColor = extractedColor ?? Colors.blueGrey;
 
+    final audioManager = ref.watch(audioPlayerManagerProvider);
+    final tag = audioManager.player.sequenceState.currentSource?.tag;
+    final metadata = tag is MediaItem ? tag : null;
+
+    if (metadata != null) {
+      final songs = ref.watch(songsProvider).value ?? [];
+      String url = '';
+      try {
+        final song = songs.firstWhere((s) => s.filename == metadata.id);
+        url = song.coverUrl ?? '';
+      } catch (_) {
+        url = metadata.artUri.toString();
+      }
+
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: BlurredBackground(
+              key: ValueKey('bg_nextup_${metadata.id}'),
+              url: url,
+              filename: metadata.id,
+              sigma: 30,
+              gradientColors: [
+                Colors.black.withValues(alpha: 0.9),
+                accentColor.withValues(alpha: 0.86),
+                Colors.black.withValues(alpha: 0.92),
+              ],
+            ),
+          ),
+          Positioned.fill(
+            child: Container(color: Colors.black.withValues(alpha: 0.2)),
+          ),
+        ],
+      );
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -414,10 +450,7 @@ class _BackdropLayer extends ConsumerWidget {
           ],
         ),
       ),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(color: Colors.black.withValues(alpha: 0.2)),
-      ),
+      child: Container(color: Colors.black.withValues(alpha: 0.2)),
     );
   }
 }
@@ -552,36 +585,31 @@ class _UndoBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.18), width: 1),
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Removed from queue',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
           ),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Removed from queue',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              TextButton(
-                onPressed: onUndo,
-                child: const Text(
-                  'Undo?',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-              ),
-            ],
+          TextButton(
+            onPressed: onUndo,
+            child: const Text(
+              'Undo?',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -615,14 +643,9 @@ class _GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(color: color),
-          child: child,
-        ),
-      ),
+    return Container(
+      decoration: BoxDecoration(color: color),
+      child: child,
     );
   }
 }

@@ -10,7 +10,7 @@ import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/screen_wake_lock_service.dart';
 import '../widgets/lyrics_line.dart';
-import '../widgets/album_art_image.dart';
+import '../widgets/blurred_background.dart';
 
 class FullScreenLyrics extends ConsumerStatefulWidget {
   final String songId;
@@ -399,30 +399,31 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   }
 
   Widget _buildBackgroundLayers(Color extractedColor) {
+    final songs = ref.watch(songsProvider).value ?? [];
+    String url = '';
+    try {
+      final song = songs.firstWhere((s) => s.filename == _activeSongId);
+      url = song.coverUrl ?? '';
+    } catch (_) {
+      // If not in our song list, try to find current media item
+      final tag = player.sequenceState.currentSource?.tag;
+      if (tag is MediaItem && tag.id == _activeSongId) {
+        url = tag.artUri.toString();
+      }
+    }
+
     return Stack(
       children: [
         Positioned.fill(
-          child: AlbumArtImage(
-            url: '',
+          child: BlurredBackground(
+            key: ValueKey('bg_lyrics_$_activeSongId'),
+            url: url,
             filename: _activeSongId,
-            fit: BoxFit.cover,
-          ),
-        ),
-        Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.5),
-                    Colors.black.withValues(alpha: 0.8),
-                  ],
-                ),
-              ),
-            ),
+            sigma: 25,
+            gradientColors: [
+              Colors.black.withValues(alpha: 0.5),
+              Colors.black.withValues(alpha: 0.8),
+            ],
           ),
         ),
         Positioned.fill(

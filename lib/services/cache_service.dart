@@ -136,4 +136,24 @@ class CacheService {
     await init();
     return File(p.join(_v3Dir.path, filename));
   }
+
+  Future<File> getBlurredCacheFile(String songFilename) async {
+    await init();
+    final blurredDir = Directory(p.join(_v3Dir.path, 'blurred_cache'));
+    if (!await blurredDir.exists()) {
+      await blurredDir.create(recursive: true);
+    }
+    return File(p.join(blurredDir.path, 'blurred_$songFilename.jpg'));
+  }
+
+  Future<int> getBlurredCacheCount() async {
+    await init();
+    final blurredDir = Directory(p.join(_v3Dir.path, 'blurred_cache'));
+    if (!await blurredDir.exists()) return 0;
+    int count = 0;
+    await for (final entity in blurredDir.list()) {
+      if (entity is File && entity.path.endsWith('.jpg')) count++;
+    }
+    return count;
+  }
 }

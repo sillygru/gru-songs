@@ -23,6 +23,7 @@ class _StorageManagementScreenState
   int _waveformCacheSize = 0;
   int _colorCacheSize = 0;
   int _lyricsCacheSize = 0;
+  int _blurredCacheSize = 0;
   bool _isClearing = false;
 
   @override
@@ -51,6 +52,8 @@ class _StorageManagementScreenState
           await StorageAnalysisService.instance.getColorCacheSize();
       final lyricsSize =
           await StorageAnalysisService.instance.getLyricsCacheSize();
+      final blurredSize =
+          await StorageAnalysisService.instance.getBlurredCacheSize();
 
       if (mounted) {
         setState(() {
@@ -62,6 +65,7 @@ class _StorageManagementScreenState
           _waveformCacheSize = waveformSize;
           _colorCacheSize = colorSize;
           _lyricsCacheSize = lyricsSize;
+          _blurredCacheSize = blurredSize;
           _isLoading = false;
         });
       }
@@ -452,6 +456,41 @@ class _StorageManagementScreenState
     }
   }
 
+  Future<void> _handleClearBlurredCache() async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Clear Blurred Background Cache?',
+      content: 'This will delete all pre-generated blurred backgrounds.\n\n'
+          'They will be re-generated the next time you trigger a rebuild in the Indexer.',
+      confirmText: 'Clear Cache',
+      confirmColor: Colors.orange,
+    );
+
+    if (!confirmed || !mounted) return;
+
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
+
+    try {
+      await StorageAnalysisService.instance.clearBlurredCache();
+      await _loadSizes();
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Blurred background cache cleared successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isClearing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error clearing blurred cache: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _handleDangerousClear() async {
     final confirmed = await _showConfirmationDialog(
       title: 'Clear All App Data?',
@@ -580,6 +619,15 @@ class _StorageManagementScreenState
                     color: Colors.indigo,
                     onClear:
                         _lyricsCacheSize > 0 ? _handleClearLyricsCache : null,
+                  ),
+                  _buildStorageCard(
+                    title: 'Blurred Cache',
+                    subtitle: 'Pre-generated blurred backgrounds',
+                    size: _blurredCacheSize,
+                    icon: Icons.blur_on_rounded,
+                    color: Colors.deepPurple,
+                    onClear:
+                        _blurredCacheSize > 0 ? _handleClearBlurredCache : null,
                   ),
                   const SizedBox(height: 24),
                   const Divider(),

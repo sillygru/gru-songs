@@ -9,6 +9,7 @@ class StorageAnalysisService {
   static final StorageAnalysisService instance = StorageAnalysisService._();
   StorageAnalysisService._();
   static const String _lyricsCacheDirName = 'lyrics_cache';
+  static const String _blurredCacheDirName = 'blurred_cache';
 
   Future<int> getDatabaseSize() async {
     int total = 0;
@@ -155,6 +156,20 @@ class StorageAnalysisService {
       }
     } catch (e) {
       debugPrint('Error calculating lyrics cache size: $e');
+    }
+    return 0;
+  }
+
+  Future<int> getBlurredCacheSize() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final blurredDir = Directory(
+          p.join(supportDir.path, 'gru_cache_v3', _blurredCacheDirName));
+      if (await blurredDir.exists()) {
+        return await _getDirSize(blurredDir);
+      }
+    } catch (e) {
+      debugPrint('Error calculating blurred cache size: $e');
     }
     return 0;
   }
@@ -309,6 +324,20 @@ class StorageAnalysisService {
     }
   }
 
+  Future<void> clearBlurredCache() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final blurredDir = Directory(
+          p.join(supportDir.path, 'gru_cache_v3', _blurredCacheDirName));
+      if (await blurredDir.exists()) {
+        await blurredDir.delete(recursive: true);
+      }
+    } catch (e) {
+      debugPrint('Error clearing blurred cache: $e');
+      rethrow;
+    }
+  }
+
   Future<void> clearAllUserData() async {
     try {
       // 1. Delete Database Files
@@ -329,10 +358,13 @@ class StorageAnalysisService {
       // 6. Delete Waveform Cache
       await clearWaveformCache();
 
-      // 7. Clear Shared Preferences
+      // 7. Clear Lyrics Cache
       await clearLyricsCache();
 
-      // 8. Clear Shared Preferences
+      // 8. Clear Blurred Cache
+      await clearBlurredCache();
+
+      // 9. Clear Shared Preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
     } catch (e) {
