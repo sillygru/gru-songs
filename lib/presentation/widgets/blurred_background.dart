@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'album_art_image.dart';
@@ -29,26 +28,26 @@ class BlurredBackground extends StatelessWidget {
                   ? CacheService.instance.getBlurredCacheFile(filename!)
                   : Future.error('No filename'),
               builder: (context, snapshot) {
-                final hasCache =
-                    snapshot.hasData && snapshot.data!.existsSync();
+                if (snapshot.connectionState == ConnectionState.done) {
+                  final hasCache =
+                      snapshot.hasData && snapshot.data!.existsSync();
 
-                if (hasCache) {
-                  return Image.file(
-                    snapshot.data!,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.low,
-                  );
+                  if (hasCache) {
+                    return Image.file(
+                      snapshot.data!,
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.low,
+                    );
+                  }
                 }
 
-                return ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                  child: AlbumArtImage(
-                    url: url,
-                    filename: filename,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 60,
-                    memCacheHeight: 60,
-                  ),
+                return AlbumArtImage(
+                  url: url,
+                  filename: filename,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 60,
+                  memCacheHeight: 60,
+                  filterQuality: FilterQuality.low,
                 );
               },
             ),

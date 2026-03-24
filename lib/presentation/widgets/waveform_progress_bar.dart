@@ -39,6 +39,14 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   late bool _hasViewed;
   StreamSubscription<Duration>? _positionSubscription;
   int _lastProgressIndex = -1;
+  Duration _currentPosition = Duration.zero;
+  final ValueNotifier<Duration> _positionNotifier =
+      ValueNotifier(Duration.zero);
+  List<double>? _cachedDisplayPeaks;
+  double _cachedWidth = 0;
+  TextStyle? _labelStyle;
+  String _formattedCurrentTime = '0:00';
+  String _formattedTotalTime = '0:00';
 
   @override
   void initState() {
@@ -61,6 +69,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   void dispose() {
     _barAnimationController.dispose();
     _positionSubscription?.cancel();
+    _positionNotifier.dispose();
     super.dispose();
   }
 
@@ -69,10 +78,24 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     if (widget.positionStream == null) return;
 
     _positionSubscription = widget.positionStream!.listen((position) {
-      if (_peaks == null || _isDragging) return;
+      _currentPosition = position;
+
+      final newFormattedTime = _formatDuration(position);
+      if (newFormattedTime != _formattedCurrentTime) {
+        _formattedCurrentTime = newFormattedTime;
+        _positionNotifier.value = position;
+      }
+
+      if (_peaks == null || _isDragging) {
+        if (mounted) setState(() {});
+        return;
+      }
 
       final totalMs = widget.total.inMilliseconds;
-      if (totalMs <= 0) return;
+      if (totalMs <= 0) {
+        if (mounted) setState(() {});
+        return;
+      }
 
       final progress = (position.inMilliseconds / totalMs).clamp(0.0, 1.0);
       final barCount = _peaks!.length;
@@ -91,6 +114,10 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     if (oldWidget.filename != widget.filename) {
       _hasViewed = _sessionViewedSongs.contains(widget.filename);
       _lastProgressIndex = -1;
+      _currentPosition = Duration.zero;
+      _cachedDisplayPeaks = null;
+      _cachedWidth = 0;
+      _labelStyle = null;
 
       if (_hasViewed) {
         _barAnimationController.value = 1.0;
@@ -99,6 +126,10 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       }
 
       _loadWaveform();
+    }
+
+    if (oldWidget.total != widget.total) {
+      _formattedTotalTime = _formatDuration(widget.total);
     }
 
     if (oldWidget.positionStream != widget.positionStream) {
@@ -155,13 +186,51 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       return _dragPosition!;
     }
     return widget.total.inMilliseconds > 0
-        ? (widget.progress.inMilliseconds / widget.total.inMilliseconds)
+        ? (_currentPosition.inMilliseconds / widget.total.inMilliseconds)
             .clamp(0.0, 1.0)
         : 0.0;
   }
 
+  Widget _buildWaveformPaint(
+      BoxConstraints constraints, double animationValue, Color primaryColor) {
+    final width = constraints.maxWidth;
+
+    if (_cachedWidth != width || _cachedDisplayPeaks == null) {
+      _cachedWidth = width;
+      final totalBars = (width / 3).floor();
+      _cachedDisplayPeaks = _downsample(_peaks!, totalBars);
+    }
+
+    final progressIndex =
+        (_getCurrentProgress() * _cachedDisplayPeaks!.length).floor();
+
+    return CustomPaint(
+      size: Size(constraints.maxWidth, constraints.maxHeight),
+      painter: WaveformPainter(
+        peaks: _cachedDisplayPeaks,
+        progress: _getCurrentProgress(),
+        progressIndex: progressIndex,
+        color: primaryColor,
+        animationValue: animationValue,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    if (_labelStyle == null) {
+      _labelStyle = TextStyle(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.bold,
+        fontSize: 12,
+      );
+    }
+    if (_formattedTotalTime.isEmpty || _formattedTotalTime == '0:00') {
+      _formattedTotalTime = _formatDuration(widget.total);
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -217,56 +286,65 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             child: LayoutBuilder(
               builder: (context, constraints) {
                 if (_isLoading) {
-                  final totalBars = (constraints.maxWidth / 3).floor();
-                  final progressIndex =
-                      (_getCurrentProgress() * totalBars).floor();
-                  return CustomPaint(
-                    size: Size(constraints.maxWidth, constraints.maxHeight),
-                    painter: WaveformPainter(
-                      peaks: null,
-                      progress: _getCurrentProgress(),
-                      progressIndex: progressIndex,
-                      color: Theme.of(context).colorScheme.primary,
-                      animationValue: 1.0,
-                      isLoading: true,
-                    ),
+                  return ValueListenableBuilder<Duration>(
+                    valueListenable: _positionNotifier,
+                    builder: (context, position, child) {
+                      final progress = widget.total.inMilliseconds > 0
+                          ? (position.inMilliseconds /
+                                  widget.total.inMilliseconds)
+                              .clamp(0.0, 1.0)
+                          : 0.0;
+                      final totalBars = (constraints.maxWidth / 3).floor();
+                      final progressIndex = (progress * totalBars).floor();
+                      return CustomPaint(
+                        size: Size(constraints.maxWidth, constraints.maxHeight),
+                        painter: WaveformPainter(
+                          peaks: null,
+                          progress: progress,
+                          progressIndex: progressIndex,
+                          color: primaryColor,
+                          animationValue: 1.0,
+                          isLoading: true,
+                        ),
+                      );
+                    },
                   );
                 }
 
                 if (_peaks == null || _peaks!.isEmpty) {
-                  return Container(
-                    height: 2,
-                    color: Colors.white.withValues(alpha: 0.1),
-                    alignment: Alignment.centerLeft,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 100),
-                      curve: Curves.easeOut,
-                      width: constraints.maxWidth * _getCurrentProgress(),
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+                  return ValueListenableBuilder<Duration>(
+                    valueListenable: _positionNotifier,
+                    builder: (context, position, child) {
+                      final progress = widget.total.inMilliseconds > 0
+                          ? (position.inMilliseconds /
+                                  widget.total.inMilliseconds)
+                              .clamp(0.0, 1.0)
+                          : 0.0;
+                      return Container(
+                        height: 2,
+                        color: Colors.white.withValues(alpha: 0.1),
+                        alignment: Alignment.centerLeft,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 100),
+                          curve: Curves.easeOut,
+                          width: constraints.maxWidth * progress,
+                          color: primaryColor,
+                        ),
+                      );
+                    },
                   );
                 }
 
-                return AnimatedBuilder(
-                  animation: _barAnimation,
-                  builder: (context, child) {
-                    final totalBars = (constraints.maxWidth / 3).floor();
-                    final displayPeaks = _downsample(_peaks!, totalBars);
-                    final progressIndex =
-                        (_getCurrentProgress() * displayPeaks.length).floor();
-
-                    return CustomPaint(
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
-                      painter: WaveformPainter(
-                        peaks: displayPeaks,
-                        progress: _getCurrentProgress(),
-                        progressIndex: progressIndex,
-                        color: Theme.of(context).colorScheme.primary,
-                        animationValue: _barAnimation.value,
-                      ),
-                    );
-                  },
-                );
+                if (_barAnimation.value < 1.0) {
+                  return AnimatedBuilder(
+                    animation: _barAnimation,
+                    builder: (context, child) {
+                      return _buildWaveformPaint(
+                          constraints, _barAnimation.value, primaryColor);
+                    },
+                  );
+                }
+                return _buildWaveformPaint(constraints, 1.0, primaryColor);
               },
             ),
           ),
@@ -275,23 +353,20 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              _formatDuration(_isDragging && _dragPosition != null
-                  ? widget.total * _dragPosition!
-                  : widget.progress),
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
+            ValueListenableBuilder<Duration>(
+              valueListenable: _positionNotifier,
+              builder: (context, position, child) {
+                return Text(
+                  _isDragging && _dragPosition != null
+                      ? _formatDuration(widget.total * _dragPosition!)
+                      : _formattedCurrentTime,
+                  style: _labelStyle,
+                );
+              },
             ),
             Text(
-              _formatDuration(widget.total),
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
+              _formattedTotalTime,
+              style: _labelStyle,
             ),
           ],
         ),

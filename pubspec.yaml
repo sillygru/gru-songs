@@ -43,6 +43,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
   path_provider_platform_interface: ^2.1.2
   plugin_platform_interface: ^2.1.8
   mockito: ^5.4.5
@@ -50,6 +51,12 @@ dev_dependencies:
   shared_preferences_platform_interface: ^2.3.2
   matcher: ^0.12.17
   sqflite_common_ffi: ^2.3.0
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/app_icon.png"
+  adaptive_icon_background: "#121212"
 
 flutter:
   uses-material-design: true

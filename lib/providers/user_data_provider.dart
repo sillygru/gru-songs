@@ -196,36 +196,32 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   @override
   UserDataState build() {
-    ref.listen(songsProvider, (previous, next) {
-      if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
-        final library = next.value!;
-        // Deep-validate DB entries first: re-reads every row with the same casts
-        // used at runtime. If any single entry is corrupt or unreadable, force
-        // regeneration immediately rather than silently displaying nothing.
-        DatabaseService.instance
-            .validateRecommendationPlaylists()
-            .then((dbValid) {
-          if (!dbValid) {
-            updateRecommendationPlaylists(force: true);
-            return;
-          }
-          // Even with valid DB rows, the filenames might not resolve to real
-          // library songs (e.g. files were moved/deleted after the old bug).
-          final anyResolve = state.playlists.any((p) {
-            if (!p.isRecommendation || p.songs.isEmpty) return false;
-            return p.songs
-                .any((ps) => library.any((s) => s.filename == ps.songFilename));
-          });
-          if (!anyResolve) {
-            updateRecommendationPlaylists(force: true);
-          }
-        });
-      }
-    });
-
     if (!_initialized) {
       _initialized = true;
-      Future.microtask(() => _initLocal());
+      Future.microtask(() {
+        _initLocal();
+        ref.listen(songsProvider, (previous, next) {
+          if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
+            final library = next.value!;
+            DatabaseService.instance
+                .validateRecommendationPlaylists()
+                .then((dbValid) {
+              if (!dbValid) {
+                updateRecommendationPlaylists(force: true);
+                return;
+              }
+              final anyResolve = state.playlists.any((p) {
+                if (!p.isRecommendation || p.songs.isEmpty) return false;
+                return p.songs
+                    .any((ps) => library.any((s) => s.filename == ps.songFilename));
+              });
+              if (!anyResolve) {
+                updateRecommendationPlaylists(force: true);
+              }
+            });
+          }
+        });
+      });
       return UserDataState(isLoading: true);
     }
     return state;

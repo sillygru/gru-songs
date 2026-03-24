@@ -14,6 +14,7 @@ class AlbumArtImage extends StatefulWidget {
   final int? cacheHeight;
   final int? memCacheWidth;
   final int? memCacheHeight;
+  final FilterQuality filterQuality;
 
   const AlbumArtImage({
     super.key,
@@ -29,6 +30,7 @@ class AlbumArtImage extends StatefulWidget {
     this.cacheHeight,
     this.memCacheWidth,
     this.memCacheHeight,
+    this.filterQuality = FilterQuality.medium,
   });
 
   @override
@@ -58,10 +60,7 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
       }
     }
 
-    final filterQuality =
-        (effectiveMemCacheWidth != null && effectiveMemCacheWidth < 500)
-            ? FilterQuality.low
-            : FilterQuality.medium;
+    final filterQuality = widget.filterQuality;
 
     Widget content;
 
