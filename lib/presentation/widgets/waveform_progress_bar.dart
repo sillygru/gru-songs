@@ -189,11 +189,15 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             child: LayoutBuilder(
               builder: (context, constraints) {
                 if (_isLoading) {
+                  final totalBars = (constraints.maxWidth / 3).floor();
+                  final progressIndex =
+                      (_getCurrentProgress() * totalBars).floor();
                   return CustomPaint(
                     size: Size(constraints.maxWidth, constraints.maxHeight),
                     painter: WaveformPainter(
                       peaks: null,
                       progress: _getCurrentProgress(),
+                      progressIndex: progressIndex,
                       color: Theme.of(context).colorScheme.primary,
                       animationValue: 1.0,
                       isLoading: true,
@@ -220,12 +224,15 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
                   builder: (context, child) {
                     final totalBars = (constraints.maxWidth / 3).floor();
                     final displayPeaks = _downsample(_peaks!, totalBars);
+                    final progressIndex =
+                        (_getCurrentProgress() * displayPeaks.length).floor();
 
                     return CustomPaint(
                       size: Size(constraints.maxWidth, constraints.maxHeight),
                       painter: WaveformPainter(
                         peaks: displayPeaks,
                         progress: _getCurrentProgress(),
+                        progressIndex: progressIndex,
                         color: Theme.of(context).colorScheme.primary,
                         animationValue: _barAnimation.value,
                       ),
@@ -292,6 +299,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
 class WaveformPainter extends CustomPainter {
   final List<double>? peaks;
   final double progress;
+  final int progressIndex;
   final Color color;
   final double animationValue;
   final bool isLoading;
@@ -299,6 +307,7 @@ class WaveformPainter extends CustomPainter {
   WaveformPainter({
     required this.peaks,
     required this.progress,
+    required this.progressIndex,
     required this.color,
     required this.animationValue,
     this.isLoading = false,
@@ -394,8 +403,7 @@ class WaveformPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant WaveformPainter oldDelegate) {
     return oldDelegate.peaks != peaks ||
-        oldDelegate.progress != progress ||
-        oldDelegate.color != color ||
+        oldDelegate.progressIndex != progressIndex ||
         oldDelegate.animationValue != animationValue ||
         oldDelegate.isLoading != isLoading;
   }
