@@ -22,14 +22,18 @@ jobs:
       - name: Set iOS Info.plist values
         run: |
           flutter build ios --release --no-codesign
-      
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cd build/ios/iphoneos
+          zip -r Wispie.ipa Payload
+          mv Wispie.ipa ../../../
+          cd ../../../../
+          rm -rf build/ios/iphoneos/Payload
+
       - name: Find IPA
         id: find_ipa
         run: |
-          IPA_PATH=$(find build/ios/iphoneos -name "*.ipa" 2>/dev/null | head -1)
-          if [ -z "$IPA_PATH" ]; then
-            IPA_PATH=$(find build -name "*.ipa" 2>/dev/null | head -1)
-          fi
+          IPA_PATH="build/ios/Wispie.ipa"
           echo "Found IPA at: $IPA_PATH"
           echo "ipa_path=$IPA_PATH" >> $GITHUB_OUTPUT
       

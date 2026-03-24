@@ -1313,6 +1313,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                                   progress: currentPosition,
                                                   total: duration,
                                                   onSeek: player.seek,
+                                                  positionStream:
+                                                      player.positionStream,
                                                 );
                                               } else {
                                                 return BasicProgressBar(

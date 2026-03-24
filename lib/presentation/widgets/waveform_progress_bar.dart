@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
@@ -10,6 +11,7 @@ class WaveformProgressBar extends ConsumerStatefulWidget {
   final Duration progress;
   final Duration total;
   final Function(Duration) onSeek;
+  final Stream<Duration>? positionStream;
 
   const WaveformProgressBar({
     super.key,
@@ -18,6 +20,7 @@ class WaveformProgressBar extends ConsumerStatefulWidget {
     required this.progress,
     required this.total,
     required this.onSeek,
+    this.positionStream,
   });
 
   @override
@@ -33,12 +36,13 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   late Animation<double> _barAnimation;
   bool _isDragging = false;
   double? _dragPosition;
-  late bool _hasViewed; // Remove 'final' keyword
+  late bool _hasViewed;
+  StreamSubscription<Duration>? _positionSubscription;
+  int _lastProgressIndex = -1;
 
   @override
   void initState() {
     super.initState();
-    // Check BEFORE the async call to avoid race conditions
     _hasViewed = _sessionViewedSongs.contains(widget.filename);
     _barAnimationController = AnimationController(
       vsync: this,
@@ -50,30 +54,55 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       curve: Curves.easeOutCubic,
     );
     _loadWaveform();
+    _subscribeToPositionStream();
   }
 
   @override
   void dispose() {
     _barAnimationController.dispose();
+    _positionSubscription?.cancel();
     super.dispose();
+  }
+
+  void _subscribeToPositionStream() {
+    _positionSubscription?.cancel();
+    if (widget.positionStream == null) return;
+
+    _positionSubscription = widget.positionStream!.listen((position) {
+      if (_peaks == null || _isDragging) return;
+
+      final totalMs = widget.total.inMilliseconds;
+      if (totalMs <= 0) return;
+
+      final progress = (position.inMilliseconds / totalMs).clamp(0.0, 1.0);
+      final barCount = _peaks!.length;
+      final newIndex = (progress * barCount).floor();
+
+      if (newIndex != _lastProgressIndex) {
+        _lastProgressIndex = newIndex;
+        if (mounted) setState(() {});
+      }
+    });
   }
 
   @override
   void didUpdateWidget(WaveformProgressBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.filename != widget.filename) {
-      // Update _hasViewed for the new song
       _hasViewed = _sessionViewedSongs.contains(widget.filename);
+      _lastProgressIndex = -1;
 
       if (_hasViewed) {
-        // Already viewed - set to final state immediately
         _barAnimationController.value = 1.0;
       } else {
-        // Not viewed yet - reset to start animation
         _barAnimationController.reset();
       }
 
       _loadWaveform();
+    }
+
+    if (oldWidget.positionStream != widget.positionStream) {
+      _subscribeToPositionStream();
     }
   }
 
@@ -95,13 +124,12 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
         setState(() {
           _peaks = peaks;
           _isLoading = false;
-          // Mark as viewed immediately when data loads, but don't animate
           _sessionViewedSongs.add(widget.filename);
         });
-        // Only animate on first view
         if (!_hasViewed) {
           _barAnimationController.forward();
         }
+        _subscribeToPositionStream();
       }
     } catch (e) {
       if (mounted) {
