@@ -83,6 +83,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   static const int _videoDriftCorrectionThresholdMs = 1400;
   static const int _videoPausedCorrectionThresholdMs = 120;
 
+  final ValueNotifier<Duration> _positionNotifier =
+      ValueNotifier(Duration.zero);
+  Timer? _positionTimer;
+
   AudioPlayerManager? _audioManagerInstance;
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
   AudioPlayerManager get _audioManager =>
@@ -167,9 +171,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     _playerStateSubscription = player.playerStateStream.listen((state) {
       if (!mounted) return;
-      // Only sync animation from stream when not fading (fading updates playingNotifier directly)
       _syncVideoPlaybackState();
       _syncVideoPosition(player.position, force: true);
+      _updateTimerState();
     });
 
     _audioManager.playingNotifier.addListener(_onPlayingNotifierChanged);
@@ -183,10 +187,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _positionSubscription = player.positionStream.listen((position) {
       if (!mounted) return;
       _syncVideoPosition(position);
+      // Fallback update if timer isn't running for some reason
+      if (_positionTimer == null || !_positionTimer!.isActive) {
+        _positionNotifier.value = position;
+      }
     });
     _audioManager.effectiveMediaModeNotifier
         .addListener(_handleMediaModeChanged);
     unawaited(_syncVideoWakeLock());
+    _updateTimerState();
+  }
+
+  void _updateTimerState() {
+    _positionTimer?.cancel();
+    if (player.playing && _isAppForeground) {
+      _positionTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (mounted) {
+          _positionNotifier.value = player.position;
+        }
+      });
+    }
+    // Initial sync
+    _positionNotifier.value = player.position;
   }
 
   void _onPlayingNotifierChanged() {
@@ -196,6 +218,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } else {
       _playPauseController.reverse();
     }
+    _updateTimerState();
   }
 
   void _openNextUpScreen(BuildContext context, ThemeState themeState) {
@@ -234,6 +257,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _sequenceSubscription?.cancel();
     _playerStateSubscription?.cancel();
     _positionSubscription?.cancel();
+    _positionTimer?.cancel();
+    _positionNotifier.dispose();
     _audioManagerInstance?.effectiveMediaModeNotifier
         .removeListener(_handleMediaModeChanged);
     _audioManagerInstance?.playingNotifier
@@ -266,11 +291,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (_isAppForeground == isForeground) return;
     _isAppForeground = isForeground;
     unawaited(_syncVideoWakeLock());
+    _updateTimerState();
 
     final tag = player.sequenceState.currentSource?.tag;
     final mediaItem = tag is MediaItem ? tag : null;
     unawaited(_syncVideoForCurrentTrack(mediaItem));
   }
+
 
   Future<void> _syncVideoWakeLock() async {
     final shouldKeepAwake = _isAppForeground &&
@@ -523,108 +550,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  Widget _buildMediaModePill(MediaItem metadata) {
-    final hasVideo = _resolveTrackMedia(metadata).hasVideo;
-
-    return ValueListenableBuilder<PlaybackMediaMode>(
-      valueListenable: _audioManager.effectiveMediaModeNotifier,
-      builder: (context, effectiveMode, _) {
-        final bool isAudio = effectiveMode == PlaybackMediaMode.audio;
-
-        return Container(
-          width: 140, // Slightly wider for better breathing room
-          height: 32,
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-          ),
-          child: Stack(
-            children: [
-              // Sliding background pill
-              AnimatedAlign(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                alignment:
-                    isAudio ? Alignment.centerLeft : Alignment.centerRight,
-                child: FractionallySizedBox(
-                  widthFactor: 0.5,
-                  child: Container(
-                    decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          )
-                        ]),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildModeSegment(
-                      label: 'Audio',
-                      isSelected: isAudio,
-                      onTap: () async {
-                        await _audioManager
-                            .setPreferredMediaMode(PlaybackMediaMode.audio);
-                        await _syncVideoForCurrentTrack(metadata);
-                      },
-                    ),
-                  ),
-                  Expanded(
-                    child: _buildModeSegment(
-                      label: 'Video',
-                      isSelected: !isAudio,
-                      isEnabled: hasVideo,
-                      onTap: hasVideo
-                          ? () async {
-                              await _audioManager.setPreferredMediaMode(
-                                  PlaybackMediaMode.video);
-                              await _syncVideoForCurrentTrack(metadata);
-                            }
-                          : null,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildModeSegment({
-    required String label,
-    required bool isSelected,
-    bool isEnabled = true,
-    Future<void> Function()? onTap,
-  }) {
-    return GestureDetector(
-      onTap: isEnabled && onTap != null ? () => unawaited(onTap()) : null,
-      behavior: HitTestBehavior.opaque,
-      child: Center(
-        child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 200),
-          style: TextStyle(
-            color: !isEnabled
-                ? Colors.white24
-                : (isSelected ? Colors.white : Colors.white60),
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            fontSize: 12,
-          ),
-          child: Text(label),
-        ),
-      ),
-    );
-  }
-
   void _toggleLyrics() async {
     if (!_hasLyricsForCurrentSong) return;
 
@@ -794,32 +719,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
-  Widget _buildOverlayButton({
-    required Widget icon,
-    required VoidCallback onPressed,
-    Color? color,
-  }) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1,
-        ),
-      ),
-      child: IconButton(
-        icon: icon,
-        onPressed: onPressed,
-        color: color ?? Colors.white,
-        iconSize: 24,
-        padding: EdgeInsets.zero,
-      ),
-    );
-  }
-
   Stream<PositionData> get _positionDataStream =>
       Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
           player.positionStream,
@@ -901,126 +800,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(_animateDragTo(0.0));
   }
 
-  /// Builds the artwork / video panel. The aspect ratio and corner radius
-  /// animate smoothly whenever the effective media mode changes so the panel
-  /// snaps from square album-art to the video's native shape (e.g. 16:9).
-  Widget _buildArtPanel(
-    BuildContext context,
-    BoxConstraints constraints,
-    MediaItem metadata,
-    ThemeState themeState,
-  ) {
-    final coverSizingMode = ref.watch(
-      settingsProvider.select((s) => s.coverSizingMode),
-    );
-    final coverFit = coverSizingMode == PlayerCoverSizingMode.autoFit
-        ? BoxFit.cover
-        : BoxFit.contain;
-    final canShowVideo = _canRenderVideoFor(metadata);
-    final targetAspectRatio = canShowVideo ? _currentVideoAspectRatio() : 1.0;
-    final targetRadius = canShowVideo ? 8.0 : 28.0;
-
-    return Center(
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: ScaleTransition(
-          scale: _artScaleAnimation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.92, end: 1.0).animate(CurvedAnimation(
-              parent: _playPauseController,
-              curve: Curves.easeOutBack,
-            )),
-            child: TweenAnimationBuilder<double>(
-              // TweenAnimationBuilder will automatically start from the last
-              // animated value when `end` changes — giving us a free smooth
-              // transition between square and the video's aspect ratio.
-              tween: Tween<double>(begin: 1.0, end: targetAspectRatio),
-              duration: const Duration(milliseconds: 380),
-              curve: Curves.easeInOut,
-              builder: (context, aspectRatio, _) {
-                return TweenAnimationBuilder<double>(
-                  tween: Tween<double>(begin: 28.0, end: targetRadius),
-                  duration: const Duration(milliseconds: 380),
-                  curve: Curves.easeInOut,
-                  builder: (context, radius, _) {
-                    return AspectRatio(
-                      aspectRatio: aspectRatio,
-                      child: Hero(
-                        tag: 'now_playing_art_${metadata.id}',
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // Main art / video container.
-                            Positioned.fill(
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 380),
-                                curve: Curves.easeInOut,
-                                decoration: BoxDecoration(
-                                  color: coverFit == BoxFit.contain
-                                      ? Colors.black
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(radius),
-                                  boxShadow: canShowVideo
-                                      ? []
-                                      : [
-                                          BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.4),
-                                            blurRadius: 25,
-                                            offset: const Offset(0, 10),
-                                          ),
-                                        ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(radius),
-                                  child: canShowVideo
-                                      ? _buildVideoSurface(coverFit)
-                                      : AlbumArtImage(
-                                          key: ValueKey('art_${metadata.id}'),
-                                          url: _resolveCoverUrl(metadata) ?? '',
-                                          filename: metadata.id,
-                                          width: constraints.maxWidth,
-                                          height: constraints.maxWidth,
-                                          cacheWidth: 800,
-                                          fit: coverFit,
-                                        ),
-                                ),
-                              ),
-                            ),
-                            // Overlay: lyrics toggle.
-                            if (_hasLyricsForCurrentSong)
-                              Positioned(
-                                bottom: 12,
-                                left: 12,
-                                child: _buildOverlayButton(
-                                  icon: const Icon(Icons.lyrics_outlined),
-                                  color: Colors.white,
-                                  onPressed: _toggleLyrics,
-                                ),
-                              ),
-                            Positioned(
-                              bottom: 12,
-                              right: 12,
-                              child: _buildOverlayButton(
-                                icon: const Icon(Icons.queue_music),
-                                onPressed: () =>
-                                    _openNextUpScreen(context, themeState),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final themeState = ref.watch(themeProvider);
@@ -1040,12 +819,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
         child: Builder(builder: (context) {
-          final isDesktop = !kIsWeb &&
-              (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
-          final isIPad = !kIsWeb &&
-              Platform.isIOS &&
-              MediaQuery.of(context).size.shortestSide >= 600;
-
           return Material(
             type: MaterialType.transparency,
             child: GestureDetector(
@@ -1078,548 +851,71 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         borderRadius: BorderRadius.vertical(
                           top: Radius.circular(dynamicRadius),
                         ),
-                        child: StreamBuilder<SequenceState?>(
-                          stream: player.sequenceStateStream,
-                          builder: (context, snapshot) {
-                            final state = snapshot.data;
-                            final metadata =
-                                state?.currentSource?.tag as MediaItem?;
-
-                            return Stack(
-                              children: [
-                                if (metadata != null)
-                                  Positioned.fill(
-                                    child: BlurredBackground(
-                                      key: ValueKey('bg_${metadata.id}'),
-                                      url: _resolveCoverUrl(metadata) ?? '',
-                                      filename: metadata.id,
-                                      sigma: 25,
-                                      gradientColors: [
-                                        Colors.black.withValues(alpha: 0.5),
-                                        Colors.black.withValues(alpha: 0.8),
-                                      ],
+                        child: Stack(
+                          children: [
+                            _PlayerBackground(
+                              player: player,
+                              resolveCoverUrl: _resolveCoverUrl,
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const _PlayerDismissHandle(),
+                                  _PlayerHeader(
+                                    player: player,
+                                    audioManager: _audioManager,
+                                    syncVideoForCurrentTrack:
+                                        _syncVideoForCurrentTrack,
+                                    resolveTrackMedia: _resolveTrackMedia,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Expanded(
+                                    child: _PlayerArtPanel(
+                                      player: player,
+                                      audioManager: _audioManager,
+                                      fadeAnimation: _fadeAnimation,
+                                      artScaleAnimation: _artScaleAnimation,
+                                      playPauseController: _playPauseController,
+                                      canRenderVideoFor: _canRenderVideoFor,
+                                      currentVideoAspectRatio:
+                                          _currentVideoAspectRatio,
+                                      buildVideoSurface: _buildVideoSurface,
+                                      resolveCoverUrl: _resolveCoverUrl,
+                                      toggleLyrics: _toggleLyrics,
+                                      hasLyricsForCurrentSong:
+                                          _hasLyricsForCurrentSong,
+                                      openNextUpScreen: (context) =>
+                                          _openNextUpScreen(
+                                              context, themeState),
                                     ),
                                   ),
-                                RepaintBoundary(
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        24, 40, 24, 80),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          width: 40,
-                                          height: 4,
-                                          margin:
-                                              const EdgeInsets.only(bottom: 24),
-                                          decoration: BoxDecoration(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.2),
-                                              borderRadius:
-                                                  BorderRadius.circular(2)),
-                                        ),
-                                        if (metadata != null) ...[
-                                          _buildMediaModePill(metadata),
-                                          const SizedBox(height: 16),
-                                        ],
-                                        if (metadata != null) ...[
-                                          Expanded(
-                                            child: RepaintBoundary(
-                                              child: LayoutBuilder(builder:
-                                                  (context, constraints) {
-                                                return GestureDetector(
-                                                  onVerticalDragUpdate:
-                                                      (details) {
-                                                    if (details.primaryDelta! <
-                                                            -5 &&
-                                                        _hasLyricsForCurrentSong) {
-                                                      _toggleLyrics();
-                                                    }
-                                                  },
-                                                  child: _buildArtPanel(
-                                                    context,
-                                                    constraints,
-                                                    metadata,
-                                                    themeState,
-                                                  ),
-                                                );
-                                              }),
-                                            ),
-                                          ),
-                                          RepaintBoundary(
-                                            child: FadeTransition(
-                                              opacity: _fadeAnimation,
-                                              child: SlideTransition(
-                                                position: Tween<Offset>(
-                                                  begin: const Offset(0, 0.3),
-                                                  end: Offset.zero,
-                                                ).animate(CurvedAnimation(
-                                                  parent: _expansionController,
-                                                  curve: const Interval(
-                                                      0.3, 0.7,
-                                                      curve:
-                                                          Curves.easeOutCubic),
-                                                )),
-                                                child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceBetween,
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.center,
-                                                  children: [
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Text(
-                                                            metadata.title,
-                                                            style: const TextStyle(
-                                                                fontSize: 26,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w900,
-                                                                letterSpacing:
-                                                                    -0.5),
-                                                            textAlign:
-                                                                TextAlign.left,
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 4),
-                                                          RichText(
-                                                            textAlign:
-                                                                TextAlign.left,
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            text: TextSpan(
-                                                              style: TextStyle(
-                                                                fontSize: 16,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w500,
-                                                                fontFamily: Theme.of(
-                                                                        context)
-                                                                    .textTheme
-                                                                    .bodyMedium
-                                                                    ?.fontFamily,
-                                                                color: Theme.of(
-                                                                        context)
-                                                                    .colorScheme
-                                                                    .onSurfaceVariant
-                                                                    .withValues(
-                                                                        alpha:
-                                                                            0.7),
-                                                              ),
-                                                              children: [
-                                                                TextSpan(
-                                                                  text: metadata
-                                                                          .artist ??
-                                                                      'Unknown Artist',
-                                                                  recognizer: _artistRecognizer
-                                                                    ..onTap = () =>
-                                                                        _navigateToArtist(metadata.artist ??
-                                                                            'Unknown Artist'),
-                                                                ),
-                                                                const TextSpan(
-                                                                    text:
-                                                                        ' • '),
-                                                                TextSpan(
-                                                                  text: metadata
-                                                                          .album ??
-                                                                      'Unknown Album',
-                                                                  recognizer: _albumRecognizer
-                                                                    ..onTap = () =>
-                                                                        _navigateToAlbum(metadata.album ??
-                                                                            'Unknown Album'),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 16),
-                                                    Consumer(
-                                                      builder: (context, ref,
-                                                          child) {
-                                                        final isFav = ref.watch(
-                                                            userDataProvider
-                                                                .select((s) => s
-                                                                    .isFavorite(
-                                                                        metadata
-                                                                            .id)));
-                                                        return _AnimatedFavoriteButton(
-                                                          isFav: isFav,
-                                                          onToggle: () {
-                                                            ref
-                                                                .read(userDataProvider
-                                                                    .notifier)
-                                                                .toggleFavorite(
-                                                                    metadata
-                                                                        .id);
-                                                          },
-                                                          onLongPress: () {
-                                                            showHeartContextMenu(
-                                                              context: context,
-                                                              ref: ref,
-                                                              songFilename:
-                                                                  metadata.id,
-                                                              songTitle:
-                                                                  metadata
-                                                                      .title,
-                                                            );
-                                                          },
-                                                        );
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        RepaintBoundary(
-                                          child: StreamBuilder<PositionData>(
-                                            stream: _positionDataStream,
-                                            builder: (context, snapshot) {
-                                              if (metadata == null) {
-                                                return const SizedBox.shrink();
-                                              }
-                                              final positionData =
-                                                  snapshot.data;
-                                              final showWaveform = ref
-                                                  .watch(settingsProvider)
-                                                  .showWaveform;
-                                              final duration =
-                                                  positionData?.duration ??
-                                                      Duration.zero;
-                                              final currentPosition =
-                                                  positionData?.position ??
-                                                      Duration.zero;
-
-                                              if (showWaveform) {
-                                                return WaveformProgressBar(
-                                                  filename: metadata.id,
-                                                  path: metadata.extras?[
-                                                          'audioPath'] ??
-                                                      '',
-                                                  progress: currentPosition,
-                                                  total: duration,
-                                                  onSeek: player.seek,
-                                                  positionStream:
-                                                      player.positionStream,
-                                                );
-                                              } else {
-                                                return BasicProgressBar(
-                                                  progress: currentPosition,
-                                                  total: duration,
-                                                  onSeek: player.seek,
-                                                );
-                                              }
-                                            },
-                                          ),
-                                        ),
-                                        if (isDesktop || isIPad) ...[
-                                          const SizedBox(height: 16),
-                                          SmoothColorBuilder(
-                                            targetColor: Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                            builder: (context, sliderColor) {
-                                              return Row(
-                                                children: [
-                                                  const Icon(Icons.volume_down,
-                                                      size: 20,
-                                                      color: Colors.white60),
-                                                  Expanded(
-                                                    child:
-                                                        StreamBuilder<double>(
-                                                      stream:
-                                                          player.volumeStream,
-                                                      builder:
-                                                          (context, snapshot) {
-                                                        return Slider(
-                                                          value:
-                                                              snapshot.data ??
-                                                                  1.0,
-                                                          activeColor:
-                                                              sliderColor,
-                                                          inactiveColor:
-                                                              Colors.white10,
-                                                          onChanged:
-                                                              player.setVolume,
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                  const Icon(Icons.volume_up,
-                                                      size: 20,
-                                                      color: Colors.white60),
-                                                ],
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                        const SizedBox(height: 32),
-                                        FadeTransition(
-                                          opacity: _controlsController,
-                                          child: SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: const Offset(0, 0.4),
-                                              end: Offset.zero,
-                                            ).animate(CurvedAnimation(
-                                              parent: _controlsController,
-                                              curve: const Interval(0.4, 0.85,
-                                                  curve: Curves.easeOutCubic),
-                                            )),
-                                            child: RepaintBoundary(
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceBetween,
-                                                children: [
-                                                  StreamBuilder<LoopMode>(
-                                                    stream:
-                                                        player.loopModeStream,
-                                                    builder:
-                                                        (context, snapshot) {
-                                                      final loopMode =
-                                                          snapshot.data ??
-                                                              LoopMode.off;
-                                                      IconData iconData =
-                                                          Icons.repeat;
-                                                      final bool isActive =
-                                                          loopMode ==
-                                                                  LoopMode
-                                                                      .one ||
-                                                              loopMode ==
-                                                                  LoopMode.all;
-                                                      return SmoothColorBuilder(
-                                                        targetColor: isActive
-                                                            ? Theme.of(context)
-                                                                .colorScheme
-                                                                .primary
-                                                            : Colors.white60,
-                                                        builder:
-                                                            (context, color) {
-                                                          if (loopMode ==
-                                                              LoopMode.one) {
-                                                            iconData = Icons
-                                                                .repeat_one;
-                                                          }
-                                                          return IconButton(
-                                                            icon: Icon(iconData,
-                                                                color: color,
-                                                                size: 24),
-                                                            onPressed: () {
-                                                              final nextMode = LoopMode
-                                                                  .values[(loopMode
-                                                                          .index +
-                                                                      1) %
-                                                                  LoopMode
-                                                                      .values
-                                                                      .length];
-                                                              player
-                                                                  .setLoopMode(
-                                                                      nextMode);
-                                                            },
-                                                          );
-                                                        },
-                                                      );
-                                                    },
-                                                  ),
-                                                  SmoothColorBuilder(
-                                                    targetColor:
-                                                        Theme.of(context)
-                                                            .colorScheme
-                                                            .primary,
-                                                    builder:
-                                                        (context, buttonColor) {
-                                                      return Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Container(
-                                                            height: 55,
-                                                            width: 55,
-                                                            decoration:
-                                                                BoxDecoration(
-                                                              color: buttonColor
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.15),
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          16),
-                                                            ),
-                                                            child: IconButton(
-                                                              icon: const Icon(
-                                                                  Icons
-                                                                      .skip_previous_rounded,
-                                                                  size: 26),
-                                                              color:
-                                                                  Colors.white,
-                                                              onPressed: () {
-                                                                if (player
-                                                                        .position
-                                                                        .inSeconds >
-                                                                    3) {
-                                                                  player.seek(
-                                                                      Duration
-                                                                          .zero);
-                                                                } else {
-                                                                  player
-                                                                      .seekToPrevious();
-                                                                }
-                                                              },
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 12),
-                                                          StreamBuilder<
-                                                              PlayerState>(
-                                                            stream: player
-                                                                .playerStateStream,
-                                                            builder: (context,
-                                                                snapshot) {
-                                                              return Container(
-                                                                height: 75,
-                                                                width: 100,
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color: buttonColor
-                                                                      .withValues(
-                                                                          alpha:
-                                                                              0.8),
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              20),
-                                                                  boxShadow: [
-                                                                    BoxShadow(
-                                                                      color: buttonColor.withValues(
-                                                                          alpha:
-                                                                              0.3),
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset:
-                                                                          const Offset(
-                                                                              0,
-                                                                              4),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                                child:
-                                                                    IconButton(
-                                                                  icon:
-                                                                      AnimatedIcon(
-                                                                    icon: AnimatedIcons
-                                                                        .play_pause,
-                                                                    progress:
-                                                                        _playPauseController,
-                                                                    size: 42,
-                                                                    color: Colors
-                                                                        .white,
-                                                                  ),
-                                                                  onPressed: () => ref
-                                                                      .read(
-                                                                          audioPlayerManagerProvider)
-                                                                      .togglePlayPause(),
-                                                                ),
-                                                              );
-                                                            },
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 12),
-                                                          Container(
-                                                            height: 55,
-                                                            width: 55,
-                                                            decoration:
-                                                                BoxDecoration(
-                                                              color: buttonColor
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.15),
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          16),
-                                                            ),
-                                                            child: IconButton(
-                                                              icon: const Icon(
-                                                                  Icons
-                                                                      .skip_next_rounded,
-                                                                  size: 26),
-                                                              color:
-                                                                  Colors.white,
-                                                              onPressed: player
-                                                                      .hasNext
-                                                                  ? player
-                                                                      .seekToNext
-                                                                  : null,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      );
-                                                    },
-                                                  ),
-                                                  ValueListenableBuilder<bool>(
-                                                    valueListenable: ref
-                                                        .read(
-                                                            audioPlayerManagerProvider)
-                                                        .shuffleNotifier,
-                                                    builder: (context,
-                                                        isShuffled, child) {
-                                                      return SmoothColorBuilder(
-                                                        targetColor: isShuffled
-                                                            ? Theme.of(context)
-                                                                .colorScheme
-                                                                .primary
-                                                            : Colors.white60,
-                                                        builder:
-                                                            (context, color) {
-                                                          return IconButton(
-                                                            icon: Icon(
-                                                                Icons.shuffle,
-                                                                size: 24,
-                                                                color: color),
-                                                            onLongPress: () =>
-                                                                _showShuffleSettings(
-                                                                    context,
-                                                                    ref),
-                                                            onPressed:
-                                                                () async {
-                                                              await ref
-                                                                  .read(
-                                                                      audioPlayerManagerProvider)
-                                                                  .toggleShuffle();
-                                                            },
-                                                          );
-                                                        },
-                                                      );
-                                                    },
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 32),
-                                      ],
-                                    ),
+                                  _PlayerSongInfo(
+                                    player: player,
+                                    artistRecognizer: _artistRecognizer,
+                                    albumRecognizer: _albumRecognizer,
+                                    navigateToArtist: _navigateToArtist,
+                                    navigateToAlbum: _navigateToAlbum,
                                   ),
-                                ),
-                              ],
-                            );
-                          },
+                                  _PlayerProgressSection(
+                                    player: player,
+                                    positionDataStream: _positionDataStream,
+                                  ),
+                                  _PlayerVolumeSlider(player: player),
+                                  const SizedBox(height: 32),
+                                  _PlayerControls(
+                                    player: player,
+                                    controlsController: _controlsController,
+                                    playPauseController: _playPauseController,
+                                    showShuffleSettings: (context) =>
+                                        _showShuffleSettings(context, ref),
+                                  ),
+                                  const SizedBox(height: 32),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1630,6 +926,905 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           );
         }),
       ),
+    );
+  }
+}
+
+class _PlayerBackground extends StatelessWidget {
+  final AudioPlayer player;
+  final String? Function(MediaItem?) resolveCoverUrl;
+
+  const _PlayerBackground({
+    required this.player,
+    required this.resolveCoverUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SequenceState?>(
+      stream: player.sequenceStateStream,
+      builder: (context, snapshot) {
+        final metadata = snapshot.data?.currentSource?.tag as MediaItem?;
+        if (metadata == null) return const SizedBox.shrink();
+
+        return Positioned.fill(
+          child: RepaintBoundary(
+            child: BlurredBackground(
+              key: ValueKey('bg_${metadata.id}'),
+              url: resolveCoverUrl(metadata) ?? '',
+              filename: metadata.id,
+              sigma: 25,
+              gradientColors: [
+                Colors.black.withValues(alpha: 0.5),
+                Colors.black.withValues(alpha: 0.8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PlayerDismissHandle extends StatelessWidget {
+  const _PlayerDismissHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 4,
+      margin: const EdgeInsets.only(bottom: 24),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
+  }
+}
+
+class _PlayerHeader extends StatelessWidget {
+  final AudioPlayer player;
+  final AudioPlayerManager audioManager;
+  final Future<void> Function(MediaItem?) syncVideoForCurrentTrack;
+  final ({String songId, bool hasVideo, String? mediaPath}) Function(MediaItem?)
+      resolveTrackMedia;
+
+  const _PlayerHeader({
+    required this.player,
+    required this.audioManager,
+    required this.syncVideoForCurrentTrack,
+    required this.resolveTrackMedia,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SequenceState?>(
+      stream: player.sequenceStateStream,
+      builder: (context, snapshot) {
+        final metadata = snapshot.data?.currentSource?.tag as MediaItem?;
+        if (metadata == null) return const SizedBox.shrink();
+
+        return _MediaModePill(
+          metadata: metadata,
+          audioManager: audioManager,
+          syncVideoForCurrentTrack: syncVideoForCurrentTrack,
+          resolveTrackMedia: resolveTrackMedia,
+        );
+      },
+    );
+  }
+}
+
+class _MediaModePill extends StatelessWidget {
+  final MediaItem metadata;
+  final AudioPlayerManager audioManager;
+  final Future<void> Function(MediaItem?) syncVideoForCurrentTrack;
+  final ({String songId, bool hasVideo, String? mediaPath}) Function(MediaItem?)
+      resolveTrackMedia;
+
+  const _MediaModePill({
+    required this.metadata,
+    required this.audioManager,
+    required this.syncVideoForCurrentTrack,
+    required this.resolveTrackMedia,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVideo = resolveTrackMedia(metadata).hasVideo;
+
+    return ValueListenableBuilder<PlaybackMediaMode>(
+      valueListenable: audioManager.effectiveMediaModeNotifier,
+      builder: (context, effectiveMode, _) {
+        final bool isAudio = effectiveMode == PlaybackMediaMode.audio;
+
+        return Container(
+          width: 140,
+          height: 32,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Stack(
+            children: [
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                alignment:
+                    isAudio ? Alignment.centerLeft : Alignment.centerRight,
+                child: FractionallySizedBox(
+                  widthFactor: 0.5,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        )
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ModeSegment(
+                      label: 'Audio',
+                      isSelected: isAudio,
+                      onTap: () async {
+                        await audioManager
+                            .setPreferredMediaMode(PlaybackMediaMode.audio);
+                        await syncVideoForCurrentTrack(metadata);
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: _ModeSegment(
+                      label: 'Video',
+                      isSelected: !isAudio,
+                      isEnabled: hasVideo,
+                      onTap: hasVideo
+                          ? () async {
+                              await audioManager.setPreferredMediaMode(
+                                  PlaybackMediaMode.video);
+                              await syncVideoForCurrentTrack(metadata);
+                            }
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ModeSegment extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final bool isEnabled;
+  final VoidCallback? onTap;
+
+  const _ModeSegment({
+    required this.label,
+    required this.isSelected,
+    this.isEnabled = true,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: isEnabled ? onTap : null,
+      behavior: HitTestBehavior.opaque,
+      child: Center(
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 200),
+          style: TextStyle(
+            color: !isEnabled
+                ? Colors.white24
+                : (isSelected ? Colors.white : Colors.white60),
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontSize: 12,
+          ),
+          child: Text(label),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlayerArtPanel extends ConsumerWidget {
+  final AudioPlayer player;
+  final AudioPlayerManager audioManager;
+  final Animation<double> fadeAnimation;
+  final Animation<double> artScaleAnimation;
+  final AnimationController playPauseController;
+  final bool Function(MediaItem) canRenderVideoFor;
+  final double Function() currentVideoAspectRatio;
+  final Widget Function(BoxFit) buildVideoSurface;
+  final String? Function(MediaItem?) resolveCoverUrl;
+  final VoidCallback toggleLyrics;
+  final bool hasLyricsForCurrentSong;
+  final Function(BuildContext) openNextUpScreen;
+
+  const _PlayerArtPanel({
+    required this.player,
+    required this.audioManager,
+    required this.fadeAnimation,
+    required this.artScaleAnimation,
+    required this.playPauseController,
+    required this.canRenderVideoFor,
+    required this.currentVideoAspectRatio,
+    required this.buildVideoSurface,
+    required this.resolveCoverUrl,
+    required this.toggleLyrics,
+    required this.hasLyricsForCurrentSong,
+    required this.openNextUpScreen,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<SequenceState?>(
+      stream: player.sequenceStateStream,
+      builder: (context, snapshot) {
+        final metadata = snapshot.data?.currentSource?.tag as MediaItem?;
+        if (metadata == null) return const SizedBox.shrink();
+
+        final coverSizingMode = ref.watch(
+          settingsProvider.select((s) => s.coverSizingMode),
+        );
+        final coverFit = coverSizingMode == PlayerCoverSizingMode.autoFit
+            ? BoxFit.cover
+            : BoxFit.contain;
+        
+        return RepaintBoundary(
+          child: LayoutBuilder(builder: (context, constraints) {
+            return GestureDetector(
+              onVerticalDragUpdate: (details) {
+                if (details.primaryDelta! < -5 && hasLyricsForCurrentSong) {
+                  toggleLyrics();
+                }
+              },
+              child: _ArtPanelContent(
+                metadata: metadata,
+                constraints: constraints,
+                fadeAnimation: fadeAnimation,
+                artScaleAnimation: artScaleAnimation,
+                playPauseController: playPauseController,
+                canRenderVideoFor: canRenderVideoFor,
+                currentVideoAspectRatio: currentVideoAspectRatio,
+                buildVideoSurface: buildVideoSurface,
+                resolveCoverUrl: resolveCoverUrl,
+                toggleLyrics: toggleLyrics,
+                hasLyricsForCurrentSong: hasLyricsForCurrentSong,
+                openNextUpScreen: openNextUpScreen,
+                coverFit: coverFit,
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
+class _ArtPanelContent extends StatelessWidget {
+  final MediaItem metadata;
+  final BoxConstraints constraints;
+  final Animation<double> fadeAnimation;
+  final Animation<double> artScaleAnimation;
+  final AnimationController playPauseController;
+  final bool Function(MediaItem) canRenderVideoFor;
+  final double Function() currentVideoAspectRatio;
+  final Widget Function(BoxFit) buildVideoSurface;
+  final String? Function(MediaItem?) resolveCoverUrl;
+  final VoidCallback toggleLyrics;
+  final bool hasLyricsForCurrentSong;
+  final Function(BuildContext) openNextUpScreen;
+  final BoxFit coverFit;
+
+  const _ArtPanelContent({
+    required this.metadata,
+    required this.constraints,
+    required this.fadeAnimation,
+    required this.artScaleAnimation,
+    required this.playPauseController,
+    required this.canRenderVideoFor,
+    required this.currentVideoAspectRatio,
+    required this.buildVideoSurface,
+    required this.resolveCoverUrl,
+    required this.toggleLyrics,
+    required this.hasLyricsForCurrentSong,
+    required this.openNextUpScreen,
+    required this.coverFit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canShowVideo = canRenderVideoFor(metadata);
+    final targetAspectRatio = canShowVideo ? currentVideoAspectRatio() : 1.0;
+    final targetRadius = canShowVideo ? 8.0 : 28.0;
+
+    return Center(
+      child: FadeTransition(
+        opacity: fadeAnimation,
+        child: ScaleTransition(
+          scale: artScaleAnimation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(CurvedAnimation(
+              parent: playPauseController,
+              curve: Curves.easeOutBack,
+            )),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 1.0, end: targetAspectRatio),
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeInOut,
+              builder: (context, aspectRatio, _) {
+                return TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 28.0, end: targetRadius),
+                  duration: const Duration(milliseconds: 380),
+                  curve: Curves.easeInOut,
+                  builder: (context, radius, _) {
+                    return AspectRatio(
+                      aspectRatio: aspectRatio,
+                      child: Hero(
+                        tag: 'now_playing_art_${metadata.id}',
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Positioned.fill(
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 380),
+                                curve: Curves.easeInOut,
+                                decoration: BoxDecoration(
+                                  color: coverFit == BoxFit.contain
+                                      ? Colors.black
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(radius),
+                                  boxShadow: canShowVideo
+                                      ? []
+                                      : [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.4),
+                                            blurRadius: 25,
+                                            offset: const Offset(0, 10),
+                                          ),
+                                        ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(radius),
+                                  child: canShowVideo
+                                      ? buildVideoSurface(coverFit)
+                                      : AlbumArtImage(
+                                          key: ValueKey('art_${metadata.id}'),
+                                          url: resolveCoverUrl(metadata) ?? '',
+                                          filename: metadata.id,
+                                          width: constraints.maxWidth,
+                                          height: constraints.maxWidth,
+                                          cacheWidth: 800,
+                                          fit: coverFit,
+                                        ),
+                                ),
+                              ),
+                            ),
+                            if (hasLyricsForCurrentSong)
+                              Positioned(
+                                bottom: 12,
+                                left: 12,
+                                child: _OverlayButton(
+                                  icon: const Icon(Icons.lyrics_outlined),
+                                  onPressed: toggleLyrics,
+                                ),
+                              ),
+                            Positioned(
+                              bottom: 12,
+                              right: 12,
+                              child: _OverlayButton(
+                                icon: const Icon(Icons.queue_music),
+                                onPressed: () => openNextUpScreen(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OverlayButton extends StatelessWidget {
+  final Widget icon;
+  final VoidCallback onPressed;
+
+  const _OverlayButton({
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: IconButton(
+        icon: icon,
+        onPressed: onPressed,
+        color: Colors.white,
+        iconSize: 24,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+}
+
+class _PlayerSongInfo extends ConsumerWidget {
+  final AudioPlayer player;
+  final TapGestureRecognizer artistRecognizer;
+  final TapGestureRecognizer albumRecognizer;
+  final Function(String) navigateToArtist;
+  final Function(String) navigateToAlbum;
+
+  const _PlayerSongInfo({
+    required this.player,
+    required this.artistRecognizer,
+    required this.albumRecognizer,
+    required this.navigateToArtist,
+    required this.navigateToAlbum,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<SequenceState?>(
+      stream: player.sequenceStateStream,
+      builder: (context, snapshot) {
+        final metadata = snapshot.data?.currentSource?.tag as MediaItem?;
+        if (metadata == null) return const SizedBox.shrink();
+
+        return RepaintBoundary(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      metadata.title,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                      ),
+                      textAlign: TextAlign.left,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    RichText(
+                      textAlign: TextAlign.left,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      text: TextSpan(
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.fontFamily,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: 0.7),
+                        ),
+                        children: [
+                          TextSpan(
+                            text: metadata.artist ?? 'Unknown Artist',
+                            recognizer: artistRecognizer
+                              ..onTap = () => navigateToArtist(
+                                  metadata.artist ?? 'Unknown Artist'),
+                          ),
+                          const TextSpan(text: ' • '),
+                          TextSpan(
+                            text: metadata.album ?? 'Unknown Album',
+                            recognizer: albumRecognizer
+                              ..onTap = () => navigateToAlbum(
+                                  metadata.album ?? 'Unknown Album'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              _FavoriteButton(
+                songId: metadata.id,
+                songTitle: metadata.title,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FavoriteButton extends ConsumerWidget {
+  final String songId;
+  final String songTitle;
+
+  const _FavoriteButton({
+    required this.songId,
+    required this.songTitle,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isFav = ref.watch(userDataProvider.select((s) => s.isFavorite(songId)));
+    
+    return _AnimatedFavoriteButton(
+      isFav: isFav,
+      onToggle: () {
+        ref.read(userDataProvider.notifier).toggleFavorite(songId);
+      },
+      onLongPress: () {
+        showHeartContextMenu(
+          context: context,
+          ref: ref,
+          songFilename: songId,
+          songTitle: songTitle,
+        );
+      },
+    );
+  }
+}
+
+class _PlayerProgressSection extends ConsumerWidget {
+  final AudioPlayer player;
+  final Stream<PositionData> positionDataStream;
+
+  const _PlayerProgressSection({
+    required this.player,
+    required this.positionDataStream,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<SequenceState?>(
+      stream: player.sequenceStateStream,
+      builder: (context, seqSnapshot) {
+        final metadata = seqSnapshot.data?.currentSource?.tag as MediaItem?;
+        if (metadata == null) return const SizedBox.shrink();
+
+        return RepaintBoundary(
+          child: StreamBuilder<PositionData>(
+            stream: positionDataStream,
+            builder: (context, snapshot) {
+              final positionData = snapshot.data;
+              final showWaveform = ref.watch(settingsProvider.select((s) => s.showWaveform));
+              final duration = positionData?.duration ?? Duration.zero;
+              final currentPosition = positionData?.position ?? Duration.zero;
+
+              if (showWaveform) {
+                return WaveformProgressBar(
+                  filename: metadata.id,
+                  path: metadata.extras?['audioPath'] ?? '',
+                  progress: currentPosition,
+                  total: duration,
+                  onSeek: player.seek,
+                  positionStream: player.positionStream,
+                );
+              } else {
+                return BasicProgressBar(
+                  progressNotifier: player.positionStream,
+                  total: duration,
+                  onSeek: player.seek,
+                );
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PlayerVolumeSlider extends StatelessWidget {
+  final AudioPlayer player;
+
+  const _PlayerVolumeSlider({required this.player});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop = !kIsWeb &&
+        (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+    final isIPad = !kIsWeb &&
+        Platform.isIOS &&
+        MediaQuery.of(context).size.shortestSide >= 600;
+
+    if (!isDesktop && !isIPad) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: SmoothColorBuilder(
+        targetColor: Theme.of(context).colorScheme.primary,
+        builder: (context, sliderColor) {
+          return Row(
+            children: [
+              const Icon(Icons.volume_down, size: 20, color: Colors.white60),
+              Expanded(
+                child: StreamBuilder<double>(
+                  stream: player.volumeStream,
+                  builder: (context, snapshot) {
+                    return Slider(
+                      value: snapshot.data ?? 1.0,
+                      activeColor: sliderColor,
+                      inactiveColor: Colors.white10,
+                      onChanged: player.setVolume,
+                    );
+                  },
+                ),
+              ),
+              const Icon(Icons.volume_up, size: 20, color: Colors.white60),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PlayerControls extends ConsumerWidget {
+  final AudioPlayer player;
+  final AnimationController controlsController;
+  final AnimationController playPauseController;
+  final Function(BuildContext) showShuffleSettings;
+
+  const _PlayerControls({
+    required this.player,
+    required this.controlsController,
+    required this.playPauseController,
+    required this.showShuffleSettings,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FadeTransition(
+      opacity: controlsController,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.4),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: controlsController,
+          curve: const Interval(0.4, 0.85, curve: Curves.easeOutCubic),
+        )),
+        child: RepaintBoundary(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _LoopButton(player: player),
+              _PlaybackButtons(
+                player: player,
+                playPauseController: playPauseController,
+              ),
+              _ShuffleButton(
+                showShuffleSettings: showShuffleSettings,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoopButton extends StatelessWidget {
+  final AudioPlayer player;
+
+  const _LoopButton({required this.player});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<LoopMode>(
+      stream: player.loopModeStream,
+      builder: (context, snapshot) {
+        final loopMode = snapshot.data ?? LoopMode.off;
+        final bool isActive = loopMode != LoopMode.off;
+        
+        return SmoothColorBuilder(
+          targetColor: isActive
+              ? Theme.of(context).colorScheme.primary
+              : Colors.white60,
+          builder: (context, color) {
+            IconData iconData = Icons.repeat;
+            if (loopMode == LoopMode.one) iconData = Icons.repeat_one;
+            
+            return IconButton(
+              icon: Icon(iconData, color: color, size: 24),
+              onPressed: () {
+                final nextMode = LoopMode.values[
+                    (loopMode.index + 1) % LoopMode.values.length];
+                player.setLoopMode(nextMode);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _PlaybackButtons extends ConsumerWidget {
+  final AudioPlayer player;
+  final AnimationController playPauseController;
+
+  const _PlaybackButtons({
+    required this.player,
+    required this.playPauseController,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SmoothColorBuilder(
+      targetColor: Theme.of(context).colorScheme.primary,
+      builder: (context, buttonColor) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ControlButton(
+              icon: Icons.skip_previous_rounded,
+              color: buttonColor,
+              onPressed: () {
+                if (player.position.inSeconds > 3) {
+                  player.seek(Duration.zero);
+                } else {
+                  player.seekToPrevious();
+                }
+              },
+            ),
+            const SizedBox(width: 12),
+            _PlayPauseButton(
+              color: buttonColor,
+              controller: playPauseController,
+              onPressed: () => ref.read(audioPlayerManagerProvider).togglePlayPause(),
+            ),
+            const SizedBox(width: 12),
+            _ControlButton(
+              icon: Icons.skip_next_rounded,
+              color: buttonColor,
+              onPressed: player.hasNext ? player.seekToNext : null,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ControlButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  const _ControlButton({
+    required this.icon,
+    required this.color,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 55,
+      width: 55,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 26),
+        color: Colors.white,
+        onPressed: onPressed,
+      ),
+    );
+  }
+}
+
+class _PlayPauseButton extends StatelessWidget {
+  final Color color;
+  final AnimationController controller;
+  final VoidCallback onPressed;
+
+  const _PlayPauseButton({
+    required this.color,
+    required this.controller,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 75,
+      width: 100,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: AnimatedIcon(
+          icon: AnimatedIcons.play_pause,
+          progress: controller,
+          size: 42,
+          color: Colors.white,
+        ),
+        onPressed: onPressed,
+      ),
+    );
+  }
+}
+
+class _ShuffleButton extends ConsumerWidget {
+  final Function(BuildContext) showShuffleSettings;
+
+  const _ShuffleButton({required this.showShuffleSettings});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final shuffleNotifier = ref.watch(audioPlayerManagerProvider).shuffleNotifier;
+    
+    return ValueListenableBuilder<bool>(
+      valueListenable: shuffleNotifier,
+      builder: (context, isShuffled, child) {
+        return SmoothColorBuilder(
+          targetColor: isShuffled
+              ? Theme.of(context).colorScheme.primary
+              : Colors.white60,
+          builder: (context, color) {
+            return IconButton(
+              icon: Icon(Icons.shuffle, size: 24, color: color),
+              onLongPress: () => showShuffleSettings(context),
+              onPressed: () => ref.read(audioPlayerManagerProvider).toggleShuffle(),
+            );
+          },
+        );
+      },
     );
   }
 }

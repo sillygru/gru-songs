@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'storage_service.dart';
 
 class TelemetryService {
@@ -8,9 +9,14 @@ class TelemetryService {
   TelemetryService._internal();
 
   static const String _baseUrl = 'https://songs.gru0.dev/api/telemetry';
-  static const String _appVersion = '3.4.2+1';
 
   final StorageService _storage = StorageService();
+  PackageInfo? _packageInfo;
+
+  Future<String> get _appVersion async {
+    _packageInfo ??= await PackageInfo.fromPlatform();
+    return _packageInfo!.version;
+  }
 
   String get _platform {
     if (kIsWeb) return 'web';
@@ -61,7 +67,7 @@ class TelemetryService {
       final request = await client.postUrl(uri);
 
       request.headers.set('Content-Type', 'application/json');
-      request.headers.set('User-Agent', 'Wispie_$_appVersion');
+      request.headers.set('User-Agent', 'Wispie_${await _appVersion}');
 
       request.add(utf8.encode(jsonEncode(payload)));
 
