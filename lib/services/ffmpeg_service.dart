@@ -67,12 +67,14 @@ class FFmpegService {
     required String? lyrics,
   }) async {
     final normalizedLyrics = lyrics?.trim() ?? '';
+    // Use -map 0:a? to only process audio streams, avoiding video codec errors.
+    // Add -vn -sn to explicitly disable video/subtitle stream processing.
     final args = [
       '-y',
       '-i',
       inputPath,
       '-map',
-      '0',
+      '0:a?',
       '-c',
       'copy',
       '-map_metadata',
@@ -81,6 +83,8 @@ class FFmpegService {
       'lyrics=$normalizedLyrics',
       '-metadata',
       'unsynced_lyrics=$normalizedLyrics',
+      '-vn',
+      '-sn',
       outputPath,
     ];
 
@@ -108,8 +112,11 @@ class FFmpegService {
       }
 
       final input = _q(filePath);
+      // Use -select_streams a:0 to only analyze audio streams, avoiding
+      // video codec errors (e.g., AV1 decoding failures on unsupported platforms).
+      // -vn and -sn explicitly disable video and subtitle stream processing.
       final cmd =
-          '-v quiet -show_entries format_tags -print_format json $input';
+          '-v quiet -vn -sn -select_streams a:0 -show_entries format_tags -print_format json $input';
 
       final session = await FFprobeKit.execute(cmd);
       final rc = await session.getReturnCode();
@@ -200,8 +207,10 @@ class FFmpegService {
       if (!await file.exists() || await file.length() == 0) return false;
 
       final input = _q(filePath);
+      // Use -vn and -sn to disable video/subtitle stream analysis,
+      // avoiding codec errors on unsupported platforms.
       final cmd =
-          '-v error -select_streams a -show_entries stream=codec_type -of csv=p=0 $input';
+          '-v error -vn -sn -select_streams a -show_entries stream=codec_type -of csv=p=0 $input';
       final session = await FFprobeKit.execute(cmd);
       final rc = await session.getReturnCode();
       if (!ReturnCode.isSuccess(rc)) return false;
@@ -212,10 +221,45 @@ class FFmpegService {
     }
   }
 
+  /// Gets the video codec name without decoding the stream.
+  /// Returns null if no video stream or on error.
+  Future<String?> getVideoCodec(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return null;
+
+      final input = _q(filePath);
+      // Only read stream metadata, no decoding
+      final cmd =
+          '-v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 $input';
+      final session = await FFprobeKit.execute(cmd);
+      final rc = await session.getReturnCode();
+      if (!ReturnCode.isSuccess(rc)) return null;
+      final output = await session.getOutput();
+      final codec = output?.trim().toLowerCase();
+      return codec;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Checks if the file has an AV1 video stream without decoding it.
+  Future<bool> isAV1File(String filePath) async {
+    final codec = await getVideoCodec(filePath);
+    return codec == 'av1';
+  }
+
   Future<String?> extractCover({
     required String inputPath,
     required String outputPath,
   }) async {
+    // Skip AV1 files entirely - we cannot decode them
+    final isAV1 = await isAV1File(inputPath);
+    if (isAV1) {
+      if (kDebugMode) debugPrint('FFmpegService: Skipping AV1 file: $inputPath');
+      return null;
+    }
+
     // Optimized: Stream copy mirroring Namida's extraction logic
     try {
       final session = await FFmpegKit.executeWithArguments([
@@ -278,6 +322,13 @@ class FFmpegService {
     required String outputPath,
     int frameNumber = 5,
   }) async {
+    // Skip AV1 files entirely - we cannot decode them
+    final isAV1 = await isAV1File(inputPath);
+    if (isAV1) {
+      if (kDebugMode) debugPrint('FFmpegService: Skipping AV1 file: $inputPath');
+      return null;
+    }
+
     try {
       final normalizedFrameNumber = frameNumber < 1 ? 1 : frameNumber;
 
@@ -397,8 +448,10 @@ class FFmpegService {
   Future<double?> _getMediaDurationSeconds(String filePath) async {
     try {
       final input = _q(filePath);
+      // Use -vn and -sn to disable video/subtitle stream analysis,
+      // avoiding codec errors on unsupported platforms.
       final cmd =
-          '-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $input';
+          '-v error -vn -sn -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $input';
       final session = await FFprobeKit.execute(cmd);
       final rc = await session.getReturnCode();
       if (!ReturnCode.isSuccess(rc)) return null;

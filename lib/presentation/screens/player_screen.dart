@@ -201,13 +201,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _updateTimerState() {
     _positionTimer?.cancel();
     if (player.playing && _isAppForeground) {
-      _positionTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      _positionTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
         if (mounted) {
           _positionNotifier.value = player.position;
         }
       });
     }
-    // Initial sync
     _positionNotifier.value = player.position;
   }
 
@@ -298,7 +297,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(_syncVideoForCurrentTrack(mediaItem));
   }
 
-
   Future<void> _syncVideoWakeLock() async {
     final shouldKeepAwake = _isAppForeground &&
         _audioManager.effectiveMediaMode == PlaybackMediaMode.video;
@@ -384,12 +382,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _syncVideoForCurrentTrack(MediaItem? mediaItem) async {
+    // Check video mode FIRST before any video controller operations
+    if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
+      await _disposeVideoController();
+      return;
+    }
+
     final track = _resolveTrackMedia(mediaItem);
-    final isVideoMode =
-        _audioManager.effectiveMediaMode == PlaybackMediaMode.video;
 
     if (!_isAppForeground ||
-        !isVideoMode ||
         track.songId.isEmpty ||
         !track.hasVideo ||
         track.mediaPath == null ||
@@ -401,7 +402,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (_videoSongId == track.songId &&
         _videoController != null &&
         _isVideoReady) {
-      _syncVideoPlaybackState();
+      if (player.playing) {
+        _videoController?.play();
+      } else {
+        _videoController?.pause();
+      }
       _syncVideoPosition(player.position, force: true);
       return;
     }
@@ -437,7 +442,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _videoController = controller;
       _videoSongId = track.songId;
       _isVideoReady = true;
-      _syncVideoPlaybackState();
+      if (player.playing) {
+        controller.play();
+      }
       if (mounted) setState(() {});
     } catch (_) {
       controller.removeListener(_onVideoControllerUpdated);
@@ -454,7 +461,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (controller == null || !_isVideoReady) return;
     if (!_isAppForeground ||
         _audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
-      controller.pause();
+      unawaited(_disposeVideoController(notify: false));
       return;
     }
     if (player.playing) {
@@ -506,6 +513,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _lastVideoDriftCorrectionAt = null;
     if (controller != null) {
       controller.removeListener(_onVideoControllerUpdated);
+      await controller.pause(); // Stop decoding immediately
       await controller.dispose();
     }
     if (notify && mounted) setState(() {});
@@ -721,8 +729,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Stream<PositionData> get _positionDataStream =>
       Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
-          player.positionStream,
-          player.bufferedPositionStream,
+          player.positionStream.throttleTime(
+              const Duration(milliseconds: 250)),
+          player.bufferedPositionStream.throttleTime(
+              const Duration(milliseconds: 250)),
           player.durationStream,
           (position, bufferedPosition, duration) => PositionData(
               position, bufferedPosition, duration ?? Duration.zero));
@@ -858,7 +868,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               resolveCoverUrl: _resolveCoverUrl,
                             ),
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
+                              padding:
+                                  const EdgeInsets.fromLTRB(24, 40, 24, 80),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -1187,7 +1198,7 @@ class _PlayerArtPanel extends ConsumerWidget {
         final coverFit = coverSizingMode == PlayerCoverSizingMode.autoFit
             ? BoxFit.cover
             : BoxFit.contain;
-        
+
         return RepaintBoundary(
           child: LayoutBuilder(builder: (context, constraints) {
             return GestureDetector(
@@ -1489,8 +1500,9 @@ class _FavoriteButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isFav = ref.watch(userDataProvider.select((s) => s.isFavorite(songId)));
-    
+    final isFav =
+        ref.watch(userDataProvider.select((s) => s.isFavorite(songId)));
+
     return _AnimatedFavoriteButton(
       isFav: isFav,
       onToggle: () {
@@ -1525,16 +1537,17 @@ class _PlayerProgressSection extends ConsumerWidget {
         final metadata = seqSnapshot.data?.currentSource?.tag as MediaItem?;
         if (metadata == null) return const SizedBox.shrink();
 
-        return RepaintBoundary(
-          child: StreamBuilder<PositionData>(
-            stream: positionDataStream,
-            builder: (context, snapshot) {
-              final positionData = snapshot.data;
-              final showWaveform = ref.watch(settingsProvider.select((s) => s.showWaveform));
-              final duration = positionData?.duration ?? Duration.zero;
-              final currentPosition = positionData?.position ?? Duration.zero;
+        final showWaveform =
+            ref.watch(settingsProvider.select((s) => s.showWaveform));
 
-              if (showWaveform) {
+        if (showWaveform) {
+          return RepaintBoundary(
+            child: StreamBuilder<PositionData>(
+              stream: positionDataStream,
+              builder: (context, snapshot) {
+                final positionData = snapshot.data;
+                final duration = positionData?.duration ?? Duration.zero;
+                final currentPosition = positionData?.position ?? Duration.zero;
                 return WaveformProgressBar(
                   filename: metadata.id,
                   path: metadata.extras?['audioPath'] ?? '',
@@ -1543,16 +1556,24 @@ class _PlayerProgressSection extends ConsumerWidget {
                   onSeek: player.seek,
                   positionStream: player.positionStream,
                 );
-              } else {
+              },
+            ),
+          );
+        } else {
+          return RepaintBoundary(
+            child: StreamBuilder<Duration?>(
+              stream: player.durationStream,
+              builder: (context, snapshot) {
+                final duration = snapshot.data ?? Duration.zero;
                 return BasicProgressBar(
-                  progressNotifier: player.positionStream,
+                  player: player,
                   total: duration,
                   onSeek: player.seek,
                 );
-              }
-            },
-          ),
-        );
+              },
+            ),
+          );
+        }
       },
     );
   }
@@ -1565,8 +1586,8 @@ class _PlayerVolumeSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = !kIsWeb &&
-        (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+    final isDesktop =
+        !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
     final isIPad = !kIsWeb &&
         Platform.isIOS &&
         MediaQuery.of(context).size.shortestSide >= 600;
@@ -1575,29 +1596,31 @@ class _PlayerVolumeSlider extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(top: 16),
-      child: SmoothColorBuilder(
-        targetColor: Theme.of(context).colorScheme.primary,
-        builder: (context, sliderColor) {
-          return Row(
-            children: [
-              const Icon(Icons.volume_down, size: 20, color: Colors.white60),
-              Expanded(
-                child: StreamBuilder<double>(
-                  stream: player.volumeStream,
-                  builder: (context, snapshot) {
-                    return Slider(
-                      value: snapshot.data ?? 1.0,
-                      activeColor: sliderColor,
-                      inactiveColor: Colors.white10,
-                      onChanged: player.setVolume,
-                    );
-                  },
+      child: RepaintBoundary(
+        child: SmoothColorBuilder(
+          targetColor: Theme.of(context).colorScheme.primary,
+          builder: (context, sliderColor) {
+            return Row(
+              children: [
+                const Icon(Icons.volume_down, size: 20, color: Colors.white60),
+                Expanded(
+                  child: StreamBuilder<double>(
+                    stream: player.volumeStream,
+                    builder: (context, snapshot) {
+                      return Slider(
+                        value: snapshot.data ?? 1.0,
+                        activeColor: sliderColor,
+                        inactiveColor: Colors.white10,
+                        onChanged: player.setVolume,
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const Icon(Icons.volume_up, size: 20, color: Colors.white60),
-            ],
-          );
-        },
+                const Icon(Icons.volume_up, size: 20, color: Colors.white60),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -1660,24 +1683,26 @@ class _LoopButton extends StatelessWidget {
       builder: (context, snapshot) {
         final loopMode = snapshot.data ?? LoopMode.off;
         final bool isActive = loopMode != LoopMode.off;
-        
-        return SmoothColorBuilder(
-          targetColor: isActive
-              ? Theme.of(context).colorScheme.primary
-              : Colors.white60,
-          builder: (context, color) {
-            IconData iconData = Icons.repeat;
-            if (loopMode == LoopMode.one) iconData = Icons.repeat_one;
-            
-            return IconButton(
-              icon: Icon(iconData, color: color, size: 24),
-              onPressed: () {
-                final nextMode = LoopMode.values[
-                    (loopMode.index + 1) % LoopMode.values.length];
-                player.setLoopMode(nextMode);
-              },
-            );
-          },
+
+        return RepaintBoundary(
+          child: SmoothColorBuilder(
+            targetColor: isActive
+                ? Theme.of(context).colorScheme.primary
+                : Colors.white60,
+            builder: (context, color) {
+              IconData iconData = Icons.repeat;
+              if (loopMode == LoopMode.one) iconData = Icons.repeat_one;
+
+              return IconButton(
+                icon: Icon(iconData, color: color, size: 24),
+                onPressed: () {
+                  final nextMode = LoopMode
+                      .values[(loopMode.index + 1) % LoopMode.values.length];
+                  player.setLoopMode(nextMode);
+                },
+              );
+            },
+          ),
         );
       },
     );
@@ -1695,38 +1720,41 @@ class _PlaybackButtons extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return SmoothColorBuilder(
-      targetColor: Theme.of(context).colorScheme.primary,
-      builder: (context, buttonColor) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ControlButton(
-              icon: Icons.skip_previous_rounded,
-              color: buttonColor,
-              onPressed: () {
-                if (player.position.inSeconds > 3) {
-                  player.seek(Duration.zero);
-                } else {
-                  player.seekToPrevious();
-                }
-              },
-            ),
-            const SizedBox(width: 12),
-            _PlayPauseButton(
-              color: buttonColor,
-              controller: playPauseController,
-              onPressed: () => ref.read(audioPlayerManagerProvider).togglePlayPause(),
-            ),
-            const SizedBox(width: 12),
-            _ControlButton(
-              icon: Icons.skip_next_rounded,
-              color: buttonColor,
-              onPressed: player.hasNext ? player.seekToNext : null,
-            ),
-          ],
-        );
-      },
+    return RepaintBoundary(
+      child: SmoothColorBuilder(
+        targetColor: Theme.of(context).colorScheme.primary,
+        builder: (context, buttonColor) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ControlButton(
+                icon: Icons.skip_previous_rounded,
+                color: buttonColor,
+                onPressed: () {
+                  if (player.position.inSeconds > 3) {
+                    player.seek(Duration.zero);
+                  } else {
+                    player.seekToPrevious();
+                  }
+                },
+              ),
+              const SizedBox(width: 12),
+              _PlayPauseButton(
+                color: buttonColor,
+                controller: playPauseController,
+                onPressed: () =>
+                    ref.read(audioPlayerManagerProvider).togglePlayPause(),
+              ),
+              const SizedBox(width: 12),
+              _ControlButton(
+                icon: Icons.skip_next_rounded,
+                color: buttonColor,
+                onPressed: player.hasNext ? player.seekToNext : null,
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -1807,8 +1835,9 @@ class _ShuffleButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final shuffleNotifier = ref.watch(audioPlayerManagerProvider).shuffleNotifier;
-    
+    final shuffleNotifier =
+        ref.watch(audioPlayerManagerProvider).shuffleNotifier;
+
     return ValueListenableBuilder<bool>(
       valueListenable: shuffleNotifier,
       builder: (context, isShuffled, child) {
@@ -1820,7 +1849,8 @@ class _ShuffleButton extends ConsumerWidget {
             return IconButton(
               icon: Icon(Icons.shuffle, size: 24, color: color),
               onLongPress: () => showShuffleSettings(context),
-              onPressed: () => ref.read(audioPlayerManagerProvider).toggleShuffle(),
+              onPressed: () =>
+                  ref.read(audioPlayerManagerProvider).toggleShuffle(),
             );
           },
         );

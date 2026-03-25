@@ -83,6 +83,7 @@ class ScannerService {
     '.webm',
     '.avi',
     '.3gp',
+    '.av1',
   };
 
   static bool _isVideoFile(String path) {

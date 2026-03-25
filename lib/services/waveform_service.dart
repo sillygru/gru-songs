@@ -59,6 +59,7 @@ class WaveformService {
       // -ac 1: Convert to mono (simple averaging, no delay)
       // -ar 8000: Downsample to 8kHz for manageable data size
       // -f f32le: 32-bit float little-endian PCM (no compression/processing)
+      // -vn: Disable video stream processing
       // No -af filters: Avoid compand, volumedetect, astats which add lookahead
       final session = await FFmpegKit.executeWithArguments([
         '-i',
