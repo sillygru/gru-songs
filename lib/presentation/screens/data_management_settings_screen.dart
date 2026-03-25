@@ -38,8 +38,11 @@ class _DataManagementSettingsScreenState
                 onTap: () async {
                   final messenger = ScaffoldMessenger.of(context);
                   try {
+                    final options = await _showExportOptionsDialog();
+                    if (options == null) return;
+
                     final exportService = DataExportService();
-                    await exportService.exportUserData();
+                    await exportService.exportUserData(options: options);
 
                     TelemetryService.instance.trackEvent(
                         'data_management',
@@ -59,7 +62,7 @@ class _DataManagementSettingsScreenState
               _buildListTile(
                 icon: Icons.download_for_offline_rounded,
                 title: 'Import App Data',
-                subtitle: 'Restore or merge data from a backup',
+                subtitle: 'Restore data from a backup (replaces all)',
                 onTap: () => _handleImport(),
               ),
               _buildListTile(
@@ -109,6 +112,183 @@ class _DataManagementSettingsScreenState
           const SizedBox(height: 32),
         ],
       ),
+    );
+  }
+
+  Future<ExportOptions?> _showExportOptionsDialog() async {
+    final selectedTypes = <ExportContentType>{
+      ExportContentType.userStats,
+      ExportContentType.userData,
+    };
+
+    return showDialog<ExportOptions>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text("Export Options"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Select content to export:',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildExportCheckbox(
+                    title: 'User Stats',
+                    subtitle: 'Play counts, sessions, fun stats',
+                    value: selectedTypes.contains(ExportContentType.userStats),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.userStats);
+                        } else {
+                          selectedTypes.remove(ExportContentType.userStats);
+                        }
+                      });
+                    },
+                  ),
+                  _buildExportCheckbox(
+                    title: 'User Data',
+                    subtitle: 'Favorites, hidden, playlists, moods',
+                    value: selectedTypes.contains(ExportContentType.userData),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.userData);
+                        } else {
+                          selectedTypes.remove(ExportContentType.userData);
+                        }
+                      });
+                    },
+                  ),
+                  const Divider(height: 24),
+                  _buildExportCheckbox(
+                    title: 'Cover Cache',
+                    subtitle: 'Album artwork images',
+                    value: selectedTypes.contains(ExportContentType.coverCache),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.coverCache);
+                        } else {
+                          selectedTypes.remove(ExportContentType.coverCache);
+                        }
+                      });
+                    },
+                  ),
+                  _buildExportCheckbox(
+                    title: 'Library Cache',
+                    subtitle: 'Cached song metadata',
+                    value:
+                        selectedTypes.contains(ExportContentType.libraryCache),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.libraryCache);
+                        } else {
+                          selectedTypes.remove(ExportContentType.libraryCache);
+                        }
+                      });
+                    },
+                  ),
+                  _buildExportCheckbox(
+                    title: 'Search Index',
+                    subtitle: 'Indexed search data',
+                    value:
+                        selectedTypes.contains(ExportContentType.searchIndex),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.searchIndex);
+                        } else {
+                          selectedTypes.remove(ExportContentType.searchIndex);
+                        }
+                      });
+                    },
+                  ),
+                  _buildExportCheckbox(
+                    title: 'Waveform Cache',
+                    subtitle: 'Audio waveform data',
+                    value:
+                        selectedTypes.contains(ExportContentType.waveformCache),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.waveformCache);
+                        } else {
+                          selectedTypes.remove(ExportContentType.waveformCache);
+                        }
+                      });
+                    },
+                  ),
+                  _buildExportCheckbox(
+                    title: 'Color Cache',
+                    subtitle: 'Album color themes',
+                    value: selectedTypes.contains(ExportContentType.colorCache),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.colorCache);
+                        } else {
+                          selectedTypes.remove(ExportContentType.colorCache);
+                        }
+                      });
+                    },
+                  ),
+                  _buildExportCheckbox(
+                    title: 'Lyrics Cache',
+                    subtitle: 'Stored lyrics data',
+                    value:
+                        selectedTypes.contains(ExportContentType.lyricsCache),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.lyricsCache);
+                        } else {
+                          selectedTypes.remove(ExportContentType.lyricsCache);
+                        }
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("CANCEL"),
+              ),
+              TextButton(
+                onPressed: selectedTypes.isEmpty
+                    ? null
+                    : () => Navigator.pop(
+                        context, ExportOptions(contentTypes: selectedTypes)),
+                child: const Text("EXPORT"),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildExportCheckbox({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+  }) {
+    return CheckboxListTile(
+      title: Text(title),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      value: value,
+      onChanged: onChanged,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
     );
   }
 
@@ -189,6 +369,30 @@ class _DataManagementSettingsScreenState
   }
 
   Future<void> _handleImport() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Import Data"),
+        content: const Text(
+          "This will replace ALL existing data with the imported data.\n\n"
+          "Your current stats, favorites, playlists, and settings will be overwritten.\n\n"
+          "This action cannot be undone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("CANCEL"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("CONTINUE"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
       final exportService = DataExportService();
       final validation = await exportService.validateBackup();
@@ -215,64 +419,35 @@ class _DataManagementSettingsScreenState
       }
 
       if (mounted) {
-        final strategy = await showDialog<String>(
+        showDialog(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("Import Strategy"),
-            content: const Text(
-                "How would you like to import this data?\n\nAdditive: Add to your existing stats and data without duplicates.\n\nReplace: Wipe your current stats and data and replace them with the backup."),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, "additive"),
-                child: const Text("ADDITIVE"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, "replace"),
-                child: const Text("REPLACE STATS"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("CANCEL"),
-              ),
-            ],
-          ),
+          barrierDismissible: false,
+          builder: (context) =>
+              const Center(child: CircularProgressIndicator()),
         );
+      }
 
-        if (strategy == null) return;
+      await exportService.performImport(
+        statsDbPath: validation['statsDbPath'],
+        dataDbPath: validation['dataDbPath'],
+        additive: false,
+      );
 
-        final additive = strategy == "additive";
+      TelemetryService.instance.trackEvent(
+          'data_management',
+          {
+            'action': 'import_data',
+            'strategy': 'replace',
+          },
+          requiredLevel: 2);
 
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) =>
-                const Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        await exportService.performImport(
-          statsDbPath: validation['statsDbPath'],
-          dataDbPath: validation['dataDbPath'],
-          additive: additive,
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Import successful!")),
         );
-
-        TelemetryService.instance.trackEvent(
-            'data_management',
-            {
-              'action': 'import_data',
-              'strategy': strategy,
-            },
-            requiredLevel: 2);
-
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Import successful!")),
-          );
-          ref.invalidate(userDataProvider);
-          ref.invalidate(songsProvider);
-        }
+        ref.invalidate(userDataProvider);
+        ref.invalidate(songsProvider);
       }
     } catch (e) {
       if (mounted) {
