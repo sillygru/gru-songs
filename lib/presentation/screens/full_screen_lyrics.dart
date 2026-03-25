@@ -50,7 +50,6 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   Timer? _autoResumeTimer;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<SequenceState?>? _sequenceSubscription;
-  Timer? _positionPollTimer;
   double _dismissOverscrollAccumulator = 0;
   ProviderSubscription<SettingsState>? _settingsSubscription;
   bool _lyricsWakeLockHeld = false;
@@ -68,7 +67,6 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   static const Duration _positionLookAhead = Duration(milliseconds: 140);
   static const Duration _autoResumeDelay = Duration(seconds: 3);
   static const Duration _autoResumeSnapDuration = Duration(milliseconds: 120);
-  static const Duration _positionPollInterval = Duration(milliseconds: 120);
   static const double _dismissOverscrollThreshold = 80;
   static const double _upcomingBlurSigma = 2.2;
   static const double _manualModeUpcomingBlurSigma = 1.0;
@@ -111,11 +109,6 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     _positionSubscription = player.positionStream.listen((position) {
       if (!mounted) return;
       _updateCurrentLyricIndex(position);
-    });
-
-    _positionPollTimer = Timer.periodic(_positionPollInterval, (_) {
-      if (!mounted) return;
-      _updateCurrentLyricIndex(player.position);
     });
   }
 
@@ -368,7 +361,6 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     _currentIndexNotifier.dispose();
     _autoResumeTimer?.cancel();
     _positionSubscription?.cancel();
-    _positionPollTimer?.cancel();
     _sequenceSubscription?.cancel();
     _settingsSubscription?.close();
     if (_lyricsWakeLockHeld) {

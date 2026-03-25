@@ -37,10 +37,11 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   double? _dragPosition;
   late bool _hasViewed;
   StreamSubscription<Duration>? _positionSubscription;
+  DateTime? _lastPositionUpdate;
   final ValueNotifier<Duration> _positionNotifier =
       ValueNotifier(Duration.zero);
   final ValueNotifier<double?> _dragPositionNotifier = ValueNotifier(null);
-  
+
   List<double>? _cachedDisplayPeaks;
   double _cachedWidth = 0;
   TextStyle? _labelStyle;
@@ -77,10 +78,10 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     if (widget.positionStream == null) return;
 
     _positionSubscription = widget.positionStream!.listen((position) {
-      if (_positionNotifier.value.inSeconds != position.inSeconds) {
-        _positionNotifier.value = position;
-      } else {
-        // Still update for smoother sub-second progress if needed by painter
+      final now = DateTime.now();
+      if (_lastPositionUpdate == null ||
+          now.difference(_lastPositionUpdate!).inMilliseconds > 200) {
+        _lastPositionUpdate = now;
         _positionNotifier.value = position;
       }
     });
@@ -357,7 +358,9 @@ class WaveformPainter extends CustomPainter {
     required this.color,
     required this.animationValue,
     this.isLoading = false,
-  }) : super(repaint: Listenable.merge([positionNotifier, dragPositionNotifier]));
+  }) : super(
+            repaint:
+                Listenable.merge([positionNotifier, dragPositionNotifier]));
 
   @override
   void paint(Canvas canvas, Size size) {

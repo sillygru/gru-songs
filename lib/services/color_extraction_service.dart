@@ -21,6 +21,28 @@ class ExtractedPalette {
     required this.palette,
   });
 
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ExtractedPalette) return false;
+    if (used != other.used) return false;
+    if (mixedColor != other.mixedColor) return false;
+    if (palette.length != other.palette.length) return false;
+    for (int i = 0; i < palette.length; i++) {
+      if (palette[i] != other.palette[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode {
+    int hash = Object.hash(used, mixedColor, palette.length);
+    for (final color in palette) {
+      hash = Object.hash(hash, color);
+    }
+    return hash;
+  }
+
   ExtractedPalette.single(Color color)
       : used = null,
         mixedColor = color,

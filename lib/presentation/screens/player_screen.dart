@@ -85,7 +85,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   final ValueNotifier<Duration> _positionNotifier =
       ValueNotifier(Duration.zero);
-  Timer? _positionTimer;
 
   AudioPlayerManager? _audioManagerInstance;
   AudioPlayer get player => ref.read(audioPlayerManagerProvider).player;
@@ -187,10 +186,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _positionSubscription = player.positionStream.listen((position) {
       if (!mounted) return;
       _syncVideoPosition(position);
-      // Fallback update if timer isn't running for some reason
-      if (_positionTimer == null || !_positionTimer!.isActive) {
-        _positionNotifier.value = position;
-      }
+      _positionNotifier.value = position;
     });
     _audioManager.effectiveMediaModeNotifier
         .addListener(_handleMediaModeChanged);
@@ -199,14 +195,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _updateTimerState() {
-    _positionTimer?.cancel();
-    if (player.playing && _isAppForeground) {
-      _positionTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-        if (mounted) {
-          _positionNotifier.value = player.position;
-        }
-      });
-    }
     _positionNotifier.value = player.position;
   }
 
@@ -256,7 +244,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _sequenceSubscription?.cancel();
     _playerStateSubscription?.cancel();
     _positionSubscription?.cancel();
-    _positionTimer?.cancel();
     _positionNotifier.dispose();
     _audioManagerInstance?.effectiveMediaModeNotifier
         .removeListener(_handleMediaModeChanged);
@@ -729,10 +716,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Stream<PositionData> get _positionDataStream =>
       Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
-          player.positionStream.throttleTime(
-              const Duration(milliseconds: 250)),
-          player.bufferedPositionStream.throttleTime(
-              const Duration(milliseconds: 250)),
+          player.positionStream.throttleTime(const Duration(milliseconds: 250)),
+          player.bufferedPositionStream
+              .throttleTime(const Duration(milliseconds: 250)),
           player.durationStream,
           (position, bufferedPosition, duration) => PositionData(
               position, bufferedPosition, duration ?? Duration.zero));
@@ -817,6 +803,90 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         (_dragOffsetY / _dismissDistance(context)).clamp(0.0, 1.0);
     final dynamicRadius = 32.0 + (dragProgress * 16.0);
     final scale = 1.0 - (dragProgress * 0.035);
+    final isDragTransformActive = dragProgress > 0.0;
+
+    final playerSurface = Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(dynamicRadius),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.6),
+            blurRadius: 30,
+            spreadRadius: 5,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(dynamicRadius),
+        ),
+        child: Stack(
+          children: [
+            _PlayerBackground(
+              player: player,
+              resolveCoverUrl: _resolveCoverUrl,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _PlayerDismissHandle(),
+                  _PlayerHeader(
+                    player: player,
+                    audioManager: _audioManager,
+                    syncVideoForCurrentTrack: _syncVideoForCurrentTrack,
+                    resolveTrackMedia: _resolveTrackMedia,
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: _PlayerArtPanel(
+                      player: player,
+                      audioManager: _audioManager,
+                      fadeAnimation: _fadeAnimation,
+                      artScaleAnimation: _artScaleAnimation,
+                      playPauseController: _playPauseController,
+                      canRenderVideoFor: _canRenderVideoFor,
+                      currentVideoAspectRatio: _currentVideoAspectRatio,
+                      buildVideoSurface: _buildVideoSurface,
+                      resolveCoverUrl: _resolveCoverUrl,
+                      toggleLyrics: _toggleLyrics,
+                      hasLyricsForCurrentSong: _hasLyricsForCurrentSong,
+                      openNextUpScreen: (context) =>
+                          _openNextUpScreen(context, themeState),
+                    ),
+                  ),
+                  _PlayerSongInfo(
+                    player: player,
+                    artistRecognizer: _artistRecognizer,
+                    albumRecognizer: _albumRecognizer,
+                    navigateToArtist: _navigateToArtist,
+                    navigateToAlbum: _navigateToAlbum,
+                  ),
+                  _PlayerProgressSection(
+                    player: player,
+                    positionDataStream: _positionDataStream,
+                  ),
+                  _PlayerVolumeSlider(player: player),
+                  const SizedBox(height: 32),
+                  _PlayerControls(
+                    player: player,
+                    controlsController: _controlsController,
+                    playPauseController: _playPauseController,
+                    showShuffleSettings: (context) =>
+                        _showShuffleSettings(context, ref),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
 
     return PopScope(
       canPop: _expansionController.isCompleted,
@@ -836,103 +906,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               onVerticalDragStart: _onDismissDragStart,
               onVerticalDragUpdate: _onDismissDragUpdate,
               onVerticalDragEnd: _onDismissDragEnd,
-              child: Transform.translate(
-                offset: Offset(0, _dragOffsetY),
-                child: Transform.scale(
-                  scale: scale,
-                  alignment: Alignment.topCenter,
-                  child: Opacity(
-                    opacity: 1.0 - (dragProgress * 0.12),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).scaffoldBackgroundColor,
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(dynamicRadius),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            blurRadius: 30,
-                            spreadRadius: 5,
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(dynamicRadius),
-                        ),
-                        child: Stack(
-                          children: [
-                            _PlayerBackground(
-                              player: player,
-                              resolveCoverUrl: _resolveCoverUrl,
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(24, 40, 24, 80),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const _PlayerDismissHandle(),
-                                  _PlayerHeader(
-                                    player: player,
-                                    audioManager: _audioManager,
-                                    syncVideoForCurrentTrack:
-                                        _syncVideoForCurrentTrack,
-                                    resolveTrackMedia: _resolveTrackMedia,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Expanded(
-                                    child: _PlayerArtPanel(
-                                      player: player,
-                                      audioManager: _audioManager,
-                                      fadeAnimation: _fadeAnimation,
-                                      artScaleAnimation: _artScaleAnimation,
-                                      playPauseController: _playPauseController,
-                                      canRenderVideoFor: _canRenderVideoFor,
-                                      currentVideoAspectRatio:
-                                          _currentVideoAspectRatio,
-                                      buildVideoSurface: _buildVideoSurface,
-                                      resolveCoverUrl: _resolveCoverUrl,
-                                      toggleLyrics: _toggleLyrics,
-                                      hasLyricsForCurrentSong:
-                                          _hasLyricsForCurrentSong,
-                                      openNextUpScreen: (context) =>
-                                          _openNextUpScreen(
-                                              context, themeState),
-                                    ),
-                                  ),
-                                  _PlayerSongInfo(
-                                    player: player,
-                                    artistRecognizer: _artistRecognizer,
-                                    albumRecognizer: _albumRecognizer,
-                                    navigateToArtist: _navigateToArtist,
-                                    navigateToAlbum: _navigateToAlbum,
-                                  ),
-                                  _PlayerProgressSection(
-                                    player: player,
-                                    positionDataStream: _positionDataStream,
-                                  ),
-                                  _PlayerVolumeSlider(player: player),
-                                  const SizedBox(height: 32),
-                                  _PlayerControls(
-                                    player: player,
-                                    controlsController: _controlsController,
-                                    playPauseController: _playPauseController,
-                                    showShuffleSettings: (context) =>
-                                        _showShuffleSettings(context, ref),
-                                  ),
-                                  const SizedBox(height: 32),
-                                ],
-                              ),
-                            ),
-                          ],
+              child: isDragTransformActive
+                  ? Transform.translate(
+                      offset: Offset(0, _dragOffsetY),
+                      child: Transform.scale(
+                        scale: scale,
+                        alignment: Alignment.topCenter,
+                        child: Opacity(
+                          opacity: 1.0 - (dragProgress * 0.12),
+                          child: playerSurface,
                         ),
                       ),
-                    ),
-                  ),
-                ),
-              ),
+                    )
+                  : playerSurface,
             ),
           );
         }),
