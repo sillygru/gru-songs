@@ -18,7 +18,8 @@ class BasicProgressBar extends StatefulWidget {
 }
 
 class _BasicProgressBarState extends State<BasicProgressBar> {
-  final ValueNotifier<Duration> _positionNotifier = ValueNotifier(Duration.zero);
+  final ValueNotifier<Duration> _positionNotifier =
+      ValueNotifier(Duration.zero);
   final ValueNotifier<double> _dragProgressNotifier = ValueNotifier(0.0);
   bool _isDragging = false;
   String _formattedTotalTime = '';
@@ -28,7 +29,7 @@ class _BasicProgressBarState extends State<BasicProgressBar> {
     super.initState();
     _positionNotifier.value = widget.player.position;
     _formattedTotalTime = _formatDuration(widget.total);
-    
+
     widget.player.playerStateStream.listen((state) {
       if (mounted && state.playing) {
         _startUpdating();
@@ -272,13 +273,15 @@ class _ProgressBarState extends State<_ProgressBar> {
         valueListenable: widget.positionNotifier,
         builder: (context, position, _) {
           final progress = widget.total.inMilliseconds > 0
-              ? (position.inMilliseconds / widget.total.inMilliseconds).clamp(0.0, 1.0)
+              ? (position.inMilliseconds / widget.total.inMilliseconds)
+                  .clamp(0.0, 1.0)
               : 0.0;
 
           return ValueListenableBuilder<double>(
             valueListenable: widget.dragProgressNotifier,
             builder: (context, dragProgress, _) {
-              final displayProgress = widget.isDragging ? dragProgress : progress;
+              final displayProgress =
+                  widget.isDragging ? dragProgress : progress;
 
               return CustomPaint(
                 size: Size(double.infinity, widget.height),

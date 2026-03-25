@@ -21,11 +21,14 @@ class AudioVisualizer extends StatefulWidget {
 
 class _AudioVisualizerState extends State<AudioVisualizer>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const Duration _targetFrameInterval = Duration(milliseconds: 16);
+
   late AnimationController _controller;
   final List<double> _barHeights = [0.2, 0.5, 0.8, 0.4];
   final List<double> _targetHeights = [0.8, 0.2, 0.5, 0.9];
   final Random _random = Random();
   bool _isAppActive = true;
+  Duration? _lastVisualUpdate;
 
   @override
   void initState() {
@@ -35,6 +38,14 @@ class _AudioVisualizerState extends State<AudioVisualizer>
       vsync: this,
       duration: const Duration(milliseconds: 150),
     )..addListener(() {
+        final elapsed = _controller.lastElapsedDuration;
+        if (elapsed == null) return;
+        if (_lastVisualUpdate != null &&
+            elapsed - _lastVisualUpdate! < _targetFrameInterval) {
+          return;
+        }
+        _lastVisualUpdate = elapsed;
+
         if (widget.isPlaying && _isAppActive && mounted) {
           setState(() {
             for (int i = 0; i < _barHeights.length; i++) {
@@ -64,12 +75,14 @@ class _AudioVisualizerState extends State<AudioVisualizer>
       _isAppActive = isActive;
       if (isActive && widget.isPlaying) {
         if (!_controller.isAnimating) {
+          _lastVisualUpdate = null;
           _controller.repeat();
         }
       } else {
         if (_controller.isAnimating) {
           _controller.stop();
         }
+        _lastVisualUpdate = null;
       }
     }
   }
@@ -79,9 +92,11 @@ class _AudioVisualizerState extends State<AudioVisualizer>
     super.didUpdateWidget(oldWidget);
     if (widget.isPlaying != oldWidget.isPlaying) {
       if (widget.isPlaying && _isAppActive) {
+        _lastVisualUpdate = null;
         _controller.repeat();
       } else {
         _controller.stop();
+        _lastVisualUpdate = null;
         if (mounted) {
           setState(() {
             _barHeights.fillRange(0, _barHeights.length, 0.3);

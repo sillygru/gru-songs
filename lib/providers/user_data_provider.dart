@@ -198,33 +198,37 @@ class UserDataNotifier extends Notifier<UserDataState> {
   UserDataState build() {
     if (!_initialized) {
       _initialized = true;
-      Future.microtask(() {
-        _initLocal();
-        ref.listen(songsProvider, (previous, next) {
-          if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
-            final library = next.value!;
-            DatabaseService.instance
-                .validateRecommendationPlaylists()
-                .then((dbValid) {
-              if (!dbValid) {
-                updateRecommendationPlaylists(force: true);
-                return;
-              }
-              final anyResolve = state.playlists.any((p) {
-                if (!p.isRecommendation || p.songs.isEmpty) return false;
-                return p.songs
-                    .any((ps) => library.any((s) => s.filename == ps.songFilename));
-              });
-              if (!anyResolve) {
-                updateRecommendationPlaylists(force: true);
-              }
-            });
-          }
-        });
+      Future.microtask(() async {
+        await _initLocal();
+        _setupSongsListener();
       });
       return UserDataState(isLoading: true);
     }
     return state;
+  }
+
+  void _setupSongsListener() {
+    ref.listen(songsProvider, (previous, next) {
+      if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
+        final library = next.value!;
+        DatabaseService.instance
+            .validateRecommendationPlaylists()
+            .then((dbValid) {
+          if (!dbValid) {
+            updateRecommendationPlaylists(force: true);
+            return;
+          }
+          final anyResolve = state.playlists.any((p) {
+            if (!p.isRecommendation || p.songs.isEmpty) return false;
+            return p.songs
+                .any((ps) => library.any((s) => s.filename == ps.songFilename));
+          });
+          if (!anyResolve) {
+            updateRecommendationPlaylists(force: true);
+          }
+        });
+      }
+    });
   }
 
   Future<void> _initLocal() async {

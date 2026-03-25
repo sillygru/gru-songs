@@ -115,4 +115,3 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
     );
   }
 }
-

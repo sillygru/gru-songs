@@ -240,15 +240,15 @@ class _BackupManagementScreenState
 
   Future<void> _exportBackup(BackupInfo backupInfo) async {
     try {
+      final bytes = await backupInfo.file.readAsBytes();
       final result = await FilePicker.platform.saveFile(
         fileName: backupInfo.filename,
         type: FileType.custom,
         allowedExtensions: ['zip'],
+        bytes: bytes,
       );
 
       if (result != null) {
-        await BackupService.instance.exportBackup(backupInfo, result);
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Backup exported to: $result')),

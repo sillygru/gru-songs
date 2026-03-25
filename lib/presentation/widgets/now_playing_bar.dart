@@ -29,6 +29,8 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
     final theme = Theme.of(context);
     final player = ref.watch(audioPlayerManagerProvider).player;
     final settings = ref.watch(settingsProvider);
+    final isBarVisible =
+        TickerMode.of(context) && (ModalRoute.of(context)?.isCurrent ?? true);
     final isDesktop =
         !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
     final isIPad = !kIsWeb &&
@@ -106,7 +108,7 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
                                       builder: (context, snapshot) {
                                         final playing =
                                             snapshot.data?.playing ?? false;
-                                        if (!playing) {
+                                        if (!playing || !isBarVisible) {
                                           return const SizedBox.shrink();
                                         }
 

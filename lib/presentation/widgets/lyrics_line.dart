@@ -63,7 +63,8 @@ class LyricsLine extends StatelessWidget {
                 shadows: isActive
                     ? [
                         Shadow(
-                          color: activeColor.withValues(alpha: 0.14 * glowIntensity),
+                          color: activeColor.withValues(
+                              alpha: 0.14 * glowIntensity),
                           blurRadius: 10 * glowIntensity,
                           offset: const Offset(0, 1),
                         ),
