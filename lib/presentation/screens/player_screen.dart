@@ -411,9 +411,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
     } else {
+      // For local files, ensure proper file path handling
+      final file = File(track.mediaPath!);
       controller = VideoPlayerController.file(
-        File(track.mediaPath!),
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        file,
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: true,
+          allowBackgroundPlayback: true,
+        ),
       );
     }
 

@@ -3,9 +3,11 @@
 ## Current Issues Identified
 
 ### 1. **Stop After Current Song** (`_startStopAfterCurrent`)
+
 **Problem:** Listens for `ProcessingState.completed` but this may fire AFTER the next song has already started playing due to just_audio's auto-advance behavior.
 
 **Current Code:**
+
 ```dart
 void _startStopAfterCurrent(AudioPlayerManager audioManager) {
   _playerStateSub = audioManager.player.playerStateStream.listen((state) {
@@ -16,15 +18,18 @@ void _startStopAfterCurrent(AudioPlayerManager audioManager) {
 }
 ```
 
-**Fix Required:** 
+**Fix Required:**
+
 - Use `sequenceStateStream` to detect when current song is about to end
 - Pause immediately when current song completes, BEFORE next song starts
 - Skip to next but don't play it
 
 ### 2. **Stop After N Tracks** (`_startStopAfterTracks`)
+
 **Problem:** Same issue - listens for `completed` state which fires after auto-advance has already started the next song.
 
 **Current Code:**
+
 ```dart
 void _startStopAfterTracks(int tracks, AudioPlayerManager audioManager) {
   _remainingTracks = tracks;
@@ -40,14 +45,17 @@ void _startStopAfterTracks(int tracks, AudioPlayerManager audioManager) {
 ```
 
 **Fix Required:**
+
 - Track current index via `sequenceStateStream`
 - When index changes (song advances), decrement counter
 - When counter reaches 0, pause immediately and skip to next without playing
 
 ### 3. **Play For Time with "Let Current Finish"** (`_waitForSongToFinish`)
+
 **Problem:** Has race condition - seeks to next then stops, but the next song may start playing before pause takes effect.
 
 **Current Code:**
+
 ```dart
 void _waitForSongToFinish(AudioPlayerManager audioManager) {
   _playerStateSub?.cancel();
@@ -64,11 +72,14 @@ void _waitForSongToFinish(AudioPlayerManager audioManager) {
 ```
 
 **Fix Required:**
+
 - Pause FIRST, then seek to next
 - Ensure the player is in paused state before seeking
 
 ### 4. **Stats Flushing** (`_stop`)
+
 **Current Code:**
+
 ```dart
 Future<void> _stop(AudioPlayerManager audioManager) async {
   audioManager.player.setLoopMode(LoopMode.off);
@@ -81,7 +92,9 @@ Future<void> _stop(AudioPlayerManager audioManager) async {
 This looks correct - `didChangeAppLifecycleState(AppLifecycleState.paused)` triggers `_flushStats` and `_statsService.flush()`.
 
 ### 5. **App Termination** (`_stop`)
+
 **Current Code:**
+
 ```dart
 Future<void> _stop(AudioPlayerManager audioManager) async {
   // ...
@@ -100,69 +113,69 @@ This is correct but `cancel()` is called AFTER `_exitApp()` which may never exec
 ```dart
 class SleepTimerService {
   // ... existing fields ...
-  
+
   // Track current song index to detect song changes
   int? _lastIndex;
   bool _shouldStopOnNextCompletion = false;
-  
+
   void _startStopAfterCurrent(AudioPlayerManager audioManager) {
     // Get current index
     _lastIndex = audioManager.player.currentIndex;
-    
+
     // Listen to sequence state to detect when we're about to change songs
     _playerStateSub = audioManager.player.sequenceStateStream.listen((state) {
       if (state == null) return;
-      
+
       final currentIndex = state.currentIndex;
-      
+
       // Check if song changed (index changed and we're playing)
-      if (_lastIndex != null && 
-          currentIndex != _lastIndex && 
+      if (_lastIndex != null &&
+          currentIndex != _lastIndex &&
           currentIndex > _lastIndex!) {
         // Song advanced - stop immediately before new song plays
         _stop(audioManager);
         return;
       }
-      
+
       _lastIndex = currentIndex;
     });
   }
-  
+
   void _startStopAfterTracks(int tracks, AudioPlayerManager audioManager) {
     _remainingTracks = tracks;
     _lastIndex = audioManager.player.currentIndex;
-    
+
     _playerStateSub = audioManager.player.sequenceStateStream.listen((state) {
       if (state == null) return;
-      
+
       final currentIndex = state.currentIndex;
-      
+
       // Check if song advanced
-      if (_lastIndex != null && 
-          currentIndex != _lastIndex && 
+      if (_lastIndex != null &&
+          currentIndex != _lastIndex &&
           currentIndex > _lastIndex!) {
         _remainingTracks--;
-        
+
         if (_remainingTracks <= 0) {
           // Stop immediately - don't let the new song play
           _stop(audioManager);
           return;
         }
       }
-      
+
       _lastIndex = currentIndex;
     });
   }
-  
+
   void _waitForSongToFinish(AudioPlayerManager audioManager) {
     _playerStateSub?.cancel();
-    
+
     // Listen for completion
     _playerStateSub = audioManager.player.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         // Pause FIRST
         audioManager.player.pause();
-        
+
         // Then seek to next without playing
         if (audioManager.player.hasNext) {
           // Use a microtask to ensure pause takes effect first
@@ -177,29 +190,29 @@ class SleepTimerService {
       }
     });
   }
-  
+
   Future<void> _stop(AudioPlayerManager audioManager) async {
     // Cancel all subscriptions first to prevent any new events
     _playerStateSub?.cancel();
     _playerStateSub = null;
     _timer?.cancel();
     _timer = null;
-    
+
     // Reset loop mode
     audioManager.player.setLoopMode(LoopMode.off);
-    
+
     // Ensure playback is paused
     await audioManager.player.pause();
-    
+
     // Flush stats
     audioManager.didChangeAppLifecycleState(AppLifecycleState.paused);
-    
+
     // Call completion callback
     _onComplete?.call();
-    
+
     // Wait 3 seconds then exit
     await Future.delayed(const Duration(seconds: 3));
-    
+
     // Clean up state before exiting
     _isActive = false;
     _currentMode = null;
@@ -209,7 +222,7 @@ class SleepTimerService {
     _startTime = null;
     _durationMinutes = null;
     _lastIndex = null;
-    
+
     _exitApp();
   }
 }
@@ -227,6 +240,7 @@ class SleepTimerService {
 ## Test Plan
 
 ### Unit Tests
+
 1. **Stop After Current Song:**
    - Timer starts, song completes, playback stops, next song not played
    - Stats are flushed

@@ -1,11 +1,13 @@
 # Wispie [Beta]
 
 ## What is Wispie?
+
 Wispie is a simple local music player app built with Flutter.
 
 [Features](#features) | [Additional Features](#additional-features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
 
 ## Features
+
 - **Shuffle personalities:** Multiple shuffle personalities such as consistent and explorer with the hability to make your own
 - **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists
 - **Metadata Editing:** Built-in editor for modifying song metadata (title, artist, album, filename, lyrics)
@@ -15,6 +17,7 @@ Wispie is a simple local music player app built with Flutter.
 - **Cross fade:** Crossfade between songs alongside option to delay song playing
 
 ## Additional Features
+
 - **Backups:** Backup management system
 - **Data Export:** Export user data and databases for backup and migration purposes
 - **Auto pause on mute:** Auto-pause playback when volume is muted and resume when restored
@@ -40,13 +43,16 @@ User data in Wispie is tied to the music file's name. If you rename a file outsi
 </p>
 
 ## Others
+
 I do not hide the fact that this is a vibe coded project. Though, from personal daily use, it is stable and functional.
 This was originally a personal side project, so there might be leftovers of old features that are no longer relevant.
 
 ## For developers
+
 ### Run the app
-   - Install Flutter dependencies: `flutter pub get`.
-   - Run the app: `flutter run`.
+
+- Install Flutter dependencies: `flutter pub get`.
+- Run the app: `flutter run`.
 
 ### Build the app for Android
 

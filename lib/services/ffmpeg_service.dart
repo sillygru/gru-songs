@@ -256,8 +256,9 @@ class FFmpegService {
     // Skip AV1 files entirely - we cannot decode them
     final isAV1 = await isAV1File(inputPath);
     if (isAV1) {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('FFmpegService: Skipping AV1 file: $inputPath');
+      }
       return null;
     }
 
@@ -326,8 +327,9 @@ class FFmpegService {
     // Skip AV1 files entirely - we cannot decode them
     final isAV1 = await isAV1File(inputPath);
     if (isAV1) {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('FFmpegService: Skipping AV1 file: $inputPath');
+      }
       return null;
     }
 
