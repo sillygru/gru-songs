@@ -6,6 +6,7 @@ import '../services/telemetry_service.dart';
 
 class SettingsState {
   final bool visualizerEnabled;
+  final bool autoHideBottomBarOnScroll;
   final int telemetryLevel;
   final bool autoPauseOnVolumeZero;
   final bool autoResumeOnVolumeRestore;
@@ -32,6 +33,7 @@ class SettingsState {
 
   SettingsState({
     this.visualizerEnabled = true,
+    this.autoHideBottomBarOnScroll = true,
     this.telemetryLevel = 1,
     this.autoPauseOnVolumeZero = true,
     this.autoResumeOnVolumeRestore = true,
@@ -59,6 +61,7 @@ class SettingsState {
 
   SettingsState copyWith({
     bool? visualizerEnabled,
+    bool? autoHideBottomBarOnScroll,
     int? telemetryLevel,
     bool? autoPauseOnVolumeZero,
     bool? autoResumeOnVolumeRestore,
@@ -85,6 +88,8 @@ class SettingsState {
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
+      autoHideBottomBarOnScroll:
+          autoHideBottomBarOnScroll ?? this.autoHideBottomBarOnScroll,
       telemetryLevel: telemetryLevel ?? this.telemetryLevel,
       autoPauseOnVolumeZero:
           autoPauseOnVolumeZero ?? this.autoPauseOnVolumeZero,
@@ -123,6 +128,7 @@ class SettingsState {
 
 class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyVisualizerEnabled = 'visualizer_enabled';
+  static const _keyAutoHideBottomBarOnScroll = 'auto_hide_bottom_bar_on_scroll';
   static const _keyTelemetryLevel = 'telemetry_level';
   static const _keyAutoPauseOnVolumeZero = 'auto_pause_on_volume_zero';
   static const _keyAutoResumeOnVolumeRestore = 'auto_resume_on_volume_restore';
@@ -160,6 +166,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
     final coverSizingModeIndex = prefs.getInt(_keyCoverSizingMode);
     state = SettingsState(
       visualizerEnabled: prefs.getBool(_keyVisualizerEnabled) ?? true,
+      autoHideBottomBarOnScroll:
+          prefs.getBool(_keyAutoHideBottomBarOnScroll) ?? true,
       telemetryLevel: prefs.getInt(_keyTelemetryLevel) ?? 1,
       autoPauseOnVolumeZero: prefs.getBool(_keyAutoPauseOnVolumeZero) ?? true,
       autoResumeOnVolumeRestore:
@@ -275,6 +283,20 @@ class SettingsNotifier extends Notifier<SettingsState> {
         'setting_changed',
         {
           'setting': 'visualizer_enabled',
+          'value': enabled,
+        },
+        requiredLevel: 2);
+  }
+
+  Future<void> setAutoHideBottomBarOnScroll(bool enabled) async {
+    state = state.copyWith(autoHideBottomBarOnScroll: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAutoHideBottomBarOnScroll, enabled);
+
+    await TelemetryService.instance.trackEvent(
+        'setting_changed',
+        {
+          'setting': 'auto_hide_bottom_bar_on_scroll',
           'value': enabled,
         },
         requiredLevel: 2);

@@ -76,6 +76,18 @@ class _AppearanceSettingsScreenState
                   ref.read(settingsProvider.notifier).setShowSongDuration(val);
                 },
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.swap_vert_rounded),
+                title: const Text('Auto-Hide Bottom Dock'),
+                subtitle: const Text(
+                    'Hide the bottom dock on downward scroll and restore it on upward scroll'),
+                value: settings.autoHideBottomBarOnScroll,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setAutoHideBottomBarOnScroll(val);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.photo_size_select_large_outlined),
                 title: const Text('Player Cover Sizing'),

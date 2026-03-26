@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
@@ -25,6 +27,11 @@ class AppDrawer extends ConsumerStatefulWidget {
 
 class _AppDrawerState extends ConsumerState<AppDrawer>
     with SingleTickerProviderStateMixin {
+  static const _panelRadius = BorderRadius.only(
+    topRight: Radius.circular(34),
+    bottomRight: Radius.circular(34),
+  );
+
   late AnimationController _controller;
   late Animation<double> _slideAnimation;
   late Animation<double> _fadeAnimation;
@@ -90,13 +97,21 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
 
     return Stack(
       children: [
-        // Backdrop overlay
         GestureDetector(
           onTap: _closeDrawer,
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: Container(
-              color: Colors.black.withValues(alpha: 0.5),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.36),
+                    Colors.black.withValues(alpha: 0.58),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -117,119 +132,240 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
               ),
             );
           },
-          child: Container(
-            decoration: BoxDecoration(
-              color: theme.scaffoldBackgroundColor.withValues(alpha: 0.9),
-              borderRadius: const BorderRadius.horizontal(
-                right: Radius.circular(32),
-              ),
-            ),
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(context, colorScheme, songCount),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: ListView(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        children: [
-                          _buildSectionTitle(context, 'Library'),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.favorite_rounded,
-                            label: 'Favorites',
-                            color: Colors.redAccent,
-                            onTap: () async {
-                              final songs =
-                                  await ref.read(songsProvider.future);
-                              final userDataState = ref.read(userDataProvider);
-                              final favSongs = songs
-                                  .where((s) =>
-                                      userDataState.isFavorite(s.filename))
-                                  .toList();
-                              if (context.mounted) {
-                                _navigateTo(SongListScreen(
-                                  title: 'Favorites',
-                                  songs: favSongs,
-                                ));
-                              }
-                            },
-                          ),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.queue_music_rounded,
-                            label: 'Playlists',
-                            color: colorScheme.primary,
-                            onTap: () => _navigateTo(const PlaylistsScreen()),
-                          ),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.album_rounded,
-                            label: 'Albums',
-                            color: Colors.orangeAccent,
-                            onTap: () => _navigateTo(const AlbumsScreen()),
-                          ),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.person_rounded,
-                            label: 'Artists',
-                            color: Colors.greenAccent,
-                            onTap: () => _navigateTo(const ArtistsScreen()),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(
-                                vertical: 16, horizontal: 8),
-                            child: Divider(
-                              color: Colors.white10,
-                            ),
-                          ),
-                          _buildSectionTitle(context, 'History'),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.history_rounded,
-                            label: 'Song History',
-                            color: Colors.purpleAccent,
-                            onTap: () => _navigateTo(const PlayHistoryScreen()),
-                          ),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.queue_play_next,
-                            label: 'Session History',
-                            color: Colors.tealAccent,
-                            onTap: () =>
-                                _navigateTo(const SessionHistoryScreen()),
-                          ),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.queue_music_rounded,
-                            label: 'Queue History',
-                            color: Colors.amberAccent,
-                            onTap: () =>
-                                _navigateTo(const QueueHistoryScreen()),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(
-                                vertical: 16, horizontal: 8),
-                            child: Divider(
-                              color: Colors.white10,
-                            ),
-                          ),
-                          _buildSectionTitle(context, 'Tools'),
-                          _buildNavItem(
-                            context,
-                            icon: Icons.bedtime_rounded,
-                            label: 'Sleep Timer',
-                            color: Colors.indigoAccent,
-                            onTap: () => _navigateTo(const SleepTimerScreen()),
-                          ),
-                        ],
-                      ),
+          child: RepaintBoundary(
+            child: ClipRRect(
+              borderRadius: _panelRadius,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: _panelRadius,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        colorScheme.surface.withValues(alpha: 0.78),
+                        colorScheme.surfaceContainerHigh.withValues(alpha: 0.7),
+                        colorScheme.surfaceContainerLowest
+                            .withValues(alpha: 0.64),
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.22),
+                        blurRadius: 36,
+                        offset: const Offset(10, 0),
+                      ),
+                    ],
                   ),
-                ],
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: -56,
+                        top: -16,
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 160,
+                            height: 160,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  colorScheme.primary.withValues(alpha: 0.26),
+                                  colorScheme.primary.withValues(alpha: 0.0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: -48,
+                        bottom: 88,
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 170,
+                            height: 170,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  Color(0x3390CAF9),
+                                  Color(0x00000000),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                colorScheme.surface.withValues(alpha: 0.3),
+                                colorScheme.surface.withValues(alpha: 0.1),
+                                colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.1),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: IgnorePointer(
+                          child: Container(
+                            height: 1.2,
+                            color: Colors.transparent,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 1.2,
+                            color: Colors.transparent,
+                          ),
+                        ),
+                      ),
+                      SafeArea(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildHeader(context, colorScheme, songCount),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: FadeTransition(
+                                opacity: _fadeAnimation,
+                                child: ListView(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(14, 0, 14, 18),
+                                  children: [
+                                    _buildSectionTitle(
+                                      context,
+                                      'Library',
+                                      'Pinned shortcuts',
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.favorite_rounded,
+                                      label: 'Favorites',
+                                      subtitle: 'Your liked tracks',
+                                      color: Colors.redAccent,
+                                      onTap: () async {
+                                        final songs = await ref
+                                            .read(songsProvider.future);
+                                        final userDataState =
+                                            ref.read(userDataProvider);
+                                        final favSongs = songs
+                                            .where((s) => userDataState
+                                                .isFavorite(s.filename))
+                                            .toList();
+                                        if (context.mounted) {
+                                          _navigateTo(SongListScreen(
+                                            title: 'Favorites',
+                                            songs: favSongs,
+                                          ));
+                                        }
+                                      },
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.queue_music_rounded,
+                                      label: 'Playlists',
+                                      subtitle: 'Curated sets',
+                                      color: colorScheme.primary,
+                                      onTap: () =>
+                                          _navigateTo(const PlaylistsScreen()),
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.album_rounded,
+                                      label: 'Albums',
+                                      subtitle: 'Browse releases',
+                                      color: Colors.orangeAccent,
+                                      onTap: () =>
+                                          _navigateTo(const AlbumsScreen()),
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.person_rounded,
+                                      label: 'Artists',
+                                      subtitle: 'Jump by artist',
+                                      color: Colors.greenAccent,
+                                      onTap: () =>
+                                          _navigateTo(const ArtistsScreen()),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    _buildSectionTitle(
+                                      context,
+                                      'History',
+                                      'Recent activity',
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.history_rounded,
+                                      label: 'Song History',
+                                      subtitle: 'What has been playing',
+                                      color: Colors.purpleAccent,
+                                      onTap: () => _navigateTo(
+                                        const PlayHistoryScreen(),
+                                      ),
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.queue_play_next,
+                                      label: 'Session History',
+                                      subtitle: 'Previous listening sessions',
+                                      color: Colors.tealAccent,
+                                      onTap: () => _navigateTo(
+                                        const SessionHistoryScreen(),
+                                      ),
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.queue_music_rounded,
+                                      label: 'Queue History',
+                                      subtitle: 'Past queues and order',
+                                      color: Colors.amberAccent,
+                                      onTap: () => _navigateTo(
+                                        const QueueHistoryScreen(),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    _buildSectionTitle(
+                                      context,
+                                      'Tools',
+                                      'Playback utility',
+                                    ),
+                                    _buildNavItem(
+                                      context,
+                                      icon: Icons.bedtime_rounded,
+                                      label: 'Sleep Timer',
+                                      subtitle: 'Stop playback gracefully',
+                                      color: Colors.indigoAccent,
+                                      onTap: () =>
+                                          _navigateTo(const SleepTimerScreen()),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -241,57 +377,132 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
   Widget _buildHeader(
       BuildContext context, ColorScheme colorScheme, int songCount) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: Image.asset(
-                    'assets/app_icon.png',
-                    width: 64,
-                    height: 64,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              colorScheme.surface.withValues(alpha: 0.3),
+            ],
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        colorScheme.primaryContainer.withValues(alpha: 0.5),
+                        colorScheme.primary.withValues(alpha: 0.18),
+                      ],
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: SizedBox(
                       width: 64,
                       height: 64,
-                      color: colorScheme.primary.withValues(alpha: 0.1),
-                      child: Icon(Icons.music_note,
-                          color: colorScheme.primary, size: 32),
+                      child: Image.asset(
+                        'assets/app_icon.png',
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: 64,
+                          height: 64,
+                          color: colorScheme.primary.withValues(alpha: 0.1),
+                          child: Icon(
+                            Icons.music_note,
+                            color: colorScheme.primary,
+                            size: 32,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              IconButton.filledTonal(
-                onPressed: _closeDrawer,
-                icon: const Icon(Icons.close),
-                style: IconButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                const Spacer(),
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    color: colorScheme.surfaceContainerHighest,
+                  ),
+                  child: IconButton(
+                    onPressed: _closeDrawer,
+                    icon: const Icon(Icons.close),
+                    color: colorScheme.onSurface,
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Wispie',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Library: $songCount songs',
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.72),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(
+    BuildContext context,
+    String title,
+    String subtitle,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            'Wispie',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: Colors.white,
-                ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Library: $songCount songs',
+            title,
             style: TextStyle(
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-              fontSize: 14,
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.92),
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              letterSpacing: 1.35,
+              textBaseline: TextBaseline.alphabetic,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.56),
+              fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -300,43 +511,94 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
     );
   }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
-          fontWeight: FontWeight.w900,
-          fontSize: 12,
-          letterSpacing: 1.5,
-          textBaseline: TextBaseline.alphabetic,
-        ),
-      ),
-    );
-  }
-
   Widget _buildNavItem(
     BuildContext context, {
     required IconData icon,
     required String label,
+    required String subtitle,
     required Color color,
     required VoidCallback? onTap,
   }) {
-    return ListTile(
-      leading: Icon(icon, color: color, size: 24),
-      title: Text(
-        label,
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 16,
-          letterSpacing: -0.2,
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          color.withValues(alpha: 0.34),
+                          color.withValues(alpha: 0.14),
+                        ],
+                      ),
+                    ),
+                    child: Icon(icon, color: color, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            letterSpacing: -0.2,
+                            color:
+                                colorScheme.onSurface.withValues(alpha: 0.94),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color:
+                                colorScheme.onSurface.withValues(alpha: 0.58),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      onTap: onTap,
     );
   }
 }
