@@ -614,6 +614,8 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
         return 'User Stats';
       case BackupContentType.userData:
         return 'User Data';
+      case BackupContentType.userSettings:
+        return 'User Settings';
       case BackupContentType.coverCache:
         return 'Cover Cache';
       case BackupContentType.libraryCache:
@@ -635,6 +637,8 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
         return 'Play history, stats, merged groups';
       case BackupContentType.userData:
         return 'Favorites, playlists, preferences';
+      case BackupContentType.userSettings:
+        return 'Theme, sort order, app preferences';
       case BackupContentType.coverCache:
         return 'Cached album artwork';
       case BackupContentType.libraryCache:
@@ -656,6 +660,8 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
         return Icons.analytics_outlined;
       case BackupContentType.userData:
         return Icons.person_outline;
+      case BackupContentType.userSettings:
+        return Icons.settings_outlined;
       case BackupContentType.coverCache:
         return Icons.album_outlined;
       case BackupContentType.libraryCache:

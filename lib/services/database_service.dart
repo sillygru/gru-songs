@@ -600,6 +600,62 @@ class DatabaseService {
     });
   }
 
+  Future<List<Map<String, dynamic>>> exportQueueHistory() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+
+    final snapshots = await getQueueSnapshots();
+    final result = <Map<String, dynamic>>[];
+
+    for (final snapshot in snapshots) {
+      final snapshotId = snapshot['id'] as String;
+      final songs = await getQueueSnapshotSongs(snapshotId);
+      result.add({
+        'id': snapshotId,
+        'name': snapshot['name'],
+        'created_at': snapshot['created_at'],
+        'source': snapshot['source'],
+        'songs': songs,
+      });
+    }
+
+    return result;
+  }
+
+  Future<void> importQueueHistory(List<Map<String, dynamic>> data) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      await txn.delete('queue_snapshot_song');
+      await txn.delete('queue_snapshot');
+
+      for (final snapshot in data) {
+        final snapshotId = snapshot['id'] as String;
+        final name = snapshot['name'] as String;
+        final createdAt = (snapshot['created_at'] as num).toDouble();
+        final source = snapshot['source'] as String? ?? 'imported';
+        final songs = (snapshot['songs'] as List?)?.cast<String>() ?? [];
+
+        await txn.insert('queue_snapshot', {
+          'id': snapshotId,
+          'name': name,
+          'created_at': createdAt,
+          'source': source,
+          'song_count': songs.length,
+        });
+
+        for (int i = 0; i < songs.length; i++) {
+          await txn.insert('queue_snapshot_song', {
+            'snapshot_id': snapshotId,
+            'song_filename': songs[i],
+            'position': i,
+          });
+        }
+      }
+    });
+  }
+
   // ==========================================================================
   // SONG QUERIES
   // ==========================================================================
@@ -2591,6 +2647,54 @@ class DatabaseService {
           psMap.remove('id');
           await txn.insert('playlist_song', psMap,
               conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+
+        // Import queue history
+        final hasQueueSnapshot = await importedDataDb.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='queue_snapshot'");
+        if (hasQueueSnapshot.isNotEmpty) {
+          if (!additive) {
+            await txn.delete('queue_snapshot_song');
+            await txn.delete('queue_snapshot');
+          }
+
+          final queueSnapshots = await importedDataDb.query('queue_snapshot');
+          for (final snapshot in queueSnapshots) {
+            final snapshotId = snapshot['id'] as String;
+            final name = snapshot['name'] as String;
+            final createdAt = snapshot['created_at'] as double;
+            final source = snapshot['source'] as String? ?? 'imported';
+            final songCount = snapshot['song_count'] as int? ?? 0;
+
+            await txn.insert(
+                'queue_snapshot',
+                {
+                  'id': snapshotId,
+                  'name': name,
+                  'created_at': createdAt,
+                  'source': source,
+                  'song_count': songCount,
+                },
+                conflictAlgorithm: ConflictAlgorithm.ignore);
+
+            final snapshotSongs = await importedDataDb.query(
+              'queue_snapshot_song',
+              where: 'snapshot_id = ?',
+              whereArgs: [snapshotId],
+              orderBy: 'position ASC',
+            );
+
+            for (final song in snapshotSongs) {
+              await txn.insert(
+                  'queue_snapshot_song',
+                  {
+                    'snapshot_id': snapshotId,
+                    'song_filename': song['song_filename'],
+                    'position': song['position'],
+                  },
+                  conflictAlgorithm: ConflictAlgorithm.ignore);
+            }
+          }
         }
       });
     } finally {

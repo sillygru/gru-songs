@@ -36,6 +36,26 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
   late Animation<double> _slideAnimation;
   late Animation<double> _fadeAnimation;
 
+  Color _scrimColor1 = Colors.black;
+  Color _scrimColor2 = Colors.black;
+  Color _surfaceColor = Colors.black;
+  Color _surfaceContainerHigh = Colors.black;
+  Color _surfaceContainerLowest = Colors.black;
+  Color _primaryColor = Colors.black;
+  Color _shadowColor = Colors.black;
+  Color _surfaceContainerHighest = Colors.black;
+  Color _onSurface = Colors.black;
+  Color _onSurfaceVariant = Colors.black;
+  Color _primaryContainer = Colors.black;
+
+  LinearGradient? _scrimGradient;
+  LinearGradient? _backgroundGradient;
+  RadialGradient? _topGlow;
+  RadialGradient? _bottomGlow;
+  LinearGradient? _headerGradient;
+  LinearGradient? _iconBgGradient;
+  LinearGradient? _navItemGradient;
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +81,80 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
     ));
 
     _controller.forward();
+  }
+
+  void _initColors(ColorScheme colorScheme) {
+    _scrimColor1 = Colors.black.withValues(alpha: 0.36);
+    _scrimColor2 = Colors.black.withValues(alpha: 0.58);
+    _surfaceColor = colorScheme.surface.withValues(alpha: 0.78);
+    _surfaceContainerHigh =
+        colorScheme.surfaceContainerHigh.withValues(alpha: 0.7);
+    _surfaceContainerLowest =
+        colorScheme.surfaceContainerLowest.withValues(alpha: 0.64);
+    _primaryColor = colorScheme.primary;
+    _shadowColor = Colors.black.withValues(alpha: 0.22);
+    _surfaceContainerHighest = colorScheme.surfaceContainerHighest;
+    _onSurface = colorScheme.onSurface;
+    _onSurfaceVariant = colorScheme.onSurfaceVariant;
+    _primaryContainer = colorScheme.primaryContainer;
+
+    _scrimGradient = LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [_scrimColor1, _scrimColor2],
+    );
+
+    _backgroundGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        _surfaceColor,
+        _surfaceContainerHigh,
+        _surfaceContainerLowest,
+      ],
+      stops: const [0.0, 0.5, 1.0],
+    );
+
+    _topGlow = RadialGradient(
+      colors: [
+        _primaryColor.withValues(alpha: 0.26),
+        _primaryColor.withValues(alpha: 0.0),
+      ],
+    );
+
+    _bottomGlow = const RadialGradient(
+      colors: [
+        Color(0x3390CAF9),
+        Color(0x00000000),
+      ],
+    );
+
+    _headerGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        _surfaceContainerHighest.withValues(alpha: 0.5),
+        _surfaceColor.withValues(alpha: 0.3),
+      ],
+    );
+
+    _iconBgGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        _primaryContainer.withValues(alpha: 0.5),
+        _primaryColor.withValues(alpha: 0.18),
+      ],
+    );
+
+    _navItemGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        _surfaceContainerHighest.withValues(alpha: 0.5),
+        _surfaceContainerHighest.withValues(alpha: 0.2),
+      ],
+    );
   }
 
   @override
@@ -89,11 +183,48 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
+    if (_scrimColor1 == Colors.black) {
+      _initColors(colorScheme);
+    }
+
     final songCount = ref.watch(songsProvider.select((s) => s.when(
           data: (songs) => songs.length,
           loading: () => 0,
           error: (_, __) => 0,
         )));
+
+    final BoxDecoration panelDecoration = BoxDecoration(
+      borderRadius: _panelRadius,
+      gradient: _backgroundGradient,
+      boxShadow: [
+        BoxShadow(
+          color: _shadowColor,
+          blurRadius: 36,
+          offset: const Offset(10, 0),
+        ),
+      ],
+    );
+
+    final BoxDecoration topGlowDecoration = BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: _topGlow,
+    );
+
+    final BoxDecoration bottomGlowDecoration = BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: _bottomGlow,
+    );
+
+    final LinearGradient overlayGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        _surfaceColor.withValues(alpha: 0.3),
+        _surfaceColor.withValues(alpha: 0.1),
+        _surfaceContainerHighest.withValues(alpha: 0.1),
+      ],
+    );
 
     return Stack(
       children: [
@@ -103,14 +234,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
             opacity: _fadeAnimation,
             child: Container(
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.36),
-                    Colors.black.withValues(alpha: 0.58),
-                  ],
-                ),
+                gradient: _scrimGradient,
               ),
             ),
           ),
@@ -138,27 +262,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                 child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: _panelRadius,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        colorScheme.surface.withValues(alpha: 0.78),
-                        colorScheme.surfaceContainerHigh.withValues(alpha: 0.7),
-                        colorScheme.surfaceContainerLowest
-                            .withValues(alpha: 0.64),
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.22),
-                        blurRadius: 36,
-                        offset: const Offset(10, 0),
-                      ),
-                    ],
-                  ),
+                  decoration: panelDecoration,
                   child: Stack(
                     children: [
                       Positioned(
@@ -168,15 +272,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                           child: Container(
                             width: 160,
                             height: 160,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  colorScheme.primary.withValues(alpha: 0.26),
-                                  colorScheme.primary.withValues(alpha: 0.0),
-                                ],
-                              ),
-                            ),
+                            decoration: topGlowDecoration,
                           ),
                         ),
                       ),
@@ -187,31 +283,14 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                           child: Container(
                             width: 170,
                             height: 170,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  Color(0x3390CAF9),
-                                  Color(0x00000000),
-                                ],
-                              ),
-                            ),
+                            decoration: bottomGlowDecoration,
                           ),
                         ),
                       ),
                       Positioned.fill(
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                colorScheme.surface.withValues(alpha: 0.3),
-                                colorScheme.surface.withValues(alpha: 0.1),
-                                colorScheme.surfaceContainerHighest
-                                    .withValues(alpha: 0.1),
-                              ],
-                            ),
+                            gradient: overlayGradient,
                           ),
                         ),
                       ),
@@ -220,9 +299,11 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                         left: 0,
                         right: 0,
                         child: IgnorePointer(
-                          child: Container(
-                            height: 1.2,
-                            color: Colors.transparent,
+                          child: RepaintBoundary(
+                            child: Container(
+                              height: 1.2,
+                              color: Colors.transparent,
+                            ),
                           ),
                         ),
                       ),
@@ -231,9 +312,11 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                         right: 0,
                         bottom: 0,
                         child: IgnorePointer(
-                          child: Container(
-                            width: 1.2,
-                            color: Colors.transparent,
+                          child: RepaintBoundary(
+                            child: Container(
+                              width: 1.2,
+                              color: Colors.transparent,
+                            ),
                           ),
                         ),
                       ),
@@ -382,14 +465,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
         padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(28),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              colorScheme.surface.withValues(alpha: 0.3),
-            ],
-          ),
+          gradient: _headerGradient,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -402,14 +478,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        colorScheme.primaryContainer.withValues(alpha: 0.5),
-                        colorScheme.primary.withValues(alpha: 0.18),
-                      ],
-                    ),
+                    gradient: _iconBgGradient,
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
@@ -424,10 +493,10 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                         errorBuilder: (context, error, stackTrace) => Container(
                           width: 64,
                           height: 64,
-                          color: colorScheme.primary.withValues(alpha: 0.1),
+                          color: _primaryColor.withValues(alpha: 0.1),
                           child: Icon(
                             Icons.music_note,
-                            color: colorScheme.primary,
+                            color: _primaryColor,
                             size: 32,
                           ),
                         ),
@@ -439,12 +508,12 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
-                    color: colorScheme.surfaceContainerHighest,
+                    color: _surfaceContainerHighest,
                   ),
                   child: IconButton(
                     onPressed: _closeDrawer,
                     icon: const Icon(Icons.close),
-                    color: colorScheme.onSurface,
+                    color: _onSurface,
                   ),
                 ),
               ],
@@ -453,7 +522,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
             Text(
               'Wispie',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: colorScheme.onSurface,
+                    color: _onSurface,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.8,
                   ),
@@ -462,7 +531,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
             Text(
               'Library: $songCount songs',
               style: TextStyle(
-                color: colorScheme.onSurface.withValues(alpha: 0.72),
+                color: _onSurface.withValues(alpha: 0.72),
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -486,8 +555,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
           Text(
             title,
             style: TextStyle(
-              color:
-                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.92),
+              color: _primaryColor.withValues(alpha: 0.92),
               fontWeight: FontWeight.w900,
               fontSize: 12,
               letterSpacing: 1.35,
@@ -498,10 +566,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
           Text(
             subtitle,
             style: TextStyle(
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.56),
+              color: _onSurface.withValues(alpha: 0.56),
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
@@ -519,7 +584,19 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
     required Color color,
     required VoidCallback? onTap,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final BoxDecoration navItemDecoration = BoxDecoration(
+      borderRadius: BorderRadius.circular(22),
+      gradient: _navItemGradient,
+    );
+
+    final LinearGradient iconGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        color.withValues(alpha: 0.34),
+        color.withValues(alpha: 0.14),
+      ],
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -529,17 +606,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
           borderRadius: BorderRadius.circular(22),
           onTap: onTap,
           child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-                ],
-              ),
-            ),
+            decoration: navItemDecoration,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               child: Row(
@@ -549,14 +616,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                     height: 48,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          color.withValues(alpha: 0.34),
-                          color.withValues(alpha: 0.14),
-                        ],
-                      ),
+                      gradient: iconGradient,
                     ),
                     child: Icon(icon, color: color, size: 22),
                   ),
@@ -571,8 +631,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
                             letterSpacing: -0.2,
-                            color:
-                                colorScheme.onSurface.withValues(alpha: 0.94),
+                            color: _onSurface.withValues(alpha: 0.94),
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -581,8 +640,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color:
-                                colorScheme.onSurface.withValues(alpha: 0.58),
+                            color: _onSurface.withValues(alpha: 0.58),
                           ),
                         ),
                       ],
@@ -591,7 +649,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                   Icon(
                     Icons.arrow_forward_ios_rounded,
                     size: 14,
-                    color: colorScheme.onSurfaceVariant,
+                    color: _onSurfaceVariant,
                   ),
                 ],
               ),

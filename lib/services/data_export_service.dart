@@ -11,6 +11,7 @@ import 'storage_service.dart';
 enum ExportContentType {
   userStats,
   userData,
+  userSettings,
   coverCache,
   libraryCache,
   searchIndex,
@@ -27,11 +28,14 @@ class ExportOptions {
             {
               ExportContentType.userStats,
               ExportContentType.userData,
+              ExportContentType.userSettings,
             };
 
   bool get includeUserStats =>
       contentTypes.contains(ExportContentType.userStats);
   bool get includeUserData => contentTypes.contains(ExportContentType.userData);
+  bool get includeUserSettings =>
+      contentTypes.contains(ExportContentType.userSettings);
   bool get includeCoverCache =>
       contentTypes.contains(ExportContentType.coverCache);
   bool get includeLibraryCache =>
@@ -101,6 +105,12 @@ class DataExportService {
           });
           await File(p.join(exportDir.path, 'merged_groups.json'))
               .writeAsString(jsonEncode(mergedGroupsJson));
+
+          final queueHistory = await database.exportQueueHistory();
+          if (queueHistory.isNotEmpty) {
+            await File(p.join(exportDir.path, 'queue_history.json'))
+                .writeAsString(jsonEncode(queueHistory));
+          }
         }
 
         if (options.includeUserData) {
@@ -115,6 +125,14 @@ class DataExportService {
           if (shuffleState != null) {
             await File(p.join(exportDir.path, 'shuffle_state.json'))
                 .writeAsString(jsonEncode(shuffleState));
+          }
+        }
+
+        if (options.includeUserSettings) {
+          final appSettings = await storage.exportAppSettings();
+          if (appSettings.isNotEmpty) {
+            await File(p.join(exportDir.path, 'app_settings.json'))
+                .writeAsString(jsonEncode(appSettings));
           }
         }
 
@@ -191,6 +209,7 @@ class DataExportService {
         'options': {
           'includeUserStats': options.includeUserStats,
           'includeUserData': options.includeUserData,
+          'includeUserSettings': options.includeUserSettings,
           'includeCoverCache': options.includeCoverCache,
           'includeLibraryCache': options.includeLibraryCache,
           'includeSearchIndex': options.includeSearchIndex,

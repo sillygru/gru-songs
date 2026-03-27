@@ -266,4 +266,88 @@ class StorageService {
       return null;
     }
   }
+
+  static const List<String> _settingsKeys = [
+    'theme_mode',
+    'use_cover_color',
+    'apply_cover_color_to_all',
+    'username',
+    'local_username',
+    'music_folders_list',
+    'sort_order',
+    'visualizer_enabled',
+    'auto_hide_bottom_bar_on_scroll',
+    'telemetry_level',
+    'auto_pause_on_volume_zero',
+    'auto_resume_on_volume_restore',
+    'show_song_duration',
+    'animated_sound_wave_enabled',
+    'show_waveform',
+    'fade_out_duration',
+    'fade_in_duration',
+    'delay_duration',
+    'quick_action_config',
+    'auto_backup_frequency_hours',
+    'auto_backup_delete_after_days',
+    'prevent_duplicate_tracks',
+    'prevent_merged_duplicates',
+    'extract_feat_artists',
+    'minimum_file_size_bytes',
+    'minimum_track_duration_ms',
+    'include_videos',
+    'play_fade_duration',
+    'pause_fade_duration',
+    'keep_screen_awake_on_lyrics',
+    'cover_sizing_mode',
+    'gap_song_id',
+    'gap_resume_timestamp',
+    'gap_is_active',
+  ];
+
+  Future<Map<String, dynamic>> exportAppSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final allKeys = prefs.getKeys();
+    final result = <String, dynamic>{};
+
+    for (final key in _settingsKeys) {
+      if (allKeys.contains(key)) {
+        final value = prefs.get(key);
+        if (value != null) {
+          result[key] = value;
+        }
+      }
+    }
+
+    for (final key in allKeys) {
+      if (!result.containsKey(key)) {
+        final value = prefs.get(key);
+        if (value != null) {
+          result[key] = value;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  Future<void> importAppSettings(Map<String, dynamic> settings) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    for (final entry in settings.entries) {
+      final key = entry.key;
+      final value = entry.value;
+
+      if (value is String) {
+        await prefs.setString(key, value);
+      } else if (value is int) {
+        await prefs.setInt(key, value);
+      } else if (value is double) {
+        await prefs.setDouble(key, value);
+      } else if (value is bool) {
+        await prefs.setBool(key, value);
+      } else if (value is List) {
+        await prefs.setStringList(key, value.cast<String>());
+      }
+    }
+  }
 }

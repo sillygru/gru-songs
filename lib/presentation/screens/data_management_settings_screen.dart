@@ -119,6 +119,7 @@ class _DataManagementSettingsScreenState
     final selectedTypes = <ExportContentType>{
       ExportContentType.userStats,
       ExportContentType.userData,
+      ExportContentType.userSettings,
     };
 
     return showDialog<ExportOptions>(
@@ -161,6 +162,21 @@ class _DataManagementSettingsScreenState
                           selectedTypes.add(ExportContentType.userData);
                         } else {
                           selectedTypes.remove(ExportContentType.userData);
+                        }
+                      });
+                    },
+                  ),
+                  _buildExportCheckbox(
+                    title: 'User Settings',
+                    subtitle: 'Theme, sort order, preferences',
+                    value:
+                        selectedTypes.contains(ExportContentType.userSettings),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedTypes.add(ExportContentType.userSettings);
+                        } else {
+                          selectedTypes.remove(ExportContentType.userSettings);
                         }
                       });
                     },

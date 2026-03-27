@@ -123,6 +123,27 @@ final metadataSaveProvider =
     NotifierProvider<MetadataSaveNotifier, MetadataSaveState>(
         MetadataSaveNotifier.new);
 
+enum AppScrollDirection { none, up, down }
+
+class ScrollDirectionNotifier extends Notifier<AppScrollDirection> {
+  @override
+  AppScrollDirection build() => AppScrollDirection.none;
+
+  void update(AppScrollDirection direction) {
+    if (state != direction) {
+      state = direction;
+    }
+  }
+
+  void reset() {
+    state = AppScrollDirection.none;
+  }
+}
+
+final scrollDirectionProvider =
+    NotifierProvider<ScrollDirectionNotifier, AppScrollDirection>(
+        ScrollDirectionNotifier.new);
+
 class ScanProgressNotifier extends Notifier<double> {
   @override
   double build() => 0.0;

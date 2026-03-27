@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../models/song.dart';
@@ -27,6 +28,28 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  bool _handleScrollNotification(UserScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    switch (notification.direction) {
+      case ScrollDirection.forward:
+        ref
+            .read(scrollDirectionProvider.notifier)
+            .update(AppScrollDirection.up);
+        break;
+      case ScrollDirection.reverse:
+        ref
+            .read(scrollDirectionProvider.notifier)
+            .update(AppScrollDirection.down);
+        break;
+      case ScrollDirection.idle:
+        break;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final songsAsyncValue = ref.watch(songsProvider);
@@ -436,43 +459,50 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             immediateSongs.length;
 
         if (isRoot) {
-          return ListView.builder(
-            itemCount: itemCount,
-            padding: const EdgeInsets.only(bottom: 100),
-            itemBuilder: folderIndexBuilder,
+          return NotificationListener<UserScrollNotification>(
+            onNotification: _handleScrollNotification,
+            child: ListView.builder(
+              itemCount: itemCount,
+              padding: const EdgeInsets.only(bottom: 100),
+              itemBuilder: folderIndexBuilder,
+            ),
           );
         } else {
           return Scaffold(
             backgroundColor: Colors.transparent,
-            body: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                SliverAppBar(
-                  floating: true,
-                  snap: true,
-                  backgroundColor: Colors.transparent,
-                  title: Text(widget.relativePath ?? 'Library'),
-                  actions: [
-                    const SortMenu(),
-                    if (content.allSongsInFolder.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.shuffle_rounded),
-                        onPressed: () {
-                          audioManager.shuffleAndPlay(content.allSongsInFolder,
-                              isRestricted: true);
-                        },
-                        tooltip: 'Shuffle Folder',
-                      ),
-                  ],
-                ),
-                SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    folderIndexBuilder,
-                    childCount: itemCount,
+            body: NotificationListener<UserScrollNotification>(
+              onNotification: _handleScrollNotification,
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    backgroundColor: Colors.transparent,
+                    title: Text(widget.relativePath ?? 'Library'),
+                    actions: [
+                      const SortMenu(),
+                      if (content.allSongsInFolder.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.shuffle_rounded),
+                          onPressed: () {
+                            audioManager.shuffleAndPlay(
+                                content.allSongsInFolder,
+                                isRestricted: true);
+                          },
+                          tooltip: 'Shuffle Folder',
+                        ),
+                    ],
                   ),
-                ),
-                const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-              ],
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      folderIndexBuilder,
+                      childCount: itemCount,
+                    ),
+                  ),
+                  const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+                ],
+              ),
             ),
           );
         }
@@ -487,68 +517,72 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       data: (artists) {
         final artistMap = LibraryLogic.groupByArtist(allSongs);
 
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.85,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-          ),
-          shrinkWrap: true,
-          itemCount: artists.length,
-          itemBuilder: (context, index) {
-            final artist = artists[index];
-            final artistSongs = artistMap[artist] ?? [];
-            if (artistSongs.isEmpty) return const SizedBox.shrink();
+        return NotificationListener<UserScrollNotification>(
+          onNotification: _handleScrollNotification,
+          child: GridView.builder(
+            padding: const EdgeInsets.all(16),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+            shrinkWrap: true,
+            itemCount: artists.length,
+            itemBuilder: (context, index) {
+              final artist = artists[index];
+              final artistSongs = artistMap[artist] ?? [];
+              if (artistSongs.isEmpty) return const SizedBox.shrink();
 
-            return GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SongListScreen(
-                      title: artist,
-                      songs: artistSongs,
-                    ),
-                  ),
-                );
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      clipBehavior: Clip.antiAlias,
-                      child: FolderGridImage(
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SongListScreen(
+                        title: artist,
                         songs: artistSongs,
-                        isGridItem: true,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    artist,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  CollectionDurationDisplay(
-                    songs: artistSongs,
-                    showSongCount: true,
-                    compact: true,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  );
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        clipBehavior: Clip.antiAlias,
+                        child: FolderGridImage(
+                          songs: artistSongs,
+                          isGridItem: true,
                         ),
-                  ),
-                ],
-              ),
-            );
-          },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      artist,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    CollectionDurationDisplay(
+                      songs: artistSongs,
+                      showSongCount: true,
+                      compact: true,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -563,82 +597,87 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       data: (albums) {
         final albumMap = LibraryLogic.groupByAlbum(allSongs);
 
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.85,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-          ),
-          shrinkWrap: true,
-          itemCount: albums.length,
-          itemBuilder: (context, index) {
-            final album = albums[index];
-            final albumSongs = albumMap[album] ?? [];
-            if (albumSongs.isEmpty) return const SizedBox.shrink();
-            final artist =
-                albumSongs.isNotEmpty ? albumSongs[0].artist : 'Unknown Artist';
+        return NotificationListener<UserScrollNotification>(
+          onNotification: _handleScrollNotification,
+          child: GridView.builder(
+            padding: const EdgeInsets.all(16),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+            shrinkWrap: true,
+            itemCount: albums.length,
+            itemBuilder: (context, index) {
+              final album = albums[index];
+              final albumSongs = albumMap[album] ?? [];
+              if (albumSongs.isEmpty) return const SizedBox.shrink();
+              final artist = albumSongs.isNotEmpty
+                  ? albumSongs[0].artist
+                  : 'Unknown Artist';
 
-            return GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SongListScreen(
-                      title: album,
-                      songs: albumSongs,
-                    ),
-                  ),
-                );
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      clipBehavior: Clip.antiAlias,
-                      child: FolderGridImage(
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SongListScreen(
+                        title: album,
                         songs: albumSongs,
-                        isGridItem: true,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    album,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  );
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        clipBehavior: Clip.antiAlias,
+                        child: FolderGridImage(
+                          songs: albumSongs,
+                          isGridItem: true,
                         ),
-                  ),
-                  CollectionDurationDisplay(
-                    songs: albumSongs,
-                    showSongCount: true,
-                    compact: true,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant
-                              .withValues(alpha: 0.7),
-                        ),
-                  ),
-                ],
-              ),
-            );
-          },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      album,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    CollectionDurationDisplay(
+                      songs: albumSongs,
+                      showSongCount: true,
+                      compact: true,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.7),
+                          ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),

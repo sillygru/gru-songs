@@ -13,6 +13,7 @@ import '../data/repositories/search_index_repository.dart';
 enum BackupContentType {
   userStats,
   userData,
+  userSettings,
   coverCache,
   libraryCache,
   searchIndex,
@@ -34,6 +35,8 @@ class BackupOptions {
   bool get includeUserStats =>
       contentTypes.contains(BackupContentType.userStats);
   bool get includeUserData => contentTypes.contains(BackupContentType.userData);
+  bool get includeUserSettings =>
+      contentTypes.contains(BackupContentType.userSettings);
   bool get includeCoverCache =>
       contentTypes.contains(BackupContentType.coverCache);
   bool get includeLibraryCache =>
@@ -258,6 +261,12 @@ class BackupService {
             });
             await File(p.join(dataDir.path, 'merged_groups.json'))
                 .writeAsString(encodeJson(mergedGroupsJson));
+
+            final queueHistory = await database.exportQueueHistory();
+            if (queueHistory.isNotEmpty) {
+              await File(p.join(dataDir.path, 'queue_history.json'))
+                  .writeAsString(encodeJson(queueHistory));
+            }
           }
 
           if (options.includeUserData) {
@@ -272,6 +281,15 @@ class BackupService {
             if (shuffleState != null) {
               await File(p.join(dataDir.path, 'shuffle_state.json'))
                   .writeAsString(encodeJson(shuffleState));
+            }
+          }
+
+          // Include app settings
+          if (options.includeUserSettings) {
+            final appSettings = await storage.exportAppSettings();
+            if (appSettings.isNotEmpty) {
+              await File(p.join(dataDir.path, 'app_settings.json'))
+                  .writeAsString(encodeJson(appSettings));
             }
           }
 
@@ -427,6 +445,8 @@ class BackupService {
         File? foundShuffleStateJson;
         File? foundPlaybackStateJson;
         File? foundMergedGroupsJson;
+        File? foundQueueHistoryJson;
+        File? foundAppSettingsJson;
 
         await for (final entity in tempDir.list(recursive: true)) {
           if (entity is File) {
@@ -455,6 +475,12 @@ class BackupService {
             }
             if (name == 'merged_groups.json') {
               foundMergedGroupsJson = entity;
+            }
+            if (name == 'queue_history.json') {
+              foundQueueHistoryJson = entity;
+            }
+            if (name == 'app_settings.json') {
+              foundAppSettingsJson = entity;
             }
           }
         }
@@ -524,6 +550,25 @@ class BackupService {
             }
           }
           await DatabaseService.instance.setMergedGroups(groups);
+        }
+
+        // Restore queue history
+        if (foundQueueHistoryJson != null) {
+          final content = await foundQueueHistoryJson.readAsString();
+          final data = decodeJson(content);
+          if (data is List) {
+            final queueHistoryData = data.cast<Map<String, dynamic>>();
+            await DatabaseService.instance.importQueueHistory(queueHistoryData);
+          }
+        }
+
+        // Restore app settings
+        if (foundAppSettingsJson != null) {
+          final content = await foundAppSettingsJson.readAsString();
+          final data = decodeJson(content);
+          if (data is Map) {
+            await storage.importAppSettings(Map<String, dynamic>.from(data));
+          }
         }
 
         // Delete any existing search index

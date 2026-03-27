@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import '../widgets/album_art_image.dart';
@@ -32,6 +33,28 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _handleScrollNotification(UserScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    switch (notification.direction) {
+      case ScrollDirection.forward:
+        ref
+            .read(scrollDirectionProvider.notifier)
+            .update(AppScrollDirection.up);
+        break;
+      case ScrollDirection.reverse:
+        ref
+            .read(scrollDirectionProvider.notifier)
+            .update(AppScrollDirection.down);
+        break;
+      case ScrollDirection.idle:
+        break;
+    }
+    return false;
+  }
+
   Future<void> _selectMusicFolder() async {
     if (Platform.isAndroid) {
       final selection = await AndroidStorageService.pickTree();
@@ -711,212 +734,217 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // Invalidate auto mood mix to force regeneration on next watch
               ref.invalidate(autoMoodMixProvider);
             },
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                        20, MediaQuery.of(context).padding.top + 16, 20, 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Wispie',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: Icon(Icons.shuffle_rounded,
-                                  color: theme.colorScheme.primary),
-                              onPressed: () {
-                                if (songs.isNotEmpty) {
-                                  audioManager.shuffleAndPlay(songs,
-                                      isRestricted: false);
-                                }
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.search_rounded),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const SearchScreen()),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (topRecommendations.isNotEmpty) ...[
-                          Text(
-                            'Quick Picks',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              mainAxisExtent: 64,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                            ),
-                            itemCount: topRecommendations.length.clamp(0, 6),
-                            itemBuilder: (context, index) {
-                              final song = topRecommendations[index];
-                              final contextSongs =
-                                  topRecommendations.take(6).toList();
-                              return _buildQuickPickTile(
-                                  song, theme, audioManager, contextSongs);
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                if (displayQueues.isNotEmpty) ...[
+            child: NotificationListener<UserScrollNotification>(
+              onNotification: _handleScrollNotification,
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
+                      padding: EdgeInsets.fromLTRB(
+                          20, MediaQuery.of(context).padding.top + 16, 20, 16),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Recent Queues',
-                            style: theme.textTheme.titleLarge,
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const QueueHistoryScreen()),
+                            'Wispie',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
                             ),
-                            child: const Text('See All'),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.shuffle_rounded,
+                                    color: theme.colorScheme.primary),
+                                onPressed: () {
+                                  if (songs.isNotEmpty) {
+                                    audioManager.shuffleAndPlay(songs,
+                                        isRestricted: false);
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.search_rounded),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) => const SearchScreen()),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
                   ),
                   SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 160,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: displayQueues.length,
-                        itemBuilder: (context, index) {
-                          final snapshot = displayQueues[index];
-                          return _buildQueueCard(
-                              context, ref, snapshot, audioManager, theme);
-                        },
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (topRecommendations.isNotEmpty) ...[
+                            Text(
+                              'Quick Picks',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisExtent: 64,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                              ),
+                              itemCount: topRecommendations.length.clamp(0, 6),
+                              itemBuilder: (context, index) {
+                                final song = topRecommendations[index];
+                                final contextSongs =
+                                    topRecommendations.take(6).toList();
+                                return _buildQuickPickTile(
+                                    song, theme, audioManager, contextSongs);
+                              },
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                ],
-                SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                        child: Text(
-                          'For You',
-                          style: theme.textTheme.titleLarge,
+                  if (displayQueues.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Recent Queues',
+                              style: theme.textTheme.titleLarge,
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const QueueHistoryScreen()),
+                              ),
+                              child: const Text('See All'),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(
-                        height: 300,
+                    ),
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 160,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
-                          itemCount: mixedPlaylists.length + 1,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: displayQueues.length,
                           itemBuilder: (context, index) {
-                            final autoMoodMix = ref.watch(autoMoodMixProvider);
-                            if (index == 0 && autoMoodMix.hasEnoughData) {
-                              return _buildAutoMoodMixCard(theme, autoMoodMix);
-                            }
-                            final playlistIndex =
-                                autoMoodMix.hasEnoughData ? index - 1 : index;
-                            if (playlistIndex < mixedPlaylists.length) {
-                              final playlist = mixedPlaylists[playlistIndex];
-                              return _buildAutoPlaylistCard(
-                                  playlist, theme, audioManager, ref);
-                            }
-                            return const SizedBox.shrink();
+                            final snapshot = displayQueues[index];
+                            return _buildQueueCard(
+                                context, ref, snapshot, audioManager, theme);
                           },
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  ],
+                  SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Text(
-                              'Library',
-                              style: theme.textTheme.titleLarge,
-                            ),
-                            const SizedBox(width: 8),
-                            const SortMenu(),
-                          ],
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                          child: Text(
+                            'For You',
+                            style: theme.textTheme.titleLarge,
+                          ),
                         ),
-                        Text(
-                          '${songs.length} tracks',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.5),
+                        SizedBox(
+                          height: 300,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: mixedPlaylists.length + 1,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemBuilder: (context, index) {
+                              final autoMoodMix =
+                                  ref.watch(autoMoodMixProvider);
+                              if (index == 0 && autoMoodMix.hasEnoughData) {
+                                return _buildAutoMoodMixCard(
+                                    theme, autoMoodMix);
+                              }
+                              final playlistIndex =
+                                  autoMoodMix.hasEnoughData ? index - 1 : index;
+                              if (playlistIndex < mixedPlaylists.length) {
+                                final playlist = mixedPlaylists[playlistIndex];
+                                return _buildAutoPlaylistCard(
+                                    playlist, theme, audioManager, ref);
+                              }
+                              return const SizedBox.shrink();
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final song = sortedSongs[index];
-                      return SongListItem(
-                        song: song,
-                        heroTagPrefix: 'all_songs',
-                        onTap: () {
-                          audioManager.playSong(song,
-                              contextQueue: sortedSongs);
-                        },
-                      );
-                    },
-                    childCount: sortedSongs.length,
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Library',
+                                style: theme.textTheme.titleLarge,
+                              ),
+                              const SizedBox(width: 8),
+                              const SortMenu(),
+                            ],
+                          ),
+                          Text(
+                            '${songs.length} tracks',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-                const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
-              ],
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final song = sortedSongs[index];
+                        return SongListItem(
+                          song: song,
+                          heroTagPrefix: 'all_songs',
+                          onTap: () {
+                            audioManager.playSong(song,
+                                contextQueue: sortedSongs);
+                          },
+                        );
+                      },
+                      childCount: sortedSongs.length,
+                    ),
+                  ),
+                  const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
+                ],
+              ),
             ),
           );
         },
