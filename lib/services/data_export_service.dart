@@ -307,11 +307,55 @@ class DataExportService {
         throw Exception('Invalid backup: Database files missing');
       }
 
+      bool hasSongsJson = false;
+      bool hasUserDataJson = false;
+      bool hasShuffleStateJson = false;
+      bool hasPlaybackStateJson = false;
+      bool hasMergedGroupsJson = false;
+      bool hasQueueHistoryJson = false;
+      bool hasAppSettingsJson = false;
+
+      await for (final entity in Directory(contentPath).list(recursive: true)) {
+        if (entity is File) {
+          final name = p.basename(entity.path);
+          if (name == 'songs.json') {
+            hasSongsJson = true;
+          }
+          if (name == 'user_data.json' || name.startsWith('user_data_')) {
+            hasUserDataJson = true;
+          }
+          if (name == 'shuffle_state.json' ||
+              name.startsWith('shuffle_state_')) {
+            hasShuffleStateJson = true;
+          }
+          if (name == 'playback_state.json' ||
+              name.startsWith('playback_state_')) {
+            hasPlaybackStateJson = true;
+          }
+          if (name == 'merged_groups.json') {
+            hasMergedGroupsJson = true;
+          }
+          if (name == 'queue_history.json') {
+            hasQueueHistoryJson = true;
+          }
+          if (name == 'app_settings.json') {
+            hasAppSettingsJson = true;
+          }
+        }
+      }
+
       return {
         'valid': true,
         'importPath': contentPath,
         'statsDbPath': foundStats.path,
         'dataDbPath': foundData.path,
+        'hasSongsJson': hasSongsJson,
+        'hasUserDataJson': hasUserDataJson,
+        'hasShuffleStateJson': hasShuffleStateJson,
+        'hasPlaybackStateJson': hasPlaybackStateJson,
+        'hasMergedGroupsJson': hasMergedGroupsJson,
+        'hasQueueHistoryJson': hasQueueHistoryJson,
+        'hasAppSettingsJson': hasAppSettingsJson,
       };
     } catch (e) {
       if (await decodeDir.exists()) await decodeDir.delete(recursive: true);
@@ -323,12 +367,98 @@ class DataExportService {
     required String statsDbPath,
     required String dataDbPath,
     required bool additive,
+    bool importUserData = false,
+    bool importShuffleState = false,
+    bool importPlaybackState = false,
+    bool importAppSettings = false,
+    bool importQueueHistory = false,
+    bool importMergedGroups = false,
   }) async {
+    final importPath = p.dirname(statsDbPath);
+
     await DatabaseService.instance.importData(
       statsDbPath: statsDbPath,
       dataDbPath: dataDbPath,
       additive: additive,
     );
+
+    final storage = StorageService();
+
+    if (importUserData) {
+      final userDataFile = File(p.join(importPath, 'user_data.json'));
+      if (await userDataFile.exists()) {
+        final content = await userDataFile.readAsString();
+        final data = jsonDecode(content);
+        await storage.saveUserData(data);
+      }
+    }
+
+    if (importShuffleState) {
+      final shuffleStateFile = File(p.join(importPath, 'shuffle_state.json'));
+      if (await shuffleStateFile.exists()) {
+        final content = await shuffleStateFile.readAsString();
+        final data = jsonDecode(content);
+        await storage.saveShuffleState(data);
+      }
+    }
+
+    if (importPlaybackState) {
+      final playbackStateFile = File(p.join(importPath, 'playback_state.json'));
+      if (await playbackStateFile.exists()) {
+        final content = await playbackStateFile.readAsString();
+        final data = jsonDecode(content);
+        await storage.savePlaybackState(data);
+      }
+    }
+
+    if (importAppSettings) {
+      final appSettingsFile = File(p.join(importPath, 'app_settings.json'));
+      if (await appSettingsFile.exists()) {
+        final content = await appSettingsFile.readAsString();
+        final data = jsonDecode(content);
+        if (data is Map) {
+          await storage.importAppSettings(Map<String, dynamic>.from(data));
+        }
+      }
+    }
+
+    if (importQueueHistory) {
+      final queueHistoryFile = File(p.join(importPath, 'queue_history.json'));
+      if (await queueHistoryFile.exists()) {
+        final content = await queueHistoryFile.readAsString();
+        final data = jsonDecode(content);
+        if (data is List) {
+          final queueHistoryData = data.cast<Map<String, dynamic>>();
+          await DatabaseService.instance.importQueueHistory(queueHistoryData);
+        }
+      }
+    }
+
+    if (importMergedGroups) {
+      final mergedGroupsFile = File(p.join(importPath, 'merged_groups.json'));
+      if (await mergedGroupsFile.exists()) {
+        final content = await mergedGroupsFile.readAsString();
+        final data = jsonDecode(content);
+        final groups =
+            <String, ({List<String> filenames, String? priorityFilename})>{};
+        if (data is Map) {
+          for (final entry in data.entries) {
+            final key = entry.key as String;
+            final value = entry.value;
+            if (value is Map) {
+              final filenames =
+                  (value['filenames'] as List?)?.cast<String>() ?? [];
+              final priority = value['priorityFilename'] as String?;
+              groups[key] = (filenames: filenames, priorityFilename: priority);
+            } else if (value is List) {
+              groups[key] =
+                  (filenames: value.cast<String>(), priorityFilename: null);
+            }
+          }
+        }
+        await DatabaseService.instance.setMergedGroups(groups);
+      }
+    }
 
     final importDir = Directory(p.dirname(statsDbPath));
     Directory? toDelete = importDir;

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -188,7 +190,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               child: Text('Please select a music folder in Home first.'));
         }
 
-        final musicRoot = snapshot.data!;
+        final musicRoot =
+            Platform.isIOS ? p.normalize(snapshot.data!) : snapshot.data!;
         final currentFullPath = widget.relativePath == null
             ? musicRoot
             : p.join(musicRoot, widget.relativePath);

@@ -384,6 +384,146 @@ class _DataManagementSettingsScreenState
     );
   }
 
+  Future<Map<String, dynamic>?> _showImportSelectionDialog(
+      Map<String, dynamic> validation) async {
+    bool importUserData = validation['hasUserDataJson'] ?? false;
+    bool importShuffleState = validation['hasShuffleStateJson'] ?? false;
+    bool importPlaybackState = validation['hasPlaybackStateJson'] ?? false;
+    bool importAppSettings = validation['hasAppSettingsJson'] ?? false;
+    bool importQueueHistory = validation['hasQueueHistoryJson'] ?? false;
+    bool importMergedGroups = validation['hasMergedGroupsJson'] ?? false;
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Select Data to Import"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Choose which data to import from the backup:",
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                if (validation['hasUserDataJson'] ?? false)
+                  _buildImportCheckbox(
+                    "User Data",
+                    "Favorites, playlists, preferences",
+                    importUserData,
+                    (v) => setDialogState(() => importUserData = v),
+                  ),
+                if (validation['hasShuffleStateJson'] ?? false)
+                  _buildImportCheckbox(
+                    "Shuffle Configuration",
+                    "Shuffle personality and settings",
+                    importShuffleState,
+                    (v) => setDialogState(() => importShuffleState = v),
+                  ),
+                if (validation['hasAppSettingsJson'] ?? false)
+                  _buildImportCheckbox(
+                    "App Settings",
+                    "Quick actions, theme, sort order",
+                    importAppSettings,
+                    (v) => setDialogState(() => importAppSettings = v),
+                  ),
+                if (validation['hasPlaybackStateJson'] ?? false)
+                  _buildImportCheckbox(
+                    "Playback State",
+                    "Current queue and position",
+                    importPlaybackState,
+                    (v) => setDialogState(() => importPlaybackState = v),
+                  ),
+                if (validation['hasQueueHistoryJson'] ?? false)
+                  _buildImportCheckbox(
+                    "Queue History",
+                    "Past queues",
+                    importQueueHistory,
+                    (v) => setDialogState(() => importQueueHistory = v),
+                  ),
+                if (validation['hasMergedGroupsJson'] ?? false)
+                  _buildImportCheckbox(
+                    "Merged Groups",
+                    "Song groupings",
+                    importMergedGroups,
+                    (v) => setDialogState(() => importMergedGroups = v),
+                  ),
+                if (validation['hasUserDataJson'] == false &&
+                    validation['hasShuffleStateJson'] == false &&
+                    validation['hasAppSettingsJson'] == false &&
+                    validation['hasPlaybackStateJson'] == false &&
+                    validation['hasQueueHistoryJson'] == false &&
+                    validation['hasMergedGroupsJson'] == false)
+                  const Text(
+                    "No additional data files found in backup.",
+                    style: TextStyle(fontStyle: FontStyle.italic),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text("CANCEL"),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, {
+                'importUserData': importUserData,
+                'importShuffleState': importShuffleState,
+                'importPlaybackState': importPlaybackState,
+                'importAppSettings': importAppSettings,
+                'importQueueHistory': importQueueHistory,
+                'importMergedGroups': importMergedGroups,
+              }),
+              child: const Text("IMPORT"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImportCheckbox(
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Checkbox(
+            value: value,
+            onChanged: (v) => onChanged(v ?? false),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleImport() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -434,6 +574,12 @@ class _DataManagementSettingsScreenState
         return;
       }
 
+      final importOptions = await _showImportSelectionDialog(
+        validation.cast<String, dynamic>(),
+      );
+
+      if (importOptions == null) return;
+
       if (mounted) {
         showDialog(
           context: context,
@@ -447,6 +593,12 @@ class _DataManagementSettingsScreenState
         statsDbPath: validation['statsDbPath'],
         dataDbPath: validation['dataDbPath'],
         additive: false,
+        importUserData: importOptions['importUserData'],
+        importShuffleState: importOptions['importShuffleState'],
+        importPlaybackState: importOptions['importPlaybackState'],
+        importAppSettings: importOptions['importAppSettings'],
+        importQueueHistory: importOptions['importQueueHistory'],
+        importMergedGroups: importOptions['importMergedGroups'],
       );
 
       TelemetryService.instance.trackEvent(

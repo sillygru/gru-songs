@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'home_screen.dart';
@@ -130,8 +131,10 @@ class _MainScreenState extends ConsumerState<MainScreen>
   int _selectedIndex = 0;
   bool _isDrawerOpen = false;
   bool _isBottomDockHidden = false;
+  int _upwardScrollCount = 0;
 
   static const double _bottomDockBaseHeight = 88.0;
+  static const int _showBarScrollThreshold = 3;
 
   // Gesture detection for drawer
   double _dragStartX = 0;
@@ -227,13 +230,20 @@ class _MainScreenState extends ConsumerState<MainScreen>
     final settings = ref.watch(settingsProvider);
     final topPadding = mediaQuery.padding.top;
     final androidSystemBottomInset = mediaQuery.padding.bottom;
-    final bottomDockHeight = _bottomDockBaseHeight + androidSystemBottomInset;
+    final bottomInsetReduced = Platform.isIOS
+        ? (androidSystemBottomInset > 0 ? 10.0 : 0.0)
+        : androidSystemBottomInset;
+    final bottomDockHeight = _bottomDockBaseHeight + bottomInsetReduced;
     final nowPlayingBottomPadding = settings.autoHideBottomBarOnScroll &&
             _isBottomDockHidden &&
             androidSystemBottomInset > 0
-        ? 8.0 + androidSystemBottomInset
+        ? Platform.isIOS
+            ? 12.0
+            : 8.0 + androidSystemBottomInset
         : settings.autoHideBottomBarOnScroll && _isBottomDockHidden
-            ? 20.0
+            ? Platform.isIOS
+                ? 16.0
+                : 20.0
             : 12.0;
 
     final isSelectionMode =
@@ -245,11 +255,16 @@ class _MainScreenState extends ConsumerState<MainScreen>
         if (next == AppScrollDirection.down && !_isBottomDockHidden) {
           setState(() {
             _isBottomDockHidden = true;
+            _upwardScrollCount = 0;
           });
         } else if (next == AppScrollDirection.up && _isBottomDockHidden) {
-          setState(() {
-            _isBottomDockHidden = false;
-          });
+          _upwardScrollCount++;
+          if (_upwardScrollCount >= _showBarScrollThreshold) {
+            setState(() {
+              _isBottomDockHidden = false;
+              _upwardScrollCount = 0;
+            });
+          }
         }
       }
     });
@@ -259,6 +274,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
         if (!next && _isBottomDockHidden) {
           setState(() {
             _isBottomDockHidden = false;
+            _upwardScrollCount = 0;
           });
         }
       },
