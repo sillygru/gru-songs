@@ -231,13 +231,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return -1;
   }
 
-  Future<void> updateShuffleConfig(ShuffleConfig config) async {
+  Future<void> updateShuffleConfig(
+    ShuffleConfig config, {
+    bool applyToCurrentQueue = true,
+  }) async {
     _shuffleState = _shuffleState.copyWith(config: config);
     shuffleStateNotifier.value = _shuffleState;
     shuffleNotifier.value = config.enabled;
     _saveShuffleState();
 
-    if (_effectiveQueue.isNotEmpty) {
+    if (applyToCurrentQueue && _effectiveQueue.isNotEmpty) {
       final currentIndex = _player.currentIndex ?? 0;
       if (config.enabled) {
         await _applyShuffle(currentIndex);

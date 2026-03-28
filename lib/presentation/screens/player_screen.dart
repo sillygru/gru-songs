@@ -619,14 +619,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _showShuffleSettings(BuildContext context, WidgetRef ref) {
     final manager = ref.read(audioPlayerManagerProvider);
+    final initialConfig = manager.shuffleStateNotifier.value.config;
+    bool localAntiRepeat = initialConfig.antiRepeatEnabled;
+    bool localStreakBreaker = initialConfig.streakBreakerEnabled;
 
     showDialog(
       context: context,
-      builder: (context) {
-        return ValueListenableBuilder(
-          valueListenable: manager.shuffleStateNotifier,
-          builder: (context, state, child) {
-            final config = state.config;
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final hasChanges =
+                localAntiRepeat != initialConfig.antiRepeatEnabled ||
+                    localStreakBreaker != initialConfig.streakBreakerEnabled;
+
             return AlertDialog(
               title: const Text('Shuffle Settings'),
               content: Column(
@@ -636,39 +641,73 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     title: const Text('Anti-repeat'),
                     subtitle:
                         const Text('Reduce probability for recently played'),
-                    value: config.antiRepeatEnabled,
+                    value: localAntiRepeat,
                     onChanged: (val) {
-                      manager.updateShuffleConfig(
-                          config.copyWith(antiRepeatEnabled: val));
+                      localAntiRepeat = val;
+                      setDialogState(() {});
                     },
                   ),
                   SwitchListTile(
                     title: const Text('Streak Breaker'),
                     subtitle: const Text('Avoid same artist/album in a row'),
-                    value: config.streakBreakerEnabled,
+                    value: localStreakBreaker,
                     onChanged: (val) {
-                      manager.updateShuffleConfig(
-                          config.copyWith(streakBreakerEnabled: val));
+                      localStreakBreaker = val;
+                      setDialogState(() {});
                     },
                   ),
                   const Divider(),
                   ListTile(
                     title: const Text('Favorite Boost'),
                     subtitle: Text(
-                        '${((config.favoriteMultiplier - 1) * 100).round()}% higher weight'),
+                        '${((initialConfig.favoriteMultiplier - 1) * 100).round()}% higher weight'),
                   ),
                   ListTile(
                     title: const Text('Suggest-Less Penalty'),
                     subtitle: Text(
-                        '${((1 - config.suggestLessMultiplier) * 100).round()}% lower weight'),
+                        '${((1 - initialConfig.suggestLessMultiplier) * 100).round()}% lower weight'),
                   ),
+                  if (hasChanges) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Changes will apply to next queue',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Close'),
-                ),
+                if (hasChanges) ...[
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                    },
+                    child: const Text('Discard'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      manager.updateShuffleConfig(
+                        initialConfig.copyWith(
+                          antiRepeatEnabled: localAntiRepeat,
+                          streakBreakerEnabled: localStreakBreaker,
+                        ),
+                        applyToCurrentQueue: false,
+                      );
+                      Navigator.pop(dialogContext);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Settings saved')),
+                      );
+                    },
+                    child: const Text('Save'),
+                  ),
+                ] else
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Close'),
+                  ),
               ],
             );
           },

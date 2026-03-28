@@ -22,6 +22,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _newUsernameController = TextEditingController();
   String _appVersion = '';
+  ShufflePersonality? _pendingPersonality;
+  bool _hasPersonalityChanges = false;
 
   bool _handleScrollNotification(UserScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) {
@@ -228,6 +230,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           valueListenable: audioManager.shuffleStateNotifier,
                           builder: (context, shuffleState, child) {
                             final current = shuffleState.config.personality;
+                            final selectedValue =
+                                _pendingPersonality ?? current;
+
                             return Card(
                               elevation: 0,
                               color: Theme.of(context)
@@ -236,41 +241,108 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   .withValues(alpha: 0.3),
                               child: Padding(
                                 padding: const EdgeInsets.all(8.0),
-                                child: RadioGroup<ShufflePersonality>(
-                                  groupValue: current,
-                                  onChanged: (v) {
-                                    if (v != null) {
-                                      audioManager.updateShuffleConfig(
-                                          shuffleState.config
-                                              .copyWith(personality: v));
-                                    }
-                                  },
-                                  child: Column(
-                                    children: [
-                                      _buildRadioTile(
-                                        title: 'Default',
-                                        subtitle:
-                                            'Balanced mix with anti-repeat',
-                                        value: ShufflePersonality.defaultMode,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    RadioGroup<ShufflePersonality>(
+                                      groupValue: selectedValue,
+                                      onChanged: (v) {
+                                        if (v != null) {
+                                          setState(() {
+                                            _pendingPersonality = v;
+                                            _hasPersonalityChanges =
+                                                v != current;
+                                          });
+                                        }
+                                      },
+                                      child: Column(
+                                        children: [
+                                          _buildRadioTile(
+                                            title: 'Default',
+                                            subtitle:
+                                                'Balanced mix with anti-repeat',
+                                            value:
+                                                ShufflePersonality.defaultMode,
+                                          ),
+                                          _buildRadioTile(
+                                            title: 'Explorer',
+                                            subtitle:
+                                                'Prioritizes new & rare songs',
+                                            value: ShufflePersonality.explorer,
+                                          ),
+                                          _buildRadioTile(
+                                            title: 'Consistent',
+                                            subtitle: 'Favorites heavy',
+                                            value:
+                                                ShufflePersonality.consistent,
+                                          ),
+                                          _buildRadioTile(
+                                            title: 'Custom',
+                                            subtitle:
+                                                'Configure your own shuffle',
+                                            value: ShufflePersonality.custom,
+                                          ),
+                                        ],
                                       ),
-                                      _buildRadioTile(
-                                        title: 'Explorer',
-                                        subtitle:
-                                            'Prioritizes new & rare songs',
-                                        value: ShufflePersonality.explorer,
-                                      ),
-                                      _buildRadioTile(
-                                        title: 'Consistent',
-                                        subtitle: 'Favorites heavy',
-                                        value: ShufflePersonality.consistent,
-                                      ),
-                                      _buildRadioTile(
-                                        title: 'Custom',
-                                        subtitle: 'Configure your own shuffle',
-                                        value: ShufflePersonality.custom,
+                                    ),
+                                    if (_hasPersonalityChanges) ...[
+                                      const Divider(),
+                                      Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                'Changes will apply to next queue',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary,
+                                                ),
+                                              ),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                setState(() {
+                                                  _pendingPersonality = null;
+                                                  _hasPersonalityChanges =
+                                                      false;
+                                                });
+                                              },
+                                              child: const Text('Cancel'),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            FilledButton(
+                                              onPressed: () {
+                                                audioManager
+                                                    .updateShuffleConfig(
+                                                  shuffleState.config.copyWith(
+                                                    personality:
+                                                        _pendingPersonality!,
+                                                  ),
+                                                  applyToCurrentQueue: false,
+                                                );
+                                                setState(() {
+                                                  _pendingPersonality = null;
+                                                  _hasPersonalityChanges =
+                                                      false;
+                                                });
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                        'Personality saved'),
+                                                  ),
+                                                );
+                                              },
+                                              child: const Text('Apply'),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ],
-                                  ),
+                                  ],
                                 ),
                               ),
                             );
