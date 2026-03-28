@@ -68,20 +68,48 @@ Combines multiple factors:
 - Anti-repeat penalties
 - Streak breaker penalties
 
+## Queue Behavior
+
+### playSong() Logic
+- If song exists in current queue: jumps to it WITHOUT rebuilding queue
+- If song is NEW: builds fresh queue and optionally saves to history
+- Detects "new queue" by comparing filename sets
+
+### Queue History (Snapshots)
+- Only saves when starting a TRULY new queue (not jumping within existing)
+- Uses `QueueSnapshot` model stored in `queue_snapshot` table
+- Song filenames stored in `queue_snapshot_song` junction table
+
+### Pending Queue Replacement
+- `setPendingQueueReplacement()` - queues songs to play after current song ends
+- `replaceQueue()` - immediately replaces current queue (clears any pending)
+- Triggered on `ProcessingState.completed` (queue finished) or song change
+
 ## Important Methods
 
 ```dart
-// Initialize shuffle for a queue
-void _initShuffle(List<QueueItem> queue)
+// Play song (smart: jumps if in queue, builds new if not)
+Future<void> playSong(
+  Song song, {
+  List<Song>? contextQueue,
+  String? playlistId,
+  bool startPlaying = true,
+  bool forceLinear = false,
+})
 
-// Generate weighted queue
-List<QueueItem> _generateWeightedQueue()
+// Replace entire queue immediately
+Future<void> replaceQueue(
+  List<Song> songs, {
+  String? playlistId,
+  bool forceLinear = false,
+  bool saveSnapshot = true,
+})
 
-// Handle song completion (triggers next song + stats)
-Future<void> _onSongComplete()
+// Queue for later playback
+void setPendingQueueReplacement(List<Song> songs, {String? playlistId})
 
-// Play specific song
-Future<void> playSong(Song song, [List<Song>? contextQueue])
+// Cancel pending queue
+void cancelPendingQueueReplacement()
 ```
 
 ## Related Files

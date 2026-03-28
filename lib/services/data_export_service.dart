@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'database_service.dart';
 import 'storage_service.dart';
+import 'import_options.dart';
 
 enum ExportContentType {
   userStats,
@@ -363,37 +364,71 @@ class DataExportService {
     }
   }
 
+  Set<ImportDataCategory> getAvailableCategories(
+      Map<String, dynamic> validation) {
+    final categories = <ImportDataCategory>{};
+
+    if (validation['hasSongsJson'] == true) {
+      categories.add(ImportDataCategory.songs);
+    }
+    if (validation['hasShuffleStateJson'] == true) {
+      categories.add(ImportDataCategory.shuffleState);
+    }
+    if (validation['hasPlaybackStateJson'] == true) {
+      categories.add(ImportDataCategory.playbackState);
+    }
+    if (validation['hasQueueHistoryJson'] == true) {
+      categories.add(ImportDataCategory.queueHistory);
+    }
+    if (validation['hasAppSettingsJson'] == true) {
+      categories.add(ImportDataCategory.themeSettings);
+      categories.add(ImportDataCategory.scannerSettings);
+      categories.add(ImportDataCategory.playbackSettings);
+      categories.add(ImportDataCategory.uiSettings);
+      categories.add(ImportDataCategory.backupSettings);
+    }
+    if (validation['hasMergedGroupsJson'] == true) {
+      categories.add(ImportDataCategory.mergedGroups);
+    }
+
+    categories.add(ImportDataCategory.favorites);
+    categories.add(ImportDataCategory.suggestless);
+    categories.add(ImportDataCategory.hidden);
+    categories.add(ImportDataCategory.playlists);
+    categories.add(ImportDataCategory.recommendations);
+    categories.add(ImportDataCategory.moods);
+    categories.add(ImportDataCategory.userdata);
+    categories.add(ImportDataCategory.playHistory);
+
+    return categories;
+  }
+
   Future<void> performImport({
     required String statsDbPath,
     required String dataDbPath,
-    required bool additive,
-    bool importUserData = false,
-    bool importShuffleState = false,
-    bool importPlaybackState = false,
-    bool importAppSettings = false,
-    bool importQueueHistory = false,
-    bool importMergedGroups = false,
+    required ImportOptions options,
   }) async {
     final importPath = p.dirname(statsDbPath);
-
-    await DatabaseService.instance.importData(
-      statsDbPath: statsDbPath,
-      dataDbPath: dataDbPath,
-      additive: additive,
-    );
-
+    final categories = options.categories;
     final storage = StorageService();
 
-    if (importUserData) {
-      final userDataFile = File(p.join(importPath, 'user_data.json'));
-      if (await userDataFile.exists()) {
-        final content = await userDataFile.readAsString();
-        final data = jsonDecode(content);
-        await storage.saveUserData(data);
-      }
+    if (categories.contains(ImportDataCategory.playHistory) ||
+        categories.contains(ImportDataCategory.favorites) ||
+        categories.contains(ImportDataCategory.suggestless) ||
+        categories.contains(ImportDataCategory.hidden) ||
+        categories.contains(ImportDataCategory.playlists) ||
+        categories.contains(ImportDataCategory.mergedGroups) ||
+        categories.contains(ImportDataCategory.recommendations) ||
+        categories.contains(ImportDataCategory.moods) ||
+        categories.contains(ImportDataCategory.userdata)) {
+      await DatabaseService.instance.importWithOptions(
+        statsDbPath: statsDbPath,
+        dataDbPath: dataDbPath,
+        options: options,
+      );
     }
 
-    if (importShuffleState) {
+    if (categories.contains(ImportDataCategory.shuffleState)) {
       final shuffleStateFile = File(p.join(importPath, 'shuffle_state.json'));
       if (await shuffleStateFile.exists()) {
         final content = await shuffleStateFile.readAsString();
@@ -402,7 +437,8 @@ class DataExportService {
       }
     }
 
-    if (importPlaybackState) {
+    if (options.restorePlaybackState &&
+        categories.contains(ImportDataCategory.playbackState)) {
       final playbackStateFile = File(p.join(importPath, 'playback_state.json'));
       if (await playbackStateFile.exists()) {
         final content = await playbackStateFile.readAsString();
@@ -411,18 +447,25 @@ class DataExportService {
       }
     }
 
-    if (importAppSettings) {
+    if (categories.contains(ImportDataCategory.themeSettings) ||
+        categories.contains(ImportDataCategory.scannerSettings) ||
+        categories.contains(ImportDataCategory.playbackSettings) ||
+        categories.contains(ImportDataCategory.uiSettings) ||
+        categories.contains(ImportDataCategory.backupSettings)) {
       final appSettingsFile = File(p.join(importPath, 'app_settings.json'));
       if (await appSettingsFile.exists()) {
         final content = await appSettingsFile.readAsString();
         final data = jsonDecode(content);
         if (data is Map) {
-          await storage.importAppSettings(Map<String, dynamic>.from(data));
+          await storage.importSettingsWithOptions(
+            Map<String, dynamic>.from(data),
+            options,
+          );
         }
       }
     }
 
-    if (importQueueHistory) {
+    if (categories.contains(ImportDataCategory.queueHistory)) {
       final queueHistoryFile = File(p.join(importPath, 'queue_history.json'));
       if (await queueHistoryFile.exists()) {
         final content = await queueHistoryFile.readAsString();
@@ -431,32 +474,6 @@ class DataExportService {
           final queueHistoryData = data.cast<Map<String, dynamic>>();
           await DatabaseService.instance.importQueueHistory(queueHistoryData);
         }
-      }
-    }
-
-    if (importMergedGroups) {
-      final mergedGroupsFile = File(p.join(importPath, 'merged_groups.json'));
-      if (await mergedGroupsFile.exists()) {
-        final content = await mergedGroupsFile.readAsString();
-        final data = jsonDecode(content);
-        final groups =
-            <String, ({List<String> filenames, String? priorityFilename})>{};
-        if (data is Map) {
-          for (final entry in data.entries) {
-            final key = entry.key as String;
-            final value = entry.value;
-            if (value is Map) {
-              final filenames =
-                  (value['filenames'] as List?)?.cast<String>() ?? [];
-              final priority = value['priorityFilename'] as String?;
-              groups[key] = (filenames: filenames, priorityFilename: priority);
-            } else if (value is List) {
-              groups[key] =
-                  (filenames: value.cast<String>(), priorityFilename: null);
-            }
-          }
-        }
-        await DatabaseService.instance.setMergedGroups(groups);
       }
     }
 

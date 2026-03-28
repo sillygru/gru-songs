@@ -11,15 +11,20 @@ class QueueHistoryNotifier extends AsyncNotifier<List<QueueSnapshot>> {
 
   Future<List<QueueSnapshot>> _loadSnapshots() async {
     final rows = await DatabaseService.instance.getQueueSnapshots();
-    return rows.map((row) {
-      return QueueSnapshot(
-        id: row['id'] as String,
+    final snapshots = <QueueSnapshot>[];
+    for (final row in rows) {
+      final id = row['id'] as String;
+      final songFilenames =
+          await DatabaseService.instance.getQueueSnapshotSongs(id);
+      snapshots.add(QueueSnapshot(
+        id: id,
         name: row['name'] as String,
         createdAt: (row['created_at'] as num).toDouble(),
-        songFilenames: const [],
+        songFilenames: songFilenames,
         source: row['source'] as String? ?? 'unknown',
-      );
-    }).toList();
+      ));
+    }
+    return snapshots;
   }
 
   Future<void> refresh() async {

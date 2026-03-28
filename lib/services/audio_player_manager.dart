@@ -277,6 +277,38 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       await _saveShuffleState();
     }
 
+    // Check if song is already in current queue - if so, just jump to it
+    final existingIdx = _effectiveQueue.indexWhere(
+      (item) => item.song.filename == song.filename,
+    );
+    if (existingIdx != -1) {
+      // Song exists in current queue - just seek to it without rebuilding
+      await _rebuildQueue(
+          initialIndex: existingIdx, startPlaying: startPlaying);
+      _savePlaybackState();
+      return;
+    }
+
+    // Clear any pending queue replacement since we're starting fresh
+    _pendingQueueSongs = null;
+    _pendingQueuePlaylistId = null;
+    pendingQueueNotifier.value = false;
+
+    // Check if we're providing a new context queue (different from current)
+    bool isNewQueue = false;
+    if (contextQueue != null) {
+      if (_originalQueue.isEmpty) {
+        isNewQueue = true;
+      } else {
+        // Compare to see if it's a different queue
+        final currentFilenames =
+            _originalQueue.map((q) => q.song.filename).toSet();
+        final newFilenames = contextQueue.map((s) => s.filename).toSet();
+        isNewQueue = !currentFilenames.containsAll(newFilenames) ||
+            !newFilenames.containsAll(currentFilenames);
+      }
+    }
+
     // 1. Setup Local Queue (Optimistic)
     if (contextQueue != null) {
       _originalQueue = contextQueue.map((s) => QueueItem(song: s)).toList();
@@ -319,7 +351,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     _savePlaybackState();
 
-    if (contextQueue != null) {
+    // Only save snapshot for new queues, not for jumping within existing queue
+    if (contextQueue != null && isNewQueue) {
       await _saveQueueSnapshot(contextQueue, playlistId: playlistId);
     }
   }
@@ -556,11 +589,22 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     });
 
-    // Handle completion - just ensure volume is reset
+    // Handle completion - apply pending queue if exists, reset volume
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         _setVolumeWithSafety(1.0);
         _isFadingOut = false;
+
+        // Apply pending queue replacement when queue completes
+        if (_pendingQueueSongs != null) {
+          final pendingSongs = _pendingQueueSongs!;
+          final pendingPlaylistId = _pendingQueuePlaylistId;
+          _pendingQueueSongs = null;
+          _pendingQueuePlaylistId = null;
+          pendingQueueNotifier.value = false;
+          replaceQueue(pendingSongs,
+              playlistId: pendingPlaylistId, forceLinear: true);
+        }
       }
     });
   }
@@ -1103,30 +1147,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     double finalDuration = _foregroundDuration + _backgroundDuration;
 
-    String finalEventType = eventType;
-
-    if (effectiveTotalLength > 0) {
-      final double ratio = finalDuration / effectiveTotalLength;
-      final double remaining = effectiveTotalLength - finalDuration;
-
-      if (remaining <= 10.0 || ratio >= 1.0) {
-        finalEventType = 'complete';
-      } else if (ratio < 0.10) {
-        finalEventType = 'skip';
-      }
-    }
-
     if (finalDuration > 0.5) {
       _statsService.trackStats({
         'song_filename': _currentSongFilename!,
         'duration_played': finalDuration,
-        'event_type': finalEventType,
         'foreground_duration': _foregroundDuration,
         'background_duration': _backgroundDuration,
         'total_length': effectiveTotalLength,
       });
 
-      if (finalEventType == 'complete' || finalDuration > 5.0) {
+      if (finalDuration > 5.0) {
         _addToShuffleHistory(_currentSongFilename!);
       }
     }
@@ -1527,6 +1557,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     bool saveSnapshot = true,
   }) async {
     if (songs.isEmpty) return;
+
+    // Clear any pending queue replacement since we're replacing immediately
+    _pendingQueueSongs = null;
+    _pendingQueuePlaylistId = null;
+    pendingQueueNotifier.value = false;
+
     _currentPlaylistId = playlistId;
 
     final currentSong = currentSongNotifier.value;

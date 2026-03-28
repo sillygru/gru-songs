@@ -114,9 +114,18 @@ Future<void> invalidate(String key)
 - Permission handling
 
 ### Stats Service (`stats_service.dart`)
-- Play count tracking
+- Listening duration tracking (how long each song was played)
 - Listening history recording
 - Statistics aggregation
+
+**playevent table columns:**
+- `song_filename` - File path
+- `timestamp` - Unix timestamp
+- `duration_played` - Seconds listened
+- `total_length` - Song duration in seconds
+- `play_ratio` - Duration / total_length
+- `foreground_duration` - Foreground playback time
+- `background_duration` - Background playback time
 
 ### Cache Service (`cache_service.dart`)
 - Image caching (album art, video thumbnails)

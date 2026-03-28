@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/namida_import_service.dart';
 import '../../services/storage_service.dart';
+import '../../services/import_options.dart';
+import '../../presentation/widgets/import_options_dialog.dart';
 import '../../providers/providers.dart';
 
 /// Screen for importing data from Namida backup files
@@ -53,20 +55,31 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
 
       final importPath = validationResult['importPath'] as String;
 
-      // Show import mode selection dialog
-      if (mounted) {
-        final confirmed = await _showImportConfirmationDialog();
-        if (confirmed != true) {
-          // Cleanup temp directory
-          await _cleanupTempDir(importPath);
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _statusMessage = null;
-            });
-          }
-          return;
+      final availableCategories = {
+        ImportDataCategory.favorites,
+        ImportDataCategory.playlists,
+        ImportDataCategory.playHistory,
+      };
+
+      final importOptions = await showDialog<ImportOptions>(
+        context: context,
+        builder: (context) => ImportOptionsDialog(
+          availableCategories: availableCategories,
+          defaultAdditive: true,
+          defaultRestoreDatabases: true,
+          defaultRestorePlaybackState: false,
+        ),
+      );
+
+      if (importOptions == null) {
+        await _cleanupTempDir(importPath);
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _statusMessage = null;
+          });
         }
+        return;
       }
 
       if (mounted) {
@@ -76,7 +89,6 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
         });
       }
 
-      // Get music folder path for path mapping
       final musicFolder = await StorageService().getMusicFolderPath();
       if (musicFolder == null) {
         await _cleanupTempDir(importPath);
@@ -92,10 +104,17 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
         return;
       }
 
-      // Perform the import
       final result = await NamidaImportService().performImport(
         importPath: importPath,
-        mode: _importMode,
+        mode: importOptions.additive
+            ? NamidaImportMode.additive
+            : NamidaImportMode.replace,
+        importFavorites:
+            importOptions.hasCategory(ImportDataCategory.favorites),
+        importPlaylists:
+            importOptions.hasCategory(ImportDataCategory.playlists),
+        importHistory:
+            importOptions.hasCategory(ImportDataCategory.playHistory),
         pathMapper: (namidaPath) => NamidaImportService.defaultPathMapper(
           namidaPath,
           musicFolder,

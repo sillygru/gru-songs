@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../services/backup_service.dart';
 import '../../services/database_service.dart';
+import '../../services/import_options.dart';
+import '../../presentation/widgets/import_options_dialog.dart';
 import '../../providers/providers.dart';
 
 class BackupManagementScreen extends ConsumerStatefulWidget {
@@ -91,56 +93,71 @@ class _BackupManagementScreenState
   }
 
   Future<void> _restoreBackup(BackupInfo backupInfo) async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
+    final importOptions = await showDialog<ImportOptions>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('DANGER: Full Data Replace'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-                'Are you absolutely sure you want to restore from ${backupInfo.displayName}?'),
-            const SizedBox(height: 16),
-            const Text(
-              'WARNING: This will COMPLETELY REPLACE all your current data:',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-            ),
-            const SizedBox(height: 8),
-            const Text('• All your current statistics and play history'),
-            const Text('• All your favorites and playlists'),
-            const Text('• All your hidden songs and preferences'),
-            const Text('• All your current settings and state'),
-            const SizedBox(height: 12),
-            const Text(
-              'YOUR CURRENT DATA WILL BE PERMANENTLY LOST!',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-            ),
-            const SizedBox(height: 8),
-            const Text('There is NO way to undo this action.'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('YES, REPLACE EVERYTHING'),
-          ),
-        ],
+      builder: (context) => ImportOptionsDialog(
+        availableCategories: ImportDataCategory.values.toSet(),
+        defaultAdditive: false,
+        defaultRestoreDatabases: true,
+        defaultRestorePlaybackState: true,
       ),
     );
 
-    if (confirmed != true) return;
+    if (importOptions == null) return;
 
-    // Show loading dialog
+    if (importOptions.restoreDatabases &&
+        importOptions.categories.length >= 15) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('DANGER: Full Data Replace'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  'Are you absolutely sure you want to restore from ${backupInfo.displayName}?'),
+              const SizedBox(height: 16),
+              const Text(
+                'WARNING: This will COMPLETELY REPLACE all your current data:',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+              ),
+              const SizedBox(height: 8),
+              const Text('• All your current statistics and play history'),
+              const Text('• All your favorites and playlists'),
+              const Text('• All your hidden songs and preferences'),
+              const Text('• All your current settings and state'),
+              const SizedBox(height: 12),
+              const Text(
+                'YOUR CURRENT DATA WILL BE PERMANENTLY LOST!',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+              ),
+              const SizedBox(height: 8),
+              const Text('There is NO way to undo this action.'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('CANCEL'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('YES, REPLACE EVERYTHING'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+    }
+
     if (mounted) {
       showDialog(
         context: context,
@@ -150,7 +167,7 @@ class _BackupManagementScreenState
             children: [
               CircularProgressIndicator(),
               SizedBox(width: 16),
-              Text('Replacing all data...'),
+              Text('Restoring data...'),
             ],
           ),
         ),
@@ -158,14 +175,12 @@ class _BackupManagementScreenState
     }
 
     try {
-      await BackupService.instance.restoreFromBackup(backupInfo);
+      await BackupService.instance
+          .restoreFromBackup(backupInfo, options: importOptions);
 
-      // Reload queue + position immediately so restored playback_state.json is consumed
-      // before any downstream refresh path can overwrite it.
       final songs = await DatabaseService.instance.getAllSongs();
       await ref.read(audioPlayerManagerProvider).init(songs);
 
-      // Refresh data without full scan
       await ref.read(userDataProvider.notifier).refresh();
       await ref.read(songsProvider.notifier).refreshPlayCounts();
 

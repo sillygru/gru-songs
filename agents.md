@@ -34,6 +34,8 @@ Read only the file you need for your task:
 - **Database**: `lib/services/database_service.dart`
 - **Search**: `lib/domain/services/search_service.dart`
 - **Library Logic**: `lib/services/library_logic.dart`
+- **Queue History**: `lib/providers/queue_history_provider.dart`
+- **Queue History Screen**: `lib/presentation/screens/queue_history_screen.dart`
 
 ### Running Tests
 ```bash

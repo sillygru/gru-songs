@@ -370,62 +370,69 @@ class DatabaseOptimizerService {
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
-  /// Fixes event type categorization using DatabaseService singleton
-  /// Uses raw query execution through the singleton's database
+  /// Migrates playevent table - drops deprecated event_type column if it exists
+  /// Since we now track listening duration directly, event_type is no longer needed
   Future<Map<String, dynamic>> _fixEventTypesViaService() async {
     int fixedCount = 0;
     final details = <String, dynamic>{};
 
     try {
-      // Access the stats database through DatabaseService
       final statsDb = DatabaseService.instance.getStatsDatabase();
       if (statsDb == null) {
         details['error'] = 'Stats database not available';
         return {'fixed': fixedCount, 'details': details};
       }
 
-      // Step 1: Fix events with ratio < 0.10 to 'skip'
-      final lowRatioToSkip = await statsDb.rawUpdate('''
-        UPDATE playevent
-        SET event_type = 'skip'
-        WHERE event_type IN ('listen', 'complete')
-        AND total_length > 0
-        AND play_ratio < 0.10
-      ''');
-      fixedCount += lowRatioToSkip;
-      details['low_ratio_to_skip'] = lowRatioToSkip;
+      final columns = await statsDb.rawQuery('PRAGMA table_info(playevent)');
+      final columnNames = columns.map((c) => c['name'] as String).toList();
 
-      // Step 2: Fix 'skip'/'listen' that should be 'complete'
-      final toComplete = await statsDb.rawUpdate('''
-        UPDATE playevent
-        SET event_type = 'complete'
-        WHERE event_type IN ('skip', 'listen')
-        AND total_length > 0
-        AND play_ratio >= 0.10
-        AND (total_length - duration_played <= 10.0 OR duration_played >= total_length)
-      ''');
-      fixedCount += toComplete;
-      details['to_complete'] = toComplete;
-
-      // Step 3: Fix 'listen' that should be 'skip'
-      final toSkip = await statsDb.rawUpdate('''
-        UPDATE playevent
-        SET event_type = 'skip'
-        WHERE event_type = 'listen'
-        AND play_ratio >= 0.10
-        AND id IN (
-          SELECT p1.id FROM playevent p1
-          WHERE EXISTS (
-            SELECT 1 FROM playevent p2
-            WHERE p2.session_id = p1.session_id
-            AND p2.timestamp > p1.timestamp
-          )
-        )
-      ''');
-      fixedCount += toSkip;
-      details['listen_to_skip'] = toSkip;
+      if (columnNames.contains('event_type')) {
+        try {
+          await statsDb
+              .rawUpdate('ALTER TABLE playevent DROP COLUMN event_type');
+          fixedCount = 1;
+          details['dropped_event_type'] = true;
+        } catch (_) {
+          final columnData = await statsDb.query('playevent');
+          await statsDb.execute('''
+            CREATE TABLE playevent_new (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id TEXT,
+              song_filename TEXT,
+              timestamp REAL,
+              duration_played REAL,
+              total_length REAL,
+              play_ratio REAL,
+              foreground_duration REAL,
+              background_duration REAL,
+              FOREIGN KEY (session_id) REFERENCES playsession (id)
+            )
+          ''');
+          for (final row in columnData) {
+            await statsDb.insert('playevent_new', {
+              'id': row['id'],
+              'session_id': row['session_id'],
+              'song_filename': row['song_filename'],
+              'timestamp': row['timestamp'],
+              'duration_played': row['duration_played'],
+              'total_length': row['total_length'],
+              'play_ratio': row['play_ratio'],
+              'foreground_duration': row['foreground_duration'],
+              'background_duration': row['background_duration'],
+            });
+          }
+          await statsDb.execute('DROP TABLE playevent');
+          await statsDb
+              .execute('ALTER TABLE playevent_new RENAME TO playevent');
+          fixedCount = 1;
+          details['dropped_event_type'] = true;
+          details['migration_method'] = 'recreate';
+        }
+      } else {
+        details['dropped_event_type'] = false;
+      }
     } catch (e) {
-      debugPrint('Error fixing event types via service: $e');
+      debugPrint('Error migrating playevent table: $e');
       details['error'] = e.toString();
     }
 

@@ -1277,9 +1277,8 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildLegendItem(Icons.play_arrow, colorScheme.primary, 'Listen'),
-          _buildLegendItem(Icons.check_circle, Colors.green, 'Completed'),
-          _buildLegendItem(Icons.skip_next, Colors.orange, 'Skipped'),
+          _buildLegendItem(Icons.play_arrow, Colors.green, 'Listen'),
+          _buildLegendItem(Icons.skip_next, Colors.orange, 'Skip'),
         ],
       ),
     );
@@ -1450,36 +1449,26 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
     final date =
         DateTime.fromMillisecondsSinceEpoch((timestamp * 1000).toInt());
     final duration = (event['duration_played'] as num?)?.toDouble() ?? 0;
-    final eventType = event['event_type'] as String? ?? 'listen';
+    final totalLength = (event['total_length'] as num?)?.toDouble() ?? 0;
+    final ratio = totalLength > 0 ? duration / totalLength : 0.0;
+    final isSkip = duration < 10 && ratio < 0.25;
 
     final timeStr =
         '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
-    IconData eventIcon;
-    Color eventColor;
-    switch (eventType) {
-      case 'complete':
-        eventIcon = Icons.check_circle;
-        eventColor = Colors.green;
-        break;
-      case 'skip':
-        eventIcon = Icons.skip_next;
-        eventColor = Colors.orange;
-        break;
-      default:
-        eventIcon = Icons.play_arrow;
-        eventColor = colorScheme.primary;
-    }
+    final statusColor = isSkip ? Colors.orange : Colors.green;
+    final statusIcon = isSkip ? Icons.skip_next : Icons.play_arrow;
+    final statusText = isSkip ? 'Skip' : 'Listen';
 
     return ListTile(
       leading: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: eventColor.withValues(alpha: 0.15),
+          color: statusColor.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(eventIcon, color: eventColor, size: 20),
+        child: Icon(statusIcon, color: statusColor, size: 20),
       ),
       title: Text(
         song?.title ?? _getFileNameWithoutExt(filename),
@@ -1509,10 +1498,11 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
             ),
           ),
           Text(
-            _formatDuration(duration),
+            statusText,
             style: TextStyle(
               fontSize: 11,
-              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+              color: statusColor,
             ),
           ),
         ],

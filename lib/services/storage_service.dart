@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'import_options.dart';
 
 class StorageService {
   static const String _musicFolderKey = 'music_folder_path';
@@ -274,10 +275,16 @@ class StorageService {
     'username',
     'local_username',
     'music_folders_list',
+    'excluded_folders',
+    'last_library_folder',
+    'is_local_mode',
+    'is_setup_complete_v2',
     'sort_order',
     'visualizer_enabled',
     'auto_hide_bottom_bar_on_scroll',
+    'pull_to_refresh_enabled',
     'telemetry_level',
+    'has_sent_first_startup',
     'auto_pause_on_volume_zero',
     'auto_resume_on_volume_restore',
     'show_song_duration',
@@ -347,6 +354,115 @@ class StorageService {
         await prefs.setBool(key, value);
       } else if (value is List) {
         await prefs.setStringList(key, value.cast<String>());
+      }
+    }
+  }
+
+  Future<void> importSettingsWithOptions(
+    Map<String, dynamic> allSettings,
+    ImportOptions options,
+  ) async {
+    final categories = options.categories;
+
+    if (categories.contains(ImportDataCategory.themeSettings)) {
+      await importThemeSettings(allSettings);
+    }
+    if (categories.contains(ImportDataCategory.scannerSettings)) {
+      await importScannerSettings(allSettings);
+    }
+    if (categories.contains(ImportDataCategory.playbackSettings)) {
+      await importPlaybackSettings(allSettings);
+    }
+    if (categories.contains(ImportDataCategory.uiSettings)) {
+      await importUISettings(allSettings);
+    }
+    if (categories.contains(ImportDataCategory.backupSettings)) {
+      await importBackupSettings(allSettings);
+    }
+  }
+
+  static const List<String> _themeSettingsKeys = [
+    'theme_mode',
+    'use_cover_color',
+    'apply_cover_color_to_all',
+  ];
+
+  static const List<String> _scannerSettingsKeys = [
+    'music_folders_list',
+    'excluded_folders',
+    'last_library_folder',
+    'minimum_file_size_bytes',
+    'minimum_track_duration_ms',
+    'include_videos',
+  ];
+
+  static const List<String> _playbackSettingsKeys = [
+    'play_fade_duration',
+    'pause_fade_duration',
+    'gap_song_id',
+    'gap_resume_timestamp',
+    'gap_is_active',
+  ];
+
+  static const List<String> _uiSettingsKeys = [
+    'sort_order',
+    'visualizer_enabled',
+    'auto_hide_bottom_bar_on_scroll',
+    'show_song_duration',
+    'animated_sound_wave_enabled',
+    'show_waveform',
+    'quick_action_config',
+    'cover_sizing_mode',
+    'pull_to_refresh_enabled',
+  ];
+
+  static const List<String> _backupSettingsKeys = [
+    'auto_backup_frequency_hours',
+    'auto_backup_delete_after_days',
+  ];
+
+  Future<void> importThemeSettings(Map<String, dynamic> settings) async {
+    await _importSettingsSubset(settings, _themeSettingsKeys);
+  }
+
+  Future<void> importScannerSettings(Map<String, dynamic> settings) async {
+    await _importSettingsSubset(settings, _scannerSettingsKeys);
+  }
+
+  Future<void> importPlaybackSettings(Map<String, dynamic> settings) async {
+    await _importSettingsSubset(settings, _playbackSettingsKeys);
+  }
+
+  Future<void> importUISettings(Map<String, dynamic> settings) async {
+    await _importSettingsSubset(settings, _uiSettingsKeys);
+  }
+
+  Future<void> importBackupSettings(Map<String, dynamic> settings) async {
+    await _importSettingsSubset(settings, _backupSettingsKeys);
+  }
+
+  Future<void> _importSettingsSubset(
+    Map<String, dynamic> settings,
+    List<String> keys,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    for (final key in keys) {
+      if (settings.containsKey(key)) {
+        final value = settings[key];
+        if (value == null) continue;
+
+        if (value is String) {
+          await prefs.setString(key, value);
+        } else if (value is int) {
+          await prefs.setInt(key, value);
+        } else if (value is double) {
+          await prefs.setDouble(key, value);
+        } else if (value is bool) {
+          await prefs.setBool(key, value);
+        } else if (value is List) {
+          await prefs.setStringList(key, value.cast<String>());
+        }
       }
     }
   }

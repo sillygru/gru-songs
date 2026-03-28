@@ -8,8 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/playlist.dart';
 import '../models/mood_tag.dart';
-
 import '../models/song.dart';
+import 'import_options.dart';
 
 /// DatabaseService handles local SQLite storage.
 class DatabaseService {
@@ -1983,13 +1983,14 @@ class DatabaseService {
       for (final event in events) {
         final duration = (event['duration_played'] as num).toDouble();
 
-        final ratio = (event['play_ratio'] as num).toDouble();
+        final ratio = (event['play_ratio'] as num?)?.toDouble() ??
+            (duration > 0 && (event['total_length'] as num?)?.toDouble() != null
+                ? duration / (event['total_length'] as num).toDouble()
+                : 0.0);
 
         final filename = event['song_filename'] as String;
 
         final timestamp = (event['timestamp'] as num).toDouble();
-
-        final eventType = event['event_type'] as String;
 
         totalTimeSeconds += duration;
 
@@ -2004,7 +2005,7 @@ class DatabaseService {
 
         dayCounts[dayName] = (dayCounts[dayName] ?? 0) + 1;
 
-        if (ratio > 0.25) {
+        if (duration > 10 || ratio > 0.25) {
           totalMeaningfulPlays++;
 
           uniquePlayedSongs.add(filename);
@@ -2022,9 +2023,7 @@ class DatabaseService {
           }
         }
 
-        if (ratio <= 0.90 &&
-            (eventType == 'skip' ||
-                (eventType != 'complete' && ratio < 0.25))) {
+        if (duration < 10 && ratio < 0.25) {
           totalSkips++;
         }
       }
@@ -2162,13 +2161,12 @@ class DatabaseService {
         });
       }
 
-      // 7. Skips
-
+      // 7. Skips (calculated from duration: listened < 10s and ratio < 0.25)
       stats.add({
         "id": "skips",
-        "label": "Total Skips",
+        "label": "Quick Skips",
         "value": totalSkips.toString(),
-        "subtitle": "Songs you passed on."
+        "subtitle": "Songs skipped quickly."
       });
 
       // 8. Unique Songs
@@ -2586,8 +2584,11 @@ class DatabaseService {
           await txn.delete('favorite');
           await txn.delete('suggestless');
           await txn.delete('hidden');
+          await txn.delete('userdata');
           await txn.delete('song_mood');
           await txn.delete('mood_tag');
+          await txn.delete('recommendation_preference');
+          await txn.delete('recommendation_removal');
           await txn.delete('playlist_song');
           await txn.delete('playlist');
         }
@@ -2613,6 +2614,17 @@ class DatabaseService {
               conflictAlgorithm: ConflictAlgorithm.ignore);
         }
 
+        // Import userdata
+        final hasUserdata = await importedDataDb.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='userdata'");
+        if (hasUserdata.isNotEmpty) {
+          final userdata = await importedDataDb.query('userdata');
+          for (final ud in userdata) {
+            await txn.insert('userdata', ud,
+                conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        }
+
         final hasMoodTag = await importedDataDb.rawQuery(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='mood_tag'");
         if (hasMoodTag.isNotEmpty) {
@@ -2629,6 +2641,30 @@ class DatabaseService {
           final songMoods = await importedDataDb.query('song_mood');
           for (final sm in songMoods) {
             await txn.insert('song_mood', sm,
+                conflictAlgorithm: ConflictAlgorithm.ignore);
+          }
+        }
+
+        // Import recommendation_preference
+        final hasRecPref = await importedDataDb.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='recommendation_preference'");
+        if (hasRecPref.isNotEmpty) {
+          final recPrefs =
+              await importedDataDb.query('recommendation_preference');
+          for (final pref in recPrefs) {
+            await txn.insert('recommendation_preference', pref,
+                conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        }
+
+        // Import recommendation_removal
+        final hasRecRem = await importedDataDb.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='recommendation_removal'");
+        if (hasRecRem.isNotEmpty) {
+          final recRemovals =
+              await importedDataDb.query('recommendation_removal');
+          for (final rem in recRemovals) {
+            await txn.insert('recommendation_removal', rem,
                 conflictAlgorithm: ConflictAlgorithm.ignore);
           }
         }
@@ -2701,6 +2737,267 @@ class DatabaseService {
       await importedStatsDb.close();
       await importedDataDb.close();
     }
+  }
+
+  Future<void> importWithOptions({
+    required String statsDbPath,
+    required String dataDbPath,
+    required ImportOptions options,
+  }) async {
+    await _ensureInitialized();
+    final importedStatsDb = await openDatabase(statsDbPath);
+    final importedDataDb = await openDatabase(dataDbPath);
+
+    try {
+      if (options.restoreDatabases) {
+        await _importSelectedDatabases(
+            importedStatsDb, importedDataDb, options);
+      }
+    } finally {
+      await importedStatsDb.close();
+      await importedDataDb.close();
+    }
+  }
+
+  Future<void> _importSelectedDatabases(
+    Database importedStatsDb,
+    Database importedDataDb,
+    ImportOptions options,
+  ) async {
+    final categories = options.categories;
+    final additive = options.additive;
+
+    if (categories.contains(ImportDataCategory.playHistory)) {
+      await _importPlayHistory(importedStatsDb, additive);
+    }
+
+    if (categories.contains(ImportDataCategory.favorites)) {
+      await _importFavorites(importedDataDb, additive);
+    }
+    if (categories.contains(ImportDataCategory.suggestless)) {
+      await _importSuggestless(importedDataDb, additive);
+    }
+    if (categories.contains(ImportDataCategory.hidden)) {
+      await _importHidden(importedDataDb, additive);
+    }
+    if (categories.contains(ImportDataCategory.userdata)) {
+      await _importUserdata(importedDataDb, additive);
+    }
+    if (categories.contains(ImportDataCategory.moods)) {
+      await _importMoods(importedDataDb, additive);
+    }
+    if (categories.contains(ImportDataCategory.recommendations)) {
+      await _importRecommendations(importedDataDb, additive);
+    }
+    if (categories.contains(ImportDataCategory.playlists)) {
+      await _importPlaylists(importedDataDb, additive);
+    }
+    if (categories.contains(ImportDataCategory.mergedGroups)) {
+      await _importMergedGroups(importedDataDb, additive);
+    }
+  }
+
+  Future<void> _importPlayHistory(Database importedDb, bool additive) async {
+    await _statsDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('playevent');
+        await txn.delete('playsession');
+      }
+
+      final sessions = await importedDb.query('playsession');
+      for (final session in sessions) {
+        await txn.insert('playsession', session,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+
+      final events = await importedDb.query('playevent');
+      for (final event in events) {
+        final eventMap = Map<String, dynamic>.from(event);
+        eventMap.remove('id');
+
+        if (additive) {
+          final existing = await txn.query('playevent',
+              where: 'session_id = ? AND song_filename = ? AND timestamp = ?',
+              whereArgs: [
+                event['session_id'],
+                event['song_filename'],
+                event['timestamp']
+              ]);
+          if (existing.isEmpty) {
+            await txn.insert('playevent', eventMap);
+          }
+        } else {
+          await txn.insert('playevent', eventMap);
+        }
+      }
+    });
+  }
+
+  Future<void> _importFavorites(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('favorite');
+      }
+
+      final favorites = await importedDb.query('favorite');
+      for (final fav in favorites) {
+        await txn.insert('favorite', fav,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    });
+  }
+
+  Future<void> _importSuggestless(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('suggestless');
+      }
+
+      final suggestless = await importedDb.query('suggestless');
+      for (final sl in suggestless) {
+        await txn.insert('suggestless', sl,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    });
+  }
+
+  Future<void> _importHidden(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('hidden');
+      }
+
+      final hidden = await importedDb.query('hidden');
+      for (final h in hidden) {
+        await txn.insert('hidden', h,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    });
+  }
+
+  Future<void> _importUserdata(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('userdata');
+      }
+
+      final hasUserdata = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='userdata'");
+      if (hasUserdata.isNotEmpty) {
+        final userdata = await importedDb.query('userdata');
+        for (final ud in userdata) {
+          await txn.insert('userdata', ud,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+    });
+  }
+
+  Future<void> _importMoods(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('mood_tag');
+        await txn.delete('song_mood');
+      }
+
+      final hasMoodTag = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='mood_tag'");
+      if (hasMoodTag.isNotEmpty) {
+        final moodTags = await importedDb.query('mood_tag');
+        for (final mood in moodTags) {
+          await txn.insert('mood_tag', mood,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      }
+
+      final hasSongMood = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='song_mood'");
+      if (hasSongMood.isNotEmpty) {
+        final songMoods = await importedDb.query('song_mood');
+        for (final sm in songMoods) {
+          await txn.insert('song_mood', sm,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      }
+    });
+  }
+
+  Future<void> _importRecommendations(
+      Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('recommendation_preference');
+        await txn.delete('recommendation_removal');
+      }
+
+      final hasRecPref = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='recommendation_preference'");
+      if (hasRecPref.isNotEmpty) {
+        final recPrefs = await importedDb.query('recommendation_preference');
+        for (final pref in recPrefs) {
+          await txn.insert('recommendation_preference', pref,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      final hasRecRem = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='recommendation_removal'");
+      if (hasRecRem.isNotEmpty) {
+        final recRemovals = await importedDb.query('recommendation_removal');
+        for (final rem in recRemovals) {
+          await txn.insert('recommendation_removal', rem,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      }
+    });
+  }
+
+  Future<void> _importPlaylists(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('playlist_song');
+        await txn.delete('playlist');
+      }
+
+      final playlists = await importedDb.query('playlist');
+      for (final pl in playlists) {
+        await txn.insert('playlist', pl,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+
+      final playlistSongs = await importedDb.query('playlist_song');
+      for (final ps in playlistSongs) {
+        final psMap = Map<String, dynamic>.from(ps);
+        psMap.remove('id');
+        await txn.insert('playlist_song', psMap,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    });
+  }
+
+  Future<void> _importMergedGroups(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('merged_song');
+        await txn.delete('merged_song_group');
+      }
+
+      final hasMergedGroup = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='merged_song_group'");
+      if (hasMergedGroup.isNotEmpty) {
+        final mergedGroups = await importedDb.query('merged_song_group');
+        for (final group in mergedGroups) {
+          await txn.insert('merged_song_group', group,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+
+        final mergedSongs = await importedDb.query('merged_song');
+        for (final song in mergedSongs) {
+          await txn.insert('merged_song', song,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      }
+    });
   }
 
   void dispose() {

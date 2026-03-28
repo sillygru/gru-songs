@@ -196,6 +196,9 @@ class NamidaImportService {
     required String importPath,
     required NamidaImportMode mode,
     required String? Function(String namidaPath) pathMapper,
+    bool importFavorites = true,
+    bool importPlaylists = true,
+    bool importHistory = true,
   }) async {
     int playlistsImported = 0;
     int favoritesImported = 0;
@@ -232,63 +235,86 @@ class NamidaImportService {
           return mapped;
         }
 
-        return null; // Return null if we can't find the file locally
+        // 3. Try lowercase matching (case-insensitive filesystems)
+        final lowercaseName = name.toLowerCase();
+        for (final entry in basenameToFullPath.entries) {
+          if (entry.key.toLowerCase() == lowercaseName) {
+            return entry.value;
+          }
+        }
+
+        return null;
       }
 
-      // Load track metadata (durations) from Namida's tracks.db
-      final Map<String, double> trackDurations = {};
-      final tracksDbFile = File(join(importPath, 'tracks.db'));
-      if (await tracksDbFile.exists()) {
-        try {
-          final db = await openDatabase(tracksDbFile.path);
-          final List<Map<String, dynamic>> maps = await db.query('tracks');
-          for (final map in maps) {
-            final namidaPath = map['key'] as String;
-            final valueStr = map['value'] as String;
-            try {
-              final valueJson = jsonDecode(valueStr) as Map<String, dynamic>;
-              final durationMs = valueJson['durationMS'] as num? ?? 0;
-              trackDurations[namidaPath] = durationMs / 1000.0;
-            } catch (e) {
-              debugPrint('Error decoding track metadata for $namidaPath: $e');
+      Map<String, double> trackDurations = {};
+
+      // Load track durations from Namida's tracks.db if available
+      if (importHistory) {
+        final tracksDbFile = File(join(importPath, 'tracks.db'));
+        if (await tracksDbFile.exists()) {
+          try {
+            final db = await openDatabase(tracksDbFile.path);
+            final tracks = await db.query('tracks');
+            for (final track in tracks) {
+              final path = track['key'] as String?;
+              if (path != null) {
+                final valueStr = track['value'] as String?;
+                if (valueStr != null) {
+                  try {
+                    final valueJson = jsonDecode(valueStr);
+                    final durationMs = (valueJson
+                            as Map<String, dynamic>)['durationMS'] as num? ??
+                        0;
+                    trackDurations[path] = durationMs / 1000.0;
+                  } catch (e) {
+                    debugPrint('Error decoding track metadata for $path: $e');
+                  }
+                }
+              }
             }
+            await db.close();
+            debugPrint('Loaded durations for ${trackDurations.length} tracks');
+          } catch (e) {
+            debugPrint('Error reading tracks.db: $e');
           }
-          await db.close();
-          debugPrint('Loaded durations for ${trackDurations.length} tracks');
-        } catch (e) {
-          debugPrint('Error reading tracks.db: $e');
         }
       }
 
       // Import favorites
-      final favsFile = File(join(importPath, 'favs.json'));
-      if (await favsFile.exists()) {
-        favoritesImported = await _importFavorites(
-          favsFile: favsFile,
-          mode: mode,
-          pathMapper: smartPathMapper,
-        );
+      if (importFavorites) {
+        final favsFile = File(join(importPath, 'favs.json'));
+        if (await favsFile.exists()) {
+          favoritesImported = await _importFavorites(
+            favsFile: favsFile,
+            mode: mode,
+            pathMapper: smartPathMapper,
+          );
+        }
       }
 
       // Import playlists
-      final playlistsDir = Directory(join(importPath, 'Playlists'));
-      if (await playlistsDir.exists()) {
-        playlistsImported = await _importPlaylists(
-          playlistsDir: playlistsDir,
-          mode: mode,
-          pathMapper: smartPathMapper,
-        );
+      if (importPlaylists) {
+        final playlistsDir = Directory(join(importPath, 'Playlists'));
+        if (await playlistsDir.exists()) {
+          playlistsImported = await _importPlaylists(
+            playlistsDir: playlistsDir,
+            mode: mode,
+            pathMapper: smartPathMapper,
+          );
+        }
       }
 
       // Import history/stats
-      final historyDir = Directory(join(importPath, 'History'));
-      if (await historyDir.exists()) {
-        tracksWithStatsImported = await _importHistory(
-          historyDir: historyDir,
-          mode: mode,
-          pathMapper: smartPathMapper,
-          trackDurations: trackDurations,
-        );
+      if (importHistory) {
+        final historyDir = Directory(join(importPath, 'History'));
+        if (await historyDir.exists()) {
+          tracksWithStatsImported = await _importHistory(
+            historyDir: historyDir,
+            mode: mode,
+            pathMapper: smartPathMapper,
+            trackDurations: trackDurations,
+          );
+        }
       }
 
       // Cleanup temp directory

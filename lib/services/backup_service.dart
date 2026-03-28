@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
+import 'import_options.dart';
 import '../models/song.dart';
 import '../data/repositories/search_index_repository.dart';
 
@@ -396,15 +397,18 @@ class BackupService {
     }
   }
 
-  Future<void> restoreFromBackup(BackupInfo backupInfo) async {
+  Future<void> restoreFromBackup(BackupInfo backupInfo,
+      {ImportOptions? options}) async {
+    final importOptions = options ?? ImportOptions.defaultImport;
+    final categories = importOptions.categories;
+    final restoreDatabases = importOptions.restoreDatabases;
+
     try {
       final backupFile = backupInfo.file;
 
-      // Create temp directory for extraction
       final tempDir = await Directory.systemTemp.createTemp('gru_restore_');
 
       try {
-        // Extract ZIP
         final bytes = await backupFile.readAsBytes();
         final archive = ZipDecoder().decodeBytes(bytes);
 
@@ -421,162 +425,132 @@ class BackupService {
         }
 
         final appDir = await getApplicationDocumentsDirectory();
+        final storage = StorageService();
 
-        // Close and delete existing databases
-        await DatabaseService.instance.close();
-        final dbSuffixes = ['', '-journal', '-wal', '-shm'];
-        for (final suffix in dbSuffixes) {
-          final statsFile = File(p.join(appDir.path, 'wispie_stats.db$suffix'));
-          final dataFile = File(p.join(appDir.path, 'wispie_data.db$suffix'));
-          if (await statsFile.exists()) {
-            await statsFile.delete();
+        if (restoreDatabases) {
+          await DatabaseService.instance.close();
+          final dbSuffixes = ['', '-journal', '-wal', '-shm'];
+          for (final suffix in dbSuffixes) {
+            final statsFile =
+                File(p.join(appDir.path, 'wispie_stats.db$suffix'));
+            final dataFile = File(p.join(appDir.path, 'wispie_data.db$suffix'));
+            if (await statsFile.exists()) {
+              await statsFile.delete();
+            }
+            if (await dataFile.exists()) {
+              await dataFile.delete();
+            }
           }
-          if (await dataFile.exists()) {
-            await dataFile.delete();
+
+          File? foundStatsDb;
+          File? foundDataDb;
+
+          await for (final entity in tempDir.list(recursive: true)) {
+            if (entity is File) {
+              final name = p.basename(entity.path);
+              if (name == 'wispie_stats.db' ||
+                  (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
+                foundStatsDb = entity;
+              }
+              if (name == 'wispie_data.db' ||
+                  (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
+                foundDataDb = entity;
+              }
+            }
+          }
+
+          if (foundStatsDb != null) {
+            await foundStatsDb.copy(p.join(appDir.path, 'wispie_stats.db'));
+          }
+          if (foundDataDb != null) {
+            await foundDataDb.copy(p.join(appDir.path, 'wispie_data.db'));
+          }
+
+          await DatabaseService.instance.init();
+
+          if (categories.contains(ImportDataCategory.playHistory) ||
+              categories.contains(ImportDataCategory.favorites) ||
+              categories.contains(ImportDataCategory.suggestless) ||
+              categories.contains(ImportDataCategory.hidden) ||
+              categories.contains(ImportDataCategory.playlists) ||
+              categories.contains(ImportDataCategory.mergedGroups) ||
+              categories.contains(ImportDataCategory.recommendations) ||
+              categories.contains(ImportDataCategory.moods) ||
+              categories.contains(ImportDataCategory.userdata)) {
+            await DatabaseService.instance.importWithOptions(
+              statsDbPath: p.join(appDir.path, 'wispie_stats.db'),
+              dataDbPath: p.join(appDir.path, 'wispie_data.db'),
+              options: importOptions,
+            );
           }
         }
-
-        // Restore databases - look for wispie_* or any legacy *_stats.db
-        // We'll search recursively in tempDir
-        File? foundStatsDb;
-        File? foundDataDb;
-        File? foundSongsJson;
-        File? foundUserDataJson;
-        File? foundShuffleStateJson;
-        File? foundPlaybackStateJson;
-        File? foundMergedGroupsJson;
-        File? foundQueueHistoryJson;
-        File? foundAppSettingsJson;
 
         await for (final entity in tempDir.list(recursive: true)) {
           if (entity is File) {
             final name = p.basename(entity.path);
-            if (name == 'wispie_stats.db' ||
-                (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
-              foundStatsDb = entity;
-            }
-            if (name == 'wispie_data.db' ||
-                (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
-              foundDataDb = entity;
-            }
-            if (name == 'songs.json') {
-              foundSongsJson = entity;
-            }
-            if (name == 'user_data.json' || name.startsWith('user_data_')) {
-              foundUserDataJson = entity;
-            }
-            if (name == 'shuffle_state.json' ||
-                name.startsWith('shuffle_state_')) {
-              foundShuffleStateJson = entity;
-            }
-            if (name == 'playback_state.json' ||
-                name.startsWith('playback_state_')) {
-              foundPlaybackStateJson = entity;
-            }
-            if (name == 'merged_groups.json') {
-              foundMergedGroupsJson = entity;
-            }
-            if (name == 'queue_history.json') {
-              foundQueueHistoryJson = entity;
-            }
-            if (name == 'app_settings.json') {
-              foundAppSettingsJson = entity;
-            }
-          }
-        }
 
-        if (foundStatsDb != null) {
-          await foundStatsDb.copy(p.join(appDir.path, 'wispie_stats.db'));
-        }
-        if (foundDataDb != null) {
-          await foundDataDb.copy(p.join(appDir.path, 'wispie_data.db'));
-        }
+            if (name == 'songs.json' &&
+                categories.contains(ImportDataCategory.songs)) {
+              final content = await entity.readAsString();
+              final data = decodeJson(content);
+              final songs =
+                  (data as List).map((json) => Song.fromJson(json)).toList();
+              await DatabaseService.instance.insertSongsBatch(songs);
+            }
 
-        // 4. Re-init database
-        await DatabaseService.instance.init();
+            if ((name == 'shuffle_state.json' ||
+                    name.startsWith('shuffle_state_')) &&
+                categories.contains(ImportDataCategory.shuffleState)) {
+              final content = await entity.readAsString();
+              final data = decodeJson(content);
+              await storage.saveShuffleState(data);
+            }
 
-        final storage = StorageService();
+            if ((name == 'playback_state.json' ||
+                    name.startsWith('playback_state_')) &&
+                importOptions.restorePlaybackState &&
+                categories.contains(ImportDataCategory.playbackState)) {
+              final content = await entity.readAsString();
+              final data = decodeJson(content);
+              await storage.savePlaybackState(data);
+            }
 
-        // Restore songs
-        if (foundSongsJson != null) {
-          final content = await foundSongsJson.readAsString();
-          final data = decodeJson(content);
-          final songs =
-              (data as List).map((json) => Song.fromJson(json)).toList();
-          await DatabaseService.instance.insertSongsBatch(songs);
-        }
+            if (name == 'queue_history.json' &&
+                categories.contains(ImportDataCategory.queueHistory)) {
+              final content = await entity.readAsString();
+              final data = decodeJson(content);
+              if (data is List) {
+                final queueHistoryData = data.cast<Map<String, dynamic>>();
+                await DatabaseService.instance
+                    .importQueueHistory(queueHistoryData);
+              }
+            }
 
-        // Restore user data
-        if (foundUserDataJson != null) {
-          final content = await foundUserDataJson.readAsString();
-          final data = decodeJson(content);
-          await storage.saveUserData(data);
-        }
-
-        // Restore shuffle state
-        if (foundShuffleStateJson != null) {
-          final content = await foundShuffleStateJson.readAsString();
-          final data = decodeJson(content);
-          await storage.saveShuffleState(data);
-        }
-
-        // Restore playback state
-        if (foundPlaybackStateJson != null) {
-          final content = await foundPlaybackStateJson.readAsString();
-          final data = decodeJson(content);
-          await storage.savePlaybackState(data);
-        }
-
-        // Restore merged song groups
-        if (foundMergedGroupsJson != null) {
-          final content = await foundMergedGroupsJson.readAsString();
-          final data = decodeJson(content);
-          final groups =
-              <String, ({List<String> filenames, String? priorityFilename})>{};
-          if (data is Map) {
-            for (final entry in data.entries) {
-              final key = entry.key as String;
-              final value = entry.value;
-              if (value is Map) {
-                final filenames =
-                    (value['filenames'] as List?)?.cast<String>() ?? [];
-                final priority = value['priorityFilename'] as String?;
-                groups[key] =
-                    (filenames: filenames, priorityFilename: priority);
-              } else if (value is List) {
-                groups[key] =
-                    (filenames: value.cast<String>(), priorityFilename: null);
+            if (name == 'app_settings.json' &&
+                (categories.contains(ImportDataCategory.themeSettings) ||
+                    categories.contains(ImportDataCategory.scannerSettings) ||
+                    categories.contains(ImportDataCategory.playbackSettings) ||
+                    categories.contains(ImportDataCategory.uiSettings) ||
+                    categories.contains(ImportDataCategory.backupSettings))) {
+              final content = await entity.readAsString();
+              final data = decodeJson(content);
+              if (data is Map) {
+                await storage.importSettingsWithOptions(
+                  Map<String, dynamic>.from(data),
+                  importOptions,
+                );
               }
             }
           }
-          await DatabaseService.instance.setMergedGroups(groups);
         }
 
-        // Restore queue history
-        if (foundQueueHistoryJson != null) {
-          final content = await foundQueueHistoryJson.readAsString();
-          final data = decodeJson(content);
-          if (data is List) {
-            final queueHistoryData = data.cast<Map<String, dynamic>>();
-            await DatabaseService.instance.importQueueHistory(queueHistoryData);
+        if (categories.isNotEmpty) {
+          try {
+            final searchIndexRepo = SearchIndexRepository();
+            await searchIndexRepo.deleteDatabaseFile();
+          } catch (e) {
+            debugPrint('Note: Could not delete search index: $e');
           }
-        }
-
-        // Restore app settings
-        if (foundAppSettingsJson != null) {
-          final content = await foundAppSettingsJson.readAsString();
-          final data = decodeJson(content);
-          if (data is Map) {
-            await storage.importAppSettings(Map<String, dynamic>.from(data));
-          }
-        }
-
-        // Delete any existing search index
-        try {
-          final searchIndexRepo = SearchIndexRepository();
-          await searchIndexRepo.deleteDatabaseFile();
-        } catch (e) {
-          debugPrint('Note: Could not delete search index: $e');
         }
       } finally {
         if (await tempDir.exists()) {
