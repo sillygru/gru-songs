@@ -82,7 +82,7 @@ void main() {
 
     test('play_ratio handles null total_length', () {
       const duration = 90.0;
-      double? totalLength;
+      const double? totalLength = null;
 
       final ratio =
           totalLength != null && totalLength > 0 ? duration / totalLength : 0.0;
@@ -211,7 +211,7 @@ void main() {
 
       final minutes = duration ~/ 60;
       final seconds = (duration % 60).toInt();
-      final formatted = '${minutes}:${seconds.toString().padLeft(2, '0')}';
+      final formatted = '$minutes:${seconds.toString().padLeft(2, '0')}';
 
       expect(formatted, equals('2:05'));
     });
@@ -221,7 +221,7 @@ void main() {
 
       final minutes = duration ~/ 60;
       final seconds = (duration % 60).toInt();
-      final formatted = '${minutes}:${seconds.toString().padLeft(2, '0')}';
+      final formatted = '$minutes:${seconds.toString().padLeft(2, '0')}';
 
       expect(formatted, equals('0:05'));
     });
@@ -231,7 +231,7 @@ void main() {
 
       final minutes = duration ~/ 60;
       final seconds = (duration % 60).toInt();
-      final formatted = '${minutes}:${seconds.toString().padLeft(2, '0')}';
+      final formatted = '$minutes:${seconds.toString().padLeft(2, '0')}';
 
       expect(formatted, equals('61:05'));
     });
@@ -241,7 +241,7 @@ void main() {
 
       final minutes = duration ~/ 60;
       final seconds = (duration % 60).toInt();
-      final formatted = '${minutes}:${seconds.toString().padLeft(2, '0')}';
+      final formatted = '$minutes:${seconds.toString().padLeft(2, '0')}';
 
       expect(formatted, equals('1:00'));
     });

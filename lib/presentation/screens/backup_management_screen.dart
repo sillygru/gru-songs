@@ -105,6 +105,8 @@ class _BackupManagementScreenState
 
     if (importOptions == null) return;
 
+    if (!mounted) return;
+
     if (importOptions.restoreDatabases &&
         importOptions.categories.length >= 15) {
       final confirmed = await showDialog<bool>(

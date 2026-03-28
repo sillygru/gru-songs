@@ -111,17 +111,14 @@ void main() {
   group('Queue Logic - Pending Queue Replacement', () {
     test('pending queue should be cleared on replaceQueue', () {
       List<String>? pendingQueueSongs = ['a.mp3', 'b.mp3'];
-      String? pendingPlaylistId = 'playlist1';
 
       final songs = ['x.mp3', 'y.mp3'];
 
       // Clear pending before replacing
       pendingQueueSongs = null;
-      pendingPlaylistId = null;
 
       // Simulate replaceQueue setting new pending
       pendingQueueSongs = songs;
-      pendingPlaylistId = 'newPlaylist';
 
       expect(pendingQueueSongs, ['x.mp3', 'y.mp3']);
       expect(pendingQueueSongs, isNot(['a.mp3', 'b.mp3']));
@@ -130,15 +127,13 @@ void main() {
     test('pending queue should trigger on ProcessingState.completed', () {
       bool queueReplaced = false;
       List<String>? pendingQueueSongs = ['next.mp3'];
-      String? pendingPlaylistId = 'playlist1';
 
       // Simulate processing state completed
-      final state = 'completed';
+      const state = 'completed';
 
-      if (state == 'completed' && pendingQueueSongs != null) {
+      if (state == 'completed') {
         queueReplaced = true;
         pendingQueueSongs = null;
-        pendingPlaylistId = null;
       }
 
       expect(queueReplaced, true);
@@ -149,15 +144,13 @@ void main() {
         'pending queue should NOT trigger on song change when queue still has songs',
         () {
       bool queueReplaced = false;
-      List<String>? pendingQueueSongs = ['next.mp3'];
-      String? pendingPlaylistId = 'playlist1';
 
       // Simulate song changed but queue not finished
-      final currentIndex = 1;
-      final queueLength = 5;
+      const currentIndex = 1;
+      const queueLength = 5;
 
       // Should NOT replace when queue still has songs
-      if (currentIndex < queueLength - 1 && pendingQueueSongs != null) {
+      if (currentIndex < queueLength - 1) {
         // This should NOT happen - pending queue should only apply when queue ends
         queueReplaced = false;
       }

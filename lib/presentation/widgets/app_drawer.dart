@@ -1528,12 +1528,6 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
-  String _formatDuration(double seconds) {
-    final mins = (seconds / 60).floor();
-    final secs = (seconds % 60).floor();
-    return '${mins}m ${secs}s';
-  }
-
   String _getFileNameWithoutExt(String filename) {
     final idx = filename.lastIndexOf('.');
     if (idx == -1) return filename;

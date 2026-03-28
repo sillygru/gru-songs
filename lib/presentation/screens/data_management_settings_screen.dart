@@ -440,6 +440,8 @@ class _DataManagementSettingsScreenState
         validation.cast<String, dynamic>(),
       );
 
+      if (!mounted) return;
+
       final importOptions = await showDialog<ImportOptions>(
         context: context,
         builder: (context) => ImportOptionsDialog(

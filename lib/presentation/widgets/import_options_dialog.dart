@@ -183,32 +183,32 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 8),
-                    RadioListTile<bool>(
-                      title: const Text('Replace'),
-                      subtitle: const Text('Overwrite existing data'),
-                      value: false,
+                    RadioGroup<bool>(
                       groupValue: _additive,
                       onChanged: (value) {
                         setState(() {
                           _additive = value ?? false;
                         });
                       },
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                    ),
-                    RadioListTile<bool>(
-                      title: const Text('Merge'),
-                      subtitle:
-                          const Text('Add to existing data (skip duplicates)'),
-                      value: true,
-                      groupValue: _additive,
-                      onChanged: (value) {
-                        setState(() {
-                          _additive = value ?? false;
-                        });
-                      },
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
+                      child: Column(
+                        children: [
+                          RadioListTile<bool>(
+                            title: const Text('Replace'),
+                            subtitle: const Text('Overwrite existing data'),
+                            value: false,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                          ),
+                          RadioListTile<bool>(
+                            title: const Text('Merge'),
+                            subtitle: const Text(
+                                'Add to existing data (skip duplicates)'),
+                            value: true,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

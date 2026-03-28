@@ -18,7 +18,6 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
   bool _isLoading = false;
   bool _isImporting = false;
   String? _statusMessage;
-  NamidaImportMode _importMode = NamidaImportMode.additive;
 
   Future<void> _selectAndImport() async {
     if (!mounted) return;
@@ -60,6 +59,8 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
         ImportDataCategory.playlists,
         ImportDataCategory.playHistory,
       };
+
+      if (!mounted) return;
 
       final importOptions = await showDialog<ImportOptions>(
         context: context,
@@ -165,93 +166,6 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
         // Note: The service handles cleanup, but we ensure it here
       }
     } catch (_) {}
-  }
-
-  Future<bool?> _showImportConfirmationDialog() {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Import from Namida'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Choose how to import the data:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              RadioGroup<NamidaImportMode>(
-                groupValue: _importMode,
-                onChanged: (NamidaImportMode? value) {
-                  setDialogState(() {
-                    _importMode = value!;
-                  });
-                },
-                child: Column(
-                  children: [
-                    RadioListTile<NamidaImportMode>(
-                      title: const Text('Additive'),
-                      subtitle: const Text(
-                          'Add to existing data without removing anything'),
-                      value: NamidaImportMode.additive,
-                    ),
-                    RadioListTile<NamidaImportMode>(
-                      title: const Text('Replace'),
-                      subtitle: const Text(
-                          'Replace all existing data with imported data'),
-                      value: NamidaImportMode.replace,
-                    ),
-                  ],
-                ),
-              ),
-              if (_importMode == NamidaImportMode.replace) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border:
-                        Border.all(color: Colors.red.withValues(alpha: 0.3)),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.warning_rounded, color: Colors.red),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Warning: This will replace all your current favorites, playlists, and stats!',
-                          style: TextStyle(color: Colors.red, fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCEL'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    _importMode == NamidaImportMode.replace ? Colors.red : null,
-                foregroundColor: _importMode == NamidaImportMode.replace
-                    ? Colors.white
-                    : null,
-              ),
-              child: const Text('IMPORT'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _showSuccessDialog(NamidaImportResult result) {

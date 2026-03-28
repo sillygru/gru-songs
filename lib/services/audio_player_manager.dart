@@ -19,6 +19,7 @@ import '../providers/theme_provider.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/settings_provider.dart';
+import '../providers/providers.dart';
 
 // Gap state persistence keys
 const String _keyGapSongId = 'gap_current_song_id';
@@ -1398,7 +1399,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     Uri? artUri;
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
-      artUri = Uri.file(song.coverUrl!);
+      final coverSizingMode = _ref?.read(settingsProvider).coverSizingMode ??
+          PlayerCoverSizingMode.sourceAspect;
+      final fileManager = _ref?.read(fileManagerServiceProvider);
+      if (fileManager != null) {
+        final processedCoverUrl = await fileManager
+            .getOrCreateNotificationCover(song, coverSizingMode);
+        if (processedCoverUrl != null) {
+          artUri = Uri.file(processedCoverUrl);
+        }
+      }
     }
 
     // Keep notification during gap to prevent service death
