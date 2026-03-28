@@ -134,9 +134,9 @@ Future<void> invalidate(String key)
 - Automatic cleanup of legacy caches
 
 ### Storage Service (`storage_service.dart`)
-- Music folder management
+- Music folder management (multiple folders support)
 - Setup state persistence
-- Local/remote mode switching
+- Local session mode (username-based single-user tracking)
 
 ### Backup Service (`backup_service.dart`)
 - Manual library backup creation

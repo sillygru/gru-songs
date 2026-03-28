@@ -427,6 +427,26 @@ class BackupService {
         final appDir = await getApplicationDocumentsDirectory();
         final storage = StorageService();
 
+        File? foundStatsDb;
+        File? foundDataDb;
+
+        await for (final entity in tempDir.list(recursive: true)) {
+          if (entity is File) {
+            final name = p.basename(entity.path);
+            if (name == 'wispie_stats.db' ||
+                (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
+              foundStatsDb = entity;
+            }
+            if (name == 'wispie_data.db' ||
+                (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
+              foundDataDb = entity;
+            }
+          }
+        }
+
+        String statsDbPath;
+        String dataDbPath;
+
         if (restoreDatabases) {
           await DatabaseService.instance.close();
           final dbSuffixes = ['', '-journal', '-wal', '-shm'];
@@ -442,23 +462,6 @@ class BackupService {
             }
           }
 
-          File? foundStatsDb;
-          File? foundDataDb;
-
-          await for (final entity in tempDir.list(recursive: true)) {
-            if (entity is File) {
-              final name = p.basename(entity.path);
-              if (name == 'wispie_stats.db' ||
-                  (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
-                foundStatsDb = entity;
-              }
-              if (name == 'wispie_data.db' ||
-                  (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
-                foundDataDb = entity;
-              }
-            }
-          }
-
           if (foundStatsDb != null) {
             await foundStatsDb.copy(p.join(appDir.path, 'wispie_stats.db'));
           }
@@ -467,22 +470,27 @@ class BackupService {
           }
 
           await DatabaseService.instance.init();
+          statsDbPath = p.join(appDir.path, 'wispie_stats.db');
+          dataDbPath = p.join(appDir.path, 'wispie_data.db');
+        } else {
+          statsDbPath = foundStatsDb?.path ?? '';
+          dataDbPath = foundDataDb?.path ?? '';
+        }
 
-          if (categories.contains(ImportDataCategory.playHistory) ||
-              categories.contains(ImportDataCategory.favorites) ||
-              categories.contains(ImportDataCategory.suggestless) ||
-              categories.contains(ImportDataCategory.hidden) ||
-              categories.contains(ImportDataCategory.playlists) ||
-              categories.contains(ImportDataCategory.mergedGroups) ||
-              categories.contains(ImportDataCategory.recommendations) ||
-              categories.contains(ImportDataCategory.moods) ||
-              categories.contains(ImportDataCategory.userdata)) {
-            await DatabaseService.instance.importWithOptions(
-              statsDbPath: p.join(appDir.path, 'wispie_stats.db'),
-              dataDbPath: p.join(appDir.path, 'wispie_data.db'),
-              options: importOptions,
-            );
-          }
+        if (categories.contains(ImportDataCategory.playHistory) ||
+            categories.contains(ImportDataCategory.favorites) ||
+            categories.contains(ImportDataCategory.suggestless) ||
+            categories.contains(ImportDataCategory.hidden) ||
+            categories.contains(ImportDataCategory.playlists) ||
+            categories.contains(ImportDataCategory.mergedGroups) ||
+            categories.contains(ImportDataCategory.recommendations) ||
+            categories.contains(ImportDataCategory.moods) ||
+            categories.contains(ImportDataCategory.userdata)) {
+          await DatabaseService.instance.importWithOptions(
+            statsDbPath: statsDbPath,
+            dataDbPath: dataDbPath,
+            options: importOptions,
+          );
         }
 
         await for (final entity in tempDir.list(recursive: true)) {
@@ -508,7 +516,6 @@ class BackupService {
 
             if ((name == 'playback_state.json' ||
                     name.startsWith('playback_state_')) &&
-                importOptions.restorePlaybackState &&
                 categories.contains(ImportDataCategory.playbackState)) {
               final content = await entity.readAsString();
               final data = decodeJson(content);

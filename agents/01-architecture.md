@@ -65,7 +65,7 @@ lib/
 Then:
 - Database initialization (with migration from user-specific to single-user DBs)
 - Setup state check
-- Auth state load
+- Username preload into auth provider
 - App widget rendering
 
 ## Key Architectural Patterns

@@ -2749,7 +2749,7 @@ class DatabaseService {
     final importedDataDb = await openDatabase(dataDbPath);
 
     try {
-      if (options.restoreDatabases) {
+      if (options.hasDatabaseCategories) {
         await _importSelectedDatabases(
             importedStatsDb, importedDataDb, options);
       }

@@ -75,6 +75,8 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     };
     final databaseCategoriesAvailable =
         databaseCategories.intersection(widget.availableCategories);
+    final databaseCategoriesDisabled =
+        databaseCategories.difference(widget.availableCategories);
 
     final storageCategories = {
       ImportDataCategory.songs,
@@ -85,6 +87,8 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     };
     final storageCategoriesAvailable =
         storageCategories.intersection(widget.availableCategories);
+    final storageCategoriesDisabled =
+        storageCategories.difference(widget.availableCategories);
 
     final settingsCategories = {
       ImportDataCategory.themeSettings,
@@ -95,6 +99,8 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     };
     final settingsCategoriesAvailable =
         settingsCategories.intersection(widget.availableCategories);
+    final settingsCategoriesDisabled =
+        settingsCategories.difference(widget.availableCategories);
 
     return AlertDialog(
       contentPadding: EdgeInsets.zero,
@@ -116,27 +122,30 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (databaseCategoriesAvailable.isNotEmpty)
+              if (databaseCategories.isNotEmpty)
                 _buildCategorySection(
                   context,
                   'Database',
                   databaseCategoriesAvailable,
+                  databaseCategoriesDisabled,
                   Icons.storage_outlined,
                   databaseCategories,
                 ),
-              if (storageCategoriesAvailable.isNotEmpty)
+              if (storageCategories.isNotEmpty)
                 _buildCategorySection(
                   context,
                   'Storage',
                   storageCategoriesAvailable,
+                  storageCategoriesDisabled,
                   Icons.folder_outlined,
                   storageCategories,
                 ),
-              if (settingsCategoriesAvailable.isNotEmpty)
+              if (settingsCategories.isNotEmpty)
                 _buildCategorySection(
                   context,
                   'Settings',
                   settingsCategoriesAvailable,
+                  settingsCategoriesDisabled,
                   Icons.settings_outlined,
                   settingsCategories,
                 ),
@@ -244,6 +253,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     BuildContext context,
     String title,
     Set<ImportDataCategory> availableCategories,
+    Set<ImportDataCategory> disabledCategories,
     IconData icon,
     Set<ImportDataCategory> allCategories,
   ) {
@@ -277,14 +287,27 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
             ],
           ),
         ),
-        ...availableCategories.map((category) => CheckboxListTile(
-              title: Text(category.displayName),
-              subtitle: Text(category.description),
-              value: _selectedCategories.contains(category),
-              onChanged: (_) => _toggleCategory(category),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              controlAffinity: ListTileControlAffinity.leading,
-            )),
+        ...allCategories.map((category) {
+          final isDisabled = disabledCategories.contains(category);
+          return CheckboxListTile(
+            title: Text(
+              category.displayName,
+              style: TextStyle(
+                color: isDisabled ? theme.disabledColor : null,
+              ),
+            ),
+            subtitle: Text(
+              category.description,
+              style: TextStyle(
+                color: isDisabled ? theme.disabledColor.withAlpha(150) : null,
+              ),
+            ),
+            value: _selectedCategories.contains(category),
+            onChanged: isDisabled ? null : (_) => _toggleCategory(category),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            controlAffinity: ListTileControlAffinity.leading,
+          );
+        }),
         const Divider(),
       ],
     );

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../services/backup_service.dart';
+import '../../services/data_export_service.dart';
 import '../../services/database_service.dart';
 import '../../services/import_options.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
@@ -93,10 +94,37 @@ class _BackupManagementScreenState
   }
 
   Future<void> _restoreBackup(BackupInfo backupInfo) async {
+    final exportService = DataExportService();
+    Map<String, dynamic>? validation;
+    try {
+      validation = await exportService.validateBackup();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to validate backup: $e')),
+        );
+      }
+      return;
+    }
+
+    if (validation == null || validation['valid'] != true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid backup file')),
+        );
+      }
+      return;
+    }
+
+    final availableCategories =
+        exportService.getAvailableCategories(validation);
+
+    if (!mounted) return;
+
     final importOptions = await showDialog<ImportOptions>(
       context: context,
       builder: (context) => ImportOptionsDialog(
-        availableCategories: ImportDataCategory.values.toSet(),
+        availableCategories: availableCategories,
         defaultAdditive: false,
         defaultRestoreDatabases: true,
         defaultRestorePlaybackState: true,
@@ -108,7 +136,7 @@ class _BackupManagementScreenState
     if (!mounted) return;
 
     if (importOptions.restoreDatabases &&
-        importOptions.categories.length >= 15) {
+        importOptions.categories.length >= ImportDataCategory.values.length) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(

@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:sqflite/sqflite.dart';
 import 'database_service.dart';
 import 'storage_service.dart';
 import 'import_options.dart';
@@ -53,6 +54,18 @@ class ExportOptions {
 
 class DataExportService {
   static const String _metadataFile = 'metadata.json';
+
+  Future<bool> _checkTableExists(String dbPath, String tableName) async {
+    try {
+      final db = await openDatabase(dbPath, readOnly: true);
+      final result = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'");
+      await db.close();
+      return result.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
 
   Future<void> exportUserData({ExportOptions? options}) async {
     options ??= ExportOptions();
@@ -345,6 +358,20 @@ class DataExportService {
         }
       }
 
+      final hasFavorites = await _checkTableExists(foundData.path, 'favorite');
+      final hasSuggestless =
+          await _checkTableExists(foundData.path, 'suggestless');
+      final hasHidden = await _checkTableExists(foundData.path, 'hidden');
+      final hasPlaylists = await _checkTableExists(foundData.path, 'playlist');
+      final hasMergedGroups =
+          await _checkTableExists(foundData.path, 'merged_song_group');
+      final hasRecommendations =
+          await _checkTableExists(foundData.path, 'recommendation_preference');
+      final hasMoods = await _checkTableExists(foundData.path, 'mood_tag');
+      final hasUserdata = await _checkTableExists(foundData.path, 'userdata');
+      final hasPlayHistory =
+          await _checkTableExists(foundStats.path, 'playsession');
+
       return {
         'valid': true,
         'importPath': contentPath,
@@ -357,6 +384,15 @@ class DataExportService {
         'hasMergedGroupsJson': hasMergedGroupsJson,
         'hasQueueHistoryJson': hasQueueHistoryJson,
         'hasAppSettingsJson': hasAppSettingsJson,
+        'hasFavorites': hasFavorites,
+        'hasSuggestless': hasSuggestless,
+        'hasHidden': hasHidden,
+        'hasPlaylists': hasPlaylists,
+        'hasMergedGroups': hasMergedGroups,
+        'hasRecommendations': hasRecommendations,
+        'hasMoods': hasMoods,
+        'hasUserdata': hasUserdata,
+        'hasPlayHistory': hasPlayHistory,
       };
     } catch (e) {
       if (await decodeDir.exists()) await decodeDir.delete(recursive: true);
@@ -387,18 +423,35 @@ class DataExportService {
       categories.add(ImportDataCategory.uiSettings);
       categories.add(ImportDataCategory.backupSettings);
     }
-    if (validation['hasMergedGroupsJson'] == true) {
+    if (validation['hasMergedGroupsJson'] == true ||
+        validation['hasMergedGroups'] == true) {
       categories.add(ImportDataCategory.mergedGroups);
     }
 
-    categories.add(ImportDataCategory.favorites);
-    categories.add(ImportDataCategory.suggestless);
-    categories.add(ImportDataCategory.hidden);
-    categories.add(ImportDataCategory.playlists);
-    categories.add(ImportDataCategory.recommendations);
-    categories.add(ImportDataCategory.moods);
-    categories.add(ImportDataCategory.userdata);
-    categories.add(ImportDataCategory.playHistory);
+    if (validation['hasFavorites'] == true) {
+      categories.add(ImportDataCategory.favorites);
+    }
+    if (validation['hasSuggestless'] == true) {
+      categories.add(ImportDataCategory.suggestless);
+    }
+    if (validation['hasHidden'] == true) {
+      categories.add(ImportDataCategory.hidden);
+    }
+    if (validation['hasPlaylists'] == true) {
+      categories.add(ImportDataCategory.playlists);
+    }
+    if (validation['hasRecommendations'] == true) {
+      categories.add(ImportDataCategory.recommendations);
+    }
+    if (validation['hasMoods'] == true) {
+      categories.add(ImportDataCategory.moods);
+    }
+    if (validation['hasUserdata'] == true) {
+      categories.add(ImportDataCategory.userdata);
+    }
+    if (validation['hasPlayHistory'] == true) {
+      categories.add(ImportDataCategory.playHistory);
+    }
 
     return categories;
   }
@@ -437,8 +490,7 @@ class DataExportService {
       }
     }
 
-    if (options.restorePlaybackState &&
-        categories.contains(ImportDataCategory.playbackState)) {
+    if (categories.contains(ImportDataCategory.playbackState)) {
       final playbackStateFile = File(p.join(importPath, 'playback_state.json'));
       if (await playbackStateFile.exists()) {
         final content = await playbackStateFile.readAsString();
