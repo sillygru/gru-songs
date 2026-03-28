@@ -2,7 +2,7 @@
 
 ## Core File
 
-`lib/services/audio_player_manager.dart` - Central playback controller (2200+ lines)
+`lib/services/audio_player_manager.dart` - Central playback controller
 
 ## Responsibilities
 

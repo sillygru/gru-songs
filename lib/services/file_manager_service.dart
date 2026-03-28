@@ -14,6 +14,7 @@ import '../models/song.dart';
 import 'storage_service.dart';
 import 'android_storage_service.dart';
 import 'ffmpeg_service.dart';
+import 'cache_service.dart';
 
 class FileManagerService {
   Future<RandomAccessFile?> _acquireExclusiveLock(String fileUrl) async {
@@ -804,5 +805,67 @@ class FileManagerService {
     } else {
       throw Exception("File does not exist: ${song.url}");
     }
+  }
+
+  Future<String?> getOrCreateNotificationCover(
+    Song song,
+    PlayerCoverSizingMode mode,
+  ) async {
+    if (song.coverUrl == null || song.coverUrl!.isEmpty) {
+      return null;
+    }
+
+    if (mode != PlayerCoverSizingMode.autoFit) {
+      return song.coverUrl;
+    }
+
+    final songFilename =
+        p.basename(song.coverUrl!).replaceAll(RegExp(r'[^\w\-]'), '_');
+    final cachedFile =
+        await CacheService.instance.getNotificationCoverCacheFile(songFilename);
+
+    if (await cachedFile.exists()) {
+      return cachedFile.path;
+    }
+
+    try {
+      final originalFile = File(song.coverUrl!);
+      if (!await originalFile.exists()) {
+        return song.coverUrl;
+      }
+
+      final bytes = await originalFile.readAsBytes();
+      final processed = await compute(
+        _processNotificationCover,
+        bytes,
+      );
+
+      await cachedFile.writeAsBytes(processed);
+      return cachedFile.path;
+    } catch (e) {
+      debugPrint('Failed to create notification cover: $e');
+      return song.coverUrl;
+    }
+  }
+
+  static Uint8List _processNotificationCover(Uint8List bytes) {
+    final image = img.decodeImage(bytes);
+    if (image == null) {
+      return bytes;
+    }
+
+    final size = image.width < image.height ? image.width : image.height;
+    final x = (image.width - size) ~/ 2;
+    final y = (image.height - size) ~/ 2;
+
+    final cropped = img.copyCrop(
+      image,
+      x: x,
+      y: y,
+      width: size,
+      height: size,
+    );
+
+    return Uint8List.fromList(img.encodeJpg(cropped, quality: 90));
   }
 }

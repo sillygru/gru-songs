@@ -30,20 +30,26 @@ lib/
 ├── providers/             # Riverpod state management
 │   ├── providers.dart     # Core providers (songsProvider, etc.)
 │   ├── user_data_provider.dart
+│   ├── search_provider.dart
+│   ├── theme_provider.dart
+│   ├── settings_provider.dart
 │   └── ...
 ├── models/                # Core data entities
 │   ├── song.dart
 │   ├── shuffle_config.dart
 │   ├── playlist.dart
+│   ├── mood_tag.dart
 │   └── ...
 ├── domain/                # Domain-specific logic
+│   ├── models/
 │   └── services/search_service.dart
 ├── data/                  # Data source abstractions
+│   ├── models/
 │   └── repositories/
 └── presentation/          # UI layer
     ├── screens/
     ├── widgets/
-    └── dialogs/
+    └── routes/
 ```
 
 ## Initialization Flow
@@ -78,6 +84,18 @@ Business logic encapsulated in services under `lib/services/`. Services are regi
 1. Create service class in `lib/services/`
 2. Register provider in `lib/providers/providers.dart` (or dedicated provider file)
 3. Inject via `ref.read()` or `ref.watch()` where needed
+
+## Key Providers
+
+| Provider | Type | Purpose |
+|----------|------|---------|
+| `songsProvider` | AsyncNotifier | Song library state |
+| `userDataProvider` | Notifier | User data (favorites, hidden, playlists) |
+| `searchProvider` | Notifier | Search state and results |
+| `selectionProvider` | Notifier | Multi-select for bulk operations |
+| `indexerProvider` | Notifier | Library scanning state |
+| `themeProvider` | Notifier | App theming |
+| `settingsProvider` | Notifier | App settings |
 
 ## Platform Configuration
 

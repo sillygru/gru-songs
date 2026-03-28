@@ -2,7 +2,7 @@
 
 ## Database Service
 
-`lib/services/database_service.dart` (2700+ lines)
+`lib/services/database_service.dart`
 
 ### Databases
 
@@ -95,6 +95,12 @@ Future<void> invalidate(String key)
 - Metadata extraction via `audio_metadata_reader`
 - Video file handling (extracts audio streams)
 - Progress reporting during scans
+
+### Library Logic (`library_logic.dart`)
+- Core CRUD operations for songs
+- Song add/remove/update logic
+- Thumbnail generation coordination
+- Merged song group management
 
 ### FFmpeg Service (`ffmpeg_service.dart`)
 - Lyrics extraction from audio files

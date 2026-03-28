@@ -507,22 +507,23 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         );
       }
 
-      // Handle fade mode
-      if ((settings.fadeOutDuration > 0 || settings.fadeInDuration > 0) &&
-          _player.playing) {
-        _handleFadeMode(
-          remaining: remaining,
-          position: position,
-          totalDuration: totalDuration,
-          fadeOutDuration: settings.fadeOutDuration,
-        );
+      // Handle fade out trigger
+      if (settings.fadeOutDuration > 0 &&
+          _player.playing &&
+          !_isFadingOut &&
+          remaining.inMilliseconds <= settings.fadeOutDuration * 1000 &&
+          remaining.inMilliseconds > 0) {
+        _startFadeOut(settings.fadeOutDuration);
       }
 
       // Reset fade if user seeks back
       if (_isFadingOut) {
         final fadeOutMs = settings.fadeOutDuration * 1000;
         if (remaining.inMilliseconds > fadeOutMs) {
+          _fadeTimer?.cancel();
           _isFadingOut = false;
+          _fadeStartTime = null;
+          _fadeDurationMs = null;
           if (!_isFadingIn) {
             _setVolumeWithSafety(1.0);
           }
@@ -710,28 +711,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _player.play();
   }
 
-  void _handleFadeMode({
-    required Duration remaining,
-    required Duration position,
-    required Duration totalDuration,
-    required double fadeOutDuration,
-  }) {
-    final fadeOutMs = (fadeOutDuration * 1000).toInt();
-
-    if (fadeOutMs > 0 &&
-        remaining.inMilliseconds <= fadeOutMs &&
-        remaining.inMilliseconds > 0 &&
-        !_isFadingOut) {
-      _isFadingOut = true;
-    }
-
-    if (_isFadingOut) {
-      final progress = remaining.inMilliseconds / fadeOutMs;
-      final curvedVolume = _fadeOutCurve(progress.clamp(0.0, 1.0));
-      _setVolumeWithSafety(curvedVolume);
-    }
-  }
-
   // Exponential fade out curve (sounds natural to human ears)
   double _fadeOutCurve(double linearProgress) {
     // Exponential decay: volume drops faster at the end
@@ -775,6 +754,35 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       } else {
         final linearProgress = elapsed / targetMs;
         final curvedVolume = _fadeInCurve(linearProgress);
+        _setVolumeWithSafety(curvedVolume);
+      }
+    });
+  }
+
+  void _startFadeOut(double duration) {
+    _fadeTimer?.cancel();
+    _isFadingOut = true;
+    _fadeDurationMs = duration * 1000;
+    _fadeStartTime = DateTime.now();
+
+    _fadeTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      if (_fadeStartTime == null || _fadeDurationMs == null) {
+        timer.cancel();
+        return;
+      }
+
+      final elapsed = DateTime.now().difference(_fadeStartTime!).inMilliseconds;
+      final targetMs = _fadeDurationMs!;
+
+      if (elapsed >= targetMs) {
+        _setVolumeWithSafety(0.0);
+        _isFadingOut = false;
+        _fadeStartTime = null;
+        _fadeDurationMs = null;
+        timer.cancel();
+      } else {
+        final linearProgress = 1.0 - (elapsed / targetMs);
+        final curvedVolume = _fadeOutCurve(linearProgress.clamp(0.0, 1.0));
         _setVolumeWithSafety(curvedVolume);
       }
     });

@@ -30,8 +30,10 @@ Read only the file you need for your task:
 ### Key Files
 - **Playback**: `lib/services/audio_player_manager.dart`
 - **Library State**: `lib/providers/providers.dart` -> `songsProvider`
+- **User Data**: `lib/providers/user_data_provider.dart`
 - **Database**: `lib/services/database_service.dart`
 - **Search**: `lib/domain/services/search_service.dart`
+- **Library Logic**: `lib/services/library_logic.dart`
 
 ### Running Tests
 ```bash
@@ -47,5 +49,8 @@ lib/
 ├── models/        # Core entities
 ├── domain/        # Domain logic (search, etc.)
 ├── data/          # Data source abstractions
-└── presentation/  # UI screens and widgets
+└── presentation/ # UI screens, widgets, routes
+    ├── screens/
+    ├── widgets/
+    └── routes/
 ```

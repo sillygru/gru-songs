@@ -4,6 +4,17 @@
 
 - `lib/providers/providers.dart` - Main provider orchestration
 - `lib/providers/user_data_provider.dart` - User preferences and stats
+- `lib/services/library_logic.dart` - Core library operations (CRUD, scanning)
+
+## Key Providers
+
+| Provider | File | Purpose |
+|----------|------|---------|
+| `songsProvider` | providers.dart | Song library state |
+| `userDataProvider` | user_data_provider.dart | Favorites, hidden, playlists, moods |
+| `searchProvider` | search_provider.dart | Search state and results |
+| `selectionProvider` | selection_provider.dart | Multi-select state |
+| `indexerProvider` | indexer_provider.dart | Library scanning state |
 
 ## songsProvider (AsyncNotifier)
 
@@ -118,5 +129,7 @@ FileSystem -> ScannerService -> songsProvider -> UI
 ## Related Files
 
 - `lib/services/cache_service.dart` - Cache invalidation after updates
+- `lib/services/library_logic.dart` - Core library operations
 - `lib/domain/services/search_service.dart` - Search index updates
 - `lib/models/song.dart` - Song entity definition
+- `test/bulk_actions_test.dart` - Bulk operation tests

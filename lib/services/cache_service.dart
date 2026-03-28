@@ -156,4 +156,13 @@ class CacheService {
     }
     return count;
   }
+
+  Future<File> getNotificationCoverCacheFile(String songFilename) async {
+    await init();
+    final notifDir = Directory(p.join(_v3Dir.path, 'notification_cover_cache'));
+    if (!await notifDir.exists()) {
+      await notifDir.create(recursive: true);
+    }
+    return File(p.join(notifDir.path, '$songFilename.jpg'));
+  }
 }
