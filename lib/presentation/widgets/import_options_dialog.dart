@@ -3,18 +3,14 @@ import '../../services/import_options.dart';
 
 class ImportOptionsDialog extends StatefulWidget {
   final Set<ImportDataCategory> availableCategories;
-  final bool showPlaybackStateOption;
   final bool defaultAdditive;
   final bool defaultRestoreDatabases;
-  final bool defaultRestorePlaybackState;
 
   const ImportOptionsDialog({
     super.key,
     this.availableCategories = const {},
-    this.showPlaybackStateOption = true,
     this.defaultAdditive = false,
     this.defaultRestoreDatabases = true,
-    this.defaultRestorePlaybackState = true,
   });
 
   @override
@@ -25,7 +21,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
   late Set<ImportDataCategory> _selectedCategories;
   late bool _additive;
   late bool _restoreDatabases;
-  late bool _restorePlaybackState;
 
   @override
   void initState() {
@@ -33,7 +28,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     _selectedCategories = Set.from(widget.availableCategories);
     _additive = widget.defaultAdditive;
     _restoreDatabases = widget.defaultRestoreDatabases;
-    _restorePlaybackState = widget.defaultRestorePlaybackState;
   }
 
   void _toggleCategory(ImportDataCategory category) {
@@ -160,19 +154,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 8),
-                    if (widget.showPlaybackStateOption)
-                      CheckboxListTile(
-                        title: const Text('Restore Playback State'),
-                        subtitle: const Text('Current queue and position'),
-                        value: _restorePlaybackState,
-                        onChanged: (value) {
-                          setState(() {
-                            _restorePlaybackState = value ?? true;
-                          });
-                        },
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      ),
                     CheckboxListTile(
                       title: const Text('Replace Databases'),
                       subtitle:
@@ -239,7 +220,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                     categories: _selectedCategories,
                     additive: _additive,
                     restoreDatabases: _restoreDatabases,
-                    restorePlaybackState: _restorePlaybackState,
                   );
                   Navigator.of(context).pop(options);
                 },

@@ -170,26 +170,22 @@ class ImportOptions {
   final Set<ImportDataCategory> categories;
   final bool additive;
   final bool restoreDatabases;
-  final bool restorePlaybackState;
 
   const ImportOptions({
     this.categories = const {},
     this.additive = false,
     this.restoreDatabases = true,
-    this.restorePlaybackState = true,
   });
 
   ImportOptions copyWith({
     Set<ImportDataCategory>? categories,
     bool? additive,
     bool? restoreDatabases,
-    bool? restorePlaybackState,
   }) {
     return ImportOptions(
       categories: categories ?? this.categories,
       additive: additive ?? this.additive,
       restoreDatabases: restoreDatabases ?? this.restoreDatabases,
-      restorePlaybackState: restorePlaybackState ?? this.restorePlaybackState,
     );
   }
 
@@ -232,6 +228,5 @@ class ImportOptions {
     },
     additive: false,
     restoreDatabases: true,
-    restorePlaybackState: true,
   );
 }

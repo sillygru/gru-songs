@@ -198,7 +198,6 @@ void main() {
     test('defaultImport has correct default values', () {
       expect(ImportOptions.defaultImport.additive, false);
       expect(ImportOptions.defaultImport.restoreDatabases, true);
-      expect(ImportOptions.defaultImport.restorePlaybackState, true);
     });
 
     test('hasCategory returns correct value', () {
@@ -268,7 +267,6 @@ void main() {
         categories: {ImportDataCategory.favorites},
         additive: false,
         restoreDatabases: true,
-        restorePlaybackState: true,
       );
 
       final copied = original.copyWith(
@@ -284,7 +282,6 @@ void main() {
       expect(copied.categories.contains(ImportDataCategory.playlists), true);
       expect(copied.additive, true);
       expect(copied.restoreDatabases, true);
-      expect(copied.restorePlaybackState, true);
     });
 
     test('copyWith preserves unchanged values', () {
@@ -292,7 +289,6 @@ void main() {
         categories: {ImportDataCategory.favorites},
         additive: true,
         restoreDatabases: false,
-        restorePlaybackState: false,
       );
 
       final copied = original.copyWith(
@@ -301,7 +297,6 @@ void main() {
 
       expect(copied.additive, true);
       expect(copied.restoreDatabases, false);
-      expect(copied.restorePlaybackState, false);
     });
 
     test('empty categories works correctly', () {

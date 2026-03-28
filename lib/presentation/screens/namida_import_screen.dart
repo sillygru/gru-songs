@@ -68,7 +68,6 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
           availableCategories: availableCategories,
           defaultAdditive: true,
           defaultRestoreDatabases: true,
-          defaultRestorePlaybackState: false,
         ),
       );
 

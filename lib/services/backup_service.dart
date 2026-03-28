@@ -473,8 +473,13 @@ class BackupService {
           statsDbPath = p.join(appDir.path, 'wispie_stats.db');
           dataDbPath = p.join(appDir.path, 'wispie_data.db');
         } else {
-          statsDbPath = foundStatsDb?.path ?? '';
-          dataDbPath = foundDataDb?.path ?? '';
+          if (foundStatsDb == null || foundDataDb == null) {
+            debugPrint(
+                'Warning: Backup DB files not found, skipping database imports');
+            return;
+          }
+          statsDbPath = foundStatsDb.path;
+          dataDbPath = foundDataDb.path;
         }
 
         if (categories.contains(ImportDataCategory.playHistory) ||

@@ -30,24 +30,39 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  bool _handleScrollNotification(UserScrollNotification notification) {
+  bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) {
       return false;
     }
 
-    switch (notification.direction) {
-      case ScrollDirection.forward:
+    if (notification is ScrollUpdateNotification) {
+      final delta = notification.scrollDelta ?? 0;
+      if (delta > 0) {
+        // Scrolling down
         ref
             .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.up);
-        break;
-      case ScrollDirection.reverse:
+            .update(AppScrollDirection.down, delta: delta);
+      } else if (delta < 0) {
+        // Scrolling up
         ref
             .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.down);
-        break;
-      case ScrollDirection.idle:
-        break;
+            .update(AppScrollDirection.up, delta: -delta);
+      }
+    } else if (notification is UserScrollNotification) {
+      switch (notification.direction) {
+        case ScrollDirection.forward:
+          ref
+              .read(scrollDirectionProvider.notifier)
+              .update(AppScrollDirection.up);
+          break;
+        case ScrollDirection.reverse:
+          ref
+              .read(scrollDirectionProvider.notifier)
+              .update(AppScrollDirection.down);
+          break;
+        case ScrollDirection.idle:
+          break;
+      }
     }
     return false;
   }
@@ -462,7 +477,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             immediateSongs.length;
 
         if (isRoot) {
-          return NotificationListener<UserScrollNotification>(
+          return NotificationListener<ScrollNotification>(
             onNotification: _handleScrollNotification,
             child: ListView.builder(
               itemCount: itemCount,
@@ -473,7 +488,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         } else {
           return Scaffold(
             backgroundColor: Colors.transparent,
-            body: NotificationListener<UserScrollNotification>(
+            body: NotificationListener<ScrollNotification>(
               onNotification: _handleScrollNotification,
               child: CustomScrollView(
                 physics: const BouncingScrollPhysics(),
@@ -520,7 +535,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       data: (artists) {
         final artistMap = LibraryLogic.groupByArtist(allSongs);
 
-        return NotificationListener<UserScrollNotification>(
+        return NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
           child: GridView.builder(
             padding: const EdgeInsets.all(16),
@@ -600,7 +615,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       data: (albums) {
         final albumMap = LibraryLogic.groupByAlbum(allSongs);
 
-        return NotificationListener<UserScrollNotification>(
+        return NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
           child: GridView.builder(
             padding: const EdgeInsets.all(16),

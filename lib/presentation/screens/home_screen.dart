@@ -33,24 +33,39 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _handleScrollNotification(UserScrollNotification notification) {
+  bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) {
       return false;
     }
 
-    switch (notification.direction) {
-      case ScrollDirection.forward:
+    if (notification is ScrollUpdateNotification) {
+      final delta = notification.scrollDelta ?? 0;
+      if (delta > 0) {
+        // Scrolling down
         ref
             .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.up);
-        break;
-      case ScrollDirection.reverse:
+            .update(AppScrollDirection.down, delta: delta);
+      } else if (delta < 0) {
+        // Scrolling up
         ref
             .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.down);
-        break;
-      case ScrollDirection.idle:
-        break;
+            .update(AppScrollDirection.up, delta: -delta);
+      }
+    } else if (notification is UserScrollNotification) {
+      switch (notification.direction) {
+        case ScrollDirection.forward:
+          ref
+              .read(scrollDirectionProvider.notifier)
+              .update(AppScrollDirection.up);
+          break;
+        case ScrollDirection.reverse:
+          ref
+              .read(scrollDirectionProvider.notifier)
+              .update(AppScrollDirection.down);
+          break;
+        case ScrollDirection.idle:
+          break;
+      }
     }
     return false;
   }
@@ -734,7 +749,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // Invalidate auto mood mix to force regeneration on next watch
               ref.invalidate(autoMoodMixProvider);
             },
-            child: NotificationListener<UserScrollNotification>(
+            child: NotificationListener<ScrollNotification>(
               onNotification: _handleScrollNotification,
               child: CustomScrollView(
                 physics: const BouncingScrollPhysics(),

@@ -448,7 +448,6 @@ class _DataManagementSettingsScreenState
           availableCategories: availableCategories,
           defaultAdditive: false,
           defaultRestoreDatabases: true,
-          defaultRestorePlaybackState: true,
         ),
       );
 

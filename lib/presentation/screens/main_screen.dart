@@ -131,10 +131,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
   int _selectedIndex = 0;
   bool _isDrawerOpen = false;
   bool _isBottomDockHidden = false;
-  int _upwardScrollCount = 0;
+  double _upwardScrollDelta = 0;
+  double _downwardScrollDelta = 0;
 
   static const double _bottomDockBaseHeight = 88.0;
-  static const int _showBarScrollThreshold = 3;
+  static const double _showBarScrollDeltaThreshold = 40.0;
+  static const double _hideBarScrollDeltaThreshold = 15.0;
 
   // Gesture detection for drawer
   double _dragStartX = 0;
@@ -252,18 +254,27 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
     ref.listen(scrollDirectionProvider, (previous, next) {
       if (!_isDrawerOpen && settings.autoHideBottomBarOnScroll) {
-        if (next == AppScrollDirection.down && !_isBottomDockHidden) {
-          setState(() {
-            _isBottomDockHidden = true;
-            _upwardScrollCount = 0;
-          });
-        } else if (next == AppScrollDirection.up && _isBottomDockHidden) {
-          _upwardScrollCount++;
-          if (_upwardScrollCount >= _showBarScrollThreshold) {
-            setState(() {
-              _isBottomDockHidden = false;
-              _upwardScrollCount = 0;
-            });
+        if (next.direction == AppScrollDirection.down) {
+          _upwardScrollDelta = 0; // Reset upward progress
+          if (!_isBottomDockHidden) {
+            _downwardScrollDelta += next.delta;
+            if (_downwardScrollDelta >= _hideBarScrollDeltaThreshold) {
+              setState(() {
+                _isBottomDockHidden = true;
+                _downwardScrollDelta = 0;
+              });
+            }
+          }
+        } else if (next.direction == AppScrollDirection.up) {
+          _downwardScrollDelta = 0; // Reset downward progress
+          if (_isBottomDockHidden) {
+            _upwardScrollDelta += next.delta;
+            if (_upwardScrollDelta >= _showBarScrollDeltaThreshold) {
+              setState(() {
+                _isBottomDockHidden = false;
+                _upwardScrollDelta = 0;
+              });
+            }
           }
         }
       }
@@ -274,7 +285,8 @@ class _MainScreenState extends ConsumerState<MainScreen>
         if (!next && _isBottomDockHidden) {
           setState(() {
             _isBottomDockHidden = false;
-            _upwardScrollCount = 0;
+            _upwardScrollDelta = 0;
+            _downwardScrollDelta = 0;
           });
         }
       },

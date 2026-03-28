@@ -125,23 +125,43 @@ final metadataSaveProvider =
 
 enum AppScrollDirection { none, up, down }
 
-class ScrollDirectionNotifier extends Notifier<AppScrollDirection> {
-  @override
-  AppScrollDirection build() => AppScrollDirection.none;
+class ScrollAction {
+  final AppScrollDirection direction;
+  final double delta;
+  final int timestamp;
 
-  void update(AppScrollDirection direction) {
-    if (state != direction) {
-      state = direction;
-    }
+  ScrollAction({
+    required this.direction,
+    this.delta = 0,
+    required this.timestamp,
+  });
+}
+
+class ScrollDirectionNotifier extends Notifier<ScrollAction> {
+  @override
+  ScrollAction build() => ScrollAction(
+        direction: AppScrollDirection.none,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      );
+
+  void update(AppScrollDirection direction, {double delta = 0}) {
+    state = ScrollAction(
+      direction: direction,
+      delta: delta,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   void reset() {
-    state = AppScrollDirection.none;
+    state = ScrollAction(
+      direction: AppScrollDirection.none,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
   }
 }
 
 final scrollDirectionProvider =
-    NotifierProvider<ScrollDirectionNotifier, AppScrollDirection>(
+    NotifierProvider<ScrollDirectionNotifier, ScrollAction>(
         ScrollDirectionNotifier.new);
 
 class ScanProgressNotifier extends Notifier<double> {

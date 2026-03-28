@@ -127,7 +127,6 @@ class _BackupManagementScreenState
         availableCategories: availableCategories,
         defaultAdditive: false,
         defaultRestoreDatabases: true,
-        defaultRestorePlaybackState: true,
       ),
     );
 
