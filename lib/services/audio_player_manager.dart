@@ -25,6 +25,12 @@ const String _keyGapSongId = 'gap_current_song_id';
 const String _keyGapResumeTimestamp = 'gap_resume_timestamp';
 const String _keyGapIsActive = 'gap_is_active';
 
+// Cache limits for foreground/background
+const int _foregroundCacheSize = 250;
+const int _foregroundCacheBytes = 40 * 1024 * 1024; // 40MB
+const int _backgroundCacheSize = 50;
+const int _backgroundCacheBytes = 10 * 1024 * 1024; // 10MB
+
 enum PlaybackMediaMode { audio, video }
 
 class AudioPlayerManager extends WidgetsBindingObserver {
@@ -962,6 +968,23 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // ==================== LIFECYCLE ====================
 
+  void _setCacheLimits({required bool isBackground}) {
+    if (isBackground) {
+      PaintingBinding.instance.imageCache.maximumSize = _backgroundCacheSize;
+      PaintingBinding.instance.imageCache.maximumSizeBytes =
+          _backgroundCacheBytes;
+    } else {
+      PaintingBinding.instance.imageCache.maximumSize = _foregroundCacheSize;
+      PaintingBinding.instance.imageCache.maximumSizeBytes =
+          _foregroundCacheBytes;
+    }
+  }
+
+  void _clearNonEssentialCaches() {
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_playStartTime != null) {
@@ -969,19 +992,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _playStartTime = DateTime.now();
     }
 
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
+    final isBackground = state != AppLifecycleState.resumed;
+
+    if (isBackground) {
       _flushStats(eventType: 'listen');
       _savePlaybackState();
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
+      _setCacheLimits(isBackground: true);
       _statsService.flush();
+    } else {
+      _setCacheLimits(isBackground: false);
     }
 
-    final isBackground = state != AppLifecycleState.resumed;
     _statsService.setBackground(isBackground);
 
     _appLifecycleState = state;
+  }
+
+  void onMemoryPressure() {
+    _clearNonEssentialCaches();
+    PaintingBinding.instance.imageCache.maximumSize = 20;
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 5 * 1024 * 1024;
   }
 
   // ==================== STATS & SHUFFLE ====================

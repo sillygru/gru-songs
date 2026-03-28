@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/setup_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/providers.dart';
 import 'services/cache_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
@@ -92,11 +93,34 @@ class InitializedSetupNotifier extends SetupNotifier {
   bool build() => initialValue;
 }
 
-class WispieApp extends ConsumerWidget {
+class WispieApp extends ConsumerStatefulWidget {
   const WispieApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WispieApp> createState() => _WispieAppState();
+}
+
+class _WispieAppState extends ConsumerState<WispieApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    ref.read(audioPlayerManagerProvider).onMemoryPressure();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final isSetupComplete = ref.watch(setupProvider);
     final themeState = ref.watch(themeProvider);
