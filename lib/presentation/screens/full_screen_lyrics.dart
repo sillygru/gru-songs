@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../../models/song.dart';
+import '../models/lyrics_gap_loader_state.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/screen_wake_lock_service.dart';
+import '../widgets/lyrics_gap_loader.dart';
 import '../widgets/lyrics_line.dart';
 import '../widgets/blurred_background.dart';
 
@@ -44,15 +46,20 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   bool _isUserInteracting = false;
   bool _isTransitioningSong = false;
   int _currentLyricIndex = -1;
+  LyricsGapLoaderState _gapLoaderState = LyricsGapLoaderState.hidden;
   Duration _lastKnownPlayerPosition = Duration.zero;
   DateTime _lastAutoScrollAt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastUserInteractionAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _autoResumeTimer;
+  Timer? _gapLoaderRemovalTimer;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<SequenceState?>? _sequenceSubscription;
   double _dismissOverscrollAccumulator = 0;
   ProviderSubscription<SettingsState>? _settingsSubscription;
   bool _lyricsWakeLockHeld = false;
+  int _renderedGapLoaderIndex = -1;
+  bool _isGapLoaderVisible = false;
+  Duration _gapLoaderAnimationDuration = Duration.zero;
 
   late String _activeSongId;
   late List<LyricLine> _activeLyrics;
@@ -67,6 +74,11 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   static const Duration _positionLookAhead = Duration(milliseconds: 140);
   static const Duration _autoResumeDelay = Duration(seconds: 3);
   static const Duration _autoResumeSnapDuration = Duration(milliseconds: 120);
+  static const Duration _gapLoaderDelay = Duration(seconds: 4);
+  static const Duration _gapLoaderMinimumRemainingGap =
+      Duration(milliseconds: 1200);
+  static const Duration _gapLoaderTransitionDuration =
+      Duration(milliseconds: 280);
   static const double _dismissOverscrollThreshold = 80;
   static const double _upcomingBlurSigma = 2.2;
   static const double _manualModeUpcomingBlurSigma = 1.0;
@@ -170,6 +182,9 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
         _autoScrollEnabled = true;
         _isUserInteracting = false;
         _currentLyricIndex = -1;
+        _gapLoaderState = LyricsGapLoaderState.hidden;
+        _renderedGapLoaderIndex = -1;
+        _isGapLoaderVisible = false;
         _currentIndexNotifier.value = -1;
       });
 
@@ -186,12 +201,16 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     if (_activeLyrics.isEmpty) return;
     final adjustedPosition = position + _positionLookAhead;
     final newIndex = _findLyricIndexAt(adjustedPosition);
+    final newGapLoaderState = computeLyricsGapLoaderState(
+      lyrics: _activeLyrics,
+      position: position,
+      delay: _gapLoaderDelay,
+      minimumRemainingGap: _gapLoaderMinimumRemainingGap,
+    );
     final positionDelta = position - _lastKnownPlayerPosition;
     final isLikelySeek = positionDelta.abs() > _seekDetectionWindow ||
         positionDelta < const Duration(milliseconds: -250);
     _lastKnownPlayerPosition = position;
-
-    if (newIndex < 0) return;
 
     if (isLikelySeek && !_autoScrollEnabled && mounted) {
       setState(() => _autoScrollEnabled = true);
@@ -199,11 +218,21 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
       _autoResumeTimer?.cancel();
     }
 
-    if (newIndex != _currentIndexNotifier.value) {
-      _currentIndexNotifier.value = newIndex;
-      setState(() => _currentLyricIndex = newIndex);
+    final lyricIndexChanged = newIndex != _currentIndexNotifier.value;
+    final gapLoaderChanged =
+        newGapLoaderState.shouldShow != _gapLoaderState.shouldShow ||
+            newGapLoaderState.insertBeforeLyricIndex !=
+                _gapLoaderState.insertBeforeLyricIndex;
 
-      if (_autoScrollEnabled) {
+    if (lyricIndexChanged || gapLoaderChanged) {
+      _currentIndexNotifier.value = newIndex;
+      setState(() {
+        _currentLyricIndex = newIndex;
+        _gapLoaderState = newGapLoaderState;
+      });
+      _syncRenderedGapLoader(newGapLoaderState);
+
+      if (_autoScrollEnabled && lyricIndexChanged && newIndex >= 0) {
         if (isLikelySeek) {
           _scrollToCurrentLine(force: true);
         } else {
@@ -360,6 +389,7 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     _scrollController.dispose();
     _currentIndexNotifier.dispose();
     _autoResumeTimer?.cancel();
+    _gapLoaderRemovalTimer?.cancel();
     _positionSubscription?.cancel();
     _sequenceSubscription?.cancel();
     _settingsSubscription?.close();
@@ -554,15 +584,21 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
           child: ListView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.fromLTRB(8, 88, 8, 136),
-            itemCount: _activeLyrics.length,
+            itemCount:
+                _activeLyrics.length + (_renderedGapLoaderIndex >= 0 ? 1 : 0),
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             itemBuilder: (context, index) {
-              final line = _activeLyrics[index];
+              if (_isGapLoaderListIndex(index)) {
+                return _buildGapLoaderRow();
+              }
+
+              final lyricIndex = _resolveLyricIndex(index);
+              final line = _activeLyrics[lyricIndex];
               final hasTime = line.isSynced;
               final key = _lineKeys.putIfAbsent(
-                index,
+                lyricIndex,
                 () => GlobalKey(),
               );
 
@@ -571,15 +607,22 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
                 builder: (context, currentIndex, child) {
                   final isBeforeFirstTimedLine =
                       hasTimedLyrics && currentIndex < 0;
-                  final isActive = hasTimedLyrics && index == currentIndex;
-                  final isPlayed = currentIndex >= 0 && index <= currentIndex;
+                  final isHeldDuringGap =
+                      _gapLoaderState.shouldShow && lyricIndex == currentIndex;
+                  final isActive = hasTimedLyrics &&
+                      lyricIndex == currentIndex &&
+                      !isHeldDuringGap;
+                  final isPlayed =
+                      currentIndex >= 0 && lyricIndex <= currentIndex;
                   final blurSigma = !hasTimedLyrics || isBeforeFirstTimedLine
                       ? _defaultSmallBlurSigma
-                      : (isPlayed
-                          ? 0.0
-                          : (_autoScrollEnabled
-                              ? _upcomingBlurSigma
-                              : _manualModeUpcomingBlurSigma));
+                      : (isHeldDuringGap
+                          ? _defaultSmallBlurSigma
+                          : (isPlayed
+                              ? 0.0
+                              : (_autoScrollEnabled
+                                  ? _upcomingBlurSigma
+                                  : _manualModeUpcomingBlurSigma)));
                   return LyricsLine(
                     key: key,
                     text: line.text,
@@ -591,7 +634,8 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
                     inactiveFontSize: _lyricFontSize,
                     activeColor: Colors.white,
                     glowIntensity: isActive ? 1.0 : 0.0,
-                    onTap: hasTimedLyrics ? () => _seekToLyric(index) : null,
+                    onTap:
+                        hasTimedLyrics ? () => _seekToLyric(lyricIndex) : null,
                   );
                 },
               );
@@ -636,6 +680,61 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
         ),
       ],
     );
+  }
+
+  bool _isGapLoaderListIndex(int listIndex) {
+    return _renderedGapLoaderIndex >= 0 && listIndex == _renderedGapLoaderIndex;
+  }
+
+  int _resolveLyricIndex(int listIndex) {
+    if (_renderedGapLoaderIndex < 0 || listIndex < _renderedGapLoaderIndex) {
+      return listIndex;
+    }
+    return listIndex - 1;
+  }
+
+  Widget _buildGapLoaderRow() {
+    return AnimatedOpacity(
+      duration: _gapLoaderTransitionDuration,
+      curve: Curves.easeOutCubic,
+      opacity: _isGapLoaderVisible ? 1.0 : 0.0,
+      child: AnimatedScale(
+        duration: _gapLoaderTransitionDuration,
+        curve: Curves.easeOutCubic,
+        scale: _isGapLoaderVisible ? 1.0 : 0.96,
+        child: LyricsGapLoader(
+          animationDuration: _gapLoaderAnimationDuration,
+        ),
+      ),
+    );
+  }
+
+  void _syncRenderedGapLoader(LyricsGapLoaderState state) {
+    _gapLoaderRemovalTimer?.cancel();
+
+    if (state.shouldShow) {
+      final shouldResetAnimation = _renderedGapLoaderIndex < 0 ||
+          _renderedGapLoaderIndex != state.insertBeforeLyricIndex;
+      if (!mounted) return;
+      setState(() {
+        _renderedGapLoaderIndex = state.insertBeforeLyricIndex;
+        if (shouldResetAnimation) {
+          _gapLoaderAnimationDuration = state.remainingGap;
+        }
+        _isGapLoaderVisible = true;
+      });
+      return;
+    }
+
+    if (_renderedGapLoaderIndex < 0 || !_isGapLoaderVisible || !mounted) {
+      return;
+    }
+
+    setState(() => _isGapLoaderVisible = false);
+    _gapLoaderRemovalTimer = Timer(_gapLoaderTransitionDuration, () {
+      if (!mounted || _gapLoaderState.shouldShow) return;
+      setState(() => _renderedGapLoaderIndex = -1);
+    });
   }
 
   void _handleScrollNotification(ScrollNotification notification) {

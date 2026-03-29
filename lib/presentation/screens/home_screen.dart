@@ -351,6 +351,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ThemeData theme,
   ) {
     final colorScheme = theme.colorScheme;
+    final songsAsync = ref.watch(songsProvider);
+
     return Padding(
       padding: const EdgeInsets.only(right: 12),
       child: GestureDetector(
@@ -363,29 +365,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: colorScheme.secondaryContainer.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Icon(
-                  Icons.queue_music_rounded,
-                  size: 48,
-                  color: colorScheme.onSecondaryContainer,
-                ),
+              _HomeQueueArtwork(
+                snapshot: snapshot,
+                songsAsync: songsAsync,
+                size: 120,
+                colorScheme: colorScheme,
               ),
               const SizedBox(height: 8),
               Text(
-                snapshot.name,
+                snapshot.displayDate,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style:
                     const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
               Text(
-                snapshot.displayDate,
+                '${snapshot.songFilenames.length} ${snapshot.songFilenames.length == 1 ? 'track' : 'tracks'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall
@@ -431,7 +426,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      snapshot.name,
+                      snapshot.displayDate,
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -440,7 +435,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${songs.length} ${songs.length == 1 ? 'track' : 'tracks'} · ${snapshot.displayDate}',
+                      '${songs.length} ${songs.length == 1 ? 'track' : 'tracks'}',
                       style: TextStyle(
                         fontSize: 13,
                         color: colorScheme.onSurfaceVariant,
@@ -978,6 +973,109 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HomeQueueArtwork extends StatelessWidget {
+  final QueueSnapshot snapshot;
+  final AsyncValue<List<Song>> songsAsync;
+  final double size;
+  final ColorScheme colorScheme;
+
+  const _HomeQueueArtwork({
+    required this.snapshot,
+    required this.songsAsync,
+    required this.size,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final songs = songsAsync.maybeWhen(
+      data: (allSongs) {
+        final songMap = {for (final song in allSongs) song.filename: song};
+        return snapshot.songFilenames
+            .map((filename) => songMap[filename])
+            .whereType<Song>()
+            .take(4)
+            .toList();
+      },
+      orElse: () => const <Song>[],
+    );
+
+    return _HomeQueueCoverCollage(
+      songs: songs,
+      size: size,
+      borderRadius: 20,
+      backgroundColor: colorScheme.secondaryContainer.withValues(alpha: 0.6),
+      fallbackColor: colorScheme.onSecondaryContainer.withValues(alpha: 0.14),
+      iconColor: colorScheme.onSecondaryContainer,
+    );
+  }
+}
+
+class _HomeQueueCoverCollage extends StatelessWidget {
+  final List<Song> songs;
+  final double size;
+  final double borderRadius;
+  final Color backgroundColor;
+  final Color fallbackColor;
+  final Color iconColor;
+
+  const _HomeQueueCoverCollage({
+    required this.songs,
+    required this.size,
+    required this.borderRadius,
+    required this.backgroundColor,
+    required this.fallbackColor,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tiles = songs.take(4).toList();
+    final tileSize = (size - 3) / 2;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: Container(
+        width: size,
+        height: size,
+        color: backgroundColor,
+        child: tiles.isEmpty
+            ? Center(
+                child:
+                    Icon(Icons.queue_music_rounded, size: 48, color: iconColor),
+              )
+            : Wrap(
+                spacing: 1,
+                runSpacing: 1,
+                children: List.generate(4, (index) {
+                  final song = index < tiles.length ? tiles[index] : null;
+                  return SizedBox(
+                    width: tileSize,
+                    height: tileSize,
+                    child: song == null
+                        ? ColoredBox(color: fallbackColor)
+                        : AlbumArtImage(
+                            url: song.coverUrl ?? '',
+                            width: tileSize,
+                            height: tileSize,
+                            fit: BoxFit.cover,
+                            errorWidget: ColoredBox(
+                              color: fallbackColor,
+                              child: Icon(
+                                Icons.music_note_rounded,
+                                color: iconColor.withValues(alpha: 0.6),
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                  );
+                }),
+              ),
       ),
     );
   }
