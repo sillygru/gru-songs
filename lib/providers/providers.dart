@@ -123,46 +123,62 @@ final metadataSaveProvider =
     NotifierProvider<MetadataSaveNotifier, MetadataSaveState>(
         MetadataSaveNotifier.new);
 
-enum AppScrollDirection { none, up, down }
+class BottomDockVisibilityState {
+  final double visibility;
+  final bool isDragging;
 
-class ScrollAction {
-  final AppScrollDirection direction;
-  final double delta;
-  final int timestamp;
-
-  ScrollAction({
-    required this.direction,
-    this.delta = 0,
-    required this.timestamp,
+  const BottomDockVisibilityState({
+    this.visibility = 1,
+    this.isDragging = false,
   });
+
+  BottomDockVisibilityState copyWith({
+    double? visibility,
+    bool? isDragging,
+  }) {
+    return BottomDockVisibilityState(
+      visibility: visibility ?? this.visibility,
+      isDragging: isDragging ?? this.isDragging,
+    );
+  }
 }
 
-class ScrollDirectionNotifier extends Notifier<ScrollAction> {
+class BottomDockVisibilityNotifier extends Notifier<BottomDockVisibilityState> {
   @override
-  ScrollAction build() => ScrollAction(
-        direction: AppScrollDirection.none,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-      );
+  BottomDockVisibilityState build() => const BottomDockVisibilityState();
 
-  void update(AppScrollDirection direction, {double delta = 0}) {
-    state = ScrollAction(
-      direction: direction,
-      delta: delta,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
+  void updateFromDrag({
+    required double scrollDelta,
+    required double dragDistanceForFullToggle,
+  }) {
+    if (dragDistanceForFullToggle <= 0) return;
+
+    final nextVisibility =
+        (state.visibility - (scrollDelta / dragDistanceForFullToggle))
+            .clamp(0.0, 1.0);
+
+    state = state.copyWith(
+      visibility: nextVisibility,
+      isDragging: true,
     );
   }
 
-  void reset() {
-    state = ScrollAction(
-      direction: AppScrollDirection.none,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
+  void settle() {
+    state = state.copyWith(
+      visibility: state.visibility >= 0.5 ? 1.0 : 0.0,
+      isDragging: false,
     );
+  }
+
+  void show() {
+    state = const BottomDockVisibilityState(visibility: 1, isDragging: false);
   }
 }
 
-final scrollDirectionProvider =
-    NotifierProvider<ScrollDirectionNotifier, ScrollAction>(
-        ScrollDirectionNotifier.new);
+final bottomDockVisibilityProvider =
+    NotifierProvider<BottomDockVisibilityNotifier, BottomDockVisibilityState>(
+  BottomDockVisibilityNotifier.new,
+);
 
 class ScanProgressNotifier extends Notifier<double> {
   @override

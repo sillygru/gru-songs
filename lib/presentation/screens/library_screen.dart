@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../models/song.dart';
@@ -30,39 +29,24 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  static const double _bottomDockDragDistance = 88.0;
+
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) {
       return false;
     }
 
-    if (notification is ScrollUpdateNotification) {
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null) {
       final delta = notification.scrollDelta ?? 0;
-      if (delta > 0) {
-        // Scrolling down
-        ref
-            .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.down, delta: delta);
-      } else if (delta < 0) {
-        // Scrolling up
-        ref
-            .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.up, delta: -delta);
+      if (delta != 0) {
+        ref.read(bottomDockVisibilityProvider.notifier).updateFromDrag(
+              scrollDelta: delta,
+              dragDistanceForFullToggle: _bottomDockDragDistance,
+            );
       }
-    } else if (notification is UserScrollNotification) {
-      switch (notification.direction) {
-        case ScrollDirection.forward:
-          ref
-              .read(scrollDirectionProvider.notifier)
-              .update(AppScrollDirection.up);
-          break;
-        case ScrollDirection.reverse:
-          ref
-              .read(scrollDirectionProvider.notifier)
-              .update(AppScrollDirection.down);
-          break;
-        case ScrollDirection.idle:
-          break;
-      }
+    } else if (notification is ScrollEndNotification) {
+      ref.read(bottomDockVisibilityProvider.notifier).settle();
     }
     return false;
   }

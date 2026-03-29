@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/auth_provider.dart';
@@ -20,6 +19,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  static const double _bottomDockDragDistance = 88.0;
   final _newUsernameController = TextEditingController();
   String _appVersion = '';
   ShufflePersonality? _pendingPersonality;
@@ -30,34 +30,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return false;
     }
 
-    if (notification is ScrollUpdateNotification) {
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null) {
       final delta = notification.scrollDelta ?? 0;
-      if (delta > 0) {
-        // Scrolling down
-        ref
-            .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.down, delta: delta);
-      } else if (delta < 0) {
-        // Scrolling up
-        ref
-            .read(scrollDirectionProvider.notifier)
-            .update(AppScrollDirection.up, delta: -delta);
+      if (delta != 0) {
+        ref.read(bottomDockVisibilityProvider.notifier).updateFromDrag(
+              scrollDelta: delta,
+              dragDistanceForFullToggle: _bottomDockDragDistance,
+            );
       }
-    } else if (notification is UserScrollNotification) {
-      switch (notification.direction) {
-        case ScrollDirection.forward:
-          ref
-              .read(scrollDirectionProvider.notifier)
-              .update(AppScrollDirection.up);
-          break;
-        case ScrollDirection.reverse:
-          ref
-              .read(scrollDirectionProvider.notifier)
-              .update(AppScrollDirection.down);
-          break;
-        case ScrollDirection.idle:
-          break;
-      }
+    } else if (notification is ScrollEndNotification) {
+      ref.read(bottomDockVisibilityProvider.notifier).settle();
     }
     return false;
   }

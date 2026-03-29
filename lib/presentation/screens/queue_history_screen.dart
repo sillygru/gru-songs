@@ -163,6 +163,17 @@ class QueueHistoryScreen extends ConsumerWidget {
     List<dynamic> queue,
     ColorScheme colorScheme,
   ) {
+    final songs = queue
+        .map((item) {
+          try {
+            return item.song as Song;
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<Song>()
+        .toList();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Card(
@@ -182,18 +193,13 @@ class QueueHistoryScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    Icons.queue_music_rounded,
-                    color: colorScheme.onPrimary,
-                    size: 28,
-                  ),
+                _QueueCoverCollage(
+                  songs: songs,
+                  size: 56,
+                  borderRadius: 14,
+                  backgroundColor: colorScheme.primary,
+                  fallbackColor: colorScheme.onPrimary.withValues(alpha: 0.2),
+                  iconColor: colorScheme.onPrimary,
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -231,7 +237,7 @@ class QueueHistoryScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${queue.length} ${queue.length == 1 ? 'track' : 'tracks'}',
+                        '${songs.length} ${songs.length == 1 ? 'track' : 'tracks'}',
                         style: TextStyle(
                           fontSize: 13,
                           color: colorScheme.onSurfaceVariant,
@@ -259,6 +265,8 @@ class QueueHistoryScreen extends ConsumerWidget {
     dynamic audioManager,
     ColorScheme colorScheme,
   ) {
+    final songsAsync = ref.watch(songsProvider);
+
     return Dismissible(
       key: Key(snapshot.id),
       direction: DismissDirection.endToStart,
@@ -295,18 +303,11 @@ class QueueHistoryScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.queue_music_rounded,
-                      color: colorScheme.onSecondaryContainer,
-                      size: 28,
-                    ),
+                  _QueueSnapshotArtwork(
+                    snapshot: snapshot,
+                    songsAsync: songsAsync,
+                    size: 56,
+                    colorScheme: colorScheme,
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -314,7 +315,7 @@ class QueueHistoryScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          snapshot.name,
+                          snapshot.displayDate,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -324,19 +325,12 @@ class QueueHistoryScreen extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(Icons.access_time_rounded,
-                                size: 13, color: colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                            Text(
-                              snapshot.displayDate,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          '${snapshot.songFilenames.length} ${snapshot.songFilenames.length == 1 ? 'track' : 'tracks'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -412,7 +406,7 @@ class QueueHistoryScreen extends ConsumerWidget {
             ),
             error: (_, __) => const SizedBox.shrink(),
             data: (songs) => _QueueDetailSheet(
-              title: snapshot.name,
+              title: snapshot.displayDate,
               songs: songs,
               isCurrentQueue: false,
               colorScheme: colorScheme,
@@ -467,6 +461,109 @@ class QueueHistoryScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+}
+
+class _QueueSnapshotArtwork extends StatelessWidget {
+  final QueueSnapshot snapshot;
+  final AsyncValue<List<Song>> songsAsync;
+  final double size;
+  final ColorScheme colorScheme;
+
+  const _QueueSnapshotArtwork({
+    required this.snapshot,
+    required this.songsAsync,
+    required this.size,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final songs = songsAsync.maybeWhen(
+      data: (allSongs) {
+        final songMap = {for (final song in allSongs) song.filename: song};
+        return snapshot.songFilenames
+            .map((filename) => songMap[filename])
+            .whereType<Song>()
+            .take(4)
+            .toList();
+      },
+      orElse: () => const <Song>[],
+    );
+
+    return _QueueCoverCollage(
+      songs: songs,
+      size: size,
+      borderRadius: 14,
+      backgroundColor: colorScheme.secondaryContainer,
+      fallbackColor: colorScheme.onSecondaryContainer.withValues(alpha: 0.14),
+      iconColor: colorScheme.onSecondaryContainer,
+    );
+  }
+}
+
+class _QueueCoverCollage extends StatelessWidget {
+  final List<Song> songs;
+  final double size;
+  final double borderRadius;
+  final Color backgroundColor;
+  final Color fallbackColor;
+  final Color iconColor;
+
+  const _QueueCoverCollage({
+    required this.songs,
+    required this.size,
+    required this.borderRadius,
+    required this.backgroundColor,
+    required this.fallbackColor,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tiles = songs.take(4).toList();
+    final tileSize = (size - 3) / 2;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: Container(
+        width: size,
+        height: size,
+        color: backgroundColor,
+        child: tiles.isEmpty
+            ? Center(
+                child:
+                    Icon(Icons.queue_music_rounded, color: iconColor, size: 28),
+              )
+            : Wrap(
+                spacing: 1,
+                runSpacing: 1,
+                children: List.generate(4, (index) {
+                  final song = index < tiles.length ? tiles[index] : null;
+                  return SizedBox(
+                    width: tileSize,
+                    height: tileSize,
+                    child: song == null
+                        ? ColoredBox(color: fallbackColor)
+                        : AlbumArtImage(
+                            url: song.coverUrl ?? '',
+                            width: tileSize,
+                            height: tileSize,
+                            fit: BoxFit.cover,
+                            errorWidget: ColoredBox(
+                              color: fallbackColor,
+                              child: Icon(
+                                Icons.music_note_rounded,
+                                color: iconColor.withValues(alpha: 0.6),
+                                size: 14,
+                              ),
+                            ),
+                          ),
+                  );
+                }),
+              ),
+      ),
+    );
   }
 }
 

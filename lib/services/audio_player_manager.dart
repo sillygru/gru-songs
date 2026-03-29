@@ -1634,19 +1634,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   String _buildSnapshotName(List<Song> songs, {String? playlistId}) {
-    if (playlistId != null && playlistId != 'quick_picks') {
-      if (songs.isNotEmpty) {
-        final artists = songs.map((s) => s.artist).whereType<String>().toSet();
-        if (artists.length == 1) return artists.first;
-        if (artists.length <= 3) return artists.join(', ');
-      }
-    }
-    if (songs.isNotEmpty) {
-      final firstSong = songs.first;
-      if (firstSong.album.isNotEmpty) {
-        return firstSong.album;
-      }
-    }
     final now = DateTime.now();
     final h = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
     final m = now.minute.toString().padLeft(2, '0');

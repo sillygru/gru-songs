@@ -127,16 +127,11 @@ class MainScreen extends ConsumerStatefulWidget {
 }
 
 class _MainScreenState extends ConsumerState<MainScreen>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
   bool _isDrawerOpen = false;
-  bool _isBottomDockHidden = false;
-  double _upwardScrollDelta = 0;
-  double _downwardScrollDelta = 0;
 
   static const double _bottomDockBaseHeight = 88.0;
-  static const double _showBarScrollDeltaThreshold = 40.0;
-  static const double _hideBarScrollDeltaThreshold = 15.0;
 
   // Gesture detection for drawer
   double _dragStartX = 0;
@@ -232,17 +227,21 @@ class _MainScreenState extends ConsumerState<MainScreen>
     final settings = ref.watch(settingsProvider);
     final topPadding = mediaQuery.padding.top;
     final androidSystemBottomInset = mediaQuery.padding.bottom;
+    final bottomDockState = ref.watch(bottomDockVisibilityProvider);
+    final bottomDockVisibility =
+        settings.autoHideBottomBarOnScroll ? bottomDockState.visibility : 1.0;
+    final isBottomDockHidden = bottomDockVisibility <= 0.001;
     final bottomInsetReduced = Platform.isIOS
         ? (androidSystemBottomInset > 0 ? 10.0 : 0.0)
         : androidSystemBottomInset;
     final bottomDockHeight = _bottomDockBaseHeight + bottomInsetReduced;
     final nowPlayingBottomPadding = settings.autoHideBottomBarOnScroll &&
-            _isBottomDockHidden &&
+            isBottomDockHidden &&
             androidSystemBottomInset > 0
         ? Platform.isIOS
             ? 12.0
             : 8.0 + androidSystemBottomInset
-        : settings.autoHideBottomBarOnScroll && _isBottomDockHidden
+        : settings.autoHideBottomBarOnScroll && isBottomDockHidden
             ? Platform.isIOS
                 ? 16.0
                 : 20.0
@@ -250,44 +249,11 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
     final isSelectionMode =
         ref.watch(selectionProvider.select((s) => s.isSelectionMode));
-    ref.watch(scrollDirectionProvider);
-
-    ref.listen(scrollDirectionProvider, (previous, next) {
-      if (!_isDrawerOpen && settings.autoHideBottomBarOnScroll) {
-        if (next.direction == AppScrollDirection.down) {
-          _upwardScrollDelta = 0; // Reset upward progress
-          if (!_isBottomDockHidden) {
-            _downwardScrollDelta += next.delta;
-            if (_downwardScrollDelta >= _hideBarScrollDeltaThreshold) {
-              setState(() {
-                _isBottomDockHidden = true;
-                _downwardScrollDelta = 0;
-              });
-            }
-          }
-        } else if (next.direction == AppScrollDirection.up) {
-          _downwardScrollDelta = 0; // Reset downward progress
-          if (_isBottomDockHidden) {
-            _upwardScrollDelta += next.delta;
-            if (_upwardScrollDelta >= _showBarScrollDeltaThreshold) {
-              setState(() {
-                _isBottomDockHidden = false;
-                _upwardScrollDelta = 0;
-              });
-            }
-          }
-        }
-      }
-    });
     ref.listen(
       settingsProvider.select((value) => value.autoHideBottomBarOnScroll),
       (previous, next) {
-        if (!next && _isBottomDockHidden) {
-          setState(() {
-            _isBottomDockHidden = false;
-            _upwardScrollDelta = 0;
-            _downwardScrollDelta = 0;
-          });
+        if (!next) {
+          ref.read(bottomDockVisibilityProvider.notifier).show();
         }
       },
     );
@@ -368,12 +334,14 @@ class _MainScreenState extends ConsumerState<MainScreen>
           : TweenAnimationBuilder<double>(
               tween: Tween<double>(
                 begin: 1,
-                end: settings.autoHideBottomBarOnScroll && _isBottomDockHidden
-                    ? 0
-                    : 1,
+                end: bottomDockVisibility,
               ),
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
+              duration: bottomDockState.isDragging
+                  ? Duration.zero
+                  : const Duration(milliseconds: 180),
+              curve: bottomDockState.isDragging
+                  ? Curves.linear
+                  : Curves.easeOutCubic,
               builder: (context, value, child) {
                 return SizedBox(
                   height: bottomDockHeight * value,

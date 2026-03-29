@@ -11,6 +11,7 @@ import '../screens/playlists_screen.dart';
 import '../screens/artists_screen.dart';
 import '../screens/albums_screen.dart';
 import '../screens/session_history_screen.dart';
+import 'album_art_image.dart';
 import '../screens/queue_history_screen.dart';
 
 class AppDrawer extends ConsumerStatefulWidget {
@@ -1397,6 +1398,19 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
       dateLabel = _formatDate(date);
     }
 
+    final totalSeconds = events.fold<int>(0, (sum, event) {
+      final dur = (event['duration_played'] as num?)?.toDouble() ?? 0;
+      return sum + dur.toInt();
+    });
+    final hours = totalSeconds ~/ 3600;
+    final mins = (totalSeconds % 3600) ~/ 60;
+    String durationStr;
+    if (hours > 0) {
+      durationStr = '${hours}h ${mins}m';
+    } else {
+      durationStr = '${mins}m';
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1423,7 +1437,7 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                '${events.length} plays',
+                '${events.length} plays • $durationStr',
                 style: TextStyle(
                   fontSize: 12,
                   color: colorScheme.onSurfaceVariant,
@@ -1457,18 +1471,20 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
         '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
     final statusColor = isSkip ? Colors.orange : Colors.green;
-    final statusIcon = isSkip ? Icons.skip_next : Icons.play_arrow;
     final statusText = isSkip ? 'Skip' : 'Listen';
 
     return ListTile(
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: statusColor.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(10),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: AlbumArtImage(
+            url: song?.coverUrl ?? '',
+            width: 40,
+            height: 40,
+          ),
         ),
-        child: Icon(statusIcon, color: statusColor, size: 20),
       ),
       title: Text(
         song?.title ?? _getFileNameWithoutExt(filename),
