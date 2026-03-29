@@ -810,7 +810,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _fadeDurationMs = duration * 1000;
     _fadeStartTime = DateTime.now();
 
-    _fadeTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+    _fadeTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
       if (_fadeStartTime == null || _fadeDurationMs == null) {
         timer.cancel();
         return;
