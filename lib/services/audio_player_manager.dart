@@ -1163,12 +1163,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
     _foregroundDuration = 0.0;
     _backgroundDuration = 0.0;
-    if (eventType == 'skip' || eventType == 'complete') {
-      _playStartTime = null;
-      _statsService.flush();
-    } else {
-      if (_playStartTime != null) _playStartTime = DateTime.now();
-    }
+    _playStartTime = null;
+    _statsService.flush();
   }
 
   void _addToShuffleHistory(String filename) {

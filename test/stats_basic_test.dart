@@ -4,9 +4,15 @@ import 'test_helpers.dart';
 import 'package:flutter/foundation.dart';
 
 void main() {
-  // Initialize Flutter binding and mock plugins for tests
+  late TestEnvironment testEnv;
+
   setUpAll(() {
-    setUpMockPlugins();
+    testEnv = TestEnvironment();
+    testEnv.setUp();
+  });
+
+  tearDownAll(() {
+    testEnv.tearDown();
   });
 
   group('Stats Service Basic Tests', () {

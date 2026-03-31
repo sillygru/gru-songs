@@ -28,8 +28,15 @@ Future<Database> _openEmptyDb() async {
 }
 
 void main() {
+  late TestEnvironment testEnv;
+
   setUpAll(() {
-    setUpMockPlugins();
+    testEnv = TestEnvironment();
+    testEnv.setUp();
+  });
+
+  tearDownAll(() {
+    testEnv.tearDown();
   });
 
   final optimizer = DatabaseOptimizerService();

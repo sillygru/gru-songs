@@ -3,8 +3,15 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'test_helpers.dart';
 
 void main() {
+  late TestEnvironment testEnv;
+
   setUpAll(() {
-    setUpMockPlugins();
+    testEnv = TestEnvironment();
+    testEnv.setUp();
+  });
+
+  tearDownAll(() {
+    testEnv.tearDown();
   });
 
   group('Song History Duration-Based Calculation Tests', () {
