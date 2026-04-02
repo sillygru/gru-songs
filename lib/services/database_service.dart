@@ -13,6 +13,9 @@ import 'import_options.dart';
 
 /// DatabaseService handles local SQLite storage.
 class DatabaseService {
+  static const double _skipDurationThresholdSeconds = 10.0;
+  static const double _skipRatioThreshold = 0.25;
+
   static DatabaseService _instance = DatabaseService._init();
   static DatabaseService get instance => _instance;
 
@@ -1821,6 +1824,20 @@ class DatabaseService {
     });
   }
 
+  String _classifyPlayEventType({
+    required double durationPlayed,
+    required double totalLength,
+    String? requestedEventType,
+  }) {
+    if (requestedEventType == 'skip') return 'skip';
+
+    final playRatio = totalLength > 0 ? durationPlayed / totalLength : 0.0;
+    final isSkip = durationPlayed < _skipDurationThresholdSeconds &&
+        playRatio < _skipRatioThreshold;
+
+    return isSkip ? 'skip' : 'listen';
+  }
+
   Future<void> _insertPlayEventTxn(
       Transaction txn, Map<String, dynamic> event) async {
     await txn.insert(
@@ -1852,19 +1869,18 @@ class DatabaseService {
       final last = lastEvents.first;
       final lastId = last['id'] as int;
 
-      final newDuration =
-          (last['duration_played'] as num) + (event['duration_played'] as num);
+      final newDuration = (last['duration_played'] as num).toDouble() +
+          (event['duration_played'] as num).toDouble();
       final newFg = ((last['foreground_duration'] as num?) ?? 0) +
           ((event['foreground_duration'] as num?) ?? 0);
       final newBg = ((last['background_duration'] as num?) ?? 0) +
           ((event['background_duration'] as num?) ?? 0);
       final newRatio = totalLength > 0 ? newDuration / totalLength : 0.0;
-
-      // Retroactively fix "skips" that are actually full plays (within 10s of end)
-      String finalEventType = event['event_type'];
-      if (totalLength > 0 && (totalLength - newDuration) <= 10.0) {
-        finalEventType = 'complete';
-      }
+      final finalEventType = _classifyPlayEventType(
+        durationPlayed: newDuration,
+        totalLength: totalLength,
+        requestedEventType: event['event_type'] as String?,
+      );
 
       await txn.update(
           'playevent',
@@ -1880,11 +1896,12 @@ class DatabaseService {
           whereArgs: [lastId]);
     } else {
       // First insert for this song/session
-      String finalEventType = event['event_type'];
       final duration = (event['duration_played'] as num).toDouble();
-      if (totalLength > 0 && (totalLength - duration) <= 10.0) {
-        finalEventType = 'complete';
-      }
+      final finalEventType = _classifyPlayEventType(
+        durationPlayed: duration,
+        totalLength: totalLength,
+        requestedEventType: event['event_type'] as String?,
+      );
 
       await txn.insert('playevent', {
         'session_id': event['session_id'],

@@ -4,7 +4,7 @@ import '../../models/song.dart';
 /// Represents a play event within a session
 class SessionEvent extends Equatable {
   final String songFilename;
-  final String eventType; // 'listen', 'complete', 'skip'
+  final String eventType; // 'listen' or 'skip'
   final double timestamp;
   final double durationPlayed;
   final double totalLength;
@@ -36,7 +36,7 @@ class SessionEvent extends Equatable {
   DateTime get dateTime =>
       DateTime.fromMillisecondsSinceEpoch((timestamp * 1000).toInt());
 
-  bool get isCompleted => eventType == 'complete' || playRatio >= 0.9;
+  bool get isCompleted => playRatio >= 0.9;
   bool get isSkipped => eventType == 'skip' || playRatio < 0.25;
 
   @override

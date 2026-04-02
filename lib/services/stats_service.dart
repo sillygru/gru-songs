@@ -9,6 +9,7 @@ class StatsService {
   late final String _platform;
   final List<Map<String, dynamic>> _pendingStats = [];
   bool _isBackground = false;
+  Future<void>? _activeFlush;
 
   StatsService() : _sessionId = const Uuid().v4() {
     if (kIsWeb) {
@@ -71,18 +72,35 @@ class StatsService {
   }
 
   Future<void> flush() async {
-    if (_pendingStats.isEmpty) return;
+    if (_activeFlush != null) {
+      await _activeFlush;
+      return;
+    }
 
-    final batch = List<Map<String, dynamic>>.from(_pendingStats);
-    _pendingStats.clear();
-
+    final future = _flushPending();
+    _activeFlush = future;
     try {
-      await DatabaseService.instance.init();
-      await DatabaseService.instance.insertPlayEventsBatch(batch);
+      await future;
+    } finally {
+      if (identical(_activeFlush, future)) {
+        _activeFlush = null;
+      }
+    }
+  }
 
-      debugPrint('Flushed ${batch.length} batched stats events.');
-    } catch (e) {
-      debugPrint('Error flushing stats batch: $e');
+  Future<void> _flushPending() async {
+    while (_pendingStats.isNotEmpty) {
+      final batch = List<Map<String, dynamic>>.from(_pendingStats);
+
+      try {
+        await DatabaseService.instance.init();
+        await DatabaseService.instance.insertPlayEventsBatch(batch);
+        _pendingStats.removeRange(0, batch.length);
+        debugPrint('Flushed ${batch.length} batched stats events.');
+      } catch (e) {
+        debugPrint('Error flushing stats batch: $e');
+        return;
+      }
     }
   }
 

@@ -401,11 +401,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       } else if (_playStartTime != null) {
         _updateDurations();
         _playStartTime = null;
-        _flushStats(eventType: 'listen');
+        _flushStats();
       }
       if (state.processingState == ProcessingState.completed) {
         _isCompleting = true;
-        _flushStats(eventType: 'complete');
+        _flushStats(isTerminal: true);
       }
     });
 
@@ -453,7 +453,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 _foregroundDuration + _backgroundDuration <= 10.0;
 
             if (!shouldIgnore) {
-              _flushStats(eventType: 'skip');
+              _flushStats(forceSkip: true, isTerminal: true);
             }
           }
         }
@@ -1048,7 +1048,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final isBackground = state != AppLifecycleState.resumed;
 
     if (isBackground) {
-      _flushStats(eventType: 'listen');
+      _flushStats(isTerminal: true);
       _savePlaybackState();
       _setCacheLimits(isBackground: true);
       _statsService.flush();
@@ -1126,7 +1126,24 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
-  void _flushStats({required String eventType}) {
+  static const double _skipDurationThresholdSeconds = 10.0;
+  static const double _skipRatioThreshold = 0.25;
+
+  String _classifyStatEventType({
+    required double durationPlayed,
+    required double totalLength,
+    required bool forceSkip,
+  }) {
+    if (forceSkip) return 'skip';
+
+    final playRatio = totalLength > 0 ? durationPlayed / totalLength : 0.0;
+    final isSkip = durationPlayed < _skipDurationThresholdSeconds &&
+        playRatio < _skipRatioThreshold;
+
+    return isSkip ? 'skip' : 'listen';
+  }
+
+  void _flushStats({bool forceSkip = false, bool isTerminal = false}) {
     if (_currentSongFilename == null) return;
     if (_playStartTime != null) _updateDurations();
 
@@ -1147,10 +1164,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
 
     double finalDuration = _foregroundDuration + _backgroundDuration;
+    final eventType = _classifyStatEventType(
+      durationPlayed: finalDuration,
+      totalLength: effectiveTotalLength,
+      forceSkip: forceSkip,
+    );
 
     if (finalDuration > 0.5) {
       _statsService.trackStats({
         'song_filename': _currentSongFilename!,
+        'event_type': eventType,
         'duration_played': finalDuration,
         'foreground_duration': _foregroundDuration,
         'background_duration': _backgroundDuration,
@@ -1163,8 +1186,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
     _foregroundDuration = 0.0;
     _backgroundDuration = 0.0;
-    _playStartTime = null;
-    _statsService.flush();
+    if (isTerminal) {
+      _playStartTime = null;
+      _statsService.flush();
+    } else if (_playStartTime != null) {
+      _playStartTime = DateTime.now();
+    }
   }
 
   void _addToShuffleHistory(String filename) {
@@ -2263,7 +2290,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void forceFlushCurrentStats() {
-    _flushStats(eventType: 'listen');
+    _flushStats(isTerminal: true);
     _statsService.flush();
   }
 
