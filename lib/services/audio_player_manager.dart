@@ -453,7 +453,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
                 _foregroundDuration + _backgroundDuration <= 10.0;
 
             if (!shouldIgnore) {
-              _flushStats(forceSkip: true, isTerminal: true);
+              _flushStats(isTerminal: true);
             }
           }
         }
@@ -1126,24 +1126,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
-  static const double _skipDurationThresholdSeconds = 10.0;
-  static const double _skipRatioThreshold = 0.25;
-
-  String _classifyStatEventType({
-    required double durationPlayed,
-    required double totalLength,
-    required bool forceSkip,
-  }) {
-    if (forceSkip) return 'skip';
-
-    final playRatio = totalLength > 0 ? durationPlayed / totalLength : 0.0;
-    final isSkip = durationPlayed < _skipDurationThresholdSeconds &&
-        playRatio < _skipRatioThreshold;
-
-    return isSkip ? 'skip' : 'listen';
-  }
-
-  void _flushStats({bool forceSkip = false, bool isTerminal = false}) {
+  void _flushStats({bool isTerminal = false}) {
     if (_currentSongFilename == null) return;
     if (_playStartTime != null) _updateDurations();
 
@@ -1164,16 +1147,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
 
     double finalDuration = _foregroundDuration + _backgroundDuration;
-    final eventType = _classifyStatEventType(
-      durationPlayed: finalDuration,
-      totalLength: effectiveTotalLength,
-      forceSkip: forceSkip,
-    );
 
     if (finalDuration > 0.5) {
       _statsService.trackStats({
         'song_filename': _currentSongFilename!,
-        'event_type': eventType,
         'duration_played': finalDuration,
         'foreground_duration': _foregroundDuration,
         'background_duration': _backgroundDuration,

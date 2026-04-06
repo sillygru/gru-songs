@@ -13,7 +13,6 @@ import 'import_options.dart';
 
 /// DatabaseService handles local SQLite storage.
 class DatabaseService {
-  static const double _skipDurationThresholdSeconds = 10.0;
   static const double _skipRatioThreshold = 0.25;
 
   static DatabaseService _instance = DatabaseService._init();
@@ -184,7 +183,6 @@ class DatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT,
         song_filename TEXT,
-        event_type TEXT,
         timestamp REAL,
         duration_played REAL,
         total_length REAL,
@@ -1824,63 +1822,69 @@ class DatabaseService {
     });
   }
 
-  String _classifyPlayEventType({
-    required double durationPlayed,
-    required double totalLength,
-    String? requestedEventType,
-  }) {
-    if (requestedEventType == 'skip') return 'skip';
-
-    final playRatio = totalLength > 0 ? durationPlayed / totalLength : 0.0;
-    final isSkip = durationPlayed < _skipDurationThresholdSeconds &&
-        playRatio < _skipRatioThreshold;
-
-    return isSkip ? 'skip' : 'listen';
+  String _classifyPlayEventType(double playRatio) {
+    return playRatio < _skipRatioThreshold ? 'skip' : 'listen';
   }
 
   Future<void> _insertPlayEventTxn(
       Transaction txn, Map<String, dynamic> event) async {
+    final sessionId = event['session_id'] as String?;
+    final songFilename = event['song_filename'] as String?;
+    final timestamp = (event['timestamp'] as num?)?.toDouble();
+    if (sessionId == null || sessionId.isEmpty) {
+      throw ArgumentError('session_id is required');
+    }
+    if (songFilename == null || songFilename.isEmpty) {
+      throw ArgumentError('song_filename is required');
+    }
+    if (timestamp == null) {
+      throw ArgumentError('timestamp is required');
+    }
+
     await txn.insert(
         'playsession',
         {
-          'id': event['session_id'],
-          'start_time': event['timestamp'],
-          'end_time': event['timestamp'],
+          'id': sessionId,
+          'start_time': timestamp,
+          'end_time': timestamp,
           'platform': event['platform'] ?? 'unknown',
         },
         conflictAlgorithm: ConflictAlgorithm.ignore);
 
     await txn.rawUpdate(
         'UPDATE playsession SET end_time = ? WHERE id = ? AND end_time < ?',
-        [event['timestamp'], event['session_id'], event['timestamp']]);
+        [timestamp, sessionId, timestamp]);
 
     // Coalesce logic (Fix for fragmented stats)
     final lastEvents = await txn.query(
       'playevent',
       where: 'session_id = ? AND song_filename = ?',
-      whereArgs: [event['session_id'], event['song_filename']],
+      whereArgs: [sessionId, songFilename],
       orderBy: 'timestamp DESC',
       limit: 1,
     );
 
-    final totalLength = (event['total_length'] as num).toDouble();
+    final totalLength = (event['total_length'] as num?)?.toDouble() ?? 0.0;
+    final duration = (event['duration_played'] as num?)?.toDouble() ?? 0.0;
+    final incomingRatio = (event['play_ratio'] as num?)?.toDouble() ??
+        (totalLength > 0 ? duration / totalLength : 0.0);
 
     if (lastEvents.isNotEmpty) {
       final last = lastEvents.first;
       final lastId = last['id'] as int;
+      final lastTotalLength = (last['total_length'] as num?)?.toDouble() ?? 0.0;
+      final effectiveTotalLength =
+          totalLength > 0 ? totalLength : lastTotalLength;
 
-      final newDuration = (last['duration_played'] as num).toDouble() +
-          (event['duration_played'] as num).toDouble();
+      final newDuration =
+          (last['duration_played'] as num).toDouble() + duration;
       final newFg = ((last['foreground_duration'] as num?) ?? 0) +
           ((event['foreground_duration'] as num?) ?? 0);
       final newBg = ((last['background_duration'] as num?) ?? 0) +
           ((event['background_duration'] as num?) ?? 0);
-      final newRatio = totalLength > 0 ? newDuration / totalLength : 0.0;
-      final finalEventType = _classifyPlayEventType(
-        durationPlayed: newDuration,
-        totalLength: totalLength,
-        requestedEventType: event['event_type'] as String?,
-      );
+      final newRatio = effectiveTotalLength > 0
+          ? newDuration / effectiveTotalLength
+          : incomingRatio;
 
       await txn.update(
           'playevent',
@@ -1888,29 +1892,21 @@ class DatabaseService {
             'duration_played': newDuration,
             'foreground_duration': newFg,
             'background_duration': newBg,
-            'event_type': finalEventType,
-            'timestamp': event['timestamp'], // Update to latest timestamp
+            'total_length': effectiveTotalLength,
+            'timestamp': timestamp, // Update to latest timestamp
             'play_ratio': newRatio,
           },
           where: 'id = ?',
           whereArgs: [lastId]);
     } else {
       // First insert for this song/session
-      final duration = (event['duration_played'] as num).toDouble();
-      final finalEventType = _classifyPlayEventType(
-        durationPlayed: duration,
-        totalLength: totalLength,
-        requestedEventType: event['event_type'] as String?,
-      );
-
       await txn.insert('playevent', {
-        'session_id': event['session_id'],
-        'song_filename': event['song_filename'],
-        'event_type': finalEventType,
-        'timestamp': event['timestamp'],
+        'session_id': sessionId,
+        'song_filename': songFilename,
+        'timestamp': timestamp,
         'duration_played': duration,
         'total_length': totalLength,
-        'play_ratio': totalLength > 0 ? duration / totalLength : 0.0,
+        'play_ratio': incomingRatio,
         'foreground_duration': event['foreground_duration'],
         'background_duration': event['background_duration'],
       });
@@ -1942,14 +1938,32 @@ class DatabaseService {
         limit: limit,
       );
 
-      return events.map((e) {
-        return (
-          filename: e['song_filename'] as String,
-          timestamp: (e['timestamp'] as num).toDouble(),
-          playRatio: (e['play_ratio'] as num).toDouble(),
-          eventType: e['event_type'] as String,
-        );
-      }).toList();
+      final history = <({
+        String filename,
+        double timestamp,
+        double playRatio,
+        String eventType
+      })>[];
+
+      for (final e in events) {
+        final filename = e['song_filename'] as String?;
+        final timestamp = (e['timestamp'] as num?)?.toDouble();
+        if (filename == null || timestamp == null) continue;
+
+        final duration = (e['duration_played'] as num?)?.toDouble() ?? 0.0;
+        final totalLength = (e['total_length'] as num?)?.toDouble() ?? 0.0;
+        final playRatio = (e['play_ratio'] as num?)?.toDouble() ??
+            (totalLength > 0 ? duration / totalLength : 0.0);
+
+        history.add((
+          filename: filename,
+          timestamp: timestamp,
+          playRatio: playRatio,
+          eventType: _classifyPlayEventType(playRatio),
+        ));
+      }
+
+      return history;
     } catch (e) {
       debugPrint('Error getting play history: $e');
       return [];
@@ -2281,7 +2295,6 @@ class DatabaseService {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id TEXT,
       song_filename TEXT,
-      event_type TEXT,
       timestamp REAL,
       duration_played REAL,
       total_length REAL,

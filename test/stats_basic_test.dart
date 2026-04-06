@@ -59,7 +59,6 @@ void main() {
         await statsService.trackStats({
           'song_filename': 'test.mp3',
           'duration_played': 30.0,
-          'event_type': 'listen',
           'foreground_duration': 30.0,
           'background_duration': 0.0,
           'total_length': 180.0,
@@ -83,8 +82,7 @@ void main() {
       }
     });
 
-    test('database normalizes stored event types to listen or skip only',
-        () async {
+    test('play history derives listen/skip from play ratio', () async {
       final testDb = DatabaseService.forTest();
       final previousDb = DatabaseService.instance;
       DatabaseService.instance = testDb;
@@ -95,7 +93,6 @@ void main() {
         await testDb.insertPlayEvent({
           'session_id': 'session_listen',
           'song_filename': 'listen.mp3',
-          'event_type': 'complete',
           'timestamp': 1.0,
           'duration_played': 120.0,
           'total_length': 180.0,
@@ -106,7 +103,6 @@ void main() {
         await testDb.insertPlayEvent({
           'session_id': 'session_skip',
           'song_filename': 'skip.mp3',
-          'event_type': 'listen',
           'timestamp': 2.0,
           'duration_played': 5.0,
           'total_length': 180.0,
@@ -114,14 +110,13 @@ void main() {
           'background_duration': 0.0,
         });
 
-        final events = await testDb.getAllPlayEvents();
-        final listenEvent = events
-            .firstWhere((event) => event['song_filename'] == 'listen.mp3');
-        final skipEvent =
-            events.firstWhere((event) => event['song_filename'] == 'skip.mp3');
+        final history = await testDb.getPlayHistory(limit: 10);
+        final listenEvent =
+            history.firstWhere((e) => e.filename == 'listen.mp3');
+        final skipEvent = history.firstWhere((e) => e.filename == 'skip.mp3');
 
-        expect(listenEvent['event_type'], 'listen');
-        expect(skipEvent['event_type'], 'skip');
+        expect(listenEvent.eventType, 'listen');
+        expect(skipEvent.eventType, 'skip');
       } finally {
         testDb.dispose();
         DatabaseService.instance = previousDb;
@@ -136,7 +131,6 @@ void main() {
       statsService.setBackground(true);
       await statsService.trackStats({
         'song_filename': 'test.mp3',
-        'event_type': 'listen',
         'duration_played': 30.0,
         'foreground_duration': 30.0,
         'background_duration': 0.0,
@@ -151,7 +145,6 @@ void main() {
 
       expect(fakeDb.insertedBatchEvents, hasLength(1));
       expect(fakeDb.insertedBatchEvents.first['song_filename'], 'test.mp3');
-      expect(fakeDb.insertedBatchEvents.first['event_type'], 'listen');
     });
   });
 }

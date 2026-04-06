@@ -547,7 +547,6 @@ class NamidaImportService {
                   'session_id':
                       'namida_import_${DateTime.now().millisecondsSinceEpoch}_$count',
                   'song_filename': mappedPath,
-                  'event_type': 'listen',
                   'timestamp': dateAdded / 1000.0,
                   'duration_played': duration,
                   'total_length': duration,

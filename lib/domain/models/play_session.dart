@@ -3,6 +3,8 @@ import '../../models/song.dart';
 
 /// Represents a play event within a session
 class SessionEvent extends Equatable {
+  static const double _skipRatioThreshold = 0.25;
+
   final String songFilename;
   final String eventType; // 'listen' or 'skip'
   final double timestamp;
@@ -22,13 +24,19 @@ class SessionEvent extends Equatable {
   });
 
   factory SessionEvent.fromDb(Map<String, dynamic> dbEvent, {Song? song}) {
+    final durationPlayed =
+        (dbEvent['duration_played'] as num?)?.toDouble() ?? 0.0;
+    final totalLength = (dbEvent['total_length'] as num?)?.toDouble() ?? 0.0;
+    final playRatio = (dbEvent['play_ratio'] as num?)?.toDouble() ??
+        (totalLength > 0 ? durationPlayed / totalLength : 0.0);
+
     return SessionEvent(
       songFilename: dbEvent['song_filename'] as String,
-      eventType: dbEvent['event_type'] as String? ?? 'listen',
+      eventType: playRatio < _skipRatioThreshold ? 'skip' : 'listen',
       timestamp: (dbEvent['timestamp'] as num?)?.toDouble() ?? 0,
-      durationPlayed: (dbEvent['duration_played'] as num?)?.toDouble() ?? 0,
-      totalLength: (dbEvent['total_length'] as num?)?.toDouble() ?? 0,
-      playRatio: (dbEvent['play_ratio'] as num?)?.toDouble() ?? 0,
+      durationPlayed: durationPlayed,
+      totalLength: totalLength,
+      playRatio: playRatio,
       song: song,
     );
   }
@@ -37,7 +45,7 @@ class SessionEvent extends Equatable {
       DateTime.fromMillisecondsSinceEpoch((timestamp * 1000).toInt());
 
   bool get isCompleted => playRatio >= 0.9;
-  bool get isSkipped => eventType == 'skip' || playRatio < 0.25;
+  bool get isSkipped => playRatio < _skipRatioThreshold;
 
   @override
   List<Object?> get props => [
