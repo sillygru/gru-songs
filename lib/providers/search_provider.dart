@@ -72,9 +72,6 @@ final searchResultsProvider =
     return [];
   }
 
-  // Initialize search service for the current user
-  await searchService.init();
-
   return songsAsync.when(
     data: (songs) async {
       final results = await searchService.search(
@@ -116,41 +113,8 @@ class DebouncedSearchNotifier extends Notifier<String> {
 /// Provider for search index stats
 final searchIndexStatsProvider = FutureProvider<SearchIndexStats>((ref) async {
   final searchService = ref.watch(searchServiceProvider);
-
-  await searchService.init();
-
-  final stats = await searchService.getIndexStats();
-  return SearchIndexStats(
-    totalEntries: stats.totalEntries,
-    entriesWithLyrics: stats.entriesWithLyrics,
-    totalLyricsChars: stats.totalLyricsChars,
-    lastUpdated: stats.lastUpdated,
-  );
+  return searchService.getIndexStats();
 });
-
-/// Statistics about the search index
-class SearchIndexStats {
-  final int totalEntries;
-  final int entriesWithLyrics;
-  final int totalLyricsChars;
-  final DateTime? lastUpdated;
-
-  const SearchIndexStats({
-    required this.totalEntries,
-    required this.entriesWithLyrics,
-    required this.totalLyricsChars,
-    this.lastUpdated,
-  });
-
-  factory SearchIndexStats.empty() {
-    return const SearchIndexStats(
-      totalEntries: 0,
-      entriesWithLyrics: 0,
-      totalLyricsChars: 0,
-      lastUpdated: null,
-    );
-  }
-}
 
 /// Mixin for widgets that need search functionality
 mixin SearchMixin<T> {

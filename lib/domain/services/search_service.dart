@@ -9,13 +9,15 @@ import '../../data/repositories/search_index_repository.dart';
 /// the song data to provide fast, filtered search results.
 class SearchService {
   final SearchIndexRepository _indexRepository;
+  Future<void>? _initFuture;
 
   SearchService({SearchIndexRepository? indexRepository})
       : _indexRepository = indexRepository ?? SearchIndexRepository();
 
   /// Initializes the search service
   Future<void> init() async {
-    await _indexRepository.init();
+    _initFuture ??= _indexRepository.init();
+    await _initFuture;
   }
 
   /// Performs a search with the given query and filter state
@@ -26,6 +28,8 @@ class SearchService {
     required SearchFilterState filterState,
     required List<Song> allSongs,
   }) async {
+    await init();
+
     if (query.isEmpty) {
       return [];
     }
@@ -137,26 +141,31 @@ class SearchService {
   ///
   /// This should be called during library scanning
   Future<void> rebuildIndex(List<Song> songs) async {
+    await init();
     await _indexRepository.rebuildIndex(songs);
   }
 
   /// Updates a single song in the index
   Future<void> updateSong(Song song) async {
+    await init();
     await _indexRepository.upsertSong(song);
   }
 
   /// Removes a song from the index
   Future<void> removeSong(String filename) async {
+    await init();
     await _indexRepository.removeSong(filename);
   }
 
   /// Clears the search index
   Future<void> clearIndex() async {
+    await init();
     await _indexRepository.clear();
   }
 
   /// Gets statistics about the search index
   Future<SearchIndexStats> getIndexStats() async {
+    await init();
     final stats = await _indexRepository.getStats();
     return SearchIndexStats(
       totalEntries: stats.totalEntries,
@@ -169,6 +178,7 @@ class SearchService {
   /// Disposes of resources
   Future<void> dispose() async {
     await _indexRepository.close();
+    _initFuture = null;
   }
 }
 
