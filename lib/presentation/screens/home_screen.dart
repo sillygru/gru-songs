@@ -373,14 +373,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                snapshot.displayDate,
+                snapshot.timestampLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style:
                     const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
               Text(
-                '${snapshot.songFilenames.length} ${snapshot.songFilenames.length == 1 ? 'track' : 'tracks'}',
+                '${snapshot.displayDate} · ${snapshot.songFilenames.length} ${snapshot.songFilenames.length == 1 ? 'track' : 'tracks'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall
@@ -426,7 +426,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      snapshot.displayDate,
+                      snapshot.timestampLabel,
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,

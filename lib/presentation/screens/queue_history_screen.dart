@@ -315,7 +315,7 @@ class QueueHistoryScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          snapshot.displayDate,
+                          snapshot.timestampLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -326,7 +326,7 @@ class QueueHistoryScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${snapshot.songFilenames.length} ${snapshot.songFilenames.length == 1 ? 'track' : 'tracks'}',
+                          '${snapshot.displayDate} · ${snapshot.songFilenames.length} ${snapshot.songFilenames.length == 1 ? 'track' : 'tracks'}',
                           style: TextStyle(
                             fontSize: 12,
                             color: colorScheme.onSurfaceVariant,
@@ -406,7 +406,7 @@ class QueueHistoryScreen extends ConsumerWidget {
             ),
             error: (_, __) => const SizedBox.shrink(),
             data: (songs) => _QueueDetailSheet(
-              title: snapshot.displayDate,
+              title: snapshot.timestampLabel,
               songs: songs,
               isCurrentQueue: false,
               colorScheme: colorScheme,

@@ -10,21 +10,7 @@ class QueueHistoryNotifier extends AsyncNotifier<List<QueueSnapshot>> {
   }
 
   Future<List<QueueSnapshot>> _loadSnapshots() async {
-    final rows = await DatabaseService.instance.getQueueSnapshots();
-    final snapshots = <QueueSnapshot>[];
-    for (final row in rows) {
-      final id = row['id'] as String;
-      final songFilenames =
-          await DatabaseService.instance.getQueueSnapshotSongs(id);
-      snapshots.add(QueueSnapshot(
-        id: id,
-        name: row['name'] as String,
-        createdAt: (row['created_at'] as num).toDouble(),
-        songFilenames: songFilenames,
-        source: row['source'] as String? ?? 'unknown',
-      ));
-    }
-    return snapshots;
+    return DatabaseService.instance.getQueueHistorySnapshots();
   }
 
   Future<void> refresh() async {
@@ -34,10 +20,7 @@ class QueueHistoryNotifier extends AsyncNotifier<List<QueueSnapshot>> {
 
   Future<void> deleteSnapshot(String id) async {
     await DatabaseService.instance.deleteQueueSnapshot(id);
-    final current = state.value;
-    if (current != null) {
-      state = AsyncData(current.where((s) => s.id != id).toList());
-    }
+    await refresh();
   }
 
   Future<void> clearAll() async {

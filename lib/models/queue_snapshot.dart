@@ -1,5 +1,3 @@
-import 'package:uuid/uuid.dart';
-
 class QueueSnapshot {
   final String id;
   final String name;
@@ -16,21 +14,52 @@ class QueueSnapshot {
   });
 
   factory QueueSnapshot.create({
-    required String name,
+    String? name,
     required List<String> songFilenames,
     required String source,
   }) {
+    final now = DateTime.now();
+    final createdAt =
+        now.microsecondsSinceEpoch / Duration.microsecondsPerSecond;
     return QueueSnapshot(
-      id: const Uuid().v4(),
-      name: name,
-      createdAt: DateTime.now().millisecondsSinceEpoch / 1000.0,
+      id: now.microsecondsSinceEpoch.toString(),
+      name: (name != null && name.trim().isNotEmpty)
+          ? name.trim()
+          : defaultNameForTimestamp(createdAt),
+      createdAt: createdAt,
       songFilenames: songFilenames,
       source: source,
     );
   }
 
-  DateTime get createdDateTime =>
-      DateTime.fromMillisecondsSinceEpoch((createdAt * 1000).toInt());
+  static String timestampMarkerFromEpochSeconds(double createdAt) =>
+      (createdAt * Duration.microsecondsPerSecond).round().toString();
+
+  static String defaultNameForTimestamp(double createdAt) =>
+      'Queue @ ${timestampLabelFromEpochSeconds(createdAt)}';
+
+  static String timestampLabelFromEpochSeconds(double createdAt) {
+    final date = DateTime.fromMicrosecondsSinceEpoch(
+      (createdAt * Duration.microsecondsPerSecond).round(),
+    );
+    return _formatTimestamp(date);
+  }
+
+  static String _formatTimestamp(DateTime dateTime) {
+    final local = dateTime.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    final second = local.second.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day $hour:$minute:$second';
+  }
+
+  DateTime get createdDateTime => DateTime.fromMicrosecondsSinceEpoch(
+        (createdAt * Duration.microsecondsPerSecond).round(),
+      );
+
+  String get timestampLabel => _formatTimestamp(createdDateTime);
 
   String get displayDate {
     final dt = createdDateTime;
@@ -87,11 +116,26 @@ class QueueSnapshot {
       };
 
   factory QueueSnapshot.fromJson(Map<String, dynamic> json) {
+    final createdAtRaw = json['created_at'];
+    final createdAt = createdAtRaw is num
+        ? createdAtRaw.toDouble()
+        : double.tryParse(createdAtRaw?.toString() ?? '') ??
+            DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final idRaw = json['id']?.toString();
+    final resolvedId = (idRaw != null && idRaw.isNotEmpty)
+        ? idRaw
+        : timestampMarkerFromEpochSeconds(createdAt);
+    final nameRaw = json['name']?.toString();
+    final resolvedName = (nameRaw != null && nameRaw.trim().isNotEmpty)
+        ? nameRaw.trim()
+        : defaultNameForTimestamp(createdAt);
+    final songsRaw = json['song_filenames'] as List?;
+
     return QueueSnapshot(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      createdAt: (json['created_at'] as num).toDouble(),
-      songFilenames: List<String>.from(json['song_filenames'] as List),
+      id: resolvedId,
+      name: resolvedName,
+      createdAt: createdAt,
+      songFilenames: songsRaw?.map((song) => song.toString()).toList() ?? [],
       source: json['source'] as String? ?? 'unknown',
     );
   }

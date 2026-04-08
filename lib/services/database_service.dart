@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/playlist.dart';
 import '../models/mood_tag.dart';
+import '../models/queue_snapshot.dart';
 import '../models/song.dart';
 import 'import_options.dart';
 
@@ -562,6 +563,67 @@ class DatabaseService {
     }
   }
 
+  Future<List<QueueSnapshot>> getQueueHistorySnapshots() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+
+    try {
+      return await _userDataDatabase!.transaction((txn) async {
+        final snapshots = await txn.query(
+          'queue_snapshot',
+          orderBy: 'created_at DESC',
+        );
+        if (snapshots.isEmpty) return [];
+
+        final snapshotIds =
+            snapshots.map((row) => row['id'] as String).toList();
+        final placeholders = List.filled(snapshotIds.length, '?').join(',');
+        final songRows = await txn.rawQuery(
+          '''
+          SELECT snapshot_id, song_filename
+          FROM queue_snapshot_song
+          WHERE snapshot_id IN ($placeholders)
+          ORDER BY snapshot_id ASC, position ASC
+          ''',
+          snapshotIds,
+        );
+
+        final songsBySnapshot = <String, List<String>>{};
+        for (final row in songRows) {
+          final snapshotId = row['snapshot_id'] as String;
+          final songFilename = row['song_filename'] as String;
+          songsBySnapshot.putIfAbsent(snapshotId, () => <String>[]).add(
+                songFilename,
+              );
+        }
+
+        return snapshots.map((row) {
+          final createdAtRaw = row['created_at'];
+          final createdAt = createdAtRaw is num
+              ? createdAtRaw.toDouble()
+              : double.tryParse(createdAtRaw?.toString() ?? '') ??
+                  DateTime.now().millisecondsSinceEpoch / 1000.0;
+          final id = row['id'] as String;
+          final nameRaw = row['name']?.toString();
+          final name = (nameRaw != null && nameRaw.trim().isNotEmpty)
+              ? nameRaw.trim()
+              : QueueSnapshot.defaultNameForTimestamp(createdAt);
+
+          return QueueSnapshot(
+            id: id,
+            name: name,
+            createdAt: createdAt,
+            songFilenames: songsBySnapshot[id] ?? const [],
+            source: row['source'] as String? ?? 'unknown',
+          );
+        }).toList();
+      });
+    } catch (e) {
+      debugPrint('Error loading queue history snapshots: $e');
+      return [];
+    }
+  }
+
   Future<List<String>> getQueueSnapshotSongs(String snapshotId) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return [];
@@ -632,11 +694,25 @@ class DatabaseService {
       await txn.delete('queue_snapshot');
 
       for (final snapshot in data) {
-        final snapshotId = snapshot['id'] as String;
-        final name = snapshot['name'] as String;
-        final createdAt = (snapshot['created_at'] as num).toDouble();
+        final createdAtRaw = snapshot['created_at'];
+        final createdAt = createdAtRaw is num
+            ? createdAtRaw.toDouble()
+            : double.tryParse(createdAtRaw?.toString() ?? '') ??
+                DateTime.now().millisecondsSinceEpoch / 1000.0;
+        final snapshotIdRaw = snapshot['id']?.toString();
+        final snapshotId =
+            (snapshotIdRaw != null && snapshotIdRaw.trim().isNotEmpty)
+                ? snapshotIdRaw.trim()
+                : QueueSnapshot.timestampMarkerFromEpochSeconds(createdAt);
+        final nameRaw = snapshot['name']?.toString();
+        final name = (nameRaw != null && nameRaw.trim().isNotEmpty)
+            ? nameRaw.trim()
+            : QueueSnapshot.defaultNameForTimestamp(createdAt);
         final source = snapshot['source'] as String? ?? 'imported';
-        final songs = (snapshot['songs'] as List?)?.cast<String>() ?? [];
+        final songs = (snapshot['songs'] as List?)
+                ?.map((song) => song.toString())
+                .toList() ??
+            [];
 
         await txn.insert('queue_snapshot', {
           'id': snapshotId,
@@ -2726,9 +2802,20 @@ class DatabaseService {
 
           final queueSnapshots = await importedDataDb.query('queue_snapshot');
           for (final snapshot in queueSnapshots) {
-            final snapshotId = snapshot['id'] as String;
-            final name = snapshot['name'] as String;
-            final createdAt = snapshot['created_at'] as double;
+            final createdAtRaw = snapshot['created_at'];
+            final createdAt = createdAtRaw is num
+                ? createdAtRaw.toDouble()
+                : double.tryParse(createdAtRaw?.toString() ?? '') ??
+                    DateTime.now().millisecondsSinceEpoch / 1000.0;
+            final snapshotIdRaw = snapshot['id']?.toString();
+            final snapshotId =
+                (snapshotIdRaw != null && snapshotIdRaw.trim().isNotEmpty)
+                    ? snapshotIdRaw.trim()
+                    : QueueSnapshot.timestampMarkerFromEpochSeconds(createdAt);
+            final nameRaw = snapshot['name']?.toString();
+            final name = (nameRaw != null && nameRaw.trim().isNotEmpty)
+                ? nameRaw.trim()
+                : QueueSnapshot.defaultNameForTimestamp(createdAt);
             final source = snapshot['source'] as String? ?? 'imported';
             final songCount = snapshot['song_count'] as int? ?? 0;
 

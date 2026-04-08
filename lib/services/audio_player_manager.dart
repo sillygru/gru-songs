@@ -16,6 +16,7 @@ import 'database_service.dart';
 import 'volume_monitor_service.dart';
 import 'color_extraction_service.dart';
 import '../providers/theme_provider.dart';
+import '../providers/queue_history_provider.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/settings_provider.dart';
@@ -241,6 +242,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<void> updateShuffleConfig(
     ShuffleConfig config, {
     bool applyToCurrentQueue = true,
+    bool createSnapshotOnQueueApply = false,
   }) async {
     _shuffleState = _shuffleState.copyWith(config: config);
     shuffleStateNotifier.value = _shuffleState;
@@ -250,9 +252,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (applyToCurrentQueue && _effectiveQueue.isNotEmpty) {
       final currentIndex = _player.currentIndex ?? 0;
       if (config.enabled) {
-        await _applyShuffle(currentIndex);
+        await _applyShuffle(
+          currentIndex,
+          createNewSnapshot: createSnapshotOnQueueApply,
+        );
       } else {
-        await _applyLinear(currentIndex);
+        await _applyLinear(
+          currentIndex,
+          createNewSnapshot: createSnapshotOnQueueApply,
+        );
       }
     }
   }
@@ -350,12 +358,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       );
     }
 
-    _savePlaybackState();
-
     // Only save snapshot for new queues, not for jumping within existing queue
     if (contextQueue != null && isNewQueue) {
       await _saveQueueSnapshot(contextQueue, playlistId: playlistId);
     }
+
+    _savePlaybackState();
   }
 
   void _initStatsListeners() {
@@ -1104,6 +1112,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       'last_position_ms': _player.position.inMilliseconds,
       'is_restricted_to_original': _isRestrictedToOriginal,
       'current_playlist_id': _currentPlaylistId,
+      'current_queue_snapshot_id': _currentQueueSnapshotId,
       'preferred_media_mode': preferredMediaModeNotifier.value.name,
     };
 
@@ -1232,6 +1241,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _isRestrictedToOriginal =
               savedState['is_restricted_to_original'] ?? false;
           _currentPlaylistId = savedState['current_playlist_id'];
+          _currentQueueSnapshotId = savedState['current_queue_snapshot_id'];
 
           final savedPositionMs = savedState['last_position_ms'] ?? 0;
           final lastSongFilename = savedState['last_song_filename'];
@@ -1375,6 +1385,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           initialIndex: currentIndex,
           startPlaying: _player.playing,
         );
+        await _saveQueueSnapshot(
+          _effectiveQueue.map((item) => item.song).toList(),
+          playlistId: _currentPlaylistId,
+        );
+        _savePlaybackState();
         return;
       }
 
@@ -1382,7 +1397,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     });
   }
 
-  Future<void> _applyLinear(int currentIndex) async {
+  Future<void> _applyLinear(
+    int currentIndex, {
+    bool createNewSnapshot = false,
+  }) async {
     if (currentIndex >= _originalQueue.length) return;
 
     final prefix = _originalQueue.sublist(0, currentIndex + 1);
@@ -1391,6 +1409,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _effectiveQueue = [...prefix, ...suffix];
     await _rebuildQueue(
         initialIndex: currentIndex, startPlaying: _player.playing);
+    if (createNewSnapshot) {
+      await _saveQueueSnapshot(
+        _effectiveQueue.map((item) => item.song).toList(),
+        playlistId: _currentPlaylistId,
+      );
+    } else {
+      await _updateCurrentSnapshotSongs();
+    }
+    _savePlaybackState();
   }
 
   Future<AudioSource> _createAudioSource(QueueItem item) async {
@@ -1557,7 +1584,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       config: _shuffleState.config.copyWith(enabled: isShuffle),
     );
     shuffleStateNotifier.value = _shuffleState;
-    updateShuffleConfig(_shuffleState.config);
+    await updateShuffleConfig(
+      _shuffleState.config,
+      createSnapshotOnQueueApply: isShuffle,
+    );
   }
 
   Future<void> replaceQueue(
@@ -1614,8 +1644,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<void> _saveQueueSnapshot(List<Song> songs,
       {String? playlistId}) async {
+    if (songs.isEmpty) return;
+
     final snapshot = QueueSnapshot.create(
-      name: _buildSnapshotName(songs, playlistId: playlistId),
       songFilenames: songs.map((s) => s.filename).toList(),
       source: playlistId ?? 'shuffle',
     );
@@ -1628,28 +1659,38 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         snapshot.source,
         snapshot.songFilenames,
       );
+      _notifyQueueHistoryChanged();
+      await _savePlaybackState();
     } catch (e) {
       debugPrint('Failed to save queue snapshot: $e');
     }
   }
 
-  String _buildSnapshotName(List<Song> songs, {String? playlistId}) {
-    final now = DateTime.now();
-    final h = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
-    final m = now.minute.toString().padLeft(2, '0');
-    final ampm = now.hour >= 12 ? 'PM' : 'AM';
-    return 'Queue at $h:$m $ampm';
-  }
-
   Future<void> _updateCurrentSnapshotSongs() async {
-    final id = _currentQueueSnapshotId;
-    if (id == null) return;
+    var id = _currentQueueSnapshotId;
+    if (id == null) {
+      if (_effectiveQueue.isEmpty) return;
+      await _saveQueueSnapshot(
+        _effectiveQueue.map((item) => item.song).toList(),
+        playlistId: _currentPlaylistId,
+      );
+      id = _currentQueueSnapshotId;
+      if (id == null) return;
+    }
+
     final filenames = _effectiveQueue.map((q) => q.song.filename).toList();
     try {
       await DatabaseService.instance.updateQueueSnapshotSongs(id, filenames);
+      _notifyQueueHistoryChanged();
     } catch (e) {
       debugPrint('Failed to update queue snapshot: $e');
     }
+  }
+
+  void _notifyQueueHistoryChanged() {
+    final ref = _ref;
+    if (ref == null || !ref.mounted) return;
+    ref.invalidate(queueHistoryProvider);
   }
 
   void setPendingQueueReplacement(List<Song> songs, {String? playlistId}) {
@@ -1664,7 +1705,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     pendingQueueNotifier.value = false;
   }
 
-  Future<void> _applyShuffle(int currentIndex) async {
+  Future<void> _applyShuffle(
+    int currentIndex, {
+    bool createNewSnapshot = false,
+  }) async {
     if (_effectiveQueue.isEmpty) return;
     if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) {
       currentIndex = 0;
@@ -1689,6 +1733,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       initialIndex: 0,
       startPlaying: _player.playing,
     );
+    if (createNewSnapshot) {
+      await _saveQueueSnapshot(
+        _effectiveQueue.map((item) => item.song).toList(),
+        playlistId: _currentPlaylistId,
+      );
+    } else {
+      await _updateCurrentSnapshotSongs();
+    }
+    _savePlaybackState();
   }
 
   Future<List<QueueItem>> _weightedShuffle(
@@ -2124,7 +2177,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
         _updateQueueNotifier();
         _savePlaybackState();
-        _updateCurrentSnapshotSongs();
+        await _updateCurrentSnapshotSongs();
         return;
       }
 
@@ -2139,7 +2192,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
-      _updateCurrentSnapshotSongs();
+      await _updateCurrentSnapshotSongs();
     });
   }
 
@@ -2164,7 +2217,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
-      _updateCurrentSnapshotSongs();
+      await _updateCurrentSnapshotSongs();
     });
   }
 
@@ -2182,7 +2235,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
-      _updateCurrentSnapshotSongs();
+      await _updateCurrentSnapshotSongs();
     });
   }
 
@@ -2199,7 +2252,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
       _updateQueueNotifier();
       _savePlaybackState();
-      _updateCurrentSnapshotSongs();
+      await _updateCurrentSnapshotSongs();
     });
   }
 
@@ -2222,7 +2275,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       _updateQueueNotifier();
       _savePlaybackState();
-      _updateCurrentSnapshotSongs();
+      await _updateCurrentSnapshotSongs();
     });
   }
 
@@ -2263,6 +2316,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       _updateQueueNotifier();
       _savePlaybackState();
+      await _updateCurrentSnapshotSongs();
     });
   }
 
