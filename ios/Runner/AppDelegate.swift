@@ -90,6 +90,11 @@ private final class IOSFolderAccessManager: NSObject, UIDocumentPickerDelegate, 
 
     do {
       let record = try store.upsertFolder(from: url)
+      if let existing = activeAccess[record.id] {
+        existing.stopAccessingSecurityScopedResource()
+      }
+      _ = url.startAccessingSecurityScopedResource()
+      activeAccess[record.id] = url
       pendingResult?(record.toFlutterMap())
     } catch {
       pendingResult?(FlutterError(code: "bookmark_error", message: error.localizedDescription, details: nil))
@@ -164,7 +169,7 @@ private final class IOSFolderAccessManager: NSObject, UIDocumentPickerDelegate, 
     var stale = false
     let url = try URL(
       resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope],
+      options: [],
       relativeTo: nil,
       bookmarkDataIsStale: &stale
     )
@@ -179,7 +184,7 @@ private final class IOSFolderAccessManager: NSObject, UIDocumentPickerDelegate, 
     updated.path = url.path
     if stale {
       let refreshed = try url.bookmarkData(
-        options: [.withSecurityScope],
+        options: [],
         includingResourceValuesForKeys: nil,
         relativeTo: nil
       )
@@ -223,7 +228,7 @@ private final class IOSFolderBookmarkStore {
 
   func upsertFolder(from url: URL) throws -> FolderBookmarkRecord {
     let bookmarkData = try url.bookmarkData(
-      options: [.withSecurityScope],
+      options: [],
       includingResourceValuesForKeys: nil,
       relativeTo: nil
     )
@@ -238,15 +243,9 @@ private final class IOSFolderBookmarkStore {
     )
 
     var records = try loadRecords()
-    let removedRecords = records.filter { $0.path == url.path }
-    for record in removedRecords {
-      activeAccess[record.id]?.stopAccessingSecurityScopedResource()
-      activeAccess.removeValue(forKey: record.id)
-    }
     records.removeAll { $0.path == url.path }
     records.append(record)
     try saveRecords(records)
-    _ = url.startAccessingSecurityScopedResource()
     return record
   }
 
