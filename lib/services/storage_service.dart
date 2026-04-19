@@ -1,11 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'android_storage_service.dart';
+import 'cache_service.dart';
+import 'ios_folder_access_service.dart';
 import 'import_options.dart';
 
 class StorageService {
+  static const String _musicFoldersKey = 'music_folders_list';
   static const String _musicFolderKey = 'music_folder_path';
   static const String _excludedFoldersKey = 'excluded_folders';
   static const String _lastLibraryFolderKey = 'last_library_folder';
@@ -41,6 +46,101 @@ class StorageService {
     return File('$path/playback_state.json');
   }
 
+  List<Map<String, String>>? _cachedMusicFolders;
+
+  Map<String, String> _normalizeFolderRecord(Map<String, String> folder) {
+    return {
+      'path': folder['path'] ?? '',
+      'treeUri': folder['treeUri'] ?? '',
+      'platform': folder['platform'] ??
+          (Platform.isIOS
+              ? 'ios'
+              : Platform.isAndroid
+                  ? 'android'
+                  : Platform.operatingSystem),
+      'iosBookmarkId': folder['iosBookmarkId'] ?? '',
+    };
+  }
+
+  Map<String, String> _decodeFolderRecord(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return _normalizeFolderRecord({'path': ''});
+    }
+
+    if (!trimmed.startsWith('{')) {
+      return _normalizeFolderRecord({'path': trimmed});
+    }
+
+    try {
+      final map = jsonDecode(trimmed) as Map<String, dynamic>;
+      return _normalizeFolderRecord({
+        'path': map['path'] as String? ?? '',
+        'treeUri': map['treeUri'] as String? ?? '',
+        'platform': map['platform'] as String? ?? '',
+        'iosBookmarkId': map['iosBookmarkId'] as String? ?? '',
+      });
+    } catch (_) {
+      return _normalizeFolderRecord({'path': trimmed});
+    }
+  }
+
+  List<String> _encodeFolderRecords(List<Map<String, String>> folders) {
+    return folders.map((folder) {
+      final normalized = _normalizeFolderRecord(folder);
+      return jsonEncode(normalized);
+    }).toList(growable: false);
+  }
+
+  Future<void> _persistMusicFolders(List<Map<String, String>> folders) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_musicFoldersKey, _encodeFolderRecords(folders));
+    _cachedMusicFolders = folders.map(_normalizeFolderRecord).toList();
+  }
+
+  Future<void> _markLibraryFoldersChanged() async {
+    await CacheService.instance.markLibraryChanged();
+  }
+
+  Future<Map<String, String>?> pickMusicFolder() async {
+    if (Platform.isAndroid) {
+      final selection = await AndroidStorageService.pickTree();
+      if (selection == null ||
+          selection.path == null ||
+          selection.path!.isEmpty) {
+        return null;
+      }
+
+      return _normalizeFolderRecord({
+        'path': selection.path!,
+        'treeUri': selection.treeUri,
+        'platform': 'android',
+      });
+    }
+
+    if (Platform.isIOS) {
+      final selection = await IosFolderAccessService.pickFolder();
+      if (selection == null ||
+          selection.path.isEmpty ||
+          selection.bookmarkId.isEmpty) {
+        return null;
+      }
+
+      return _normalizeFolderRecord({
+        'path': selection.path,
+        'platform': 'ios',
+        'iosBookmarkId': selection.bookmarkId,
+      });
+    }
+
+    final selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory == null || selectedDirectory.isEmpty) return null;
+    return _normalizeFolderRecord({
+      'path': selectedDirectory,
+      'platform': Platform.operatingSystem,
+    });
+  }
+
   Future<void> savePlaybackState(Map<String, dynamic> state) async {
     try {
       final file = await _getPlaybackStateFile();
@@ -64,55 +164,110 @@ class StorageService {
   }
 
   // Multiple Music Folders
-  Future<List<Map<String, String>>> getMusicFolders() async {
+  Future<List<Map<String, String>>> getMusicFolders(
+      {bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedMusicFolders != null) {
+      return _cachedMusicFolders!.map(_normalizeFolderRecord).toList();
+    }
+
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = prefs.getStringList('music_folders_list') ?? [];
-    return jsonList.map((json) {
-      final map = jsonDecode(json) as Map<String, dynamic>;
-      return {
-        'path': map['path'] as String,
-        'treeUri': map['treeUri'] as String? ?? '',
-      };
-    }).toList();
+    final jsonList = prefs.getStringList(_musicFoldersKey) ?? [];
+    final decodedFromPrefs = jsonList.map(_decodeFolderRecord).toList();
+
+    if (Platform.isIOS) {
+      final resolved = await IosFolderAccessService.loadResolvedFolders();
+      if (resolved.isNotEmpty) {
+        final normalized = resolved.map(_normalizeFolderRecord).toList();
+        await _persistMusicFolders(normalized);
+        return normalized;
+      }
+    }
+
+    if (decodedFromPrefs.isNotEmpty) {
+      _cachedMusicFolders = decodedFromPrefs;
+      return decodedFromPrefs.map(_normalizeFolderRecord).toList();
+    }
+
+    if (Platform.isIOS) {
+      final restored = await IosFolderAccessService.loadPersistedFolders();
+      if (restored.isNotEmpty) {
+        final normalized = restored.map(_normalizeFolderRecord).toList();
+        await _persistMusicFolders(normalized);
+        return normalized;
+      }
+    }
+
+    _cachedMusicFolders = decodedFromPrefs;
+    return decodedFromPrefs.map(_normalizeFolderRecord).toList();
   }
 
   Future<void> setMusicFolders(List<Map<String, String>> folders) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = folders.map((folder) {
-      return jsonEncode({
-        'path': folder['path'],
-        'treeUri': folder['treeUri'] ?? '',
-      });
-    }).toList();
-    await prefs.setStringList('music_folders_list', jsonList);
+    final normalized = folders.map(_normalizeFolderRecord).toList();
+    await _persistMusicFolders(normalized);
+    await _markLibraryFoldersChanged();
   }
 
-  Future<void> addMusicFolder(String path, String? treeUri) async {
-    final prefs = await SharedPreferences.getInstance();
-    final current = prefs.getStringList('music_folders_list') ?? [];
-    final newFolder = jsonEncode({
+  Future<void> addMusicFolder(
+    String path,
+    String? treeUri, {
+    String? iosBookmarkId,
+    String? platform,
+  }) async {
+    final current = await getMusicFolders(forceRefresh: true);
+    final next = List<Map<String, String>>.from(current);
+    final normalized = _normalizeFolderRecord({
       'path': path,
       'treeUri': treeUri ?? '',
+      'platform': platform ??
+          (Platform.isIOS
+              ? 'ios'
+              : Platform.isAndroid
+                  ? 'android'
+                  : Platform.operatingSystem),
+      'iosBookmarkId': iosBookmarkId ?? '',
     });
-    // Check if already exists
-    final exists = current.any((json) {
-      final map = jsonDecode(json) as Map<String, dynamic>;
-      return map['path'] == path;
-    });
-    if (!exists) {
-      current.add(newFolder);
-      await prefs.setStringList('music_folders_list', current);
+
+    final existingIndex = next.indexWhere((folder) =>
+        folder['path'] == normalized['path'] ||
+        (normalized['iosBookmarkId']?.isNotEmpty == true &&
+            folder['iosBookmarkId'] == normalized['iosBookmarkId']));
+    if (existingIndex >= 0) {
+      next[existingIndex] = normalized;
+    } else {
+      next.add(normalized);
     }
+
+    await _persistMusicFolders(next);
+    await _markLibraryFoldersChanged();
   }
 
-  Future<void> removeMusicFolder(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    final current = prefs.getStringList('music_folders_list') ?? [];
-    current.removeWhere((json) {
-      final map = jsonDecode(json) as Map<String, dynamic>;
-      return map['path'] == path;
-    });
-    await prefs.setStringList('music_folders_list', current);
+  Future<void> removeMusicFolder(String path, {String? iosBookmarkId}) async {
+    final current = await getMusicFolders(forceRefresh: true);
+    final target = current.where((folder) {
+      if (iosBookmarkId != null && iosBookmarkId.isNotEmpty) {
+        return folder['iosBookmarkId'] == iosBookmarkId;
+      }
+      return folder['path'] == path;
+    }).toList();
+
+    if (Platform.isIOS) {
+      for (final folder in target) {
+        final bookmarkId = folder['iosBookmarkId'];
+        if (bookmarkId != null && bookmarkId.isNotEmpty) {
+          await IosFolderAccessService.removeFolder(bookmarkId);
+        }
+      }
+    }
+
+    final remaining = current.where((folder) {
+      if (iosBookmarkId != null && iosBookmarkId.isNotEmpty) {
+        return folder['iosBookmarkId'] != iosBookmarkId;
+      }
+      return folder['path'] != path;
+    }).toList();
+
+    await _persistMusicFolders(remaining);
+    await _markLibraryFoldersChanged();
   }
 
   // Legacy compatibility - returns first music folder or null
@@ -427,6 +582,9 @@ class StorageService {
 
   Future<void> importScannerSettings(Map<String, dynamic> settings) async {
     await _importSettingsSubset(settings, _scannerSettingsKeys);
+    if (settings.containsKey('music_folders_list')) {
+      await CacheService.instance.markLibraryChanged();
+    }
   }
 
   Future<void> importPlaybackSettings(Map<String, dynamic> settings) async {

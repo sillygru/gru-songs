@@ -106,6 +106,9 @@ class _WispieAppState extends ConsumerState<WispieApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(CacheService.instance.scheduleStartupMaintenance());
+    });
   }
 
   @override

@@ -1,13 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import '../widgets/album_art_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
-import '../../services/android_storage_service.dart';
 import '../../services/telemetry_service.dart';
 import '../../services/library_logic.dart';
 import '../../models/song.dart';
@@ -55,27 +52,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _selectMusicFolder() async {
-    if (Platform.isAndroid) {
-      final selection = await AndroidStorageService.pickTree();
-      if (selection == null) return;
-      if (selection.path == null || selection.path!.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Unable to access selected folder")),
-          );
-        }
-        return;
+    final storage = ref.read(storageServiceProvider);
+    final selection = await storage.pickMusicFolder();
+    if (selection == null || selection['path']!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Unable to access selected folder")),
+        );
       }
-      final storage = ref.read(storageServiceProvider);
-      await storage.addMusicFolder(selection.path!, selection.treeUri);
-      ref.invalidate(songsProvider);
       return;
     }
 
-    final selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory == null) return;
-    final storage = ref.read(storageServiceProvider);
-    await storage.addMusicFolder(selectedDirectory, null);
+    await storage.addMusicFolder(
+      selection['path']!,
+      selection['treeUri'],
+      iosBookmarkId: selection['iosBookmarkId'],
+      platform: selection['platform'],
+    );
     ref.invalidate(songsProvider);
   }
 

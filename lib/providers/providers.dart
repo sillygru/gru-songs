@@ -245,6 +245,10 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
   @override
   Future<List<Song>> build() async {
+    ref.onDispose(() {
+      _debounceTimer?.cancel();
+    });
+
     final userData = ref.read(userDataProvider);
 
     // 2. Load from SQLite

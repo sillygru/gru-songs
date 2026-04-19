@@ -1,9 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../services/android_storage_service.dart';
 import '../../providers/providers.dart';
-import 'package:file_picker/file_picker.dart';
 
 class FolderManagementScreen extends ConsumerStatefulWidget {
   const FolderManagementScreen({super.key});
@@ -34,27 +31,22 @@ class _FolderManagementScreenState
   }
 
   Future<void> _addFolder() async {
-    if (Platform.isAndroid) {
-      // For Android, use SAF
-      final selection = await AndroidStorageService.pickTree();
-      if (selection == null) return;
-      if (selection.path == null || selection.path!.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Unable to access selected folder")),
-          );
-        }
-        return;
+    final storage = ref.read(storageServiceProvider);
+    final selection = await storage.pickMusicFolder();
+    if (selection == null || selection['path']!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Unable to access selected folder")),
+        );
       }
-      final storage = ref.read(storageServiceProvider);
-      await storage.addMusicFolder(selection.path!, selection.treeUri);
-    } else {
-      // For non-Android platforms, use file picker
-      final selectedDirectory = await FilePicker.platform.getDirectoryPath();
-      if (selectedDirectory == null) return;
-      final storage = ref.read(storageServiceProvider);
-      await storage.addMusicFolder(selectedDirectory, null);
+      return;
     }
+    await storage.addMusicFolder(
+      selection['path']!,
+      selection['treeUri'],
+      iosBookmarkId: selection['iosBookmarkId'],
+      platform: selection['platform'],
+    );
 
     await _loadFolders();
     ref.invalidate(songsProvider);
@@ -66,9 +58,12 @@ class _FolderManagementScreenState
     }
   }
 
-  Future<void> _removeFolder(String path) async {
+  Future<void> _removeFolder(Map<String, String> folder) async {
     final storage = ref.read(storageServiceProvider);
-    await storage.removeMusicFolder(path);
+    await storage.removeMusicFolder(
+      folder['path'] ?? '',
+      iosBookmarkId: folder['iosBookmarkId'],
+    );
 
     await _loadFolders();
     ref.invalidate(songsProvider);
@@ -151,7 +146,7 @@ class _FolderManagementScreenState
                               ),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete_outline),
-                                onPressed: () => _removeFolder(path),
+                                onPressed: () => _removeFolder(folder),
                               ),
                             );
                           },

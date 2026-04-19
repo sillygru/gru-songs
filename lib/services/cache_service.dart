@@ -1,7 +1,14 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models/song.dart';
+import 'database_service.dart';
 
 /// CacheService V3 - Offline First
 /// Only handles app settings and sync data.
@@ -10,7 +17,13 @@ class CacheService {
   static final CacheService instance = CacheService._internal();
   CacheService._internal();
 
+  static const String _startupMaintenanceVersionKey =
+      'startup_cache_maintenance_version';
+  static const String _startupMaintenancePendingKey =
+      'startup_cache_maintenance_pending';
+
   bool _initialized = false;
+  bool _maintenanceRequested = false;
   late Directory _appSupportDir;
 
   // V3 specific: we keep a directory for sync-related cache (e.g. temporary sync files)
@@ -25,15 +38,13 @@ class CacheService {
       if (!await _v3Dir.exists()) {
         await _v3Dir.create(recursive: true);
       }
-
-      await _cleanupOldCaches();
       _initialized = true;
     } catch (e) {
       debugPrint('CacheService init error: $e');
     }
   }
 
-  Future<void> _cleanupOldCaches() async {
+  Future<void> _cleanupLegacyCaches() async {
     try {
       // Cleanup V2
       final v2Dir = Directory(p.join(_appSupportDir.path, 'gru_cache_v2'));
@@ -60,6 +71,72 @@ class CacheService {
     } catch (e) {
       debugPrint('Error during cache cleanup: $e');
     }
+  }
+
+  Future<void> markLibraryChanged() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_startupMaintenancePendingKey, true);
+    } catch (e) {
+      debugPrint('Error marking cache maintenance as pending: $e');
+    }
+  }
+
+  Future<void> scheduleStartupMaintenance() async {
+    if (_maintenanceRequested) return;
+    _maintenanceRequested = true;
+
+    unawaited(() async {
+      try {
+        await init();
+
+        final prefs = await SharedPreferences.getInstance();
+        final currentVersion = await _readAppVersion();
+        final lastVersion = prefs.getString(_startupMaintenanceVersionKey);
+        final pending = prefs.getBool(_startupMaintenancePendingKey) ?? false;
+
+        if (!pending && lastVersion == currentVersion) {
+          return;
+        }
+
+        final songs = await DatabaseService.instance.getAllSongs();
+        await pruneStaleSongCaches(songs);
+        await _cleanupLegacyCaches();
+
+        await prefs.setString(_startupMaintenanceVersionKey, currentVersion);
+        await prefs.setBool(_startupMaintenancePendingKey, false);
+      } catch (e) {
+        debugPrint('Startup cache maintenance failed: $e');
+      } finally {
+        _maintenanceRequested = false;
+      }
+    }());
+  }
+
+  Future<String> _readAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      return '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  Future<void> pruneStaleSongCaches(List<Song> songs) async {
+    await init();
+
+    final supportDir = _appSupportDir.path;
+    final songPayload = songs
+        .map((song) => {
+              'filename': song.filename,
+              'coverUrl': song.coverUrl ?? '',
+            })
+        .toList(growable: false);
+
+    await Isolate.run(() => _pruneCachesInIsolate({
+          'supportDir': supportDir,
+          'songs': songPayload,
+        }));
   }
 
   Future<void> clearCache() async {
@@ -165,4 +242,84 @@ class CacheService {
     }
     return File(p.join(notifDir.path, '$songFilename.jpg'));
   }
+}
+
+Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
+  final supportDir = Directory(payload['supportDir'] as String);
+  final songs = List<Map<String, dynamic>>.from(payload['songs'] as List);
+
+  final currentCoverPaths = <String>{};
+  final currentBlurredPaths = <String>{};
+  final currentNotificationPaths = <String>{};
+
+  final blurredDir =
+      Directory(p.join(supportDir.path, 'gru_cache_v3', 'blurred_cache'));
+  final notificationDir = Directory(
+      p.join(supportDir.path, 'gru_cache_v3', 'notification_cover_cache'));
+  final extractedCoversDir =
+      Directory(p.join(supportDir.path, 'extracted_covers'));
+
+  for (final song in songs) {
+    final coverUrl = (song['coverUrl'] as String?) ?? '';
+    if (coverUrl.isNotEmpty) {
+      currentCoverPaths.add(p.normalize(coverUrl));
+    }
+
+    final filename = (song['filename'] as String?) ?? '';
+    if (filename.isNotEmpty) {
+      currentBlurredPaths.add(
+        p.normalize(p.join(blurredDir.path, 'blurred_$filename.jpg')),
+      );
+    }
+
+    if (coverUrl.isNotEmpty) {
+      final coverKey = p.basename(coverUrl).replaceAll(RegExp(r'[^\w\-]'), '_');
+      currentNotificationPaths.add(
+        p.normalize(p.join(notificationDir.path, '$coverKey.jpg')),
+      );
+    }
+  }
+
+  Future<int> pruneDirectory(Directory dir, Set<String> keepPaths) async {
+    if (!await dir.exists()) return 0;
+    int deleted = 0;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final normalized = p.normalize(entity.path);
+      if (!keepPaths.contains(normalized)) {
+        try {
+          await entity.delete();
+          deleted++;
+        } catch (_) {}
+      }
+    }
+    return deleted;
+  }
+
+  Future<void> pruneEmptyDirectories(Directory dir) async {
+    if (!await dir.exists()) return;
+    final directories = <Directory>[];
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is Directory &&
+          p.normalize(entity.path) != p.normalize(dir.path)) {
+        directories.add(entity);
+      }
+    }
+
+    directories.sort((a, b) => b.path.length.compareTo(a.path.length));
+    for (final directory in directories) {
+      try {
+        if (await directory.exists() && await directory.list().isEmpty) {
+          await directory.delete();
+        }
+      } catch (_) {}
+    }
+  }
+
+  await pruneDirectory(extractedCoversDir, currentCoverPaths);
+  await pruneDirectory(blurredDir, currentBlurredPaths);
+  await pruneDirectory(notificationDir, currentNotificationPaths);
+  await pruneEmptyDirectories(extractedCoversDir);
+  await pruneEmptyDirectories(blurredDir);
+  await pruneEmptyDirectories(notificationDir);
 }
