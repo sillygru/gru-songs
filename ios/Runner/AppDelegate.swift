@@ -207,6 +207,7 @@ private struct FolderBookmarkRecord: Codable, Equatable {
       "path": path,
       "treeUri": treeUri ?? "",
       "platform": platform,
+      "bookmarkId": iosBookmarkId ?? id,
       "iosBookmarkId": iosBookmarkId ?? id,
     ]
   }
