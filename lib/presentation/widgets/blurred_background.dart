@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'album_art_image.dart';
 import '../../services/cache_service.dart';
@@ -22,32 +23,76 @@ class BlurredBackground extends StatefulWidget {
 }
 
 class _BlurredBackgroundState extends State<BlurredBackground> {
-  Future<File>? _blurFuture;
+  File? _blurFile;
+  Timer? _pollTimer;
   String? _lastFilename;
+  int _requestToken = 0;
 
   @override
   void initState() {
     super.initState();
-    _updateFuture();
+    _updateBlurFile();
   }
 
   @override
   void didUpdateWidget(BlurredBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.filename != oldWidget.filename) {
-      _updateFuture();
+      _updateBlurFile();
     }
   }
 
-  void _updateFuture() {
-    if (widget.filename != null && widget.filename != _lastFilename) {
-      _lastFilename = widget.filename;
-      _blurFuture = CacheService.instance.getBlurredCacheFile(widget.filename!);
-    } else if (widget.filename == null) {
-      _lastFilename = null;
-      _blurFuture = null;
-    }
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
+
+  Future<void> _updateBlurFile() async {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _lastFilename = widget.filename;
+    _blurFile = null;
+
+    final filename = widget.filename;
+    if (filename == null) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final token = ++_requestToken;
+    final blurFile = await CacheService.instance.getBlurredCacheFile(filename);
+    if (!mounted || token != _requestToken || filename != _lastFilename) {
+      return;
+    }
+
+    _blurFile = blurFile;
+    if (await blurFile.exists()) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    if (mounted) setState(() {});
+
+    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!mounted || token != _requestToken || filename != _lastFilename) {
+        _pollTimer?.cancel();
+        return;
+      }
+
+      if (await blurFile.exists()) {
+        _pollTimer?.cancel();
+        if (mounted && token == _requestToken) {
+          setState(() {
+            _blurFile = blurFile;
+          });
+        }
+      }
+    });
+  }
+
+  bool get _hasBlurredBackground =>
+      _blurFile != null && _blurFile!.existsSync();
 
   @override
   Widget build(BuildContext context) {
@@ -66,32 +111,19 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
             ),
           ),
 
-          // Blurred layer: Fades in when ready
-          if (_blurFuture != null)
+          // Blurred layer: fades in once the cache file exists
+          if (_hasBlurredBackground)
             Positioned.fill(
-              child: FutureBuilder<File>(
-                future: _blurFuture,
-                builder: (context, snapshot) {
-                  final file = snapshot.data;
-                  final bool isReady =
-                      snapshot.connectionState == ConnectionState.done &&
-                          file != null &&
-                          file.existsSync();
-
-                  return AnimatedOpacity(
-                    duration: const Duration(milliseconds: 400),
-                    opacity: isReady ? 1.0 : 0.0,
-                    curve: Curves.easeIn,
-                    child: isReady
-                        ? Image.file(
-                            file,
-                            fit: BoxFit.cover,
-                            filterQuality: FilterQuality.low,
-                            gaplessPlayback: true,
-                          )
-                        : const SizedBox.shrink(),
-                  );
-                },
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 400),
+                opacity: 1.0,
+                curve: Curves.easeIn,
+                child: Image.file(
+                  _blurFile!,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.low,
+                  gaplessPlayback: true,
+                ),
               ),
             ),
 
