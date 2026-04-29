@@ -311,7 +311,7 @@ class SleepTimerService {
       await audioManager.player.pause();
 
       // Flush stats without side-effecting lifecycle state or image caches
-      audioManager.forceFlushCurrentStats();
+      await audioManager.forceFlushCurrentStats();
 
       // Callback
       _onComplete?.call();

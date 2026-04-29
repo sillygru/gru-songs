@@ -63,7 +63,7 @@ class _BackupManagementScreenState
 
     try {
       final audioManager = ref.read(audioPlayerManagerProvider);
-      audioManager.forceFlushCurrentStats();
+      await audioManager.forceFlushCurrentStats();
       await audioManager.savePlaybackState();
       final backupFilename = await BackupService.instance.createBackup(options);
       await _loadBackups();

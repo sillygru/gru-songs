@@ -111,14 +111,17 @@ class FFmpegService {
         return null;
       }
 
-      final input = _q(filePath);
-      // Use -select_streams a:0 to only analyze audio streams, avoiding
-      // video codec errors (e.g., AV1 decoding failures on unsupported platforms).
-      // -vn and -sn explicitly disable video and subtitle stream processing.
-      final cmd =
-          '-v quiet -vn -sn -select_streams a:0 -show_entries format_tags -print_format json $input';
+      final args = [
+        '-v',
+        'quiet',
+        '-show_entries',
+        'format_tags',
+        '-print_format',
+        'json',
+        filePath,
+      ];
 
-      final session = await FFprobeKit.execute(cmd);
+      final session = await FFprobeKit.executeWithArguments(args);
       final rc = await session.getReturnCode();
 
       if (!ReturnCode.isSuccess(rc)) {
@@ -206,12 +209,18 @@ class FFmpegService {
       final file = File(filePath);
       if (!await file.exists() || await file.length() == 0) return false;
 
-      final input = _q(filePath);
-      // Use -vn and -sn to disable video/subtitle stream analysis,
-      // avoiding codec errors on unsupported platforms.
-      final cmd =
-          '-v error -vn -sn -select_streams a -show_entries stream=codec_type -of csv=p=0 $input';
-      final session = await FFprobeKit.execute(cmd);
+      final args = [
+        '-v',
+        'error',
+        '-select_streams',
+        'a',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ];
+      final session = await FFprobeKit.executeWithArguments(args);
       final rc = await session.getReturnCode();
       if (!ReturnCode.isSuccess(rc)) return false;
       final output = await session.getOutput();
@@ -451,12 +460,16 @@ class FFmpegService {
 
   Future<double?> _getMediaDurationSeconds(String filePath) async {
     try {
-      final input = _q(filePath);
-      // Use -vn and -sn to disable video/subtitle stream analysis,
-      // avoiding codec errors on unsupported platforms.
-      final cmd =
-          '-v error -vn -sn -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $input';
-      final session = await FFprobeKit.execute(cmd);
+      final args = [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        filePath,
+      ];
+      final session = await FFprobeKit.executeWithArguments(args);
       final rc = await session.getReturnCode();
       if (!ReturnCode.isSuccess(rc)) return null;
       final output = await session.getOutput();

@@ -123,6 +123,13 @@ class _WispieAppState extends ConsumerState<WispieApp>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (Platform.isIOS && state != AppLifecycleState.resumed) {
+      unawaited(ref.read(audioPlayerManagerProvider).forceFlushCurrentStats());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final isSetupComplete = ref.watch(setupProvider);

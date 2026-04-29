@@ -9,7 +9,7 @@ class StatsService {
   late final String _platform;
   final List<Map<String, dynamic>> _pendingStats = [];
   bool _isBackground = false;
-  Future<void>? _activeFlush;
+  Future<bool>? _activeFlush;
 
   StatsService() : _sessionId = const Uuid().v4() {
     if (kIsWeb) {
@@ -43,27 +43,10 @@ class StatsService {
     statsWithMeta['session_id'] = _sessionId;
     statsWithMeta['timestamp'] = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
-    if (_isBackground) {
-      _pendingStats.add(statsWithMeta);
-      // Limit the buffer size to maintain a low memory footprint.
-      if (_pendingStats.length >= 50) {
-        await flush();
-      }
-    } else {
-      // In foreground mode, commit stats immediately to provide real-time updates.
-      if (_pendingStats.isNotEmpty) {
-        await flush();
-      }
-      await _writeSingle(statsWithMeta);
-    }
-  }
+    _pendingStats.add(statsWithMeta);
 
-  Future<void> _writeSingle(Map<String, dynamic> event) async {
-    try {
-      await DatabaseService.instance.init();
-      await DatabaseService.instance.insertPlayEvent(event);
-    } catch (e) {
-      debugPrint('Error writing single stat: $e');
+    if (!_isBackground || _pendingStats.length >= 50) {
+      await flush();
     }
   }
 
@@ -72,23 +55,32 @@ class StatsService {
   }
 
   Future<void> flush() async {
-    if (_activeFlush != null) {
-      await _activeFlush;
-      return;
-    }
-
-    final future = _flushPending();
-    _activeFlush = future;
-    try {
-      await future;
-    } finally {
-      if (identical(_activeFlush, future)) {
-        _activeFlush = null;
+    while (true) {
+      final activeFlush = _activeFlush;
+      if (activeFlush != null) {
+        final success = await activeFlush;
+        if (!success || _pendingStats.isEmpty) return;
+        continue;
       }
+
+      if (_pendingStats.isEmpty) return;
+
+      final future = _flushPending();
+      _activeFlush = future;
+      bool success = false;
+      try {
+        success = await future;
+      } finally {
+        if (identical(_activeFlush, future)) {
+          _activeFlush = null;
+        }
+      }
+
+      if (!success || _pendingStats.isEmpty) return;
     }
   }
 
-  Future<void> _flushPending() async {
+  Future<bool> _flushPending() async {
     while (_pendingStats.isNotEmpty) {
       final batch = List<Map<String, dynamic>>.from(_pendingStats);
 
@@ -99,9 +91,10 @@ class StatsService {
         debugPrint('Flushed ${batch.length} batched stats events.');
       } catch (e) {
         debugPrint('Error flushing stats batch: $e');
-        return;
+        return false;
       }
     }
+    return true;
   }
 
   void dispose() {

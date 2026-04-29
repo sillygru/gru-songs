@@ -419,7 +419,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     try {
       // Capture current progress and flush to DB on manual refresh
-      ref.read(audioPlayerManagerProvider).forceFlushCurrentStats();
+      await ref.read(audioPlayerManagerProvider).forceFlushCurrentStats();
 
       final newState = await AsyncValue.guard<List<Song>>(() async {
         // Local-only refresh - just scan files

@@ -56,6 +56,7 @@ class SongRepository {
   Future<bool> hasLyrics(Song song) async {
     final cacheEntry = await _readLyricsCache(song);
     if (cacheEntry != null && cacheEntry.isFresh) {
+      if (song.hasLyrics && !cacheEntry.hasLyrics) return true;
       return cacheEntry.hasLyrics;
     }
 

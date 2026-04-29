@@ -1158,13 +1158,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     double finalDuration = _foregroundDuration + _backgroundDuration;
 
     if (finalDuration > 0.5) {
-      _statsService.trackStats({
+      unawaited(_statsService.trackStats({
         'song_filename': _currentSongFilename!,
         'duration_played': finalDuration,
         'foreground_duration': _foregroundDuration,
         'background_duration': _backgroundDuration,
         'total_length': effectiveTotalLength,
-      });
+      }));
 
       if (finalDuration > 5.0) {
         _addToShuffleHistory(_currentSongFilename!);
@@ -1174,10 +1174,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _backgroundDuration = 0.0;
     if (isTerminal) {
       _playStartTime = null;
-      _statsService.flush();
     } else if (_playStartTime != null) {
       _playStartTime = DateTime.now();
     }
+    unawaited(_statsService.flush());
   }
 
   void _addToShuffleHistory(String filename) {
@@ -2320,12 +2320,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     });
   }
 
-  void forceFlushCurrentStats() {
+  Future<void> forceFlushCurrentStats() async {
     _flushStats(isTerminal: true);
-    _statsService.flush();
+    await _statsService.flush();
   }
 
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(forceFlushCurrentStats());
     _volumeMonitorService?.dispose();
     _positionSubscription?.cancel();
     _sequenceSubscription?.cancel();
