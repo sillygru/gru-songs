@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -874,7 +875,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               resolveCoverUrl: _resolveCoverUrl,
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 40, 24, 80),
+              padding: const EdgeInsets.fromLTRB(24, 56, 24, 80),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -887,7 +888,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   ),
                   const SizedBox(height: 16),
                   Expanded(
-                    child: _PlayerArtPanel(
+                    child:                  _PlayerArtPanel(
                       player: player,
                       audioManager: _audioManager,
                       fadeAnimation: _fadeAnimation,
@@ -915,7 +916,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     positionDataStream: _positionDataStream,
                   ),
                   _PlayerVolumeSlider(player: player),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 20),
                   _PlayerControls(
                     player: player,
                     controlsController: _controlsController,
@@ -923,7 +924,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     showShuffleSettings: (context) =>
                         _showShuffleSettings(context, ref),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -1231,13 +1232,23 @@ class _PlayerArtPanel extends ConsumerWidget {
 
         return RepaintBoundary(
           child: LayoutBuilder(builder: (context, constraints) {
+            void shareSong() {
+              final songs = ref.read(songsProvider).asData?.value ?? [];
+              final song = songs.where((s) => s.filename == metadata.id).firstOrNull;
+              if (song == null) return;
+              Share.shareXFiles(
+                [XFile(song.url)],
+                text: '${song.title} by ${song.artist}',
+              );
+            }
             return GestureDetector(
               onVerticalDragUpdate: (details) {
                 if (details.primaryDelta! < -5 && hasLyricsForCurrentSong) {
                   toggleLyrics();
                 }
-              },
-              child: _ArtPanelContent(
+              },                child: _ArtPanelContent(
+                openNextUpScreen: openNextUpScreen,
+                shareSong: shareSong,
                 metadata: metadata,
                 constraints: constraints,
                 fadeAnimation: fadeAnimation,
@@ -1249,7 +1260,6 @@ class _PlayerArtPanel extends ConsumerWidget {
                 resolveCoverUrl: resolveCoverUrl,
                 toggleLyrics: toggleLyrics,
                 hasLyricsForCurrentSong: hasLyricsForCurrentSong,
-                openNextUpScreen: openNextUpScreen,
                 coverFit: coverFit,
               ),
             );
@@ -1272,6 +1282,7 @@ class _ArtPanelContent extends StatelessWidget {
   final String? Function(MediaItem?) resolveCoverUrl;
   final VoidCallback toggleLyrics;
   final bool hasLyricsForCurrentSong;
+  final VoidCallback shareSong;
   final Function(BuildContext) openNextUpScreen;
   final BoxFit coverFit;
 
@@ -1287,6 +1298,7 @@ class _ArtPanelContent extends StatelessWidget {
     required this.resolveCoverUrl,
     required this.toggleLyrics,
     required this.hasLyricsForCurrentSong,
+    required this.shareSong,
     required this.openNextUpScreen,
     required this.coverFit,
   });
@@ -1372,9 +1384,19 @@ class _ArtPanelContent extends StatelessWidget {
                             Positioned(
                               bottom: 12,
                               right: 12,
-                              child: _OverlayButton(
-                                icon: const Icon(Icons.queue_music),
-                                onPressed: () => openNextUpScreen(context),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _OverlayButton(
+                                    icon: const Icon(Icons.ios_share),
+                                    onPressed: shareSong,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _OverlayButton(
+                                    icon: const Icon(Icons.queue_music_outlined),
+                                    onPressed: () => openNextUpScreen(context),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -1448,70 +1470,69 @@ class _PlayerSongInfo extends ConsumerWidget {
         final metadata = snapshot.data?.currentSource?.tag as MediaItem?;
         if (metadata == null) return const SizedBox.shrink();
 
-        return RepaintBoundary(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        return RepaintBoundary(                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      metadata.title,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
-                      ),
-                      textAlign: TextAlign.left,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    RichText(
-                      textAlign: TextAlign.left,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      text: TextSpan(
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          fontFamily: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.fontFamily,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant
-                              .withValues(alpha: 0.7),
-                        ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          TextSpan(
-                            text: metadata.artist ?? 'Unknown Artist',
-                            recognizer: artistRecognizer
-                              ..onTap = () => navigateToArtist(
-                                  metadata.artist ?? 'Unknown Artist'),
+                          Text(
+                            metadata.title,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                            textAlign: TextAlign.left,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const TextSpan(text: ' • '),
-                          TextSpan(
-                            text: metadata.album ?? 'Unknown Album',
-                            recognizer: albumRecognizer
-                              ..onTap = () => navigateToAlbum(
-                                  metadata.album ?? 'Unknown Album'),
+                          const SizedBox(height: 4),
+                          RichText(
+                            textAlign: TextAlign.left,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            text: TextSpan(
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                fontFamily: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.fontFamily,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant
+                                    .withValues(alpha: 0.7),
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: metadata.artist ?? 'Unknown Artist',
+                                  recognizer: artistRecognizer
+                                    ..onTap = () => navigateToArtist(
+                                        metadata.artist ?? 'Unknown Artist'),
+                                ),
+                                const TextSpan(text: ' • '),
+                                TextSpan(
+                                  text: metadata.album ?? 'Unknown Album',
+                                  recognizer: albumRecognizer
+                                    ..onTap = () => navigateToAlbum(
+                                        metadata.album ?? 'Unknown Album'),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    _FavoriteButton(
+                      songId: metadata.id,
+                      songTitle: metadata.title,
+                    ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              _FavoriteButton(
-                songId: metadata.id,
-                songTitle: metadata.title,
-              ),
-            ],
           ),
         );
       },
@@ -1549,6 +1570,7 @@ class _FavoriteButton extends ConsumerWidget {
     );
   }
 }
+
 
 class _PlayerProgressSection extends ConsumerWidget {
   final AudioPlayer player;
@@ -1661,7 +1683,6 @@ class _PlayerControls extends ConsumerWidget {
   final AnimationController controlsController;
   final AnimationController playPauseController;
   final Function(BuildContext) showShuffleSettings;
-
   const _PlayerControls({
     required this.player,
     required this.controlsController,
