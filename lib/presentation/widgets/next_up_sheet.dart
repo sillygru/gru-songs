@@ -7,6 +7,7 @@ import '../../providers/providers.dart';
 import '../../models/queue_item.dart';
 import '../../services/audio_player_manager.dart';
 import 'album_art_image.dart' show StaticAlbumArtImage;
+import 'duration_display.dart' show DurationFormatter;
 
 class NextUpSheet extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
@@ -321,6 +322,16 @@ class _NextUpHeader extends StatelessWidget {
                           upcomingCount < 0 ? 0 : upcomingCount;
                       final hasUpcoming = displayCount > 0;
 
+                      // Calculate total remaining duration
+                      final upcomingItems = queue.skip(currentIndex + 1).toList();
+                      int totalRemainingSec = 0;
+                      for (final item in upcomingItems) {
+                        if (item.song.duration != null) {
+                          totalRemainingSec += item.song.duration!.inSeconds;
+                        }
+                      }
+                      final remainingLabel = DurationFormatter.formatRemaining(totalRemainingSec);
+
                       return Row(
                         children: [
                           Expanded(
@@ -335,14 +346,24 @@ class _NextUpHeader extends StatelessWidget {
                                     letterSpacing: -0.5,
                                   ),
                                 ),
-                                Text(
-                                  '$displayCount songs remaining',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: colorScheme.onSurfaceVariant
-                                        .withValues(alpha: 0.7),
-                                    fontWeight: FontWeight.w500,
+                                if (hasUpcoming && remainingLabel.isNotEmpty)
+                                  Text(
+                                    '$displayCount songs \u00b7 $remainingLabel',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurfaceVariant
+                                          .withValues(alpha: 0.7),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  )
+                                else
+                                  Text(
+                                    '$displayCount songs remaining',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurfaceVariant
+                                          .withValues(alpha: 0.7),
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                           ),

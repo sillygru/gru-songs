@@ -13,6 +13,7 @@ import '../../services/audio_player_manager.dart';
 import '../widgets/album_art_image.dart' show StaticAlbumArtImage;
 import '../widgets/blurred_background.dart';
 import '../widgets/audio_visualizer.dart';
+import '../widgets/duration_display.dart' show DurationFormatter;
 
 class NextUpScreen extends ConsumerStatefulWidget {
   const NextUpScreen({super.key});
@@ -214,6 +215,34 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                       controller: _scrollController,
                       physics: const BouncingScrollPhysics(),
                       slivers: [
+                        // Remaining queue duration indicator
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                            child: Builder(builder: (ctx) {
+                              final t = Theme.of(ctx);
+                              final cs = t.colorScheme;
+                              final count = upcomingQueue.length;
+                              final remaining = upcomingQueue
+                                  .map((item) =>
+                                      item.song.duration?.inSeconds ?? 0)
+                                  .fold(0, (a, b) => a + b);
+                              final label =
+                                  DurationFormatter.formatRemaining(remaining);
+                              return Text(
+                                label.isNotEmpty
+                                    ? '$count songs \u00b7 $label'
+                                    : '$count songs remaining',
+                                style: t.textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.6),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
                         if (playedQueue.isNotEmpty)
                           SliverList(
                             delegate: SliverChildBuilderDelegate(

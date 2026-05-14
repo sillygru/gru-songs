@@ -62,6 +62,17 @@ class DurationFormatter {
     return Duration(seconds: totalSeconds);
   }
 
+  /// Formats remaining time for a queue (e.g., "23m left", "1h 14m left", "45s left")
+  static String formatRemaining(int totalSeconds) {
+    if (totalSeconds <= 0) return '';
+    final h = Duration(seconds: totalSeconds).inHours;
+    final m = Duration(seconds: totalSeconds).inMinutes.remainder(60);
+    final s = Duration(seconds: totalSeconds).inSeconds.remainder(60);
+    if (h > 0) return '${h}h ${m}m left';
+    if (m > 0) return '${m}m ${s}s left';
+    return '${s}s left';
+  }
+
   /// Gets the count of songs with valid durations
   static int getSongsWithDurationCount(List<Song> songs) {
     return songs

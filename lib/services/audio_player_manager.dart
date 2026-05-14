@@ -1571,6 +1571,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       await playSong(songs[randomIdx], contextQueue: songs, startPlaying: true);
     } else {
       _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
+      _effectiveQueue = [];
       _isRestrictedToOriginal = false;
       await playSong(songs[randomIdx], startPlaying: true);
       await _saveQueueSnapshot(songs, playlistId: null);
