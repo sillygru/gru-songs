@@ -366,10 +366,10 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                                       currentIndex: currentIndex,
                                       tappedIndex: absoluteIndex,
                                     ),
-                                    onTogglePriority: () {
+                                    onMoveToFront: () {
                                       HapticFeedback.mediumImpact();
                                       audioManager
-                                          .togglePriority(absoluteIndex);
+                                          .moveToFront(absoluteIndex);
                                     },
                                     onRemove: () {
                                       HapticFeedback.mediumImpact();
@@ -490,7 +490,7 @@ class _QueueRow extends StatelessWidget {
   final bool showActions;
   final bool showAnimatedWave;
   final Color? currentAccent;
-  final VoidCallback? onTogglePriority;
+  final VoidCallback? onMoveToFront;
   final VoidCallback? onRemove;
   final VoidCallback? onTap;
   final VoidCallback? onCurrentIndicatorTap;
@@ -582,15 +582,12 @@ class _QueueRow extends StatelessWidget {
                 ),
               if (showActions) ...[
                 IconButton(
-                  icon: Icon(
-                    item.isPriority
-                        ? Icons.push_pin_rounded
-                        : Icons.push_pin_outlined,
+                  icon: const Icon(
+                    Icons.arrow_upward_rounded,
                     size: 18,
-                    color: item.isPriority ? colorScheme.primary : null,
                   ),
-                  tooltip: item.isPriority ? 'Unpin' : 'Pin to Top',
-                  onPressed: onTogglePriority,
+                  tooltip: 'Move to Front',
+                  onPressed: onMoveToFront,
                 ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, size: 18),

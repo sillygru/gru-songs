@@ -35,14 +35,13 @@ void main() {
         filename: 'test.mp3',
         url: 'http://test.com/test.mp3',
       );
-      final item = QueueItem(song: song, isPriority: true);
+      final item = QueueItem(song: song);
 
       final json = item.toJson();
       final fromJson = QueueItem.fromJson(json);
 
       expect(fromJson.song.filename, item.song.filename);
       expect(fromJson.queueId, item.queueId);
-      expect(fromJson.isPriority, item.isPriority);
     });
   });
 }

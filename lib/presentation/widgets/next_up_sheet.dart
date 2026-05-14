@@ -269,9 +269,9 @@ class _QueueListContent extends StatelessWidget {
             key: ValueKey(item.queueId),
             item: item,
             index: index,
-            onTogglePriority: () {
+            onMoveToFront: () {
               HapticFeedback.mediumImpact();
-              audioManager.togglePriority(absoluteIndex);
+              audioManager.moveToFront(absoluteIndex);
             },
             onRemove: () => onRemove(absoluteIndex),
           ),
@@ -430,20 +430,17 @@ class _HeaderAction extends StatelessWidget {
 class _NextUpItem extends StatelessWidget {
   final QueueItem item;
   final int index;
-  final VoidCallback onTogglePriority;
+  final VoidCallback onMoveToFront;
   final VoidCallback onRemove;
-
   // Pre-computed static colors to avoid per-item allocation during scroll
-  static const _pinBorderOpacity = 0.3;
   static const _dragHandleOpacity = 0.2;
   static const _subtitleOpacity = 0.7;
-  static const _pinShadowOpacity = 0.2;
 
   const _NextUpItem({
     super.key,
     required this.item,
     required this.index,
-    required this.onTogglePriority,
+    required this.onMoveToFront,
     required this.onRemove,
   });
 
@@ -454,7 +451,7 @@ class _NextUpItem extends StatelessWidget {
       child: _NextUpItemContent(
         item: item,
         index: index,
-        onTogglePriority: onTogglePriority,
+        onMoveToFront: onMoveToFront,
         onRemove: onRemove,
       ),
     );
@@ -465,13 +462,13 @@ class _NextUpItem extends StatelessWidget {
 class _NextUpItemContent extends StatelessWidget {
   final QueueItem item;
   final int index;
-  final VoidCallback onTogglePriority;
+  final VoidCallback onMoveToFront;
   final VoidCallback onRemove;
 
   const _NextUpItemContent({
     required this.item,
     required this.index,
-    required this.onTogglePriority,
+    required this.onMoveToFront,
     required this.onRemove,
   });
 
@@ -484,10 +481,6 @@ class _NextUpItemContent extends StatelessWidget {
     // Pre-compute colors once per build rather than inline per-property
     final subtitleColor = colorScheme.onSurfaceVariant
         .withValues(alpha: _NextUpItem._subtitleOpacity);
-    final borderColor = item.isPriority
-        ? colorScheme.primary.withValues(alpha: _NextUpItem._pinBorderOpacity)
-        : Colors.transparent;
-    final titleColor = item.isPriority ? colorScheme.primary : null;
     final dragHandleColor = colorScheme.onSurfaceVariant
         .withValues(alpha: _NextUpItem._dragHandleOpacity);
 
@@ -495,47 +488,19 @@ class _NextUpItemContent extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: borderColor, width: 1),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        leading: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: StaticAlbumArtImage(
-                url: song.coverUrl ?? '',
-                filename: song.filename,
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover,
-              ),
-            ),
-            if (item.isPriority)
-              Positioned(
-                top: -4,
-                right: -4,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: colorScheme.surface, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black
-                            .withValues(alpha: _NextUpItem._pinShadowOpacity),
-                        blurRadius: 4,
-                      )
-                    ],
-                  ),
-                  child: const Icon(Icons.push_pin_rounded,
-                      size: 10, color: Colors.white),
-                ),
-              ),
-          ],
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: StaticAlbumArtImage(
+            url: song.coverUrl ?? '',
+            filename: song.filename,
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
+          ),
         ),
         title: Text(
           song.title,
@@ -544,7 +509,6 @@ class _NextUpItemContent extends StatelessWidget {
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
             fontSize: 15,
-            color: titleColor,
           ),
         ),
         subtitle: Text(
@@ -561,14 +525,12 @@ class _NextUpItemContent extends StatelessWidget {
           children: [
             IconButton(
               icon: Icon(
-                item.isPriority
-                    ? Icons.push_pin_rounded
-                    : Icons.push_pin_outlined,
-                color: item.isPriority ? colorScheme.primary : dragHandleColor,
+                Icons.arrow_upward_rounded,
+                color: dragHandleColor,
                 size: 20,
               ),
-              tooltip: item.isPriority ? 'Unpin' : 'Pin to Top',
-              onPressed: onTogglePriority,
+              tooltip: 'Move to Front',
+              onPressed: onMoveToFront,
               visualDensity: VisualDensity.compact,
             ),
             IconButton(

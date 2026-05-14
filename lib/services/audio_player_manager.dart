@@ -1353,11 +1353,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       if (_shuffleState.config.enabled) {
         final currentItem = _effectiveQueue[currentIndex];
         final prefix = _effectiveQueue.sublist(0, currentIndex + 1);
-        final priorityItems = _effectiveQueue
-            .skip(currentIndex + 1)
-            .where((item) => item.isPriority)
-            .toList();
-
         final sourcePool = _isRestrictedToOriginal
             ? _originalQueue.map((q) => q.song).toList()
             : _allSongs;
@@ -1366,7 +1361,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
         final excluded = <String>{
           ...prefix.map((item) => item.song.filename),
-          ...priorityItems.map((item) => item.song.filename),
         };
 
         final candidates = sourcePool
@@ -1380,7 +1374,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           lastItem: currentItem,
         );
 
-        _effectiveQueue = [...prefix, ...priorityItems, ...shuffled];
+        _effectiveQueue = [...prefix, ...shuffled];
         await _rebuildQueue(
           initialIndex: currentIndex,
           startPlaying: _player.playing,
@@ -1456,7 +1450,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           'hasVideo': song.hasVideo,
           'remoteUrl': song.url,
           'queueId': item.queueId,
-          'isPriority': item.isPriority,
           'androidStopForegroundOnPause': !keepNotification,
           'audioPath': song.url,
         },
@@ -1510,8 +1503,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       final extras = tag.extras;
       final queueId = extras?['queueId'] as String?;
-      final isPriority = extras?['isPriority'] == true;
-
       QueueItem? resolved;
       if (queueId != null && !consumedQueueIds.contains(queueId)) {
         resolved = byQueueId[queueId];
@@ -1532,13 +1523,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         resolved = QueueItem(
           song: resolvedSong,
           queueId: queueId,
-          isPriority: isPriority,
         );
       } else {
         resolved = resolved.copyWith(
           song: resolvedSong ?? resolved.song,
           queueId: queueId ?? resolved.queueId,
-          isPriority: isPriority,
         );
       }
 
@@ -1722,14 +1711,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       otherItems.add(_effectiveQueue[i]);
     }
 
-    final priorityItems = otherItems.where((item) => item.isPriority).toList();
-    final normalItems = otherItems.where((item) => !item.isPriority).toList();
-    final shuffledNormal = await _weightedShuffle(
-      normalItems,
+    final shuffled = await _weightedShuffle(
+      otherItems,
       lastItem: currentItem,
     );
 
-    _effectiveQueue = [currentItem, ...priorityItems, ...shuffledNormal];
+    _effectiveQueue = [currentItem, ...shuffled];
     await _rebuildQueue(
       initialIndex: 0,
       startPlaying: _player.playing,
@@ -2182,7 +2169,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         return;
       }
 
-      final item = QueueItem(song: song, isPriority: true);
+      final item = QueueItem(song: song);
       _effectiveQueue.insert(targetIndex, item);
       try {
         final source = await _createAudioSource(item);
@@ -2280,38 +2267,37 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     });
   }
 
-  Future<void> togglePriority(int index) async {
+  Future<void> moveToFront(int index) async {
     await _runSerializedQueueMutation(() async {
       if (index < 0 || index >= _effectiveQueue.length) return;
 
-      final originalItem = _effectiveQueue[index];
-      final updatedItem =
-          originalItem.copyWith(isPriority: !originalItem.isPriority);
+      final item = _effectiveQueue[index];
+      final currentIndex = _player.currentIndex ?? -1;
+      if (currentIndex < 0) return;
+
+      // Don't move if it's already right after current
+      if (index == currentIndex + 1) return;
 
       _effectiveQueue.removeAt(index);
       try {
         await _player.removeAudioSourceAt(index);
       } catch (e) {
-        _effectiveQueue.insert(index, originalItem);
+        _effectiveQueue.insert(index, item);
         rethrow;
       }
 
-      int targetIndex = index;
-      if (updatedItem.isPriority) {
-        final currentIndex = _player.currentIndex ?? -1;
-        targetIndex = max(0, currentIndex + 1);
-      }
+      int targetIndex = max(0, currentIndex + 1);
       if (index < targetIndex) targetIndex -= 1;
       targetIndex = targetIndex.clamp(0, _effectiveQueue.length);
 
-      _effectiveQueue.insert(targetIndex, updatedItem);
+      _effectiveQueue.insert(targetIndex, item);
       try {
-        final source = await _createAudioSource(updatedItem);
+        final source = await _createAudioSource(item);
         await _player.insertAudioSource(targetIndex, source);
       } catch (e) {
         _effectiveQueue.removeAt(targetIndex);
         _effectiveQueue.insert(
-            index.clamp(0, _effectiveQueue.length), originalItem);
+            index.clamp(0, _effectiveQueue.length), item);
         rethrow;
       }
 

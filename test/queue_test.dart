@@ -184,9 +184,8 @@ void main() {
     });
   });
 
-  group('Priority Block Logic Simulation', () {
-    // This simulates the logic inside AudioPlayerManager
-    test('Shuffle should keep priority items after current', () {
+  group('Move to Front Logic', () {
+    test('should reorder item to position after current', () {
       final songs = List.generate(
           5,
           (i) => Song(
@@ -197,44 +196,25 @@ void main() {
                 url: 'url$i',
               ));
 
-      List<QueueItem> effectiveQueue =
+      // Simulate queue: [current(0), 1, 2, 3, 4]
+      List<QueueItem> queue =
           songs.map((s) => QueueItem(song: s)).toList();
 
-      // Current song is at index 0 (Song 0)
-      final currentItem = effectiveQueue[0];
+      // Move item at index 3 (Song 3) to front (right after current at index 0)
+      final itemToMove = queue[3];
+      const int currentIndex = 0;
+      const int indexToMove = 3;
 
-      // Add a priority song at index 1
-      final prioritySong = Song(
-          title: 'Priority',
-          artist: 'A',
-          album: 'A',
-          filename: 'p.mp3',
-          url: 'u');
-      final priorityItem = QueueItem(song: prioritySong, isPriority: true);
-      effectiveQueue.insert(1, priorityItem);
+      queue.removeAt(indexToMove);
+      final targetIndex = currentIndex + 1;
+      queue.insert(targetIndex, itemToMove);
 
-      // Queue is now [Song 0, Priority, Song 1, Song 2, Song 3, Song 4]
-      expect(effectiveQueue[1].song.title, 'Priority');
-
-      // Simulate shuffle
-      final otherItems =
-          effectiveQueue.where((item) => item != currentItem).toList();
-      final priorityItems =
-          otherItems.where((item) => item.isPriority).toList();
-      final normalItems = otherItems.where((item) => !item.isPriority).toList();
-
-      normalItems.shuffle();
-
-      final shuffledQueue = [
-        currentItem,
-        ...priorityItems,
-        ...normalItems,
-      ];
-
-      expect(shuffledQueue[0], currentItem);
-      expect(shuffledQueue[1], priorityItem);
-      expect(shuffledQueue.length, 6);
-      expect(shuffledQueue.contains(priorityItem), true);
+      // Queue should be: [Song 0, Song 3, Song 1, Song 2, Song 4]
+      expect(queue[0].song.title, 'Song 0');
+      expect(queue[1].song.title, 'Song 3');
+      expect(queue[2].song.title, 'Song 1');
+      expect(queue[3].song.title, 'Song 2');
+      expect(queue[4].song.title, 'Song 4');
     });
   });
 }
