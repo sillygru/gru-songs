@@ -15,30 +15,25 @@ import 'album_art_image.dart';
 import '../screens/queue_history_screen.dart';
 
 class AppDrawer extends ConsumerStatefulWidget {
-  final VoidCallback onClose;
+  final Future<void> Function() onClose;
+  final Animation<double> animation;
 
   const AppDrawer({
     super.key,
     required this.onClose,
+    required this.animation,
   });
 
   @override
   ConsumerState<AppDrawer> createState() => _AppDrawerState();
 }
 
-class _AppDrawerState extends ConsumerState<AppDrawer>
-    with SingleTickerProviderStateMixin {
+class _AppDrawerState extends ConsumerState<AppDrawer> {
   static const _panelRadius = BorderRadius.only(
     topRight: Radius.circular(34),
     bottomRight: Radius.circular(34),
   );
 
-  late AnimationController _controller;
-  late Animation<double> _slideAnimation;
-  late Animation<double> _fadeAnimation;
-
-  Color _scrimColor1 = Colors.black;
-  Color _scrimColor2 = Colors.black;
   Color _surfaceColor = Colors.black;
   Color _surfaceContainerHigh = Colors.black;
   Color _surfaceContainerLowest = Colors.black;
@@ -49,7 +44,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
   Color _onSurfaceVariant = Colors.black;
   Color _primaryContainer = Colors.black;
 
-  LinearGradient? _scrimGradient;
   LinearGradient? _backgroundGradient;
   RadialGradient? _topGlow;
   RadialGradient? _bottomGlow;
@@ -60,33 +54,10 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-
-    _slideAnimation = Tween<double>(
-      begin: -1.0,
-      end: 0.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
-
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
-    ));
-
-    _controller.forward();
+    widget.animation.addListener(_onAnimationTick);
   }
 
   void _initColors(ColorScheme colorScheme) {
-    _scrimColor1 = Colors.black.withValues(alpha: 0.36);
-    _scrimColor2 = Colors.black.withValues(alpha: 0.58);
     _surfaceColor = colorScheme.surface.withValues(alpha: 0.78);
     _surfaceContainerHigh =
         colorScheme.surfaceContainerHigh.withValues(alpha: 0.7);
@@ -98,12 +69,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
     _onSurface = colorScheme.onSurface;
     _onSurfaceVariant = colorScheme.onSurfaceVariant;
     _primaryContainer = colorScheme.primaryContainer;
-
-    _scrimGradient = LinearGradient(
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-      colors: [_scrimColor1, _scrimColor2],
-    );
 
     _backgroundGradient = LinearGradient(
       begin: Alignment.topLeft,
@@ -160,13 +125,16 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
 
   @override
   void dispose() {
-    _controller.dispose();
+    widget.animation.removeListener(_onAnimationTick);
     super.dispose();
   }
 
+  void _onAnimationTick() {
+    setState(() {});
+  }
+
   Future<void> _closeDrawer() async {
-    await _controller.reverse();
-    widget.onClose();
+    await widget.onClose();
   }
 
   void _navigateTo(Widget screen) {
@@ -185,7 +153,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    if (_scrimColor1 == Colors.black) {
+    if (_surfaceColor == Colors.black) {
       _initColors(colorScheme);
     }
 
@@ -227,37 +195,18 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
       ],
     );
 
-    return Stack(
-      children: [
-        GestureDetector(
-          onTap: _closeDrawer,
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: _scrimGradient,
-              ),
-            ),
-          ),
-        ),
-        AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: 0.8,
-              child: Transform.translate(
-                offset: Offset(
-                  _slideAnimation.value *
-                      MediaQuery.of(context).size.width *
-                      0.8,
-                  0,
-                ),
-                child: child,
-              ),
-            );
-          },
-          child: RepaintBoundary(
+    // Entrance animation: slide in from left + fade in as content reveals
+    final animationValue = widget.animation.value;
+    final slideInOffset = (1.0 - animationValue) * -40.0;
+
+    return FractionallySizedBox(
+      alignment: Alignment.centerLeft,
+      widthFactor: 0.8,
+      child: RepaintBoundary(
+        child: Transform.translate(
+          offset: Offset(slideInOffset, 0),
+          child: Opacity(
+            opacity: animationValue.clamp(0.0, 1.0),
             child: ClipRRect(
               borderRadius: _panelRadius,
               child: BackdropFilter(
@@ -265,196 +214,190 @@ class _AppDrawerState extends ConsumerState<AppDrawer>
                 child: DecoratedBox(
                   decoration: panelDecoration,
                   child: Stack(
-                    children: [
-                      Positioned(
-                        left: -56,
-                        top: -16,
-                        child: IgnorePointer(
-                          child: Container(
-                            width: 160,
-                            height: 160,
-                            decoration: topGlowDecoration,
-                          ),
-                        ),
+                children: [
+                  Positioned(
+                    left: -56,
+                    top: -16,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 160,
+                        height: 160,
+                        decoration: topGlowDecoration,
                       ),
-                      Positioned(
-                        right: -48,
-                        bottom: 88,
-                        child: IgnorePointer(
-                          child: Container(
-                            width: 170,
-                            height: 170,
-                            decoration: bottomGlowDecoration,
-                          ),
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: overlayGradient,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: IgnorePointer(
-                          child: RepaintBoundary(
-                            child: Container(
-                              height: 1.2,
-                              color: Colors.transparent,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: IgnorePointer(
-                          child: RepaintBoundary(
-                            child: Container(
-                              width: 1.2,
-                              color: Colors.transparent,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SafeArea(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeader(context, colorScheme, songCount),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: FadeTransition(
-                                opacity: _fadeAnimation,
-                                child: ListView(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(14, 0, 14, 18),
-                                  children: [
-                                    _buildSectionTitle(
-                                      context,
-                                      'Library',
-                                      'Pinned shortcuts',
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.favorite_rounded,
-                                      label: 'Favorites',
-                                      subtitle: 'Your liked tracks',
-                                      color: Colors.redAccent,
-                                      onTap: () async {
-                                        final songs = await ref
-                                            .read(songsProvider.future);
-                                        final userDataState =
-                                            ref.read(userDataProvider);
-                                        final favSongs = songs
-                                            .where((s) => userDataState
-                                                .isFavorite(s.filename))
-                                            .toList();
-                                        if (context.mounted) {
-                                          _navigateTo(SongListScreen(
-                                            title: 'Favorites',
-                                            songs: favSongs,
-                                          ));
-                                        }
-                                      },
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.queue_music_rounded,
-                                      label: 'Playlists',
-                                      subtitle: 'Curated sets',
-                                      color: colorScheme.primary,
-                                      onTap: () =>
-                                          _navigateTo(const PlaylistsScreen()),
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.album_rounded,
-                                      label: 'Albums',
-                                      subtitle: 'Browse releases',
-                                      color: Colors.orangeAccent,
-                                      onTap: () =>
-                                          _navigateTo(const AlbumsScreen()),
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.person_rounded,
-                                      label: 'Artists',
-                                      subtitle: 'Jump by artist',
-                                      color: Colors.greenAccent,
-                                      onTap: () =>
-                                          _navigateTo(const ArtistsScreen()),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _buildSectionTitle(
-                                      context,
-                                      'History',
-                                      'Recent activity',
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.history_rounded,
-                                      label: 'Song History',
-                                      subtitle: 'What has been playing',
-                                      color: Colors.purpleAccent,
-                                      onTap: () => _navigateTo(
-                                        const PlayHistoryScreen(),
-                                      ),
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.queue_play_next,
-                                      label: 'Session History',
-                                      subtitle: 'Previous listening sessions',
-                                      color: Colors.tealAccent,
-                                      onTap: () => _navigateTo(
-                                        const SessionHistoryScreen(),
-                                      ),
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.queue_music_rounded,
-                                      label: 'Queue History',
-                                      subtitle: 'Past queues and order',
-                                      color: Colors.amberAccent,
-                                      onTap: () => _navigateTo(
-                                        const QueueHistoryScreen(),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _buildSectionTitle(
-                                      context,
-                                      'Tools',
-                                      'Playback utility',
-                                    ),
-                                    _buildNavItem(
-                                      context,
-                                      icon: Icons.bedtime_rounded,
-                                      label: 'Sleep Timer',
-                                      subtitle: 'Stop playback gracefully',
-                                      color: Colors.indigoAccent,
-                                      onTap: () =>
-                                          _navigateTo(const SleepTimerScreen()),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  Positioned(
+                    right: -48,
+                    bottom: 88,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 170,
+                        height: 170,
+                        decoration: bottomGlowDecoration,
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: overlayGradient,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: RepaintBoundary(
+                        child: Container(
+                          height: 1.2,
+                          color: Colors.transparent,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: RepaintBoundary(
+                        child: Container(
+                          width: 1.2,
+                          color: Colors.transparent,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SafeArea(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(context, colorScheme, songCount),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: ListView(
+                            padding:
+                                const EdgeInsets.fromLTRB(14, 0, 14, 18),
+                            children: [
+                              _buildSectionTitle(
+                                context,
+                                'Library',
+                                'Pinned shortcuts',
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.favorite_rounded,
+                                label: 'Favorites',
+                                subtitle: 'Your liked tracks',
+                                color: Colors.redAccent,
+                                onTap: () async {
+                                  final songs =
+                                      await ref.read(songsProvider.future);
+                                  final userDataState =
+                                      ref.read(userDataProvider);
+                                  final favSongs = songs
+                                      .where((s) => userDataState
+                                          .isFavorite(s.filename))
+                                      .toList();
+                                  if (context.mounted) {
+                                    _navigateTo(SongListScreen(
+                                      title: 'Favorites',
+                                      songs: favSongs,
+                                    ));
+                                  }
+                                },
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.queue_music_rounded,
+                                label: 'Playlists',
+                                subtitle: 'Curated sets',
+                                color: colorScheme.primary,
+                                onTap: () =>
+                                    _navigateTo(const PlaylistsScreen()),
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.album_rounded,
+                                label: 'Albums',
+                                subtitle: 'Browse releases',
+                                color: Colors.orangeAccent,
+                                onTap: () =>
+                                    _navigateTo(const AlbumsScreen()),
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.person_rounded,
+                                label: 'Artists',
+                                subtitle: 'Jump by artist',
+                                color: Colors.greenAccent,
+                                onTap: () =>
+                                    _navigateTo(const ArtistsScreen()),
+                              ),
+                              const SizedBox(height: 14),
+                              _buildSectionTitle(
+                                context,
+                                'History',
+                                'Recent activity',
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.history_rounded,
+                                label: 'Song History',
+                                subtitle: 'What has been playing',
+                                color: Colors.purpleAccent,
+                                onTap: () =>
+                                    _navigateTo(const PlayHistoryScreen()),
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.queue_play_next,
+                                label: 'Session History',
+                                subtitle: 'Previous listening sessions',
+                                color: Colors.tealAccent,
+                                onTap: () => _navigateTo(
+                                    const SessionHistoryScreen()),
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.queue_music_rounded,
+                                label: 'Queue History',
+                                subtitle: 'Past queues and order',
+                                color: Colors.amberAccent,
+                                onTap: () =>
+                                    _navigateTo(const QueueHistoryScreen()),
+                              ),
+                              const SizedBox(height: 14),
+                              _buildSectionTitle(
+                                context,
+                                'Tools',
+                                'Playback utility',
+                              ),
+                              _buildNavItem(
+                                context,
+                                icon: Icons.bedtime_rounded,
+                                label: 'Sleep Timer',
+                                subtitle: 'Stop playback gracefully',
+                                color: Colors.indigoAccent,
+                                onTap: () =>
+                                    _navigateTo(const SleepTimerScreen()),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      ],
+      ),
+    ),
+    ),
     );
   }
 

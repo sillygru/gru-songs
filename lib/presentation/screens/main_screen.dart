@@ -127,9 +127,12 @@ class MainScreen extends ConsumerStatefulWidget {
 }
 
 class _MainScreenState extends ConsumerState<MainScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   bool _isDrawerOpen = false;
+
+  late AnimationController _drawerController;
+  late Animation<double> _drawerAnimation;
 
   static const double _bottomDockBaseHeight = 88.0;
 
@@ -152,12 +155,17 @@ class _MainScreenState extends ConsumerState<MainScreen>
     setState(() {
       _isDrawerOpen = true;
     });
+    _drawerController.forward();
   }
 
-  void _closeDrawer() {
-    setState(() {
-      _isDrawerOpen = false;
-    });
+  Future<void> _closeDrawer() async {
+    if (!_isDrawerOpen && !_drawerController.isAnimating) return;
+    await _drawerController.reverse();
+    if (mounted) {
+      setState(() {
+        _isDrawerOpen = false;
+      });
+    }
   }
 
   void _onTabSelected(int index) {
@@ -168,16 +176,26 @@ class _MainScreenState extends ConsumerState<MainScreen>
   }
 
   void _onHorizontalDragStart(DragStartDetails details) {
-    // Check if drag starts from left edge
-    if (details.globalPosition.dx <= _edgeDragWidth && !_isDrawerOpen) {
+    if (_isDrawerOpen) {
+      _isDraggingFromEdge = true;
+      _dragStartX = details.globalPosition.dx;
+    } else if (details.globalPosition.dx <= _edgeDragWidth) {
       _isDraggingFromEdge = true;
       _dragStartX = details.globalPosition.dx;
     }
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    if (_isDraggingFromEdge && !_isDrawerOpen) {
-      final dragDistance = details.globalPosition.dx - _dragStartX;
+    if (!_isDraggingFromEdge) return;
+    final dragDistance = details.globalPosition.dx - _dragStartX;
+    if (_isDrawerOpen) {
+      // Swipe left to close
+      if (dragDistance < -_minDragDistance) {
+        _closeDrawer();
+        _isDraggingFromEdge = false;
+      }
+    } else {
+      // Swipe right to open
       if (dragDistance > _minDragDistance) {
         _openDrawer();
         _isDraggingFromEdge = false;
@@ -192,6 +210,14 @@ class _MainScreenState extends ConsumerState<MainScreen>
   @override
   void initState() {
     super.initState();
+    _drawerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _drawerAnimation = CurvedAnimation(
+      parent: _drawerController,
+      curve: Curves.easeOutCubic,
+    );
     WidgetsBinding.instance.addObserver(this);
     // Track app launch (Level 1)
     TelemetryService.instance.trackEvent('app_launch', {}, requiredLevel: 1);
@@ -204,6 +230,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   @override
   void dispose() {
+    _drawerController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -274,57 +301,98 @@ class _MainScreenState extends ConsumerState<MainScreen>
           behavior: HitTestBehavior.translucent,
           child: Stack(
             children: [
-              ImmersiveBackground(
-                child: Stack(
-                  children: _screens.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final screen = entry.value;
-                    // Only build if this screen has been selected before
-                    if (!_builtScreens.contains(index)) {
-                      return const SizedBox.shrink();
-                    }
-                    return Offstage(
-                      offstage: index != _selectedIndex,
-                      child: TickerMode(
-                        enabled: index == _selectedIndex,
-                        child: screen,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              Positioned(
-                top: topPadding,
-                left: 0,
-                right: 0,
-                child: const SyncIndicator(),
-              ),
-              Positioned(
-                top: topPadding + 40,
-                left: 0,
-                right: 0,
-                child: const AutoBackupIndicator(),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: isSelectionMode
-                    ? const BulkSelectionBar()
-                    : NowPlayingBar(
-                        padding: EdgeInsets.fromLTRB(
-                          12,
-                          0,
-                          12,
-                          nowPlayingBottomPadding,
-                        ),
-                      ),
-              ),
-              // Drawer overlay
-              if (_isDrawerOpen)
+              // Drawer sits underneath the main content
+              if (_isDrawerOpen || _drawerController.isAnimating)
                 Positioned.fill(
-                  child: AppDrawer(onClose: _closeDrawer),
+                  child: AnimatedBuilder(
+                    animation: _drawerAnimation,
+                    builder: (context, child) => AppDrawer(
+                      onClose: _closeDrawer,
+                      animation: _drawerAnimation,
+                    ),
+                  ),
                 ),
+              // Main content slides right to reveal the drawer
+              AnimatedBuilder(
+                animation: _drawerAnimation,
+                builder: (context, child) {
+                  final slideX =
+                      _drawerAnimation.value * mediaQuery.size.width * 0.8;
+                  return RepaintBoundary(
+                    child: Transform.translate(
+                      offset: Offset(slideX, 0),
+                      child: Stack(
+                        children: [
+                          child!,
+                          // Scrim dims the content when drawer is open
+                          if (_isDrawerOpen || _drawerController.isAnimating)
+                            Positioned.fill(
+                              child: GestureDetector(
+                                onTap: _closeDrawer,
+                                child: Container(
+                                  color: Colors.black.withValues(
+                                    alpha: 0.45 * _drawerAnimation.value,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                child: Stack(
+                  children: [
+                    ImmersiveBackground(
+                      child: Stack(
+                        children:
+                            _screens.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final screen = entry.value;
+                          if (!_builtScreens.contains(index)) {
+                            // Only build if this screen has been selected before
+                            return const SizedBox.shrink();
+                          }
+                          return Offstage(
+                            offstage: index != _selectedIndex,
+                            child: TickerMode(
+                              enabled: index == _selectedIndex,
+                              child: screen,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    Positioned(
+                      top: topPadding,
+                      left: 0,
+                      right: 0,
+                      child: const SyncIndicator(),
+                    ),
+                    Positioned(
+                      top: topPadding + 40,
+                      left: 0,
+                      right: 0,
+                      child: const AutoBackupIndicator(),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: isSelectionMode
+                          ? const BulkSelectionBar()
+                          : NowPlayingBar(
+                              padding: EdgeInsets.fromLTRB(
+                                12,
+                                0,
+                                12,
+                                nowPlayingBottomPadding,
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
