@@ -132,15 +132,14 @@ class _MainScreenState extends ConsumerState<MainScreen>
   bool _isDrawerOpen = false;
 
   late AnimationController _drawerController;
-  late Animation<double> _drawerAnimation;
+
+  bool _isDraggingDrawer = false;
 
   static const double _bottomDockBaseHeight = 88.0;
 
   // Gesture detection for drawer
-  double _dragStartX = 0;
-  bool _isDraggingFromEdge = false;
   static const double _edgeDragWidth = 60.0;
-  static const double _minDragDistance = 30.0;
+  static const double _drawerWidthRatio = 0.8;
 
   // Track which screens have been built to enable lazy loading
   final Set<int> _builtScreens = {0};
@@ -151,16 +150,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
     const ProfileScreen(),
   ];
 
-  void _openDrawer() {
-    setState(() {
-      _isDrawerOpen = true;
-    });
-    _drawerController.forward();
-  }
-
   Future<void> _closeDrawer() async {
     if (!_isDrawerOpen && !_drawerController.isAnimating) return;
-    await _drawerController.reverse();
+    await _drawerController.animateTo(0.0, curve: Curves.easeOutCubic);
     if (mounted) {
       setState(() {
         _isDrawerOpen = false;
@@ -176,35 +168,34 @@ class _MainScreenState extends ConsumerState<MainScreen>
   }
 
   void _onHorizontalDragStart(DragStartDetails details) {
-    if (_isDrawerOpen) {
-      _isDraggingFromEdge = true;
-      _dragStartX = details.globalPosition.dx;
-    } else if (details.globalPosition.dx <= _edgeDragWidth) {
-      _isDraggingFromEdge = true;
-      _dragStartX = details.globalPosition.dx;
+    if (_isDrawerOpen || details.globalPosition.dx <= _edgeDragWidth) {
+      _isDraggingDrawer = true;
+      _drawerController.stop();
     }
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    if (!_isDraggingFromEdge) return;
-    final dragDistance = details.globalPosition.dx - _dragStartX;
-    if (_isDrawerOpen) {
-      // Swipe left to close
-      if (dragDistance < -_minDragDistance) {
-        _closeDrawer();
-        _isDraggingFromEdge = false;
-      }
-    } else {
-      // Swipe right to open
-      if (dragDistance > _minDragDistance) {
-        _openDrawer();
-        _isDraggingFromEdge = false;
-      }
-    }
+    if (!_isDraggingDrawer) return;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final delta = details.delta.dx / (screenWidth * _drawerWidthRatio);
+
+    _drawerController.value =
+        (_drawerController.value + delta).clamp(0.0, 1.0);
   }
 
   void _onHorizontalDragEnd(DragEndDetails details) {
-    _isDraggingFromEdge = false;
+    if (!_isDraggingDrawer) return;
+    _isDraggingDrawer = false;
+
+    if (_drawerController.value > 0.45) {
+      setState(() => _isDrawerOpen = true);
+      _drawerController.animateTo(1.0, curve: Curves.easeOutCubic);
+    } else {
+      _drawerController.animateTo(0.0, curve: Curves.easeOutCubic).then((_) {
+        if (mounted) setState(() => _isDrawerOpen = false);
+      });
+    }
   }
 
   @override
@@ -213,10 +204,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
     _drawerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
-    );
-    _drawerAnimation = CurvedAnimation(
-      parent: _drawerController,
-      curve: Curves.easeOutCubic,
     );
     WidgetsBinding.instance.addObserver(this);
     // Track app launch (Level 1)
@@ -302,22 +289,22 @@ class _MainScreenState extends ConsumerState<MainScreen>
           child: Stack(
             children: [
               // Drawer sits underneath the main content
-              if (_isDrawerOpen || _drawerController.isAnimating)
+              if (_isDrawerOpen || _isDraggingDrawer || _drawerController.isAnimating)
                 Positioned.fill(
                   child: AnimatedBuilder(
-                    animation: _drawerAnimation,
+                    animation: _drawerController,
                     builder: (context, child) => AppDrawer(
                       onClose: _closeDrawer,
-                      animation: _drawerAnimation,
+                      drawerPosition: _drawerController.value,
                     ),
                   ),
                 ),
               // Main content slides right to reveal the drawer
               AnimatedBuilder(
-                animation: _drawerAnimation,
+                animation: _drawerController,
                 builder: (context, child) {
                   final slideX =
-                      _drawerAnimation.value * mediaQuery.size.width * 0.8;
+                      _drawerController.value * mediaQuery.size.width * 0.8;
                   return RepaintBoundary(
                     child: Transform.translate(
                       offset: Offset(slideX, 0),
@@ -325,13 +312,13 @@ class _MainScreenState extends ConsumerState<MainScreen>
                         children: [
                           child!,
                           // Scrim dims the content when drawer is open
-                          if (_isDrawerOpen || _drawerController.isAnimating)
+                          if (_isDrawerOpen || _isDraggingDrawer || _drawerController.isAnimating)
                             Positioned.fill(
                               child: GestureDetector(
                                 onTap: _closeDrawer,
                                 child: Container(
                                   color: Colors.black.withValues(
-                                    alpha: 0.45 * _drawerAnimation.value,
+                                    alpha: 0.45 * _drawerController.value,
                                   ),
                                 ),
                               ),

@@ -16,12 +16,12 @@ import '../screens/queue_history_screen.dart';
 
 class AppDrawer extends ConsumerStatefulWidget {
   final Future<void> Function() onClose;
-  final Animation<double> animation;
+  final double drawerPosition;
 
   const AppDrawer({
     super.key,
     required this.onClose,
-    required this.animation,
+    required this.drawerPosition,
   });
 
   @override
@@ -54,7 +54,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
   @override
   void initState() {
     super.initState();
-    widget.animation.addListener(_onAnimationTick);
   }
 
   void _initColors(ColorScheme colorScheme) {
@@ -125,12 +124,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
 
   @override
   void dispose() {
-    widget.animation.removeListener(_onAnimationTick);
     super.dispose();
-  }
-
-  void _onAnimationTick() {
-    setState(() {});
   }
 
   Future<void> _closeDrawer() async {
@@ -196,7 +190,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     );
 
     // Entrance animation: slide in from left + fade in as content reveals
-    final animationValue = widget.animation.value;
+    final animationValue = widget.drawerPosition;
     final slideInOffset = (1.0 - animationValue) * -40.0;
 
     return FractionallySizedBox(
