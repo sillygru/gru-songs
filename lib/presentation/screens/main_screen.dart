@@ -345,8 +345,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
                   children: [
                     ImmersiveBackground(
                       child: Stack(
-                        children:
-                            _screens.asMap().entries.map((entry) {
+                        children: _screens.asMap().entries.map((entry) {
                           final index = entry.key;
                           final screen = entry.value;
                           if (!_builtScreens.contains(index)) {

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:gru_songs/services/database_optimizer_service.dart';
-import 'package:gru_songs/services/database_service.dart';
+import 'package:wispie/services/database_optimizer_service.dart';
+import 'package:wispie/services/database_service.dart';
 import '../test_helpers.dart';
 
 /// Opens a fresh in-memory database with all canonical user data tables and indexes.

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/song.dart';
+import 'package:wispie/models/song.dart';
 
 void main() {
   group('Song Model', () {

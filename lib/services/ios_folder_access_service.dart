@@ -15,9 +15,8 @@ class IosFolderSelection {
   factory IosFolderSelection.fromMap(Map<dynamic, dynamic> map) {
     return IosFolderSelection(
       path: map['path'] as String? ?? '',
-      bookmarkId: map['bookmarkId'] as String? ??
-          map['iosBookmarkId'] as String? ??
-          '',
+      bookmarkId:
+          map['bookmarkId'] as String? ?? map['iosBookmarkId'] as String? ?? '',
     );
   }
 }

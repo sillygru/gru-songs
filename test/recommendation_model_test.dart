@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/playlist.dart';
+import 'package:wispie/models/playlist.dart';
 
 void main() {
   group('Playlist Model - Recommendation Support', () {

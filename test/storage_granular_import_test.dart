@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:gru_songs/services/storage_service.dart';
-import 'package:gru_songs/services/import_options.dart';
+import 'package:wispie/services/storage_service.dart';
+import 'package:wispie/services/import_options.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

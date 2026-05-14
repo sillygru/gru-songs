@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/song.dart';
-import 'package:gru_songs/providers/providers.dart';
-import 'package:gru_songs/services/database_service.dart';
-import 'package:gru_songs/services/scanner_service.dart';
-import 'package:gru_songs/services/storage_service.dart';
+import 'package:wispie/models/song.dart';
+import 'package:wispie/providers/providers.dart';
+import 'package:wispie/services/database_service.dart';
+import 'package:wispie/services/scanner_service.dart';
+import 'package:wispie/services/storage_service.dart';
 
 import 'test_helpers.dart';
 

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/providers/settings_provider.dart';
+import 'package:wispie/providers/settings_provider.dart';
 
 void main() {
   group('Volume Settings Tests', () {

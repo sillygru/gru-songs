@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/services/backup_service.dart';
+import 'package:wispie/services/backup_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;

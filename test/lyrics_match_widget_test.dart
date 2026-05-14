@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/domain/models/search_result.dart';
-import 'package:gru_songs/presentation/widgets/lyrics_match_widget.dart';
+import 'package:wispie/domain/models/search_result.dart';
+import 'package:wispie/presentation/widgets/lyrics_match_widget.dart';
 
 void main() {
   group('LyricsMatchWidget', () {

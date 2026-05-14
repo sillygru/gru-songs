@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/services/stats_service.dart';
-import 'package:gru_songs/services/database_service.dart';
+import 'package:wispie/services/stats_service.dart';
+import 'package:wispie/services/database_service.dart';
 import 'test_helpers.dart';
 import 'package:flutter/foundation.dart';
 

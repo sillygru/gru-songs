@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/domain/models/search_filter.dart';
+import 'package:wispie/domain/models/search_filter.dart';
 
 void main() {
   group('SearchFilterState', () {

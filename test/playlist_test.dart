@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/playlist.dart';
-import 'package:gru_songs/providers/user_data_provider.dart';
+import 'package:wispie/models/playlist.dart';
+import 'package:wispie/providers/user_data_provider.dart';
 
 void main() {
   group('Playlist Model', () {

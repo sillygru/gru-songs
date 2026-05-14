@@ -5,10 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:gru_songs/services/namida_import_service.dart';
-import 'package:gru_songs/services/database_service.dart';
-import 'package:gru_songs/models/playlist.dart';
-import 'package:gru_songs/models/song.dart';
+import 'package:wispie/services/namida_import_service.dart';
+import 'package:wispie/services/database_service.dart';
+import 'package:wispie/models/playlist.dart';
+import 'package:wispie/models/song.dart';
 
 // Initialize sqflite for tests
 void setupTestDatabase() {

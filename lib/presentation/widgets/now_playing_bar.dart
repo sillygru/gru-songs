@@ -38,8 +38,8 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
     final theme = Theme.of(context);
     final player = ref.watch(audioPlayerManagerProvider).player;
     final settings = ref.watch(settingsProvider);
-    final isBarVisible =
-        TickerMode.of(context) && (ModalRoute.of(context)?.isCurrent ?? true);
+    final isBarVisible = TickerMode.valuesOf(context).enabled &&
+        (ModalRoute.of(context)?.isCurrent ?? true);
     final isDesktop =
         !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
     final isIPad = !kIsWeb &&

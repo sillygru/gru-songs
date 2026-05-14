@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/song.dart';
-import 'package:gru_songs/presentation/models/lyrics_gap_loader_state.dart';
+import 'package:wispie/models/song.dart';
+import 'package:wispie/presentation/models/lyrics_gap_loader_state.dart';
 
 void main() {
   const delay = Duration(seconds: 4);

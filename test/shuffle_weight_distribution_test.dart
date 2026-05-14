@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/song.dart';
-import 'package:gru_songs/models/queue_item.dart';
-import 'package:gru_songs/models/shuffle_config.dart';
+import 'package:wispie/models/song.dart';
+import 'package:wispie/models/queue_item.dart';
+import 'package:wispie/models/shuffle_config.dart';
 import 'dart:math';
 
 // Extraction of the logic to be tested

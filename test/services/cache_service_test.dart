@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:gru_songs/models/song.dart';
-import 'package:gru_songs/services/cache_service.dart';
+import 'package:wispie/models/song.dart';
+import 'package:wispie/services/cache_service.dart';
 
 import '../test_helpers.dart';
 

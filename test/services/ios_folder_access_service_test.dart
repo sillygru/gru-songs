@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/services/ios_folder_access_service.dart';
+import 'package:wispie/services/ios_folder_access_service.dart';
 
 void main() {
   group('IosFolderSelection.fromMap', () {

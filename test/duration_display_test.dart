@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/song.dart';
-import 'package:gru_songs/presentation/widgets/duration_display.dart';
+import 'package:wispie/models/song.dart';
+import 'package:wispie/presentation/widgets/duration_display.dart';
 
 void main() {
   group('DurationFormatter', () {

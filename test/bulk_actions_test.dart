@@ -1,8 +1,8 @@
 import 'dart:collection';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gru_songs/models/song.dart';
-import 'package:gru_songs/services/bulk_metadata_service.dart';
-import 'package:gru_songs/providers/selection_provider.dart';
+import 'package:wispie/models/song.dart';
+import 'package:wispie/services/bulk_metadata_service.dart';
+import 'package:wispie/providers/selection_provider.dart';
 
 void main() {
   group('SelectionState Tests', () {
