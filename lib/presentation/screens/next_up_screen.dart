@@ -502,7 +502,7 @@ class _QueueRow extends StatelessWidget {
     this.showActions = false,
     this.showAnimatedWave = false,
     this.currentAccent,
-    this.onTogglePriority,
+    this.onMoveToFront,
     this.onRemove,
     this.onTap,
     this.onCurrentIndicatorTap,

@@ -1120,9 +1120,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
         return list.take(20).toList();
 
       case 'fresh_finds':
-        final list = List<Song>.from(allSongs);
-        list.sort((a, b) => (b.mtime ?? 0).compareTo(a.mtime ?? 0));
-        return list.take(20).toList();
+        if (allSongs.isEmpty) return [];
+        final sorted = List<Song>.from(allSongs)
+          ..sort((a, b) => (b.createdEpochSec ?? 0)
+              .compareTo(a.createdEpochSec ?? 0));
+        final fresh = sorted.take(20).toList();
+        // No songs qualify if none have a recorded creation timestamp
+        if (fresh.every((s) => s.createdEpochSec == null)) return [];
+        return fresh;
 
       case 'forgotten_favorites':
         final recentFilenames = sessions
@@ -1260,6 +1265,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
           await DatabaseService.instance.savePlaylist(playlist);
           updatedPlaylists.removeWhere((p) => p.id == type.id);
           updatedPlaylists.add(playlist);
+          changed = true;
+        } else if (existing != null) {
+          // Remove recommendation playlists that no longer have qualifying songs
+          await DatabaseService.instance.deletePlaylist(type.id);
+          updatedPlaylists.removeWhere((p) => p.id == type.id);
           changed = true;
         }
       }

@@ -67,14 +67,17 @@ class FFmpegService {
     required String? lyrics,
   }) async {
     final normalizedLyrics = lyrics?.trim() ?? '';
-    // Use -map 0:a? to only process audio streams, avoiding video codec errors.
-    // Add -vn -sn to explicitly disable video/subtitle stream processing.
+    // Map both audio and video (attached picture/cover art) streams,
+    // copying them without re-encoding. We skip subtitle streams since
+    // they are not used.
     final args = [
       '-y',
       '-i',
       inputPath,
       '-map',
       '0:a?',
+      '-map',
+      '0:v?',
       '-c',
       'copy',
       '-map_metadata',
@@ -83,8 +86,6 @@ class FFmpegService {
       'lyrics=$normalizedLyrics',
       '-metadata',
       'unsynced_lyrics=$normalizedLyrics',
-      '-vn',
-      '-sn',
       outputPath,
     ];
 
