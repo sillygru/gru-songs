@@ -1122,8 +1122,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
       case 'fresh_finds':
         if (allSongs.isEmpty) return [];
         final sorted = List<Song>.from(allSongs)
-          ..sort((a, b) => (b.createdEpochSec ?? 0)
-              .compareTo(a.createdEpochSec ?? 0));
+          ..sort((a, b) =>
+              (b.createdEpochSec ?? 0).compareTo(a.createdEpochSec ?? 0));
         final fresh = sorted.take(20).toList();
         // No songs qualify if none have a recorded creation timestamp
         if (fresh.every((s) => s.createdEpochSec == null)) return [];

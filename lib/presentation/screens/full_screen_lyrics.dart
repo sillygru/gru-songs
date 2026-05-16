@@ -614,15 +614,17 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
                       !isHeldDuringGap;
                   final isPlayed =
                       currentIndex >= 0 && lyricIndex <= currentIndex;
-                  final blurSigma = !hasTimedLyrics || isBeforeFirstTimedLine
-                      ? _defaultSmallBlurSigma
-                      : (isHeldDuringGap
+                  final blurSigma = !hasTimedLyrics
+                      ? 0.0
+                      : (isBeforeFirstTimedLine
                           ? _defaultSmallBlurSigma
-                          : (isPlayed
-                              ? 0.0
-                              : (_autoScrollEnabled
-                                  ? _upcomingBlurSigma
-                                  : _manualModeUpcomingBlurSigma)));
+                          : (isHeldDuringGap
+                              ? _defaultSmallBlurSigma
+                              : (isPlayed
+                                  ? 0.0
+                                  : (_autoScrollEnabled
+                                      ? _upcomingBlurSigma
+                                      : _manualModeUpcomingBlurSigma))));
                   return LyricsLine(
                     key: key,
                     text: line.text,
@@ -645,34 +647,38 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
         IgnorePointer(
           child: Align(
             alignment: Alignment.topCenter,
-            child: Container(
-              height: 118,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.62),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        IgnorePointer(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              height: 166,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.72),
-                  ],
+            child: RepaintBoundary(
+              child: ClipRect(
+                child: ShaderMask(
+                  shaderCallback: (rect) {
+                    return LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white,
+                        Colors.white,
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ).createShader(rect);
+                  },
+                  blendMode: BlendMode.dstIn,
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      height: 118,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.15),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

@@ -197,8 +197,7 @@ void main() {
               ));
 
       // Simulate queue: [current(0), 1, 2, 3, 4]
-      List<QueueItem> queue =
-          songs.map((s) => QueueItem(song: s)).toList();
+      List<QueueItem> queue = songs.map((s) => QueueItem(song: s)).toList();
 
       // Move item at index 3 (Song 3) to front (right after current at index 0)
       final itemToMove = queue[3];

@@ -323,14 +323,16 @@ class _NextUpHeader extends StatelessWidget {
                       final hasUpcoming = displayCount > 0;
 
                       // Calculate total remaining duration
-                      final upcomingItems = queue.skip(currentIndex + 1).toList();
+                      final upcomingItems =
+                          queue.skip(currentIndex + 1).toList();
                       int totalRemainingSec = 0;
                       for (final item in upcomingItems) {
                         if (item.song.duration != null) {
                           totalRemainingSec += item.song.duration!.inSeconds;
                         }
                       }
-                      final remainingLabel = DurationFormatter.formatRemaining(totalRemainingSec);
+                      final remainingLabel =
+                          DurationFormatter.formatRemaining(totalRemainingSec);
 
                       return Row(
                         children: [

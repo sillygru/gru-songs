@@ -218,8 +218,7 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                         // Remaining queue duration indicator
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                             child: Builder(builder: (ctx) {
                               final t = Theme.of(ctx);
                               final cs = t.colorScheme;
@@ -368,8 +367,7 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                                     ),
                                     onMoveToFront: () {
                                       HapticFeedback.mediumImpact();
-                                      audioManager
-                                          .moveToFront(absoluteIndex);
+                                      audioManager.moveToFront(absoluteIndex);
                                     },
                                     onRemove: () {
                                       HapticFeedback.mediumImpact();

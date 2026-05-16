@@ -180,8 +180,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
     final screenWidth = MediaQuery.of(context).size.width;
     final delta = details.delta.dx / (screenWidth * _drawerWidthRatio);
 
-    _drawerController.value =
-        (_drawerController.value + delta).clamp(0.0, 1.0);
+    _drawerController.value = (_drawerController.value + delta).clamp(0.0, 1.0);
   }
 
   void _onHorizontalDragEnd(DragEndDetails details) {
@@ -289,7 +288,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
           child: Stack(
             children: [
               // Drawer sits underneath the main content
-              if (_isDrawerOpen || _isDraggingDrawer || _drawerController.isAnimating)
+              if (_isDrawerOpen ||
+                  _isDraggingDrawer ||
+                  _drawerController.isAnimating)
                 Positioned.fill(
                   child: AnimatedBuilder(
                     animation: _drawerController,
@@ -312,7 +313,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
                         children: [
                           child!,
                           // Scrim dims the content when drawer is open
-                          if (_isDrawerOpen || _isDraggingDrawer || _drawerController.isAnimating)
+                          if (_isDrawerOpen ||
+                              _isDraggingDrawer ||
+                              _drawerController.isAnimating)
                             Positioned.fill(
                               child: GestureDetector(
                                 onTap: _closeDrawer,

@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'package:flutter/material.dart';
 
 class LyricsGapLoader extends StatefulWidget {
   final Duration animationDuration;
@@ -16,6 +16,14 @@ class LyricsGapLoader extends StatefulWidget {
 class _LyricsGapLoaderState extends State<LyricsGapLoader>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+
+  // Entrance takes ~1.4s regardless of gap length.
+  // If gap is shorter, entrance compresses proportionally.
+  static const double _entranceDurationMs = 1400.0;
+  static const double _exitRatio = 0.08;
+  static const double _staggerGap = 0.30;
+  static const double _dotAppearDuration = 0.35;
+  static const double _breathFrequencyHz = 0.42;
 
   @override
   void initState() {
@@ -47,44 +55,100 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
     return RepaintBoundary(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: FractionallySizedBox(
-          widthFactor: 0.92,
+        child: Align(
           alignment: Alignment.centerLeft,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) {
-                final overallProgress = _controller.value;
-                final exitBoost = Interval(
-                  0.86,
-                  1.0,
-                  curve: Curves.easeOutCubic,
-                ).transform(overallProgress);
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(3, (index) {
-                    final start = index / 3;
-                    final end = (index + 1) / 3;
-                    final progress =
-                        Interval(start, end, curve: Curves.easeInOutCubic)
-                            .transform(overallProgress);
-                    final postFillProgress = overallProgress <= end
-                        ? 0.0
-                        : ((overallProgress - end) / (1 - end)).clamp(0.0, 1.0);
-                    return Padding(
-                      padding: EdgeInsets.only(right: index == 2 ? 0 : 8),
-                      child: _GapLoaderDot(
-                        progress: progress,
-                        postFillProgress: postFillProgress,
-                        dotIndex: index,
-                        exitBoost: exitBoost,
-                      ),
-                    );
-                  }),
-                );
-              },
-            ),
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final overallProgress = _controller.value;
+
+              // Entrance normalized so dots always appear at ~1.4s rate
+              final gapMs = math
+                  .max(widget.animationDuration.inMilliseconds, 1)
+                  .toDouble();
+              final entranceEnd =
+                  (_entranceDurationMs / gapMs).clamp(0.18, 1.0);
+              final entranceProgress =
+                  (overallProgress / entranceEnd).clamp(0.0, 1.0);
+
+              // Exit: last _exitRatio of the gap
+              final exitProgress =
+                  ((overallProgress - (1.0 - _exitRatio)) / _exitRatio)
+                      .clamp(0.0, 1.0);
+              final exitEased = Curves.easeInCubic.transform(exitProgress);
+              final exitAlpha = 1.0 - exitEased;
+              final exitScale = 1.0 - exitEased * 0.2;
+
+              return Opacity(
+                opacity: exitAlpha,
+                child: Transform.scale(
+                  scale: exitScale,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(3, (index) {
+                      final staggerCenter =
+                          _staggerGap * index + _dotAppearDuration * 0.5;
+                      final staggerStart =
+                          staggerCenter - _dotAppearDuration * 0.5;
+                      final dotRaw = ((entranceProgress - staggerStart) /
+                              _dotAppearDuration)
+                          .clamp(0.0, 1.0);
+                      final dotAppear = Curves.easeOutCubic.transform(dotRaw);
+
+                      // Fixed-frequency breathing independent of gap length
+                      final gapSeconds = gapMs / 1000.0;
+                      final breathRaw = math.sin(overallProgress *
+                              gapSeconds *
+                              2.0 *
+                              math.pi *
+                              _breathFrequencyHz +
+                          index * 0.35);
+                      final breath =
+                          Curves.easeInOutSine.transform(breathRaw * 0.5 + 0.5);
+
+                      // Smoothly blend entrance into breathing over dotRaw 0.85-1.0
+                      const blendStart = 0.85;
+                      const blendEnd = 1.0;
+                      final blendProgress =
+                          ((dotRaw - blendStart) / (blendEnd - blendStart))
+                              .clamp(0.0, 1.0);
+                      final blendCurve =
+                          Curves.easeInOutSine.transform(blendProgress);
+
+                      // Entrance mode values
+                      // At dotRaw=1.0 (finish): size=11, alpha=1.0, glow=0.18, ring=0
+                      final eSize = 3.0 + dotAppear * 8.0;
+                      final eAlpha = 0.15 + dotAppear * 0.85;
+                      final eGlow = dotAppear * 0.18;
+                      final eRing = (1.0 - dotAppear) * 0.18;
+
+                      // Breathing mode values — baseline matches entrance final state
+                      // so the transition is naturally continuous
+                      final bSize = 11.0 + breath * 2.0;
+                      final bAlpha = 1.0;
+                      final bGlow = 0.12 + breath * 0.06;
+                      const bRing = 0.0;
+
+                      // Blend between entrance and breathing
+                      final size = eSize + (bSize - eSize) * blendCurve;
+                      final coreAlpha = eAlpha + (bAlpha - eAlpha) * blendCurve;
+                      final glowAlpha = eGlow + (bGlow - eGlow) * blendCurve;
+                      final ringAlpha = eRing + (bRing - eRing) * blendCurve;
+
+                      return Padding(
+                        padding: EdgeInsets.only(right: index == 2 ? 0 : 8),
+                        child: _GapLoaderDot(
+                          size: size,
+                          coreAlpha: coreAlpha,
+                          glowAlpha: glowAlpha,
+                          ringAlpha: ringAlpha,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -93,63 +157,38 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
 }
 
 class _GapLoaderDot extends StatelessWidget {
-  final double progress;
-  final double postFillProgress;
-  final int dotIndex;
-  final double exitBoost;
+  final double size;
+  final double coreAlpha;
+  final double glowAlpha;
+  final double ringAlpha;
 
   const _GapLoaderDot({
-    required this.progress,
-    required this.postFillProgress,
-    required this.dotIndex,
-    required this.exitBoost,
+    required this.size,
+    required this.coreAlpha,
+    required this.glowAlpha,
+    required this.ringAlpha,
   });
 
   @override
   Widget build(BuildContext context) {
-    final clampedProgress = progress.clamp(0.0, 1.0);
-    final activeProgress = Curves.easeOutCubic.transform(clampedProgress);
-    final isFilled = clampedProgress >= 0.999;
-    final pulseWave = isFilled
-        ? (math.sin(
-                  ((postFillProgress * 2.8) + (dotIndex * 0.16)) * math.pi * 2,
-                ) +
-                1) /
-            2
-        : 0.0;
-    final pulseProgress =
-        isFilled ? Curves.easeInOutSine.transform(pulseWave) : 0.0;
-    final finalPop = Curves.easeOutBack.transform(exitBoost.clamp(0.0, 1.0));
-
-    final baseSize = 5.2;
-    final activeSize = baseSize + (4.8 * activeProgress);
-    final pulseSize = isFilled ? (7.6 + (3.8 * pulseProgress)) : activeSize;
-    final size = pulseSize + (isFilled ? 4.8 * finalPop : 2.4 * finalPop);
-    final glowSize = size + (isFilled ? 5.6 : 2.8 * activeProgress);
-    final coreAlpha = isFilled
-        ? (0.8 + (0.16 * pulseProgress) + (0.04 * exitBoost)).clamp(0.0, 1.0)
-        : 0.18 + (0.74 * activeProgress);
-    final glowAlpha = isFilled
-        ? (0.05 + (0.14 * pulseProgress) + (0.07 * exitBoost)).clamp(0.0, 1.0)
-        : 0.04 + (0.1 * activeProgress);
-    final ringAlpha = isFilled ? 0.0 : 0.14 * (1 - activeProgress);
+    final glowSize = size + 6.0;
+    final boxSize = math.max(glowSize, 22.0);
 
     return SizedBox(
-      width: 14,
-      height: 14,
+      width: boxSize,
+      height: boxSize,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            width: glowSize,
-            height: glowSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(
-                alpha: glowAlpha,
+          if (glowAlpha > 0)
+            Container(
+              width: glowSize,
+              height: glowSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: glowAlpha),
               ),
             ),
-          ),
           Container(
             width: size,
             height: size,
@@ -161,9 +200,7 @@ class _GapLoaderDot extends StatelessWidget {
                       width: 0.8,
                     )
                   : null,
-              color: Colors.white.withValues(
-                alpha: coreAlpha,
-              ),
+              color: Colors.white.withValues(alpha: coreAlpha),
             ),
           ),
         ],

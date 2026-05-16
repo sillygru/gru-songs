@@ -2296,8 +2296,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         await _player.insertAudioSource(targetIndex, source);
       } catch (e) {
         _effectiveQueue.removeAt(targetIndex);
-        _effectiveQueue.insert(
-            index.clamp(0, _effectiveQueue.length), item);
+        _effectiveQueue.insert(index.clamp(0, _effectiveQueue.length), item);
         rethrow;
       }
 
