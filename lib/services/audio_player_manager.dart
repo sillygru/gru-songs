@@ -15,6 +15,7 @@ import 'storage_service.dart';
 import 'database_service.dart';
 import 'volume_monitor_service.dart';
 import 'color_extraction_service.dart';
+import 'telemetry_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/queue_history_provider.dart';
 
@@ -118,6 +119,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   double _foregroundDuration = 0.0;
   double _backgroundDuration = 0.0;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
+
+  // Level 3 usage tracking accumulators (persisted for weekly reports)
+  double _totalForegroundSeconds = 0.0;
+  double _totalBackgroundSeconds = 0.0;
+  DateTime? _lastWeeklyReportDate;
 
   final ValueNotifier<bool> shuffleNotifier = ValueNotifier(false);
   final ValueNotifier<ShuffleState> shuffleStateNotifier = ValueNotifier(
@@ -286,18 +292,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       await _saveShuffleState();
     }
 
-    // Check if song is already in current queue - if so, just jump to it
-    final existingIdx = _effectiveQueue.indexWhere(
-      (item) => item.song.filename == song.filename,
-    );
-    if (existingIdx != -1) {
-      // Song exists in current queue - just seek to it without rebuilding
-      await _rebuildQueue(
-          initialIndex: existingIdx, startPlaying: startPlaying);
-      _savePlaybackState();
-      return;
-    }
-
     // Clear any pending queue replacement since we're starting fresh
     _pendingQueueSongs = null;
     _pendingQueuePlaylistId = null;
@@ -316,6 +310,21 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         isNewQueue = !currentFilenames.containsAll(newFilenames) ||
             !newFilenames.containsAll(currentFilenames);
       }
+    }
+
+    // Check if song is already in current queue - if so, just jump to it
+    // Skip this optimization if a new context queue is provided (e.g.
+    // switching from library to a playlist), so the queue gets rebuilt
+    // with the correct songs.
+    final existingIdx = _effectiveQueue.indexWhere(
+      (item) => item.song.filename == song.filename,
+    );
+    if (existingIdx != -1 && !isNewQueue) {
+      // Song exists in current queue - just seek to it without rebuilding
+      await _rebuildQueue(
+          initialIndex: existingIdx, startPlaying: startPlaying);
+      _savePlaybackState();
+      return;
     }
 
     // 1. Setup Local Queue (Optimistic)
@@ -501,7 +510,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             _pendingQueuePlaylistId = null;
             pendingQueueNotifier.value = false;
             replaceQueue(pendingSongs,
-                playlistId: pendingPlaylistId, forceLinear: true);
+                playlistId: pendingPlaylistId,
+                forceLinear: true,
+                clearCurrentSong: true);
           }
 
           // Extract color from cover
@@ -612,7 +623,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _pendingQueuePlaylistId = null;
           pendingQueueNotifier.value = false;
           replaceQueue(pendingSongs,
-              playlistId: pendingPlaylistId, forceLinear: true);
+              playlistId: pendingPlaylistId,
+              forceLinear: true,
+              clearCurrentSong: true);
         }
       }
     });
@@ -662,6 +675,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   Future<void> _initPersistence() async {
+    // Load persisted usage stats for Level 3 weekly reports
+    await _loadUsageStats();
+
     // Load shuffle state
     final savedShuffleJson = await _storageService.loadShuffleState();
     if (savedShuffleJson != null) {
@@ -1058,6 +1074,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (isBackground) {
       _flushStats(isTerminal: true);
       _savePlaybackState();
+      _saveUsageStats();
       _setCacheLimits(isBackground: true);
       _statsService.flush();
     } else {
@@ -1166,6 +1183,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         'total_length': effectiveTotalLength,
       }));
 
+      // Accumulate usage stats for Level 3 telemetry
+      _totalForegroundSeconds += _foregroundDuration;
+      _totalBackgroundSeconds += _backgroundDuration;
+
       if (finalDuration > 5.0) {
         _addToShuffleHistory(_currentSongFilename!);
       }
@@ -1178,6 +1199,72 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _playStartTime = DateTime.now();
     }
     unawaited(_statsService.flush());
+  }
+
+  Future<void> checkAndSendWeeklyUsageReport() async {
+    if (_totalForegroundSeconds + _totalBackgroundSeconds < 1.0) return;
+
+    final now = DateTime.now();
+    final todayDate = DateTime(now.year, now.month, now.day);
+
+    // Check if a week has passed since the last report
+    if (_lastWeeklyReportDate != null) {
+      final daysSinceLastReport =
+          todayDate.difference(_lastWeeklyReportDate!).inDays;
+      if (daysSinceLastReport < 7) return;
+    }
+
+    // Send accumulated usage stats -- only reset on success so data
+    // isnt lost if the device is offline.
+    try {
+      await TelemetryService.instance.trackUsage({
+        'total_seconds':
+            (_totalForegroundSeconds + _totalBackgroundSeconds).round(),
+        'foreground_seconds': _totalForegroundSeconds.round(),
+        'background_seconds': _totalBackgroundSeconds.round(),
+      });
+
+      // Only reset on successful send
+      _totalForegroundSeconds = 0.0;
+      _totalBackgroundSeconds = 0.0;
+      _lastWeeklyReportDate = todayDate;
+      await _saveUsageStats();
+    } catch (e) {
+      debugPrint(
+          'Weekly usage report failed to send, will retry next app pause: $e');
+    }
+  }
+
+  Future<void> _saveUsageStats() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(
+          'usage_total_foreground_seconds', _totalForegroundSeconds);
+      await prefs.setDouble(
+          'usage_total_background_seconds', _totalBackgroundSeconds);
+      if (_lastWeeklyReportDate != null) {
+        await prefs.setString('usage_last_weekly_report_date',
+            _lastWeeklyReportDate!.toIso8601String());
+      }
+    } catch (e) {
+      debugPrint('AudioPlayerManager: Failed to save usage stats: $e');
+    }
+  }
+
+  Future<void> _loadUsageStats() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _totalForegroundSeconds =
+          prefs.getDouble('usage_total_foreground_seconds') ?? 0.0;
+      _totalBackgroundSeconds =
+          prefs.getDouble('usage_total_background_seconds') ?? 0.0;
+      final lastReportStr = prefs.getString('usage_last_weekly_report_date');
+      if (lastReportStr != null) {
+        _lastWeeklyReportDate = DateTime.tryParse(lastReportStr);
+      }
+    } catch (e) {
+      debugPrint('AudioPlayerManager: Failed to load usage stats: $e');
+    }
   }
 
   void _addToShuffleHistory(String filename) {
@@ -1585,6 +1672,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     String? playlistId,
     bool forceLinear = false,
     bool saveSnapshot = true,
+    bool clearCurrentSong = false,
   }) async {
     if (songs.isEmpty) return;
 
@@ -1614,7 +1702,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
       _isRestrictedToOriginal = true;
 
-      if (currentSong != null && isPlaying) {
+      if (!clearCurrentSong && currentSong != null && isPlaying) {
         final currentItem = QueueItem(song: currentSong);
         _effectiveQueue = [currentItem, ..._originalQueue];
         await _rebuildQueue(initialIndex: 0, startPlaying: true);
@@ -2314,6 +2402,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(forceFlushCurrentStats());
+    _saveUsageStats();
     _volumeMonitorService?.dispose();
     _positionSubscription?.cancel();
     _sequenceSubscription?.cancel();

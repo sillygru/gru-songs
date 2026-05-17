@@ -445,7 +445,8 @@ class QueueHistoryScreen extends ConsumerWidget {
         ),
       );
     } else {
-      audioManager.replaceQueue(songs, playlistId: source, forceLinear: true);
+      audioManager.replaceQueue(songs,
+          playlistId: source, forceLinear: true, clearCurrentSong: true);
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -116,18 +116,23 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       const SizedBox(height: 8),
                       Consumer(builder: (context, ref, child) {
                         final settings = ref.watch(settingsProvider);
-                        final levels = ['Level 0', 'Level 1', 'Level 2'];
+                        final levels = [
+                          'Level 0',
+                          'Level 1',
+                          'Level 2',
+                          'Level 3'
+                        ];
                         return Column(
                           children: [
                             Slider(
                               value: settings.telemetryLevel
                                   .toDouble()
-                                  .clamp(0, 2),
+                                  .clamp(0, 3),
                               min: 0,
-                              max: 2,
-                              divisions: 2,
+                              max: 3,
+                              divisions: 3,
                               label:
-                                  levels[settings.telemetryLevel.clamp(0, 2)],
+                                  levels[settings.telemetryLevel.clamp(0, 3)],
                               onChanged: (val) {
                                 ref
                                     .read(settingsProvider.notifier)
@@ -135,7 +140,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                               },
                             ),
                             Text(
-                              levels[settings.telemetryLevel.clamp(0, 2)],
+                              levels[settings.telemetryLevel.clamp(0, 3)],
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.primary,
@@ -144,7 +149,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                             const SizedBox(height: 16),
                             // Level explanation info
                             _buildLevelExplanation(
-                                settings.telemetryLevel.clamp(0, 2)),
+                                settings.telemetryLevel.clamp(0, 3)),
                           ],
                         );
                       }),
@@ -182,6 +187,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       '• No data will be shared with developers.',
       '• Basic app information (version, platform).\n• App startup notification.',
       '• Everything in level 1.\n• Anonymous usage events (settings changed).\n• Library rescans and data management (import/export).',
+      '• Everything in level 2.\n• Usage data: how often and how long you use the app.\n• Weekly listening statistics (hours played).',
     ];
 
     return Container(

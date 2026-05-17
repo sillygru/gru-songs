@@ -464,7 +464,7 @@ class SessionDetailScreen extends ConsumerWidget {
     }
 
     await audioManager.replaceQueue(songs,
-        playlistId: session.id, forceLinear: true);
+        playlistId: session.id, forceLinear: true, clearCurrentSong: true);
 
     if (!context.mounted) return;
 

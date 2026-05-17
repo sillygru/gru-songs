@@ -47,6 +47,19 @@ class TelemetryService {
     await _storage.setHasSentFirstStartup(true);
   }
 
+  /// Track aggregated usage data (Level 3 - requires [requiredLevel] = 3).
+  /// Sends stats like session durations, playback hours, and song counts.
+  Future<void> trackUsage(Map<String, dynamic> usageData,
+      {int requiredLevel = 3}) async {
+    final currentLevel = await _storage.getTelemetryLevel();
+    if (currentLevel < requiredLevel) return;
+
+    await _sendTelemetry({
+      'event': 'usage_stats',
+      ...usageData,
+    });
+  }
+
   Future<void> _sendTelemetry(Map<String, dynamic> data) async {
     try {
       if (kIsWeb) return;

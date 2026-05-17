@@ -439,7 +439,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       onPressed: () {
                         Navigator.pop(ctx);
                         audioManager.replaceQueue(songs,
-                            playlistId: snapshot.source, forceLinear: true);
+                            playlistId: snapshot.source,
+                            forceLinear: true,
+                            clearCurrentSong: true);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Playing ${songs.length} tracks'),

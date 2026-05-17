@@ -211,6 +211,11 @@ class _MainScreenState extends ConsumerState<MainScreen>
     // Check and run auto-backup on initial app launch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
+
+      // Check if a weekly usage report is due (Level 3).
+      // This catches the case where a week passed while the app was closed
+      // and the data was persisted via dispose().
+      ref.read(audioPlayerManagerProvider).checkAndSendWeeklyUsageReport();
     });
   }
 
@@ -225,11 +230,18 @@ class _MainScreenState extends ConsumerState<MainScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // Trigger background refresh when app returns to foreground
-      // This will use the optimized scanner we just implemented
       ref.read(songsProvider.notifier).refresh(isBackground: true);
 
       // Check and run auto-backup if needed
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
+
+      // Check if it's time to send the weekly usage report (Level 3).
+      // Also triggered on paused below, but checking on resume covers the
+      // case where the app is killed from the switcher without hitting paused.
+      ref.read(audioPlayerManagerProvider).checkAndSendWeeklyUsageReport();
+    } else if (state == AppLifecycleState.paused) {
+      // Check if it's time to send the weekly usage report (Level 3)
+      ref.read(audioPlayerManagerProvider).checkAndSendWeeklyUsageReport();
     }
   }
 
