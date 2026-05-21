@@ -350,6 +350,22 @@ class ColorExtractionService {
     return palette?.color;
   }
 
+  static Future<bool> hasCachedPalette(String? imagePath) async {
+    if (imagePath == null || imagePath.isEmpty) return false;
+    await init();
+    return _paletteCache.containsKey(imagePath);
+  }
+
+  static Future<void> pruneCacheToImagePaths(Set<String> imagePaths) async {
+    await init();
+    final keepPaths = imagePaths.where((path) => path.isNotEmpty).toSet();
+    final originalLength = _paletteCache.length;
+    _paletteCache.removeWhere((path, _) => !keepPaths.contains(path));
+    if (_paletteCache.length != originalLength) {
+      await _saveCacheToDisk();
+    }
+  }
+
   static Future<void> _saveCacheToDisk() async {
     if (_cacheFile == null) return;
     try {

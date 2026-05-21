@@ -13,6 +13,7 @@ import '../models/shuffle_config.dart';
 import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
+import 'ffmpeg_service.dart';
 import 'volume_monitor_service.dart';
 import 'color_extraction_service.dart';
 import 'telemetry_service.dart';
@@ -110,6 +111,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   double _targetVolume = 1.0;
   DateTime? _fadeStartTime;
   double? _fadeDurationMs;
+  bool _holdMutedUntilNextTrack = false;
 
   // Feature coordination state
   bool _wasPausedByMute = false;
@@ -502,19 +504,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
 
-          // Apply pending queue replacement on song change
-          if (_pendingQueueSongs != null) {
-            final pendingSongs = _pendingQueueSongs!;
-            final pendingPlaylistId = _pendingQueuePlaylistId;
-            _pendingQueueSongs = null;
-            _pendingQueuePlaylistId = null;
-            pendingQueueNotifier.value = false;
-            replaceQueue(pendingSongs,
-                playlistId: pendingPlaylistId,
-                forceLinear: true,
-                clearCurrentSong: true);
-          }
-
           // Extract color from cover
           if (song != null && _ref != null) {
             ColorExtractionService.extractPalette(song.coverUrl)
@@ -597,6 +586,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _isInGap = false;
           _gapTimer?.cancel();
           _isFadingOut = false;
+          _holdMutedUntilNextTrack = false;
 
           // Always reset volume on song change
           _setVolumeWithSafety(1.0);
@@ -612,7 +602,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     // Handle completion - apply pending queue if exists, reset volume
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
-        _setVolumeWithSafety(1.0);
+        if (!_holdMutedUntilNextTrack) {
+          _setVolumeWithSafety(1.0);
+        }
         _isFadingOut = false;
 
         // Apply pending queue replacement when queue completes
@@ -831,10 +823,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _startFadeOut(double duration) {
     _fadeTimer?.cancel();
     _isFadingOut = true;
+    _holdMutedUntilNextTrack = false;
     _fadeDurationMs = duration * 1000;
     _fadeStartTime = DateTime.now();
 
-    _fadeTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+    _fadeTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       if (_fadeStartTime == null || _fadeDurationMs == null) {
         timer.cancel();
         return;
@@ -846,6 +839,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       if (elapsed >= targetMs) {
         _setVolumeWithSafety(0.0);
         _isFadingOut = false;
+        _holdMutedUntilNextTrack = true;
         _fadeStartTime = null;
         _fadeDurationMs = null;
         timer.cancel();
@@ -951,6 +945,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _playPauseFadeTimer?.cancel();
     _isFadingIn = false;
     _isFadingOut = false;
+    _holdMutedUntilNextTrack = false;
     _isPlayPauseFading = false;
     _isPausingByFade = false;
     _fadeStartTime = null;
@@ -965,6 +960,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _playPauseFadeTimer?.cancel();
     _isFadingIn = false;
     _isFadingOut = false;
+    _holdMutedUntilNextTrack = false;
     _isPlayPauseFading = false;
     _isPausingByFade = false;
     _fadeStartTime = null;
@@ -1466,10 +1462,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           initialIndex: currentIndex,
           startPlaying: _player.playing,
         );
-        await _saveQueueSnapshot(
-          _effectiveQueue.map((item) => item.song).toList(),
-          playlistId: _currentPlaylistId,
-        );
+        await _updateCurrentSnapshotSongs();
         _savePlaybackState();
         return;
       }
@@ -1503,7 +1496,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<AudioSource> _createAudioSource(QueueItem item) async {
     final song = item.song;
-    final Uri audioUri = Uri.file(song.url);
+    final mediaPaths = await _resolvePlayableMediaPaths(song);
+    final Uri audioUri = Uri.file(mediaPaths.audioPath);
 
     Uri? artUri;
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
@@ -1539,9 +1533,60 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           'queueId': item.queueId,
           'androidStopForegroundOnPause': !keepNotification,
           'audioPath': song.url,
+          'playbackAudioPath': mediaPaths.audioPath,
+          if (mediaPaths.videoPath != null) 'videoPath': mediaPaths.videoPath,
         },
       ),
     );
+  }
+
+  Future<({String audioPath, String? videoPath})> _resolvePlayableMediaPaths(
+    Song song,
+  ) async {
+    if (!Platform.isIOS) {
+      return (audioPath: song.url, videoPath: song.hasVideo ? song.url : null);
+    }
+
+    final ffmpeg = FFmpegService();
+    final needsAudioProxy = !_isIosNativeAudioPath(song.url);
+    final audioPath = needsAudioProxy
+        ? (await ffmpeg.prepareIosAudioProxy(song.url)) ?? song.url
+        : song.url;
+
+    String? videoPath = song.hasVideo ? song.url : null;
+    if (song.hasVideo && !_isIosNativeVideoPath(song.url)) {
+      videoPath = await ffmpeg.prepareIosVideoProxy(song.url) ?? song.url;
+    }
+
+    return (audioPath: audioPath, videoPath: videoPath);
+  }
+
+  bool _isIosNativeAudioPath(String path) {
+    const supported = {
+      '.aac',
+      '.aif',
+      '.aiff',
+      '.caf',
+      '.flac',
+      '.m4a',
+      '.m4b',
+      '.mp3',
+      '.mp4',
+      '.m4v',
+      '.mov',
+      '.wav',
+    };
+    return supported.contains(p.extension(path).toLowerCase());
+  }
+
+  bool _isIosNativeVideoPath(String path) {
+    const supported = {
+      '.3gp',
+      '.m4v',
+      '.mov',
+      '.mp4',
+    };
+    return supported.contains(p.extension(path).toLowerCase());
   }
 
   void _updateQueueNotifier() {
@@ -1713,6 +1758,29 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _effectiveQueue = List.from(_originalQueue);
         await _rebuildQueue(initialIndex: 0, startPlaying: true);
       }
+    } else {
+      _resetFading();
+      await _player.setShuffleModeEnabled(false);
+      _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
+      _isRestrictedToOriginal = true;
+
+      if (_shuffleState.config.enabled) {
+        final firstItem = _originalQueue.first;
+        final otherItems = List<QueueItem>.from(_originalQueue)..removeAt(0);
+        final shuffledOthers = await _weightedShuffle(
+          otherItems,
+          lastItem: firstItem,
+        );
+        _effectiveQueue = [firstItem, ...shuffledOthers];
+      } else {
+        _effectiveQueue = List.from(_originalQueue);
+      }
+
+      if (!clearCurrentSong && currentSong != null && isPlaying) {
+        final currentItem = QueueItem(song: currentSong);
+        _effectiveQueue = [currentItem, ..._effectiveQueue];
+      }
+      await _rebuildQueue(initialIndex: 0, startPlaying: true);
     }
 
     if (saveSnapshot) {
@@ -1727,9 +1795,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       {String? playlistId}) async {
     if (songs.isEmpty) return;
 
+    final songFilenames = songs.map((s) => s.filename).toList();
+    final source = playlistId ?? 'shuffle';
+    final existing = await _findExistingQueueSnapshot(source, songFilenames);
+    if (existing != null) {
+      _currentQueueSnapshotId = existing.id;
+      await _savePlaybackState();
+      return;
+    }
+
     final snapshot = QueueSnapshot.create(
-      songFilenames: songs.map((s) => s.filename).toList(),
-      source: playlistId ?? 'shuffle',
+      songFilenames: songFilenames,
+      source: source,
     );
     _currentQueueSnapshotId = snapshot.id;
     try {
@@ -1745,6 +1822,33 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     } catch (e) {
       debugPrint('Failed to save queue snapshot: $e');
     }
+  }
+
+  Future<QueueSnapshot?> _findExistingQueueSnapshot(
+    String source,
+    List<String> songFilenames,
+  ) async {
+    try {
+      final snapshots =
+          await DatabaseService.instance.getQueueHistorySnapshots();
+      for (final snapshot in snapshots) {
+        if (snapshot.source != source) continue;
+        if (_sameFilenameList(snapshot.songFilenames, songFilenames)) {
+          return snapshot;
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to check queue snapshot duplicates: $e');
+    }
+    return null;
+  }
+
+  bool _sameFilenameList(List<String> first, List<String> second) {
+    if (first.length != second.length) return false;
+    for (int i = 0; i < first.length; i++) {
+      if (first[i] != second[i]) return false;
+    }
+    return true;
   }
 
   Future<void> _updateCurrentSnapshotSongs() async {

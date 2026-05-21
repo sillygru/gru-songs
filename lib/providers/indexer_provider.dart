@@ -212,11 +212,13 @@ class IndexerNotifier extends Notifier<IndexerState> {
     final songs = await DatabaseService.instance.getAllSongs();
     final totalSongs = songs.length;
 
-    final coverCount = await _getCoverCacheCount();
-    final lyricsCount = await _getLyricsCacheCount();
-    final waveformCount = await _getWaveformCacheCount();
-    final colorCount = await _getColorCacheCount();
-    final blurredCount = await CacheService.instance.getBlurredCacheCount();
+    await CacheService.instance.pruneStaleSongCaches(songs);
+
+    final coverCount = await _getCoverCacheCount(songs);
+    final lyricsCount = await _getLyricsCacheCount(songs);
+    final waveformCount = await _getWaveformCacheCount(songs);
+    final colorCount = await _getColorCacheCount(songs);
+    final blurredCount = await _getBlurredCacheCount(songs);
     final searchCount = await _getSearchIndexCount();
 
     final updatedOperations =
@@ -232,42 +234,42 @@ class IndexerNotifier extends Notifier<IndexerState> {
         updatedOperations['rebuild_cover_caches']!.copyWith(
       processedCount: coverCount,
       totalCount: totalSongs,
-      targetCount: totalSongs - coverCount,
+      targetCount: (totalSongs - coverCount).clamp(0, totalSongs),
     );
 
     updatedOperations['rebuild_search_indexes'] =
         updatedOperations['rebuild_search_indexes']!.copyWith(
       processedCount: searchCount,
       totalCount: totalSongs,
-      targetCount: totalSongs - searchCount,
+      targetCount: (totalSongs - searchCount).clamp(0, totalSongs),
     );
 
     updatedOperations['rebuild_lyrics_cache'] =
         updatedOperations['rebuild_lyrics_cache']!.copyWith(
       processedCount: lyricsCount,
       totalCount: totalSongs,
-      targetCount: totalSongs - lyricsCount,
+      targetCount: (totalSongs - lyricsCount).clamp(0, totalSongs),
     );
 
     updatedOperations['rebuild_waveform_cache'] =
         updatedOperations['rebuild_waveform_cache']!.copyWith(
       processedCount: waveformCount,
       totalCount: totalSongs,
-      targetCount: totalSongs - waveformCount,
+      targetCount: (totalSongs - waveformCount).clamp(0, totalSongs),
     );
 
     updatedOperations['rebuild_color_cache'] =
         updatedOperations['rebuild_color_cache']!.copyWith(
       processedCount: colorCount,
       totalCount: totalSongs,
-      targetCount: totalSongs - colorCount,
+      targetCount: (totalSongs - colorCount).clamp(0, totalSongs),
     );
 
     updatedOperations['rebuild_blurred_cache'] =
         updatedOperations['rebuild_blurred_cache']!.copyWith(
       processedCount: blurredCount,
       totalCount: totalSongs,
-      targetCount: totalSongs - blurredCount,
+      targetCount: (totalSongs - blurredCount).clamp(0, totalSongs),
     );
 
     updatedOperations['rebuild_recommendations'] =
@@ -280,15 +282,13 @@ class IndexerNotifier extends Notifier<IndexerState> {
     state = state.copyWith(operations: updatedOperations);
   }
 
-  Future<int> _getCoverCacheCount() async {
+  Future<int> _getCoverCacheCount(List<Song> songs) async {
     try {
-      final supportDir = await getApplicationSupportDirectory();
-      final coversDir = Directory('${supportDir.path}/extracted_covers');
-      if (!await coversDir.exists()) return 0;
-
       int count = 0;
-      await for (final entity in coversDir.list()) {
-        if (entity is File) count++;
+      for (final song in songs) {
+        final coverUrl = song.coverUrl;
+        if (coverUrl == null || coverUrl.isEmpty) continue;
+        if (await File(coverUrl).exists()) count++;
       }
       return count;
     } catch (_) {
@@ -296,16 +296,12 @@ class IndexerNotifier extends Notifier<IndexerState> {
     }
   }
 
-  Future<int> _getLyricsCacheCount() async {
+  Future<int> _getLyricsCacheCount(List<Song> songs) async {
     try {
-      final supportDir = await getApplicationSupportDirectory();
-      final lyricsDir =
-          Directory('${supportDir.path}/gru_cache_v3/lyrics_cache');
-      if (!await lyricsDir.exists()) return 0;
-
+      final repository = SongRepository();
       int count = 0;
-      await for (final entity in lyricsDir.list()) {
-        if (entity is File && entity.path.endsWith('.json')) count++;
+      for (final song in songs) {
+        if (await repository.hasLyricsCacheEntry(song)) count++;
       }
       return count;
     } catch (_) {
@@ -313,15 +309,14 @@ class IndexerNotifier extends Notifier<IndexerState> {
     }
   }
 
-  Future<int> _getWaveformCacheCount() async {
+  Future<int> _getWaveformCacheCount(List<Song> songs) async {
     try {
-      final supportDir = await getApplicationSupportDirectory();
-      final cacheDir = Directory('${supportDir.path}/gru_cache_v3');
-      if (!await cacheDir.exists()) return 0;
-
+      final cacheService = CacheService.instance;
       int count = 0;
-      await for (final entity in cacheDir.list()) {
-        if (entity is File && entity.path.contains('waveform_')) count++;
+      for (final song in songs) {
+        final cacheFile =
+            await cacheService.getWaveformCacheFile(song.filename);
+        if (await cacheFile.exists()) count++;
       }
       return count;
     } catch (_) {
@@ -329,15 +324,29 @@ class IndexerNotifier extends Notifier<IndexerState> {
     }
   }
 
-  Future<int> _getColorCacheCount() async {
+  Future<int> _getColorCacheCount(List<Song> songs) async {
     try {
-      final supportDir = await getApplicationSupportDirectory();
-      final cacheFile = File('${supportDir.path}/palette_cache.json');
-      if (!await cacheFile.exists()) return 0;
+      int count = 0;
+      for (final song in songs) {
+        if (await ColorExtractionService.hasCachedPalette(song.coverUrl)) {
+          count++;
+        }
+      }
+      return count;
+    } catch (_) {
+      return 0;
+    }
+  }
 
-      final content = await cacheFile.readAsString();
-      final json = jsonDecode(content) as Map<String, dynamic>;
-      return json.length;
+  Future<int> _getBlurredCacheCount(List<Song> songs) async {
+    try {
+      final cacheService = CacheService.instance;
+      int count = 0;
+      for (final song in songs) {
+        final cacheFile = await cacheService.getBlurredCacheFile(song.filename);
+        if (await cacheFile.exists()) count++;
+      }
+      return count;
     } catch (_) {
       return 0;
     }
@@ -762,7 +771,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       int missingCount = 0;
       for (final song in songs) {
         final cacheFile =
-            await cacheService.getV3File('waveform_${song.filename}.json');
+            await cacheService.getWaveformCacheFile(song.filename);
         if (!await cacheFile.exists()) {
           missingCount++;
         }
@@ -787,7 +796,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       try {
         // Check if already cached unless force is true
         final cacheFile =
-            await cacheService.getV3File('waveform_${song.filename}.json');
+            await cacheService.getWaveformCacheFile(song.filename);
         if (!force) {
           if (await cacheFile.exists()) {
             skipped++;
@@ -850,8 +859,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       await ColorExtractionService.init();
       int missingCount = 0;
       for (final path in imagePaths) {
-        final existing = await ColorExtractionService.extractPalette(path);
-        if (existing == null) {
+        if (!await ColorExtractionService.hasCachedPalette(path)) {
           missingCount++;
         }
       }
@@ -874,8 +882,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       try {
         // Check if already cached unless force is true
         if (!force) {
-          final existing = await ColorExtractionService.extractPalette(path);
-          if (existing != null) {
+          if (await ColorExtractionService.hasCachedPalette(path)) {
             skipped++;
             continue;
           }

@@ -321,7 +321,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final song = songId.isNotEmpty ? _findSongById(songId) : null;
     final extras = mediaItem?.extras;
 
-    final String? mediaPath = song?.url ??
+    final String? mediaPath = (extras?['videoPath'] as String?) ??
+        song?.url ??
         (extras?['audioPath'] as String?) ??
         (extras?['remoteUrl'] as String?);
 
@@ -625,14 +626,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   /// - "Artist1 and Artist2"
   List<String> _parseArtists(String artistField) {
     if (artistField.isEmpty) return [];
-    
+
     // Split by common separators: comma, &, and the word " and " (case insensitive)
     final parts = artistField
         .split(RegExp(r',\s*|\s*&\s*|\s+and\s+', caseSensitive: false))
         .map((part) => part.trim().toLowerCase())
         .where((part) => part.isNotEmpty)
         .toList();
-    
+
     return parts;
   }
 
@@ -640,12 +641,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _artistMatches(String songArtist, String targetArtist) {
     if (songArtist.isEmpty && targetArtist.isEmpty) return true;
     if (songArtist.isEmpty || targetArtist.isEmpty) return false;
-    
+
     final parsedSongArtists = _parseArtists(songArtist);
     if (parsedSongArtists.isEmpty) return false;
-    
+
     final lowerTarget = targetArtist.toLowerCase();
-    
+
     // Check if any of the song's artists contain the target artist
     return parsedSongArtists.any((artist) => artist.contains(lowerTarget));
   }

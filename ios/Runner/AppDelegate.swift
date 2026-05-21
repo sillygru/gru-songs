@@ -26,9 +26,9 @@ import AVFoundation
 
     do {
       try AVAudioSession.sharedInstance().setCategory(
-        .playAndRecord,
+        .playback,
         mode: .moviePlayback,
-        options: [.defaultToSpeaker, .mixWithOthers]
+        options: [.mixWithOthers, .allowAirPlay]
       )
       try AVAudioSession.sharedInstance().setActive(true)
     } catch {

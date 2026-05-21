@@ -597,7 +597,10 @@ class DatabaseService {
               );
         }
 
-        return snapshots.map((row) {
+        final seenFingerprints = <String>{};
+        final result = <QueueSnapshot>[];
+
+        for (final row in snapshots) {
           final createdAtRaw = row['created_at'];
           final createdAt = createdAtRaw is num
               ? createdAtRaw.toDouble()
@@ -609,19 +612,31 @@ class DatabaseService {
               ? nameRaw.trim()
               : QueueSnapshot.defaultNameForTimestamp(createdAt);
 
-          return QueueSnapshot(
+          final source = row['source'] as String? ?? 'unknown';
+          final filenames = songsBySnapshot[id] ?? const <String>[];
+          final fingerprint = _queueSnapshotFingerprint(source, filenames);
+          if (seenFingerprints.contains(fingerprint)) continue;
+          seenFingerprints.add(fingerprint);
+
+          result.add(QueueSnapshot(
             id: id,
             name: name,
             createdAt: createdAt,
-            songFilenames: songsBySnapshot[id] ?? const [],
-            source: row['source'] as String? ?? 'unknown',
-          );
-        }).toList();
+            songFilenames: filenames,
+            source: source,
+          ));
+        }
+
+        return result;
       });
     } catch (e) {
       debugPrint('Error loading queue history snapshots: $e');
       return [];
     }
+  }
+
+  String _queueSnapshotFingerprint(String source, List<String> filenames) {
+    return '$source\u0000${filenames.join('\u0000')}';
   }
 
   Future<List<String>> getQueueSnapshotSongs(String snapshotId) async {

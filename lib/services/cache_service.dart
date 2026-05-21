@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/song.dart';
+import 'color_extraction_service.dart';
 import 'database_service.dart';
 
 /// CacheService V3 - Offline First
@@ -129,6 +132,7 @@ class CacheService {
     final songPayload = songs
         .map((song) => {
               'filename': song.filename,
+              'url': song.url,
               'coverUrl': song.coverUrl ?? '',
             })
         .toList(growable: false);
@@ -137,6 +141,13 @@ class CacheService {
           'supportDir': supportDir,
           'songs': songPayload,
         }));
+    await ColorExtractionService.pruneCacheToImagePaths(
+      songs
+          .map((song) => song.coverUrl)
+          .whereType<String>()
+          .where((path) => path.isNotEmpty)
+          .toSet(),
+    );
   }
 
   Future<void> clearCache() async {
@@ -214,13 +225,20 @@ class CacheService {
     return File(p.join(_v3Dir.path, filename));
   }
 
+  Future<File> getWaveformCacheFile(String songFilename) async {
+    await init();
+    return File(
+        p.join(_v3Dir.path, 'waveform_${_cacheKey(songFilename)}.json'));
+  }
+
   Future<File> getBlurredCacheFile(String songFilename) async {
     await init();
     final blurredDir = Directory(p.join(_v3Dir.path, 'blurred_cache'));
     if (!await blurredDir.exists()) {
       await blurredDir.create(recursive: true);
     }
-    return File(p.join(blurredDir.path, 'blurred_$songFilename.jpg'));
+    return File(
+        p.join(blurredDir.path, 'blurred_${_cacheKey(songFilename)}.jpg'));
   }
 
   Future<int> getBlurredCacheCount() async {
@@ -242,6 +260,10 @@ class CacheService {
     }
     return File(p.join(notifDir.path, '$songFilename.jpg'));
   }
+
+  static String _cacheKey(String value) {
+    return sha1.convert(utf8.encode(value)).toString();
+  }
 }
 
 Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
@@ -251,11 +273,16 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
   final currentCoverPaths = <String>{};
   final currentBlurredPaths = <String>{};
   final currentNotificationPaths = <String>{};
+  final currentLyricsPaths = <String>{};
+  final currentWaveformPaths = <String>{};
 
   final blurredDir =
       Directory(p.join(supportDir.path, 'gru_cache_v3', 'blurred_cache'));
   final notificationDir = Directory(
       p.join(supportDir.path, 'gru_cache_v3', 'notification_cover_cache'));
+  final lyricsDir =
+      Directory(p.join(supportDir.path, 'gru_cache_v3', 'lyrics_cache'));
+  final v3Dir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
   final extractedCoversDir =
       Directory(p.join(supportDir.path, 'extracted_covers'));
 
@@ -268,7 +295,20 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
     final filename = (song['filename'] as String?) ?? '';
     if (filename.isNotEmpty) {
       currentBlurredPaths.add(
-        p.normalize(p.join(blurredDir.path, 'blurred_$filename.jpg')),
+        p.normalize(p.join(blurredDir.path,
+            'blurred_${CacheService._cacheKey(filename)}.jpg')),
+      );
+      currentWaveformPaths.add(
+        p.normalize(p.join(
+            v3Dir.path, 'waveform_${CacheService._cacheKey(filename)}.json')),
+      );
+    }
+
+    final url = (song['url'] as String?) ?? '';
+    if (url.isNotEmpty) {
+      currentLyricsPaths.add(
+        p.normalize(
+            p.join(lyricsDir.path, '${CacheService._cacheKey(url)}.json')),
       );
     }
 
@@ -280,11 +320,16 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
     }
   }
 
-  Future<int> pruneDirectory(Directory dir, Set<String> keepPaths) async {
+  Future<int> pruneDirectory(
+    Directory dir,
+    Set<String> keepPaths, {
+    bool Function(File file)? shouldConsider,
+  }) async {
     if (!await dir.exists()) return 0;
     int deleted = 0;
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
       if (entity is! File) continue;
+      if (shouldConsider != null && !shouldConsider(entity)) continue;
       final normalized = p.normalize(entity.path);
       if (!keepPaths.contains(normalized)) {
         try {
@@ -319,7 +364,19 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
   await pruneDirectory(extractedCoversDir, currentCoverPaths);
   await pruneDirectory(blurredDir, currentBlurredPaths);
   await pruneDirectory(notificationDir, currentNotificationPaths);
+  await pruneDirectory(lyricsDir, currentLyricsPaths);
+  await pruneDirectory(
+    v3Dir,
+    currentWaveformPaths,
+    shouldConsider: (file) {
+      final name = p.basename(file.path);
+      final relativePath = p.relative(file.path, from: v3Dir.path);
+      return name.startsWith('waveform_') ||
+          relativePath.startsWith('waveform_');
+    },
+  );
   await pruneEmptyDirectories(extractedCoversDir);
   await pruneEmptyDirectories(blurredDir);
   await pruneEmptyDirectories(notificationDir);
+  await pruneEmptyDirectories(lyricsDir);
 }

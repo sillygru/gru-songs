@@ -5,8 +5,139 @@ import 'package:image/image.dart' as img;
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
+import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 class FFmpegService {
+  Future<String?> prepareIosAudioProxy(String inputPath) async {
+    final file = File(inputPath);
+    if (!await file.exists()) return null;
+
+    final outputPath = await _iosProxyPath(inputPath, 'audio', '.m4a');
+    final output = File(outputPath);
+    if (await output.exists() && await output.length() > 0) {
+      return outputPath;
+    }
+
+    final session = await FFmpegKit.executeWithArguments([
+      '-y',
+      '-i',
+      inputPath,
+      '-vn',
+      '-map',
+      '0:a:0?',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ]);
+    final rc = await session.getReturnCode();
+    if (!ReturnCode.isSuccess(rc)) {
+      if (kDebugMode) {
+        final logs = await session.getAllLogsAsString();
+        debugPrint('FFmpegService: iOS audio proxy failed: $rc\n$logs');
+      }
+      return null;
+    }
+
+    if (await output.exists() && await output.length() > 0) return outputPath;
+    return null;
+  }
+
+  Future<String?> prepareIosVideoProxy(String inputPath) async {
+    final file = File(inputPath);
+    if (!await file.exists()) return null;
+
+    final outputPath = await _iosProxyPath(inputPath, 'video', '.mp4');
+    final output = File(outputPath);
+    if (await output.exists() && await output.length() > 0) {
+      return outputPath;
+    }
+
+    final remuxed = await _runProxyCommand([
+      '-y',
+      '-i',
+      inputPath,
+      '-map',
+      '0:v:0?',
+      '-map',
+      '0:a:0?',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ]);
+    if (remuxed && await output.exists() && await output.length() > 0) {
+      return outputPath;
+    }
+
+    final transcoded = await _runProxyCommand([
+      '-y',
+      '-i',
+      inputPath,
+      '-map',
+      '0:v:0?',
+      '-map',
+      '0:a:0?',
+      '-c:v',
+      'h264_videotoolbox',
+      '-b:v',
+      '2500k',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ]);
+    if (transcoded && await output.exists() && await output.length() > 0) {
+      return outputPath;
+    }
+
+    return null;
+  }
+
+  Future<bool> _runProxyCommand(List<String> args) async {
+    final session = await FFmpegKit.executeWithArguments(args);
+    final rc = await session.getReturnCode();
+    if (ReturnCode.isSuccess(rc)) return true;
+    if (kDebugMode) {
+      final logs = await session.getAllLogsAsString();
+      debugPrint('FFmpegService: proxy command failed: $rc\n$logs');
+    }
+    return false;
+  }
+
+  Future<String> _iosProxyPath(
+    String inputPath,
+    String kind,
+    String extension,
+  ) async {
+    final file = File(inputPath);
+    final stat = await file.stat();
+    final supportDir = await getApplicationSupportDirectory();
+    final proxyDir =
+        Directory(p.join(supportDir.path, 'gru_cache_v3', 'ios_media_proxy'));
+    if (!await proxyDir.exists()) {
+      await proxyDir.create(recursive: true);
+    }
+    final key = sha1
+        .convert(utf8.encode(
+            '$kind|$inputPath|${stat.modified.millisecondsSinceEpoch}|${stat.size}'))
+        .toString();
+    return p.join(proxyDir.path, '$key$extension');
+  }
+
   Future<void> embedCover({
     required String inputPath,
     required String outputPath,

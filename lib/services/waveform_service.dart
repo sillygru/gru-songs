@@ -14,7 +14,7 @@ class WaveformService {
   Future<List<double>> getWaveform(String filename, String path) async {
     if (path.isEmpty || path.startsWith('http')) return [];
 
-    final cacheFile = await _cacheService.getV3File('waveform_$filename.json');
+    final cacheFile = await _cacheService.getWaveformCacheFile(filename);
     if (await cacheFile.exists()) {
       try {
         final content = await cacheFile.readAsString();

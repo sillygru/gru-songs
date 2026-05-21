@@ -24,6 +24,7 @@ class Song extends Equatable {
     '.webm',
     '.avi',
     '.3gp',
+    '.av1',
   };
 
   final String title;
