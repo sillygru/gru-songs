@@ -7,6 +7,38 @@ import '../widgets/folder_grid_image.dart';
 import '../widgets/duration_display.dart';
 import 'song_list_screen.dart';
 
+/// Parses a multi-artist string and returns individual artist names.
+/// Handles formats like:
+/// - "Artist1, Artist2 & Artist3"
+/// - "Artist1 & Artist2"
+/// - "Artist1 and Artist2"
+List<String> _parseArtists(String artistField) {
+  if (artistField.isEmpty) return [];
+  
+  // Split by common separators: comma, &, and the word " and " (case insensitive)
+  final parts = artistField
+      .split(RegExp(r',\s*|\s*&\s*|\s+and\s+', caseSensitive: false))
+      .map((part) => part.trim().toLowerCase())
+      .where((part) => part.isNotEmpty)
+      .toList();
+  
+  return parts;
+}
+
+/// Returns true if [songArtist] matches [targetArtist] accounting for multi-artist strings.
+bool _artistMatches(String songArtist, String targetArtist) {
+  if (songArtist.isEmpty && targetArtist.isEmpty) return true;
+  if (songArtist.isEmpty || targetArtist.isEmpty) return false;
+  
+  final parsedSongArtists = _parseArtists(songArtist);
+  if (parsedSongArtists.isEmpty) return false;
+  
+  final lowerTarget = targetArtist.toLowerCase();
+  
+  // Check if any of the song's artists contain the target artist
+  return parsedSongArtists.any((artist) => artist.contains(lowerTarget));
+}
+
 class ArtistsScreen extends ConsumerStatefulWidget {
   const ArtistsScreen({super.key});
 
@@ -129,12 +161,17 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
   }) {
     return GestureDetector(
       onTap: () {
+        final allSongs = ref.read(songsProvider).value ?? [];
+        final artistSongs = allSongs.where((s) {
+          final songArtist = s.artist.isEmpty ? 'Unknown Artist' : s.artist;
+          return _artistMatches(songArtist, artist);
+        }).toList();
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => SongListScreen(
               title: artist,
-              songs: songs,
+              songs: artistSongs,
             ),
           ),
         );

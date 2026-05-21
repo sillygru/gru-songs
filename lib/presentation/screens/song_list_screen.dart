@@ -191,10 +191,11 @@ class SongListScreen extends ConsumerWidget {
                         FilledButton.icon(
                           onPressed: sortedSongs.isNotEmpty
                               ? () {
-                                  audioManager.playSong(
-                                    sortedSongs.first,
-                                    contextQueue: sortedSongs,
+                                  audioManager.replaceQueue(
+                                    sortedSongs,
                                     playlistId: playlistId,
+                                    forceLinear: true,
+                                    clearCurrentSong: true,
                                   );
                                 }
                               : null,

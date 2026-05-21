@@ -618,110 +618,43 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
-  void _showShuffleSettings(BuildContext context, WidgetRef ref) {
-    final manager = ref.read(audioPlayerManagerProvider);
-    final initialConfig = manager.shuffleStateNotifier.value.config;
-    bool localAntiRepeat = initialConfig.antiRepeatEnabled;
-    bool localStreakBreaker = initialConfig.streakBreakerEnabled;
+  /// Parses a multi-artist string and returns individual artist names.
+  /// Handles formats like:
+  /// - "Artist1, Artist2 & Artist3"
+  /// - "Artist1 & Artist2"
+  /// - "Artist1 and Artist2"
+  List<String> _parseArtists(String artistField) {
+    if (artistField.isEmpty) return [];
+    
+    // Split by common separators: comma, &, and the word " and " (case insensitive)
+    final parts = artistField
+        .split(RegExp(r',\s*|\s*&\s*|\s+and\s+', caseSensitive: false))
+        .map((part) => part.trim().toLowerCase())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    
+    return parts;
+  }
 
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final hasChanges =
-                localAntiRepeat != initialConfig.antiRepeatEnabled ||
-                    localStreakBreaker != initialConfig.streakBreakerEnabled;
-
-            return AlertDialog(
-              title: const Text('Shuffle Settings'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SwitchListTile(
-                    title: const Text('Anti-repeat'),
-                    subtitle:
-                        const Text('Reduce probability for recently played'),
-                    value: localAntiRepeat,
-                    onChanged: (val) {
-                      localAntiRepeat = val;
-                      setDialogState(() {});
-                    },
-                  ),
-                  SwitchListTile(
-                    title: const Text('Streak Breaker'),
-                    subtitle: const Text('Avoid same artist/album in a row'),
-                    value: localStreakBreaker,
-                    onChanged: (val) {
-                      localStreakBreaker = val;
-                      setDialogState(() {});
-                    },
-                  ),
-                  const Divider(),
-                  ListTile(
-                    title: const Text('Favorite Boost'),
-                    subtitle: Text(
-                        '${((initialConfig.favoriteMultiplier - 1) * 100).round()}% higher weight'),
-                  ),
-                  ListTile(
-                    title: const Text('Suggest-Less Penalty'),
-                    subtitle: Text(
-                        '${((1 - initialConfig.suggestLessMultiplier) * 100).round()}% lower weight'),
-                  ),
-                  if (hasChanges) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Changes will apply to next queue',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              actions: [
-                if (hasChanges) ...[
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                    },
-                    child: const Text('Discard'),
-                  ),
-                  FilledButton(
-                    onPressed: () {
-                      manager.updateShuffleConfig(
-                        initialConfig.copyWith(
-                          antiRepeatEnabled: localAntiRepeat,
-                          streakBreakerEnabled: localStreakBreaker,
-                        ),
-                        applyToCurrentQueue: false,
-                      );
-                      Navigator.pop(dialogContext);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Settings saved')),
-                      );
-                    },
-                    child: const Text('Save'),
-                  ),
-                ] else
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Close'),
-                  ),
-              ],
-            );
-          },
-        );
-      },
-    );
+  /// Returns true if [songArtist] matches [targetArtist] accounting for multi-artist strings.
+  bool _artistMatches(String songArtist, String targetArtist) {
+    if (songArtist.isEmpty && targetArtist.isEmpty) return true;
+    if (songArtist.isEmpty || targetArtist.isEmpty) return false;
+    
+    final parsedSongArtists = _parseArtists(songArtist);
+    if (parsedSongArtists.isEmpty) return false;
+    
+    final lowerTarget = targetArtist.toLowerCase();
+    
+    // Check if any of the song's artists contain the target artist
+    return parsedSongArtists.any((artist) => artist.contains(lowerTarget));
   }
 
   void _navigateToArtist(String artist) {
     final allSongs = ref.read(songsProvider).value ?? [];
     final artistSongs = allSongs.where((s) {
       final songArtist = s.artist.isEmpty ? 'Unknown Artist' : s.artist;
-      return songArtist == artist;
+      return _artistMatches(songArtist, artist);
     }).toList();
 
     if (artistSongs.isNotEmpty) {
@@ -921,8 +854,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     player: player,
                     controlsController: _controlsController,
                     playPauseController: _playPauseController,
-                    showShuffleSettings: (context) =>
-                        _showShuffleSettings(context, ref),
                   ),
                   const SizedBox(height: 24),
                 ],
@@ -1387,20 +1318,9 @@ class _ArtPanelContent extends StatelessWidget {
                             Positioned(
                               bottom: 12,
                               right: 12,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _OverlayButton(
-                                    icon: const Icon(Icons.ios_share),
-                                    onPressed: shareSong,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _OverlayButton(
-                                    icon:
-                                        const Icon(Icons.queue_music_outlined),
-                                    onPressed: () => openNextUpScreen(context),
-                                  ),
-                                ],
+                              child: _OverlayButton(
+                                icon: const Icon(Icons.queue_music_outlined),
+                                onPressed: () => openNextUpScreen(context),
                               ),
                             ),
                           ],
@@ -1686,12 +1606,10 @@ class _PlayerControls extends ConsumerWidget {
   final AudioPlayer player;
   final AnimationController controlsController;
   final AnimationController playPauseController;
-  final Function(BuildContext) showShuffleSettings;
   const _PlayerControls({
     required this.player,
     required this.controlsController,
     required this.playPauseController,
-    required this.showShuffleSettings,
   });
 
   @override
@@ -1715,9 +1633,7 @@ class _PlayerControls extends ConsumerWidget {
                 player: player,
                 playPauseController: playPauseController,
               ),
-              _ShuffleButton(
-                showShuffleSettings: showShuffleSettings,
-              ),
+              const _ShareButton(),
             ],
           ),
         ),
@@ -1883,31 +1799,51 @@ class _PlayPauseButton extends StatelessWidget {
   }
 }
 
-class _ShuffleButton extends ConsumerWidget {
-  final Function(BuildContext) showShuffleSettings;
-
-  const _ShuffleButton({required this.showShuffleSettings});
+class _ShareButton extends ConsumerStatefulWidget {
+  const _ShareButton();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final shuffleNotifier =
-        ref.watch(audioPlayerManagerProvider).shuffleNotifier;
+  ConsumerState<_ShareButton> createState() => _ShareButtonState();
+}
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: shuffleNotifier,
-      builder: (context, isShuffled, child) {
-        return SmoothColorBuilder(
-          targetColor: isShuffled
-              ? Theme.of(context).colorScheme.primary
-              : Colors.white60,
-          builder: (context, color) {
-            return IconButton(
-              icon: Icon(Icons.shuffle, size: 24, color: color),
-              onLongPress: () => showShuffleSettings(context),
-              onPressed: () =>
-                  ref.read(audioPlayerManagerProvider).toggleShuffle(),
-            );
-          },
+class _ShareButtonState extends ConsumerState<_ShareButton> {
+  StreamSubscription<SequenceState?>? _sub;
+  SequenceState? _sequenceState;
+
+  @override
+  void initState() {
+    super.initState();
+    final player = ref.read(audioPlayerManagerProvider).player;
+    _sequenceState = player.sequenceState;
+    _sub = player.sequenceStateStream.listen((state) {
+      if (mounted) setState(() => _sequenceState = state);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final metadata = _sequenceState?.currentSource?.tag as MediaItem?;
+    if (metadata == null) {
+      return const IconButton(
+        icon: Icon(Icons.ios_share, size: 24, color: Colors.white60),
+        onPressed: null,
+      );
+    }
+    return IconButton(
+      icon: const Icon(Icons.ios_share, size: 24, color: Colors.white60),
+      onPressed: () {
+        final songs = ref.read(songsProvider).asData?.value ?? [];
+        final song = songs.where((s) => s.filename == metadata.id).firstOrNull;
+        if (song == null) return;
+        Share.shareXFiles(
+          [XFile(song.url)],
+          text: '${song.title} by ${song.artist}',
         );
       },
     );
