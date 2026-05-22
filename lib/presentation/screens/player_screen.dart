@@ -22,6 +22,9 @@ import '../widgets/heart_context_menu.dart';
 import '../widgets/waveform_progress_bar.dart';
 import '../widgets/basic_progress_bar.dart';
 import '../widgets/smooth_color_builder.dart';
+import '../widgets/beat_reactive_cover.dart';
+import '../widgets/sound_reactive_particles.dart';
+import '../../providers/audio_energy_provider.dart';
 import 'song_list_screen.dart';
 import 'full_screen_lyrics.dart';
 import 'next_up_screen.dart';
@@ -166,7 +169,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _refreshLyricsAvailability(songId,
             metadataHasLyrics: metadataHasLyrics);
       }
-      _syncVideoForCurrentTrack(mediaItem);
+      if (mounted) _syncVideoForCurrentTrack(mediaItem);
     });
 
     _playerStateSubscription = player.playerStateStream.listen((state) {
@@ -193,6 +196,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         .addListener(_handleMediaModeChanged);
     unawaited(_syncVideoWakeLock());
     _updateTimerState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(playerScreenActiveProvider.notifier).setActive(true);
+      }
+    });
   }
 
   void _updateTimerState() {
@@ -241,6 +249,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   void dispose() {
+    ref.read(playerScreenActiveProvider.notifier).setActive(false);
     WidgetsBinding.instance.removeObserver(this);
     _sequenceSubscription?.cancel();
     _playerStateSubscription?.cancel();
@@ -371,6 +380,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _syncVideoForCurrentTrack(MediaItem? mediaItem) async {
+    if (!mounted) return;
     // Check video mode FIRST before any video controller operations
     if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
       await _disposeVideoController();
@@ -777,6 +787,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(audioEnergyProvider);
     final themeState = ref.watch(themeProvider);
     final dragProgress =
         (_dragOffsetY / _dismissDistance(context)).clamp(0.0, 1.0);
@@ -1205,7 +1216,7 @@ class _PlayerArtPanel extends ConsumerWidget {
   }
 }
 
-class _ArtPanelContent extends StatelessWidget {
+class _ArtPanelContent extends ConsumerWidget {
   final MediaItem metadata;
   final BoxConstraints constraints;
   final Animation<double> fadeAnimation;
@@ -1220,6 +1231,22 @@ class _ArtPanelContent extends StatelessWidget {
   final VoidCallback shareSong;
   final Function(BuildContext) openNextUpScreen;
   final BoxFit coverFit;
+
+  Widget _buildCoverArt({
+    required MediaItem metadata,
+    required BoxConstraints constraints,
+    required BoxFit coverFit,
+  }) {
+    return AlbumArtImage(
+      key: ValueKey('art_${metadata.id}'),
+      url: resolveCoverUrl(metadata) ?? '',
+      filename: metadata.id,
+      width: constraints.maxWidth,
+      height: constraints.maxWidth,
+      cacheWidth: 800,
+      fit: coverFit,
+    );
+  }
 
   const _ArtPanelContent({
     required this.metadata,
@@ -1239,7 +1266,14 @@ class _ArtPanelContent extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final themeColor = ref.watch(
+      themeProvider.select((s) => s.extractedColor ?? Colors.deepPurple),
+    );
+    final beatReactive = settings.beatReactiveCoverEnabled;
+    final particlesEnabled = settings.soundReactiveParticlesEnabled;
+
     final canShowVideo = canRenderVideoFor(metadata);
     final targetAspectRatio = canShowVideo ? currentVideoAspectRatio() : 1.0;
     final targetRadius = canShowVideo ? 8.0 : 28.0;
@@ -1269,44 +1303,92 @@ class _ArtPanelContent extends StatelessWidget {
                       child: Hero(
                         tag: 'now_playing_art_${metadata.id}',
                         child: Stack(
+                          clipBehavior: Clip.none,
                           alignment: Alignment.center,
                           children: [
                             Positioned.fill(
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 380),
-                                curve: Curves.easeInOut,
-                                decoration: BoxDecoration(
-                                  color: coverFit == BoxFit.contain
-                                      ? Colors.black
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(radius),
-                                  boxShadow: canShowVideo
-                                      ? []
-                                      : [
-                                          BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.4),
-                                            blurRadius: 25,
-                                            offset: const Offset(0, 10),
-                                          ),
-                                        ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(radius),
-                                  child: canShowVideo
-                                      ? buildVideoSurface(coverFit)
-                                      : AlbumArtImage(
-                                          key: ValueKey('art_${metadata.id}'),
-                                          url: resolveCoverUrl(metadata) ?? '',
-                                          filename: metadata.id,
-                                          width: constraints.maxWidth,
-                                          height: constraints.maxWidth,
-                                          cacheWidth: 800,
-                                          fit: coverFit,
+                              child: beatReactive
+                                  ? BeatReactiveCover(
+                                      child: AnimatedContainer(
+                                        duration:
+                                            const Duration(milliseconds: 380),
+                                        curve: Curves.easeInOut,
+                                        decoration: BoxDecoration(
+                                          color: coverFit == BoxFit.contain
+                                              ? Colors.black
+                                              : Colors.transparent,
+                                          borderRadius:
+                                              BorderRadius.circular(radius),
+                                          boxShadow: canShowVideo
+                                              ? []
+                                              : [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withValues(alpha: 0.4),
+                                                    blurRadius: 25,
+                                                    offset:
+                                                        const Offset(0, 10),
+                                                  ),
+                                                ],
                                         ),
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(radius),
+                                          child: canShowVideo
+                                              ? buildVideoSurface(coverFit)
+                                              : _buildCoverArt(
+                                                  metadata: metadata,
+                                                  constraints: constraints,
+                                                  coverFit: coverFit,
+                                                ),
+                                        ),
+                                      ),
+                                    )
+                                  : AnimatedContainer(
+                                      duration:
+                                          const Duration(milliseconds: 380),
+                                      curve: Curves.easeInOut,
+                                      decoration: BoxDecoration(
+                                        color: coverFit == BoxFit.contain
+                                            ? Colors.black
+                                            : Colors.transparent,
+                                        borderRadius:
+                                            BorderRadius.circular(radius),
+                                        boxShadow: canShowVideo
+                                            ? []
+                                            : [
+                                                BoxShadow(
+                                                  color: Colors.black.withValues(
+                                                      alpha: 0.4),
+                                                  blurRadius: 25,
+                                                  offset:
+                                                      const Offset(0, 10),
+                                                ),
+                                              ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(radius),
+                                        child: canShowVideo
+                                            ? buildVideoSurface(coverFit)
+                                            : _buildCoverArt(
+                                                metadata: metadata,
+                                                constraints: constraints,
+                                                coverFit: coverFit,
+                                              ),
+                                      ),
+                                    ),
+                            ),
+                            if (particlesEnabled && !canShowVideo)
+                              Positioned.fill(
+                                child: Transform.scale(
+                                  scale: 1.3,
+                                  alignment: Alignment.center,
+                                  child: SoundReactiveParticles(
+                                    baseColor: themeColor,
+                                  ),
                                 ),
                               ),
-                            ),
                             if (hasLyricsForCurrentSong)
                               Positioned(
                                 bottom: 12,

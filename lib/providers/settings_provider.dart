@@ -31,6 +31,8 @@ class SettingsState {
   final bool keepScreenAwakeOnLyrics;
   final PlayerCoverSizingMode coverSizingMode;
   final bool lyricsBlurOverlayEnabled;
+  final bool beatReactiveCoverEnabled;
+  final bool soundReactiveParticlesEnabled;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -59,6 +61,8 @@ class SettingsState {
     this.keepScreenAwakeOnLyrics = true,
     this.coverSizingMode = PlayerCoverSizingMode.autoFit,
     this.lyricsBlurOverlayEnabled = true,
+    this.beatReactiveCoverEnabled = true,
+    this.soundReactiveParticlesEnabled = true,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -88,6 +92,8 @@ class SettingsState {
     bool? keepScreenAwakeOnLyrics,
     PlayerCoverSizingMode? coverSizingMode,
     bool? lyricsBlurOverlayEnabled,
+    bool? beatReactiveCoverEnabled,
+    bool? soundReactiveParticlesEnabled,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -127,6 +133,10 @@ class SettingsState {
       coverSizingMode: coverSizingMode ?? this.coverSizingMode,
       lyricsBlurOverlayEnabled:
           lyricsBlurOverlayEnabled ?? this.lyricsBlurOverlayEnabled,
+      beatReactiveCoverEnabled:
+          beatReactiveCoverEnabled ?? this.beatReactiveCoverEnabled,
+      soundReactiveParticlesEnabled: soundReactiveParticlesEnabled ??
+          this.soundReactiveParticlesEnabled,
     );
   }
 }
@@ -158,6 +168,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyKeepScreenAwakeOnLyrics = 'keep_screen_awake_on_lyrics';
   static const _keyCoverSizingMode = 'cover_sizing_mode';
   static const _keyLyricsBlurOverlayEnabled = 'lyrics_blur_overlay_enabled';
+  static const _keyBeatReactiveCoverEnabled = 'beat_reactive_cover_enabled';
+  static const _keySoundReactiveParticlesEnabled =
+      'sound_reactive_particles_enabled';
   static const double maxDelayDuration = 12.0;
 
   @override
@@ -211,6 +224,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
           : PlayerCoverSizingMode.autoFit,
       lyricsBlurOverlayEnabled:
           prefs.getBool(_keyLyricsBlurOverlayEnabled) ?? true,
+      beatReactiveCoverEnabled:
+          prefs.getBool(_keyBeatReactiveCoverEnabled) ?? true,
+      soundReactiveParticlesEnabled:
+          prefs.getBool(_keySoundReactiveParticlesEnabled) ?? true,
     );
   }
 
@@ -462,6 +479,18 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(lyricsBlurOverlayEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyLyricsBlurOverlayEnabled, enabled);
+  }
+
+  Future<void> setBeatReactiveCoverEnabled(bool enabled) async {
+    state = state.copyWith(beatReactiveCoverEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyBeatReactiveCoverEnabled, enabled);
+  }
+
+  Future<void> setSoundReactiveParticlesEnabled(bool enabled) async {
+    state = state.copyWith(soundReactiveParticlesEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySoundReactiveParticlesEnabled, enabled);
   }
 }
 

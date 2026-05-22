@@ -461,6 +461,9 @@ class StorageService {
     'pause_fade_duration',
     'keep_screen_awake_on_lyrics',
     'cover_sizing_mode',
+    'lyrics_blur_overlay_enabled',
+    'beat_reactive_cover_enabled',
+    'sound_reactive_particles_enabled',
     'gap_song_id',
     'gap_resume_timestamp',
     'gap_is_active',
@@ -568,6 +571,9 @@ class StorageService {
     'show_waveform',
     'quick_action_config',
     'cover_sizing_mode',
+    'lyrics_blur_overlay_enabled',
+    'beat_reactive_cover_enabled',
+    'sound_reactive_particles_enabled',
     'pull_to_refresh_enabled',
   ];
 

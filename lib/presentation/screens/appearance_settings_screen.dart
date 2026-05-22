@@ -100,6 +100,30 @@ class _AppearanceSettingsScreenState
                       .setLyricsBlurOverlayEnabled(val);
                 },
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.album_outlined),
+                title: const Text('Beat-reactive cover'),
+                subtitle: const Text(
+                    'Pulse album art with the beat (performance-intensive)'),
+                value: settings.beatReactiveCoverEnabled,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setBeatReactiveCoverEnabled(val);
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.blur_circular_outlined),
+                title: const Text('Sound-reactive particles'),
+                subtitle: const Text(
+                    'Ambient cover-colored particles driven by audio energy (performance-intensive)'),
+                value: settings.soundReactiveParticlesEnabled,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setSoundReactiveParticlesEnabled(val);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.photo_size_select_large_outlined),
                 title: const Text('Player Cover Sizing'),

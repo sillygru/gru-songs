@@ -11,7 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/song.dart';
 import 'color_extraction_service.dart';
-import 'database_service.dart';
 
 /// CacheService V3 - Offline First
 /// Only handles app settings and sync data.
