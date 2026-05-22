@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -409,13 +410,21 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
     final extractedColor = _getExtractedColor();
     final hasTimedLyrics = _activeLyrics.any((l) => l.isSynced);
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          _buildBackgroundLayers(extractedColor),
-          _buildContent(hasTimedLyrics),
-        ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            _buildBackgroundLayers(extractedColor),
+            _buildContent(hasTimedLyrics),
+          ],
+        ),
       ),
     );
   }
@@ -574,6 +583,9 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   }
 
   Widget _buildLyricsList(bool hasTimedLyrics) {
+    final settings = ref.watch(settingsProvider);
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+
     return Stack(
       children: [
         NotificationListener<ScrollNotification>(
@@ -648,37 +660,73 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
           child: Align(
             alignment: Alignment.topCenter,
             child: RepaintBoundary(
-              child: ClipRect(
-                child: ShaderMask(
-                  shaderCallback: (rect) {
-                    return LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white,
-                        Colors.white,
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
-                    ).createShader(rect);
-                  },
-                  blendMode: BlendMode.dstIn,
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                    child: Container(
-                      height: 118,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.15),
-                            Colors.transparent,
-                          ],
+              child: SizedBox(
+                height: 90,
+                child: ClipRect(
+                  child: settings.lyricsBlurOverlayEnabled
+                      ? ShaderMask(
+                          shaderCallback: (rect) {
+                            return const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.white, Colors.transparent],
+                            ).createShader(rect);
+                          },
+                          blendMode: BlendMode.dstIn,
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              color: Colors.black,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.black, Colors.transparent],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        IgnorePointer(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: RepaintBoundary(
+              child: SizedBox(
+                height: 90,
+                child: ClipRect(
+                  child: (settings.lyricsBlurOverlayEnabled && !isAndroid)
+                      ? ShaderMask(
+                          shaderCallback: (rect) {
+                            return const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, Colors.white],
+                            ).createShader(rect);
+                          },
+                          blendMode: BlendMode.dstIn,
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              color: Colors.black,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, Colors.black],
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ),

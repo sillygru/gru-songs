@@ -6,15 +6,15 @@ Wispie is a Local-First Flutter music player with offline-only functionality. It
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Framework | Flutter (Dart 3.x) |
+| Component        | Technology                                           |
+| ---------------- | ---------------------------------------------------- |
+| Framework        | Flutter (Dart 3.x)                                   |
 | State Management | flutter_riverpod (Notifier, AsyncNotifier, Provider) |
-| Audio Engine | just_audio, just_audio_background |
-| Database | SQLite via sqflite |
-| Metadata | metadata_god, audio_metadata_reader |
-| Audio Processing | ffmpeg_kit_flutter_new_min |
-| Caching | flutter_cache_manager, custom CacheService |
+| Audio Engine     | just_audio, just_audio_background                    |
+| Database         | SQLite via sqflite                                   |
+| Metadata         | metadata_god, audio_metadata_reader                  |
+| Audio Processing | ffmpeg_kit_flutter_new_min                           |
+| Caching          | flutter_cache_manager, custom CacheService           |
 
 ## Directory Structure
 
@@ -63,6 +63,7 @@ lib/
 5. **JustAudioBackground** - Background playback
 
 Then:
+
 - Database initialization (with migration from user-specific to single-user DBs)
 - Setup state check
 - Username preload into auth provider
@@ -71,12 +72,15 @@ Then:
 ## Key Architectural Patterns
 
 ### Provider Decoupling
+
 `AudioPlayerManager` and `UserDataNotifier` are intentionally separate. Updates are pushed, not pulled via cross-injection.
 
 ### Repository Pattern
+
 Data access abstracted through repositories (e.g., `SongRepository` for lyrics extraction).
 
 ### Service Layer
+
 Business logic encapsulated in services under `lib/services/`. Services are registered as providers and injected via Riverpod's `ref`.
 
 ## Adding a New Service
@@ -87,15 +91,15 @@ Business logic encapsulated in services under `lib/services/`. Services are regi
 
 ## Key Providers
 
-| Provider | Type | Purpose |
-|----------|------|---------|
-| `songsProvider` | AsyncNotifier | Song library state |
-| `userDataProvider` | Notifier | User data (favorites, hidden, playlists) |
-| `searchProvider` | Notifier | Search state and results |
-| `selectionProvider` | Notifier | Multi-select for bulk operations |
-| `indexerProvider` | Notifier | Library scanning state |
-| `themeProvider` | Notifier | App theming |
-| `settingsProvider` | Notifier | App settings |
+| Provider            | Type          | Purpose                                  |
+| ------------------- | ------------- | ---------------------------------------- |
+| `songsProvider`     | AsyncNotifier | Song library state                       |
+| `userDataProvider`  | Notifier      | User data (favorites, hidden, playlists) |
+| `searchProvider`    | Notifier      | Search state and results                 |
+| `selectionProvider` | Notifier      | Multi-select for bulk operations         |
+| `indexerProvider`   | Notifier      | Library scanning state                   |
+| `themeProvider`     | Notifier      | App theming                              |
+| `settingsProvider`  | Notifier      | App settings                             |
 
 ## Platform Configuration
 

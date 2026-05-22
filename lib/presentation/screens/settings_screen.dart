@@ -8,6 +8,7 @@ import 'playback_settings_screen.dart';
 import 'appearance_settings_screen.dart';
 import 'data_management_settings_screen.dart';
 import 'misc_settings_screen.dart';
+import 'about_settings_screen.dart';
 import 'indexer_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -113,6 +114,18 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const MiscSettingsScreen()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryTile(
+            context: context,
+            icon: const Icon(Icons.info_outline_rounded),
+            title: 'About',
+            subtitle: 'Version, updates, release notes',
+            color: Colors.blueGrey,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AboutSettingsScreen()),
             ),
           ),
           const SizedBox(height: 32),

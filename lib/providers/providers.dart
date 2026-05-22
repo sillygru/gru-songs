@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/stats_service.dart';
 import '../services/audio_player_manager.dart';
 import '../services/storage_service.dart';
@@ -12,6 +14,7 @@ import '../services/bulk_metadata_service.dart';
 import '../services/file_manager_service.dart';
 import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
+import '../services/update_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import 'user_data_provider.dart';
@@ -116,12 +119,132 @@ class MetadataSaveNotifier extends Notifier<MetadataSaveState> {
   }
 }
 
+class UpdateCheckState {
+  final bool isChecking;
+  final String currentVersion;
+  final String? latestTag;
+  final DateTime? lastCheckedAt;
+  final Uri? releaseUrl;
+
+  const UpdateCheckState({
+    this.isChecking = false,
+    this.currentVersion = '',
+    this.latestTag,
+    this.lastCheckedAt,
+    this.releaseUrl,
+  });
+
+  UpdateCheckState copyWith({
+    bool? isChecking,
+    String? currentVersion,
+    String? latestTag,
+    DateTime? lastCheckedAt,
+    Uri? releaseUrl,
+  }) {
+    return UpdateCheckState(
+      isChecking: isChecking ?? this.isChecking,
+      currentVersion: currentVersion ?? this.currentVersion,
+      latestTag: latestTag ?? this.latestTag,
+      lastCheckedAt: lastCheckedAt ?? this.lastCheckedAt,
+      releaseUrl: releaseUrl ?? this.releaseUrl,
+    );
+  }
+
+  bool get hasUpdate =>
+      latestTag != null &&
+      currentVersion.isNotEmpty &&
+      UpdateService.isNewerVersion(latestTag!, currentVersion);
+
+  String? get latestVersionLabel => latestTag == null
+      ? null
+      : UpdateService.normalizedVersionLabel(latestTag!);
+}
+
+class UpdateCheckNotifier extends Notifier<UpdateCheckState> {
+  static const String _lastCheckedAtKey = 'update_check_last_checked_at';
+  static const String _latestTagKey = 'update_check_latest_tag';
+  static const String _releaseUrlKey = 'update_check_release_url';
+  static const Duration _checkInterval = Duration(days: 1);
+
+  bool _bootstrapped = false;
+  bool _sessionCheckStarted = false;
+
+  @override
+  UpdateCheckState build() => const UpdateCheckState();
+
+  Future<void> prime() async {
+    if (!_bootstrapped) {
+      try {
+        await _loadCachedState();
+      } catch (_) {}
+      _bootstrapped = true;
+    }
+
+    if (!_sessionCheckStarted && _shouldCheckNow()) {
+      _sessionCheckStarted = true;
+      await checkForUpdate();
+    }
+  }
+
+  Future<void> checkForUpdate({bool force = false}) async {
+    if (state.isChecking) return;
+    if (!force && !_shouldCheckNow()) return;
+
+    state = state.copyWith(isChecking: true);
+    try {
+      final release = await UpdateService().fetchLatestRelease();
+      if (release != null) {
+        final checkedAt = DateTime.now();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_latestTagKey, release.tagName);
+        await prefs.setInt(_lastCheckedAtKey, checkedAt.millisecondsSinceEpoch);
+        await prefs.setString(_releaseUrlKey, release.releaseUrl.toString());
+        state = state.copyWith(
+          latestTag: release.tagName,
+          lastCheckedAt: checkedAt,
+          releaseUrl: release.releaseUrl,
+        );
+      }
+    } catch (_) {
+      // Fail silently: update checks are best-effort only.
+    } finally {
+      state = state.copyWith(isChecking: false);
+    }
+  }
+
+  Future<void> _loadCachedState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final packageInfo = await PackageInfo.fromPlatform();
+    final lastCheckedAt = prefs.getInt(_lastCheckedAtKey);
+    final releaseUrl = prefs.getString(_releaseUrlKey);
+
+    state = UpdateCheckState(
+      currentVersion: packageInfo.version,
+      latestTag: prefs.getString(_latestTagKey),
+      lastCheckedAt: lastCheckedAt != null
+          ? DateTime.fromMillisecondsSinceEpoch(lastCheckedAt)
+          : null,
+      releaseUrl: releaseUrl != null ? Uri.tryParse(releaseUrl) : null,
+    );
+  }
+
+  bool _shouldCheckNow() {
+    final lastCheckedAt = state.lastCheckedAt;
+    if (lastCheckedAt == null) return true;
+    return DateTime.now().difference(lastCheckedAt) >= _checkInterval;
+  }
+}
+
 final syncProvider =
     NotifierProvider<SyncNotifier, SyncState>(SyncNotifier.new);
 
 final metadataSaveProvider =
     NotifierProvider<MetadataSaveNotifier, MetadataSaveState>(
         MetadataSaveNotifier.new);
+
+final updateCheckProvider =
+    NotifierProvider<UpdateCheckNotifier, UpdateCheckState>(
+        UpdateCheckNotifier.new);
 
 class BottomDockVisibilityState {
   final double visibility;

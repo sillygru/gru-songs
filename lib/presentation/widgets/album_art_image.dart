@@ -1,5 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+
+import '../../services/cover_refresh_service.dart';
 
 class AlbumArtImage extends StatefulWidget {
   final String url;
@@ -38,16 +41,53 @@ class AlbumArtImage extends StatefulWidget {
 }
 
 class _AlbumArtImageState extends State<AlbumArtImage> {
+  Future<String?>? _refreshFuture;
+  String? _resolvedUrl;
+
+  @override
+  void didUpdateWidget(covariant AlbumArtImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url || oldWidget.filename != widget.filename) {
+      _refreshFuture = null;
+      _resolvedUrl = null;
+    }
+  }
+
+  bool get _canAttemptLazyRefresh =>
+      widget.filename != null && _looksLikeSongFile(widget.filename!);
+
+  void _scheduleLazyRefresh() {
+    if (_refreshFuture != null || !_canAttemptLazyRefresh) return;
+
+    _refreshFuture =
+        CoverRefreshService.instance.ensureCoverForSong(widget.filename!).then(
+      (path) {
+        if (!mounted) return path;
+        if (path != null && path.isNotEmpty) {
+          setState(() {
+            _resolvedUrl = path;
+          });
+        }
+        return path;
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.url.isEmpty) {
+      if (_canAttemptLazyRefresh) {
+        _scheduleLazyRefresh();
+        return widget.placeholder ?? _buildPlaceholder();
+      }
       return _buildError();
     }
 
-    final bool isLocal = widget.url.startsWith('/') ||
-        widget.url.startsWith('C:\\') ||
-        widget.url.startsWith('file://') ||
-        widget.url.startsWith('content://');
+    final imageUrl = _resolvedUrl ?? widget.url;
+    final bool isLocal = imageUrl.startsWith('/') ||
+        imageUrl.startsWith('C:\\') ||
+        imageUrl.startsWith('file://') ||
+        imageUrl.startsWith('content://');
 
     int? effectiveMemCacheWidth = widget.memCacheWidth;
     int? effectiveMemCacheHeight = widget.memCacheHeight;
@@ -67,18 +107,24 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
     if (isLocal) {
       String path;
       try {
-        final uri = Uri.parse(widget.url);
+        final uri = Uri.parse(imageUrl);
         if (uri.isScheme('file')) {
           path = uri.toFilePath();
         } else {
-          path = widget.url;
+          path = imageUrl;
         }
       } catch (_) {
-        path = widget.url;
+        path = imageUrl;
+      }
+
+      final file = File(path);
+      if (!file.existsSync()) {
+        _scheduleLazyRefresh();
+        return widget.placeholder ?? _buildPlaceholder();
       }
 
       content = Image.file(
-        File(path),
+        file,
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
@@ -95,7 +141,8 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
           );
         },
         errorBuilder: (context, error, stackTrace) {
-          return widget.errorWidget ?? _buildError();
+          _scheduleLazyRefresh();
+          return widget.placeholder ?? _buildPlaceholder();
         },
       );
     } else {
@@ -153,6 +200,21 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
         child: Icon(Icons.music_note, color: Colors.white24),
       ),
     );
+  }
+
+  bool _looksLikeSongFile(String value) {
+    final lower = value.toLowerCase();
+    if (lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.bmp') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.heic')) {
+      return false;
+    }
+
+    return p.extension(lower).isNotEmpty;
   }
 }
 

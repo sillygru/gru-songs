@@ -789,6 +789,19 @@ class DatabaseService {
     return results.map((r) => _mapToSong(r)).toList();
   }
 
+  Future<Song?> getSongByFilename(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return null;
+    final results = await _userDataDatabase!.query(
+      'song',
+      where: 'filename = ?',
+      whereArgs: [filename],
+      limit: 1,
+    );
+    if (results.isEmpty) return null;
+    return _mapToSong(results.first);
+  }
+
   Future<List<Song>> getSongs(
       {int? limit,
       int? offset,

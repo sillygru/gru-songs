@@ -29,7 +29,8 @@ class LyricsLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fontSize = isActive ? activeFontSize : inactiveFontSize;
+    // Constant font size and weight prevents jumpy layouts during line transitions
+    final fontSize = inactiveFontSize;
     final baseOpacity = isPlayed ? 1.0 : 0.72;
     final resolvedBlurSigma = blurSigma < 0 ? 0.0 : blurSigma;
 
@@ -56,7 +57,7 @@ class LyricsLine extends StatelessWidget {
               duration: const Duration(milliseconds: 240),
               style: TextStyle(
                 fontSize: fontSize,
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                fontWeight: FontWeight.w600,
                 color: Colors.white.withValues(alpha: baseOpacity),
                 height: 1.28,
                 letterSpacing: -0.45,

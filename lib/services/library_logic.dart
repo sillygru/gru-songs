@@ -61,11 +61,9 @@ class LibraryLogic {
 
       case SongSortOrder.dateAdded:
         sorted.sort((a, b) {
-          final mtimeA = a.mtime ?? 0;
-
-          final mtimeB = b.mtime ?? 0;
-
-          return mtimeB.compareTo(mtimeA); // Newest first
+          final dateAddedA = a.createdEpochSec ?? a.mtime ?? 0;
+          final dateAddedB = b.createdEpochSec ?? b.mtime ?? 0;
+          return dateAddedB.compareTo(dateAddedA); // Newest first
         });
 
         break;

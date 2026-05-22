@@ -30,6 +30,7 @@ class SettingsState {
   final double pauseFadeDuration;
   final bool keepScreenAwakeOnLyrics;
   final PlayerCoverSizingMode coverSizingMode;
+  final bool lyricsBlurOverlayEnabled;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -57,6 +58,7 @@ class SettingsState {
     this.pauseFadeDuration = 0.3,
     this.keepScreenAwakeOnLyrics = true,
     this.coverSizingMode = PlayerCoverSizingMode.autoFit,
+    this.lyricsBlurOverlayEnabled = true,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -85,6 +87,7 @@ class SettingsState {
     double? pauseFadeDuration,
     bool? keepScreenAwakeOnLyrics,
     PlayerCoverSizingMode? coverSizingMode,
+    bool? lyricsBlurOverlayEnabled,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -122,6 +125,8 @@ class SettingsState {
       keepScreenAwakeOnLyrics:
           keepScreenAwakeOnLyrics ?? this.keepScreenAwakeOnLyrics,
       coverSizingMode: coverSizingMode ?? this.coverSizingMode,
+      lyricsBlurOverlayEnabled:
+          lyricsBlurOverlayEnabled ?? this.lyricsBlurOverlayEnabled,
     );
   }
 }
@@ -152,6 +157,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyPauseFadeDuration = 'pause_fade_duration';
   static const _keyKeepScreenAwakeOnLyrics = 'keep_screen_awake_on_lyrics';
   static const _keyCoverSizingMode = 'cover_sizing_mode';
+  static const _keyLyricsBlurOverlayEnabled = 'lyrics_blur_overlay_enabled';
   static const double maxDelayDuration = 12.0;
 
   @override
@@ -203,6 +209,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
               coverSizingModeIndex < PlayerCoverSizingMode.values.length
           ? PlayerCoverSizingMode.values[coverSizingModeIndex]
           : PlayerCoverSizingMode.autoFit,
+      lyricsBlurOverlayEnabled:
+          prefs.getBool(_keyLyricsBlurOverlayEnabled) ?? true,
     );
   }
 
@@ -448,6 +456,12 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(coverSizingMode: mode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyCoverSizingMode, mode.index);
+  }
+
+  Future<void> setLyricsBlurOverlayEnabled(bool enabled) async {
+    state = state.copyWith(lyricsBlurOverlayEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyLyricsBlurOverlayEnabled, enabled);
   }
 }
 

@@ -18,33 +18,37 @@
 ## Key Components
 
 ### Queue System
+
 - `_originalQueue` - Base queue (e.g., folder/playlist order)
 - `_effectiveQueue` - Modified queue after shuffle weights applied
 - `_isRestrictedToOriginal` - Flag to limit auto-generation to original queue
 
 ### Shuffle State
+
 - `ShuffleState` - Holds `ShuffleConfig` and history
 - `HistoryEntry` - Tracks played songs with timestamps
 - History limit: 200 songs default
 
 ## Shuffle Personalities
 
-| Personality | Behavior |
-|-------------|----------|
-| `defaultMode` | Balanced weighting |
-| `explorer` | High randomness, favors least-played |
-| `consistent` | Low randomness, favors favorites |
-| `custom` | Granular weight control |
+| Personality   | Behavior                             |
+| ------------- | ------------------------------------ |
+| `defaultMode` | Balanced weighting                   |
+| `explorer`    | High randomness, favors least-played |
+| `consistent`  | Low randomness, favors favorites     |
+| `custom`      | Granular weight control              |
 
 ## Custom Mode Settings
 
 ### Simple
+
 - `avoidRepeatingSongs` - Penalize recently played songs
 - `avoidRepeatingArtists` - Penalize same artist repeats
 - `avoidRepeatingAlbums` - Penalize same album repeats
 - `favorLeastPlayed` - Toggle least/most played preference
 
 ### Advanced Weights (-99 to +99, 0 = neutral)
+
 - `leastPlayedWeight`
 - `mostPlayedWeight`
 - `favoritesWeight`
@@ -54,13 +58,17 @@
 ## Key Algorithms
 
 ### Anti-Repeat
+
 Penalizes songs recently played (up to 95% penalty based on recency).
 
 ### Streak Breaker
+
 Reduces probability for same artist/album consecutive plays.
 
 ### Weighted Selection
+
 Combines multiple factors:
+
 - Play count (least/most played preference)
 - Favorites multiplier (default 1.2x)
 - Suggest-less multiplier (default 0.2x)
@@ -71,16 +79,19 @@ Combines multiple factors:
 ## Queue Behavior
 
 ### playSong() Logic
+
 - If song exists in current queue: jumps to it WITHOUT rebuilding queue
 - If song is NEW: builds fresh queue and optionally saves to history
 - Detects "new queue" by comparing filename sets
 
 ### Queue History (Snapshots)
+
 - Only saves when starting a TRULY new queue (not jumping within existing)
 - Uses `QueueSnapshot` model stored in `queue_snapshot` table
 - Song filenames stored in `queue_snapshot_song` junction table
 
 ### Pending Queue Replacement
+
 - `setPendingQueueReplacement()` - queues songs to play after current song ends
 - `replaceQueue()` - immediately replaces current queue (clears any pending)
 - Triggered on `ProcessingState.completed` (queue finished) or song change

@@ -212,8 +212,6 @@ class IndexerNotifier extends Notifier<IndexerState> {
     final songs = await DatabaseService.instance.getAllSongs();
     final totalSongs = songs.length;
 
-    await CacheService.instance.pruneStaleSongCaches(songs);
-
     final coverCount = await _getCoverCacheCount(songs);
     final lyricsCount = await _getLyricsCacheCount(songs);
     final waveformCount = await _getWaveformCacheCount(songs);

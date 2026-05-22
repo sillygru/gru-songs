@@ -158,9 +158,20 @@ class ColorExtractionService {
   static File? _cacheFile;
   static Directory? _paletteDir;
   static bool _initialized = false;
+  static Future<void>? _initFuture;
 
   static Future<void> init() async {
     if (_initialized) return;
+    if (_initFuture != null) {
+      await _initFuture;
+      return;
+    }
+
+    _initFuture = _initInternal();
+    await _initFuture;
+  }
+
+  static Future<void> _initInternal() async {
     try {
       final appSupportDir = await getApplicationSupportDirectory();
       _cacheFile = File(p.join(appSupportDir.path, 'palette_cache.json'));
@@ -171,17 +182,20 @@ class ColorExtractionService {
       }
 
       if (await _cacheFile!.exists()) {
-        final jsonString = await _cacheFile!.readAsString();
-        final Map<String, dynamic> json = jsonDecode(jsonString);
-        _paletteCache = json.map((key, value) => MapEntry(
-            key, ExtractedPalette.fromJson(value as Map<String, dynamic>)));
+        final Map<String, dynamic> json =
+            await compute(_loadPaletteCacheSnapshot, _cacheFile!.path);
+        _paletteCache = json.map(
+          (key, value) => MapEntry(
+              key, ExtractedPalette.fromJson(value as Map<String, dynamic>)),
+        );
         debugPrint(
             'ColorExtractionService: Loaded ${_paletteCache.length} cached palettes');
       }
-      _initialized = true;
     } catch (e) {
       debugPrint('ColorExtractionService init error: $e');
+    } finally {
       _initialized = true;
+      _initFuture = null;
     }
   }
 
@@ -429,6 +443,16 @@ class ColorExtractionService {
   static void cancelBatchExtraction() {
     _batchCancelled = true;
   }
+}
+
+Future<Map<String, dynamic>> _loadPaletteCacheSnapshot(String cachePath) async {
+  final cacheFile = File(cachePath);
+  if (!await cacheFile.exists()) return {};
+
+  final jsonString = await cacheFile.readAsString();
+  final decoded = jsonDecode(jsonString);
+  if (decoded is Map<String, dynamic>) return decoded;
+  return {};
 }
 
 class _Pixel {

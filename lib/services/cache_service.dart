@@ -102,8 +102,6 @@ class CacheService {
           return;
         }
 
-        final songs = await DatabaseService.instance.getAllSongs();
-        await pruneStaleSongCaches(songs);
         await _cleanupLegacyCaches();
 
         await prefs.setString(_startupMaintenanceVersionKey, currentVersion);

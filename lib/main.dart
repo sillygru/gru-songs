@@ -24,8 +24,6 @@ Future<void> main() async {
   // Parallel initialization
   await Future.wait([
     _initializeMetadataGod(),
-    CacheService.instance.init(),
-    ColorExtractionService.init(),
     _setupAudioSession(),
     _setupJustAudioBackground(),
   ], eagerError: false);
@@ -107,7 +105,10 @@ class _WispieAppState extends ConsumerState<WispieApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(CacheService.instance.init());
+      unawaited(ColorExtractionService.init());
       unawaited(CacheService.instance.scheduleStartupMaintenance());
+      unawaited(ref.read(updateCheckProvider.notifier).prime());
     });
   }
 

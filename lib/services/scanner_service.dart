@@ -857,6 +857,8 @@ class ScannerService {
             (existingSong.mtime! - currentMtime).abs() < 2.0) {
           final updatedPlayCount = params.playCounts[existingSong.filename] ??
               existingSong.playCount;
+          final createdEpochSec = existingSong.createdEpochSec ??
+              DateTime.now().millisecondsSinceEpoch / 1000.0;
 
           songs.add(Song(
             title: existingSong.title,
@@ -869,7 +871,7 @@ class ScannerService {
             playCount: updatedPlayCount,
             duration: existingSong.duration,
             mtime: currentMtime,
-            createdEpochSec: existingSong.createdEpochSec,
+            createdEpochSec: createdEpochSec,
             songDateEpochSec: existingSong.songDateEpochSec,
           ));
         } else {
@@ -926,7 +928,7 @@ class ScannerService {
     bool hasLyrics = false;
     double? songDateEpochSec;
     final fileStat = await file.stat();
-    final createdEpochSec = fileStat.changed.millisecondsSinceEpoch / 1000.0;
+    final createdEpochSec = DateTime.now().millisecondsSinceEpoch / 1000.0;
     final isVideo = _isVideoFile(file.path);
 
     // Calculate mtimeMs for cache lookup

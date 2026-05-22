@@ -17,17 +17,18 @@ Local-First Flutter music player using Riverpod for state management with MVVM/R
 
 Read only the file you need for your task:
 
-| File | When to Read |
-|------|--------------|
-| [`agents/01-architecture.md`](agents/01-architecture.md) | Understanding overall structure, tech stack, initialization |
-| [`agents/02-playback-shuffle.md`](agents/02-playback-shuffle.md) | Modifying playback, queue, or shuffle algorithm |
-| [`agents/03-library-state.md`](agents/03-library-state.md) | Adding/removing songs, scanning, bulk metadata operations |
-| [`agents/04-data-layer.md`](agents/04-data-layer.md) | Database operations, caching, file management, FFmpeg |
-| [`agents/05-models.md`](agents/05-models.md) | Understanding data models (Song, Playlist, ShuffleConfig, etc.) |
+| File                                                             | When to Read                                                    |
+| ---------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`agents/01-architecture.md`](agents/01-architecture.md)         | Understanding overall structure, tech stack, initialization     |
+| [`agents/02-playback-shuffle.md`](agents/02-playback-shuffle.md) | Modifying playback, queue, or shuffle algorithm                 |
+| [`agents/03-library-state.md`](agents/03-library-state.md)       | Adding/removing songs, scanning, bulk metadata operations       |
+| [`agents/04-data-layer.md`](agents/04-data-layer.md)             | Database operations, caching, file management, FFmpeg           |
+| [`agents/05-models.md`](agents/05-models.md)                     | Understanding data models (Song, Playlist, ShuffleConfig, etc.) |
 
 ## Quick Reference
 
 ### Key Files
+
 - **Playback**: `lib/services/audio_player_manager.dart`
 - **Library State**: `lib/providers/providers.dart` -> `songsProvider`
 - **User Data**: `lib/providers/user_data_provider.dart`
@@ -38,12 +39,14 @@ Read only the file you need for your task:
 - **Queue History Screen**: `lib/presentation/screens/queue_history_screen.dart`
 
 ### Running Tests
+
 ```bash
 flutter test
 flutter test test/shuffle_logic_test.dart  # Specific test
 ```
 
 ### Project Structure
+
 ```
 lib/
 ├── services/      # Primary logic layer

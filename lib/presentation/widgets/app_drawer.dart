@@ -11,6 +11,7 @@ import '../screens/playlists_screen.dart';
 import '../screens/artists_screen.dart';
 import '../screens/albums_screen.dart';
 import '../screens/session_history_screen.dart';
+import '../screens/settings_screen.dart';
 import 'album_art_image.dart';
 import '../screens/queue_history_screen.dart';
 
@@ -156,6 +157,9 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
           loading: () => 0,
           error: (_, __) => 0,
         )));
+    final updateAvailable = ref.watch(
+      updateCheckProvider.select((state) => state.hasUpdate),
+    );
 
     final BoxDecoration panelDecoration = BoxDecoration(
       borderRadius: _panelRadius,
@@ -378,6 +382,22 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                                     onTap: () =>
                                         _navigateTo(const SleepTimerScreen()),
                                   ),
+                                  const SizedBox(height: 14),
+                                  _buildSectionTitle(
+                                    context,
+                                    'App',
+                                    'Preferences and updates',
+                                  ),
+                                  _buildNavItem(
+                                    context,
+                                    icon: Icons.settings_rounded,
+                                    label: 'Settings',
+                                    subtitle: 'Tune the app',
+                                    color: colorScheme.primary,
+                                    onTap: () =>
+                                        _navigateTo(const SettingsScreen()),
+                                    showBadge: updateAvailable,
+                                  ),
                                 ],
                               ),
                             ),
@@ -521,6 +541,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     required String subtitle,
     required Color color,
     required VoidCallback? onTap,
+    bool showBadge = false,
   }) {
     final BoxDecoration navItemDecoration = BoxDecoration(
       borderRadius: BorderRadius.circular(22),
@@ -556,7 +577,31 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                       borderRadius: BorderRadius.circular(16),
                       gradient: iconGradient,
                     ),
-                    child: Icon(icon, color: color, size: 22),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Center(
+                          child: Icon(icon, color: color, size: 22),
+                        ),
+                        if (showBadge)
+                          Positioned(
+                            right: 7,
+                            top: 7,
+                            child: Container(
+                              width: 9,
+                              height: 9,
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: _surfaceContainerHighest,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(

@@ -8,19 +8,20 @@
 
 ## Key Providers
 
-| Provider | File | Purpose |
-|----------|------|---------|
-| `songsProvider` | providers.dart | Song library state |
-| `userDataProvider` | user_data_provider.dart | Favorites, hidden, playlists, moods |
-| `searchProvider` | search_provider.dart | Search state and results |
-| `selectionProvider` | selection_provider.dart | Multi-select state |
-| `indexerProvider` | indexer_provider.dart | Library scanning state |
+| Provider            | File                    | Purpose                             |
+| ------------------- | ----------------------- | ----------------------------------- |
+| `songsProvider`     | providers.dart          | Song library state                  |
+| `userDataProvider`  | user_data_provider.dart | Favorites, hidden, playlists, moods |
+| `searchProvider`    | search_provider.dart    | Search state and results            |
+| `selectionProvider` | selection_provider.dart | Multi-select state                  |
+| `indexerProvider`   | indexer_provider.dart   | Library scanning state              |
 
 ## songsProvider (AsyncNotifier)
 
 The source of truth for the song library. Located in `providers.dart`.
 
 ### Responsibilities
+
 - File scanning and library population
 - Background library updates
 - Bulk actions (delete, rename, metadata edits)
@@ -51,6 +52,7 @@ Future<void> addMergeGroup(String groupId, List<String> filenames)
 Manages `UserDataState` via `UserDataNotifier`.
 
 ### Stored Data
+
 - Favorites (list of filenames)
 - Hidden songs (list of filenames)
 - Suggest-less songs (list of filenames)

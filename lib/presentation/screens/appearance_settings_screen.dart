@@ -88,6 +88,18 @@ class _AppearanceSettingsScreenState
                       .setAutoHideBottomBarOnScroll(val);
                 },
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.blur_on_rounded),
+                title: const Text('Lyrics blur overlay'),
+                subtitle: const Text(
+                    'Add premium progressive blur to top and bottom lyrics overlays'),
+                value: settings.lyricsBlurOverlayEnabled,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setLyricsBlurOverlayEnabled(val);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.photo_size_select_large_outlined),
                 title: const Text('Player Cover Sizing'),
