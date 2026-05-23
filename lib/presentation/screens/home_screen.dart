@@ -356,6 +356,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: SizedBox(
           width: 120,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _HomeQueueArtwork(

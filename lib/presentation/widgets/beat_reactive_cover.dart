@@ -14,64 +14,60 @@ class BeatReactiveCover extends ConsumerStatefulWidget {
 
 class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
     with SingleTickerProviderStateMixin {
-  static const double _minScale = 0.96;
-  static const double _maxScale = 1.10;
-  static const double _beatPeakScale = 1.07;
+  static const double _baseIdleScale = 0.95;
+  static const double _maxBreathingBonus = 0.06;
+  static const double _maxBeatPunch = 0.12;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
-  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 180),
     );
+
     _pulseAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: _beatPeakScale)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 80,
+        tween: Tween<double>(begin: 0.0, end: _maxBeatPunch)
+            .chain(CurveTween(curve: Curves.linear)),
+        weight: 5, // Instant forward punch (~9ms)
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: _beatPeakScale, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 300,
+        tween: Tween<double>(begin: _maxBeatPunch, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeOutQuad)), // Fixed valid snappy curve
+        weight: 95,
       ),
     ]).animate(_pulseController);
   }
 
   @override
   void dispose() {
-    _disposed = true;
     _pulseController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final energyState = ref.watch(audioEnergyProvider);
+
     ref.listen<AudioEnergyState>(audioEnergyProvider, (previous, next) {
-      if (_disposed) return;
-      if (next.beatPulse &&
-          previous?.beatPulse != true &&
-          next.isPlaying) {
+      if (next.beatPulse && previous?.beatPulse != true && next.isPlaying) {
         _pulseController.forward(from: 0);
       }
     });
-    final energy = ref.watch(audioEnergyProvider);
 
-    final idleScale = 1.0 + (energy.energy * 0.04);
+    final dynamicBreathing = _baseIdleScale + (energyState.energy * _maxBreathingBonus);
 
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
-        final pulseScale = _pulseAnimation.value;
-        final combined =
-            (idleScale * pulseScale).clamp(_minScale, _maxScale);
+        final totalScale = dynamicBreathing + _pulseAnimation.value;
+
         return Transform.scale(
-          scale: combined,
+          scale: totalScale,
           child: child,
         );
       },

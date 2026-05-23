@@ -112,10 +112,8 @@ class WaveformService {
           final amp = floatData[j].abs();
           if (amp > maxAmp) maxAmp = amp;
         }
-        // Simple linear scaling
-        maxAmp = maxAmp * 0.9;
-        // Clamp to reasonable maximum
-        maxAmp = maxAmp.clamp(0.0, 64.0) / 64.0;
+        // Clamp float PCM peak to [0,1]. PCM is typically normalised; if it
+        // exceeds 1.0 (e.g. unnormalised float) we clamp rather than scale.
         samples.add(maxAmp.clamp(0.0, 1.0));
       }
 
@@ -134,13 +132,10 @@ class WaveformService {
     final samples = <double>[];
     final random = DateTime.now().millisecond;
     for (int i = 0; i < count; i++) {
-      // Simple linear scaling
       final base = 0.05 + (i % 11) * 0.08;
       final variation = ((random * (i + 1)) % 250) / 1000.0;
       final value = (base + variation).clamp(0.0, 1.0);
-      final enhancedValue = value * 0.9;
-      final clampedValue = enhancedValue.clamp(0.0, 64.0) / 64.0;
-      samples.add(clampedValue.clamp(0.0, 1.0));
+      samples.add(value);
     }
     return samples;
   }

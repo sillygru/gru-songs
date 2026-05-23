@@ -20,7 +20,6 @@ class AudioEnergyState {
   static const idle = AudioEnergyState();
 }
 
-/// Samples cached waveform peaks at the playhead to approximate live energy.
 class AudioEnergyAnalyzer with WidgetsBindingObserver {
   AudioEnergyAnalyzer({
     required AudioPlayer player,
@@ -37,10 +36,10 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
   final Future<String?> Function() _resolveCurrentSongPath;
   final Future<String?> Function() _resolveCurrentSongFilename;
 
-  static const Duration _sampleInterval = Duration(milliseconds: 33);
-  static const int _historySize = 14;
-  static const double _beatMultiplier = 1.10;
-  static const double _beatFloor = 1.5;
+  // Rapid sample rate (50Hz) ensures high-speed successive beats are never skipped
+  static const Duration _sampleInterval = Duration(milliseconds: 20);
+  static const int _historySize = 10;
+  static const double _beatMultiplier = 1.05; // Lower ratio threshold to capture subtle accents
 
   final _controller = StreamController<AudioEnergyState>.broadcast();
   final Queue<double> _energyHistory = Queue<double>();
@@ -58,6 +57,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
   StreamSubscription<SequenceState?>? _sequenceSub;
   double _smoothedEnergy = 0;
   double _baselineEnergy = 0;
+  double _visualEnergy = 0;
 
   void start() {
     if (_running) return;
@@ -85,6 +85,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     _energyHistory.clear();
     _smoothedEnergy = 0;
     _baselineEnergy = 0;
+    _visualEnergy = 0;
     _emit(const AudioEnergyState());
   }
 
@@ -99,11 +100,13 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
   }
 
   void _onPlayerState(PlayerState state) {
+    if (!_running) return;
     _isPlaying = state.playing;
     if (!state.playing) {
       _energyHistory.clear();
       _smoothedEnergy = 0;
       _baselineEnergy = 0;
+      _visualEnergy = 0;
       _emit(AudioEnergyState(energy: 0, isPlaying: false));
     }
   }
@@ -129,29 +132,44 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
   }
 
   void _tick() {
+    if (!_running) return;
     if (!_isAppActive || !_isPlaying) {
       if (_smoothedEnergy > 0.001) {
-        _smoothedEnergy *= 0.85;
-        _baselineEnergy *= 0.94;
-        _emit(AudioEnergyState(energy: _smoothedEnergy, isPlaying: _isPlaying));
+        _smoothedEnergy *= 0.70;
+        _baselineEnergy *= 0.80;
+        _visualEnergy *= 0.70;
+        _emit(AudioEnergyState(energy: _visualEnergy.clamp(0.0, 1.0), isPlaying: _isPlaying));
       }
       return;
     }
 
     final duration = _player.duration;
     if (duration == null || duration == Duration.zero || _waveform.isEmpty) {
-      _emit(AudioEnergyState(energy: _smoothedEnergy, isPlaying: _isPlaying));
+      _emit(AudioEnergyState(energy: _visualEnergy.clamp(0.0, 1.0), isPlaying: _isPlaying));
       return;
     }
 
-    final rawEnergy = sampleEnergyAtPosition(
+    final sample = sampleEnergyAtPosition(
       waveform: _waveform,
       position: _player.position,
       duration: duration,
-      windowRadius: 3,
-    ) * 64;
-    _smoothedEnergy = _smoothedEnergy * 0.72 + rawEnergy * 0.28;
-    _baselineEnergy = _baselineEnergy * 0.965 + rawEnergy * 0.035;
+      windowRadius: 1, // Ultra tight single-frame tracking for snappy alignment
+    );
+
+    final rawEnergy = sample * 64;
+
+    _smoothedEnergy = _smoothedEnergy * 0.20 + rawEnergy * 0.80;
+    _baselineEnergy = _baselineEnergy * 0.96 + rawEnergy * 0.04;
+
+    final excess = (rawEnergy - _baselineEnergy).clamp(0.0, double.infinity);
+    final strength = (excess / (_baselineEnergy + 0.01)).clamp(0.0, 2.0) / 2.0;
+
+    // Asymmetric Zero-Dampened Envelope: Instant spike on impact, snappy collapse
+    if (strength > _visualEnergy) {
+      _visualEnergy = strength; // 0% delay attack
+    } else {
+      _visualEnergy = _visualEnergy * 0.70 + strength * 0.30; // Quick decay to mirror real bass drop dynamics
+    }
 
     final beatPulse = detectBeatPulse(
       rawEnergy: rawEnergy,
@@ -159,12 +177,11 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
       history: _energyHistory,
       historySize: _historySize,
       beatMultiplier: _beatMultiplier,
-      beatFloor: _beatFloor,
     );
 
     _emit(
       AudioEnergyState(
-        energy: _smoothedEnergy.clamp(0.0, 1.0),
+        energy: _visualEnergy.clamp(0.0, 1.0),
         beatPulse: beatPulse,
         isPlaying: true,
       ),
@@ -213,14 +230,15 @@ bool detectBeatPulse({
   required Queue<double> history,
   required int historySize,
   required double beatMultiplier,
-  required double beatFloor,
 }) {
   if (history.length >= historySize) {
     history.removeFirst();
   }
   history.add(rawEnergy);
 
-  if (history.length < 4) return false;
+  if (history.length < 3) return false;
 
-  return rawEnergy > baseline * beatMultiplier && rawEnergy > beatFloor;
+  // Dynamic noise floor adapts instantly to quiet or loud sections
+  final localFloor = baseline * 0.35;
+  return rawEnergy > baseline * beatMultiplier && rawEnergy > localFloor;
 }
