@@ -16,7 +16,8 @@ class SoundReactiveParticles extends ConsumerStatefulWidget {
       _SoundReactiveParticlesState();
 }
 
-class _SoundReactiveParticlesState extends ConsumerState<SoundReactiveParticles>
+class _SoundReactiveParticlesState
+    extends ConsumerState<SoundReactiveParticles>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   final Random _random = Random();
@@ -56,15 +57,20 @@ class _SoundReactiveParticlesState extends ConsumerState<SoundReactiveParticles>
     return 24;
   }
 
+  static const double _targetRadius = 0.42;
+
   List<_Particle> _createParticles(int count) {
     return List.generate(count, (index) {
+      final angle = _random.nextDouble() * pi * 2;
+      final radius = _targetRadius + (_random.nextDouble() - 0.5) * 0.12;
       return _Particle(
-        x: _random.nextDouble(),
-        y: _random.nextDouble() * 0.7,
-        vx: (_random.nextDouble() - 0.5) * 0.0015,
-        vy: (_random.nextDouble() - 0.7) * 0.0015,
-        baseSize: 2.5 + _random.nextDouble() * 4,
+        x: 0.5 + cos(angle) * radius,
+        y: 0.5 + sin(angle) * radius,
+        vx: (_random.nextDouble() - 0.5) * 0.0008,
+        vy: (_random.nextDouble() - 0.5) * 0.0008,
+        baseSize: 2.0 + _random.nextDouble() * 3,
         mass: 0.6 + _random.nextDouble() * 0.8,
+        orbitDir: _random.nextBool() ? 1.0 : -1.0,
         phase: _random.nextDouble() * pi * 2,
         lightnessOffset: (_random.nextDouble() - 0.5) * 0.18,
       );
@@ -84,52 +90,72 @@ class _SoundReactiveParticlesState extends ConsumerState<SoundReactiveParticles>
     if (!_disposed && mounted) setState(() {});
   }
 
-  static const double _gravity = 0.00018;
+  static const double _ringStiffness = 0.00008;
+  static const double _tangentialDrift = 0.00004;
+  static const double _drag = 0.995;
+  static const double _bounceLoss = 0.6;
 
   void _updateParticles() {
     final energyBoost = _energy.energy * 0.65 + _beatBoost * 0.35;
     final isBeat = _energy.beatPulse && _energy.isPlaying;
 
     for (final particle in _particles) {
-      // Gravity — heavier particles fall slightly slower
-      particle.vy += _gravity / particle.mass;
+      final dx = particle.x - 0.5;
+      final dy = particle.y - 0.5;
+      final dist = sqrt(dx * dx + dy * dy);
+
+      if (dist > 0.001) {
+        final nx = dx / dist;
+        final ny = dy / dist;
+
+        // Radial ring force — pull toward target radius around cover
+        final radialOffset = dist - _targetRadius;
+        final force = _ringStiffness * radialOffset / particle.mass;
+        particle.vx -= nx * force;
+        particle.vy -= ny * force;
+
+        // Tangential drift — gentle orbital motion around cover
+        final tForce = particle.orbitDir * _tangentialDrift / particle.mass;
+        particle.vx += -ny * tForce;
+        particle.vy += nx * tForce;
+      }
 
       // Brownian drift scaled by energy
       particle.vx +=
-          (_random.nextDouble() - 0.5) * 0.00008 * energyBoost / particle.mass;
+          (_random.nextDouble() - 0.5) * 0.00004 * energyBoost / particle.mass;
       particle.vy +=
-          (_random.nextDouble() - 0.5) * 0.00008 * energyBoost / particle.mass;
+          (_random.nextDouble() - 0.5) * 0.00004 * energyBoost / particle.mass;
 
-      // Beat burst — strong upward kick with sideways scatter
-      if (isBeat) {
-        particle.vx +=
-            (_random.nextDouble() - 0.5) * 0.0035 / particle.mass;
-        particle.vy -= _random.nextDouble() * 0.006 / particle.mass;
+      // Beat burst — push outward from center, expanding the ring
+      if (isBeat && dist > 0.001) {
+        final nx = dx / dist;
+        final ny = dy / dist;
+        final burst =
+            (_random.nextDouble() * 0.5 + 0.5) * 0.006 / particle.mass;
+        particle.vx += nx * burst;
+        particle.vy += ny * burst;
       }
 
-      // Apply velocity
       particle.x += particle.vx;
       particle.y += particle.vy;
 
-      // Bounce off edges with energy loss
       if (particle.x < 0) {
         particle.x = -particle.x;
-        particle.vx = -particle.vx * 0.55;
+        particle.vx = -particle.vx * _bounceLoss;
       } else if (particle.x > 1) {
         particle.x = 2 - particle.x;
-        particle.vx = -particle.vx * 0.55;
+        particle.vx = -particle.vx * _bounceLoss;
       }
       if (particle.y < 0) {
         particle.y = -particle.y;
-        particle.vy = -particle.vy * 0.45;
+        particle.vy = -particle.vy * _bounceLoss;
       } else if (particle.y > 1) {
         particle.y = 2 - particle.y;
-        particle.vy = -particle.vy * 0.45;
+        particle.vy = -particle.vy * _bounceLoss;
       }
 
-      // Drag
-      particle.vx *= 0.992;
-      particle.vy *= 0.992;
+      particle.vx *= _drag;
+      particle.vy *= _drag;
     }
   }
 
@@ -157,6 +183,7 @@ class _Particle {
   double vy;
   final double baseSize;
   final double mass;
+  final double orbitDir;
   final double phase;
   final double lightnessOffset;
 
@@ -167,6 +194,7 @@ class _Particle {
     required this.vy,
     required this.baseSize,
     required this.mass,
+    required this.orbitDir,
     required this.phase,
     required this.lightnessOffset,
   });
@@ -199,10 +227,10 @@ class _ParticlesPainter extends CustomPainter {
           .toColor();
 
       final radius = particle.baseSize *
-          (0.85 + energy * 0.55 + beatBoost * 0.45) *
+          (0.88 + energy * 0.15 + beatBoost * 0.1) *
           (size.shortestSide / 360);
       final opacity =
-          (0.14 + energy * 0.22 + beatBoost * 0.18 + sin(particle.phase) * 0.04)
+          (0.15 + energy * 0.18 + beatBoost * 0.08 + sin(particle.phase + frame * 0.02) * 0.04)
               .clamp(0.08, 0.55);
 
       final center = Offset(particle.x * size.width, particle.y * size.height);

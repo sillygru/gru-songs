@@ -450,7 +450,6 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
             key: ValueKey('bg_lyrics_$_activeSongId'),
             url: url,
             filename: _activeSongId,
-            sigma: 25,
             gradientColors: [
               Colors.black.withValues(alpha: 0.5),
               Colors.black.withValues(alpha: 0.8),

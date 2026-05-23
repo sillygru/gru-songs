@@ -450,7 +450,6 @@ class _BackdropLayer extends ConsumerWidget {
               key: ValueKey('bg_nextup_${metadata.id}'),
               url: url,
               filename: metadata.id,
-              sigma: 30,
               gradientColors: [
                 Colors.black.withValues(alpha: 0.9),
                 accentColor.withValues(alpha: 0.86),
