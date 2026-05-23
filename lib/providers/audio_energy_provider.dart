@@ -10,8 +10,7 @@ import 'settings_provider.dart';
 
 final audioEnergyEnabledProvider = Provider<bool>((ref) {
   final settings = ref.watch(settingsProvider);
-  return settings.beatReactiveCoverEnabled ||
-      settings.soundReactiveParticlesEnabled;
+  return settings.beatReactiveCoverEnabled;
 });
 
 class PlayerScreenActiveNotifier extends Notifier<bool> {

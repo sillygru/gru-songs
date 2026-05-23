@@ -23,7 +23,7 @@ import '../widgets/waveform_progress_bar.dart';
 import '../widgets/basic_progress_bar.dart';
 import '../widgets/smooth_color_builder.dart';
 import '../widgets/beat_reactive_cover.dart';
-import '../widgets/sound_reactive_particles.dart';
+
 import '../../providers/audio_energy_provider.dart';
 import 'song_list_screen.dart';
 import 'full_screen_lyrics.dart';
@@ -1267,11 +1267,7 @@ class _ArtPanelContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
-    final themeColor = ref.watch(
-      themeProvider.select((s) => s.extractedColor ?? Colors.deepPurple),
-    );
     final beatReactive = settings.beatReactiveCoverEnabled;
-    final particlesEnabled = settings.soundReactiveParticlesEnabled;
 
     final canShowVideo = canRenderVideoFor(metadata);
     final targetAspectRatio = canShowVideo ? currentVideoAspectRatio() : 1.0;
@@ -1378,16 +1374,6 @@ class _ArtPanelContent extends ConsumerWidget {
                                       ),
                                     ),
                             ),
-                            if (particlesEnabled && !canShowVideo)
-                              Positioned.fill(
-                                child: Transform.scale(
-                                  scale: 1.3,
-                                  alignment: Alignment.center,
-                                  child: SoundReactiveParticles(
-                                    baseColor: themeColor,
-                                  ),
-                                ),
-                              ),
                             if (hasLyricsForCurrentSong)
                               Positioned(
                                 bottom: 12,
