@@ -14,19 +14,20 @@ class BeatReactiveCover extends ConsumerStatefulWidget {
 
 class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
     with SingleTickerProviderStateMixin {
-  static const double _minScale = 0.97;
-  static const double _maxScale = 1.08;
-  static const double _beatPeakScale = 1.06;
+  static const double _minScale = 0.96;
+  static const double _maxScale = 1.10;
+  static const double _beatPeakScale = 1.07;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
+  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 380),
+      duration: const Duration(milliseconds: 320),
     );
     _pulseAnimation = TweenSequence<double>([
       TweenSequenceItem(
@@ -44,6 +45,7 @@ class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
 
   @override
   void dispose() {
+    _disposed = true;
     _pulseController.dispose();
     super.dispose();
   }
@@ -51,6 +53,7 @@ class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
   @override
   Widget build(BuildContext context) {
     ref.listen<AudioEnergyState>(audioEnergyProvider, (previous, next) {
+      if (_disposed) return;
       if (next.beatPulse &&
           previous?.beatPulse != true &&
           next.isPlaying) {
@@ -59,7 +62,7 @@ class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
     });
     final energy = ref.watch(audioEnergyProvider);
 
-    final idleScale = 1.0 + (energy.energy * 0.02);
+    final idleScale = 1.0 + (energy.energy * 0.04);
 
     return AnimatedBuilder(
       animation: _pulseController,

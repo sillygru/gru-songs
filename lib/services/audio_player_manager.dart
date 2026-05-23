@@ -506,9 +506,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
           // Extract color from cover
           if (song != null && _ref != null) {
+            final filenameAtExtraction = newFilename;
             ColorExtractionService.extractPalette(song.coverUrl)
                 .then((palette) {
-              if (palette != null) {
+              if (palette != null &&
+                  _currentSongFilename == filenameAtExtraction) {
                 final processedPalette =
                     palette.withDelightned().withAlpha(200);
                 _ref!

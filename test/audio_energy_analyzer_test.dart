@@ -28,14 +28,15 @@ void main() {
   });
 
   group('detectBeatPulse', () {
-    test('detects spike above rolling average', () {
+    test('detects spike above baseline', () {
       final history = Queue<double>.from([0.1, 0.12, 0.11, 0.1, 0.12, 0.11]);
       final beat = detectBeatPulse(
         rawEnergy: 0.35,
+        baseline: 0.1,
         history: history,
         historySize: 14,
-        beatMultiplier: 1.28,
-        beatFloor: 0.12,
+        beatMultiplier: 1.10,
+        beatFloor: 0.08,
       );
       expect(beat, isTrue);
     });
@@ -44,12 +45,52 @@ void main() {
       final history = Queue<double>.from([0.02, 0.03, 0.02, 0.03, 0.02, 0.03]);
       final beat = detectBeatPulse(
         rawEnergy: 0.05,
+        baseline: 0.03,
         history: history,
         historySize: 14,
-        beatMultiplier: 1.28,
-        beatFloor: 0.12,
+        beatMultiplier: 1.10,
+        beatFloor: 0.08,
       );
       expect(beat, isFalse);
+    });
+
+    test('steady beat still triggers when above baseline', () {
+      // Simulates "boom boom boom" — raw energy is consistently high
+      // but baseline lags behind, so beats still fire
+      final history = Queue<double>();
+      // Pre-fill so the length check passes
+      for (var i = 0; i < 4; i++) {
+        history.add(28);
+      }
+      expect(
+        detectBeatPulse(
+          rawEnergy: 30,
+          baseline: 26,
+          history: history,
+          historySize: 14,
+          beatMultiplier: 1.10,
+          beatFloor: 1.5,
+        ),
+        isTrue,
+      );
+    });
+
+    test('no beat when raw is close to baseline', () {
+      final history = Queue<double>();
+      for (var i = 0; i < 6; i++) {
+        history.add(30);
+      }
+      expect(
+        detectBeatPulse(
+          rawEnergy: 30,
+          baseline: 29,
+          history: history,
+          historySize: 14,
+          beatMultiplier: 1.10,
+          beatFloor: 1.5,
+        ),
+        isFalse,
+      );
     });
   });
 }

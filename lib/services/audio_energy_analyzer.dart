@@ -39,8 +39,8 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
 
   static const Duration _sampleInterval = Duration(milliseconds: 33);
   static const int _historySize = 14;
-  static const double _beatMultiplier = 1.28;
-  static const double _beatFloor = 0.12;
+  static const double _beatMultiplier = 1.10;
+  static const double _beatFloor = 1.5;
 
   final _controller = StreamController<AudioEnergyState>.broadcast();
   final Queue<double> _energyHistory = Queue<double>();
@@ -57,6 +57,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<SequenceState?>? _sequenceSub;
   double _smoothedEnergy = 0;
+  double _baselineEnergy = 0;
 
   void start() {
     if (_running) return;
@@ -83,6 +84,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _energyHistory.clear();
     _smoothedEnergy = 0;
+    _baselineEnergy = 0;
     _emit(const AudioEnergyState());
   }
 
@@ -101,6 +103,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     if (!state.playing) {
       _energyHistory.clear();
       _smoothedEnergy = 0;
+      _baselineEnergy = 0;
       _emit(AudioEnergyState(energy: 0, isPlaying: false));
     }
   }
@@ -129,6 +132,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     if (!_isAppActive || !_isPlaying) {
       if (_smoothedEnergy > 0.001) {
         _smoothedEnergy *= 0.85;
+        _baselineEnergy *= 0.94;
         _emit(AudioEnergyState(energy: _smoothedEnergy, isPlaying: _isPlaying));
       }
       return;
@@ -144,11 +148,14 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
       waveform: _waveform,
       position: _player.position,
       duration: duration,
+      windowRadius: 3,
     ) * 64;
     _smoothedEnergy = _smoothedEnergy * 0.72 + rawEnergy * 0.28;
+    _baselineEnergy = _baselineEnergy * 0.965 + rawEnergy * 0.035;
 
     final beatPulse = detectBeatPulse(
       rawEnergy: rawEnergy,
+      baseline: _baselineEnergy,
       history: _energyHistory,
       historySize: _historySize,
       beatMultiplier: _beatMultiplier,
@@ -202,6 +209,7 @@ double sampleEnergyAtPosition({
 @visibleForTesting
 bool detectBeatPulse({
   required double rawEnergy,
+  required double baseline,
   required Queue<double> history,
   required int historySize,
   required double beatMultiplier,
@@ -212,8 +220,7 @@ bool detectBeatPulse({
   }
   history.add(rawEnergy);
 
-  if (history.length < 6) return false;
+  if (history.length < 4) return false;
 
-  final average = history.reduce((a, b) => a + b) / history.length;
-  return rawEnergy > average * beatMultiplier && rawEnergy > beatFloor;
+  return rawEnergy > baseline * beatMultiplier && rawEnergy > beatFloor;
 }

@@ -24,6 +24,7 @@ class _SoundReactiveParticlesState extends ConsumerState<SoundReactiveParticles>
   double _beatBoost = 0;
   int _frame = 0;
   AudioEnergyState _energy = AudioEnergyState.idle;
+  bool _disposed = false;
 
   @override
   void initState() {
@@ -43,6 +44,7 @@ class _SoundReactiveParticlesState extends ConsumerState<SoundReactiveParticles>
 
   @override
   void dispose() {
+    _disposed = true;
     _ticker.dispose();
     super.dispose();
   }
@@ -58,10 +60,11 @@ class _SoundReactiveParticlesState extends ConsumerState<SoundReactiveParticles>
     return List.generate(count, (index) {
       return _Particle(
         x: _random.nextDouble(),
-        y: _random.nextDouble(),
-        vx: (_random.nextDouble() - 0.5) * 0.0008,
-        vy: (_random.nextDouble() - 0.5) * 0.0008,
+        y: _random.nextDouble() * 0.7,
+        vx: (_random.nextDouble() - 0.5) * 0.0015,
+        vy: (_random.nextDouble() - 0.7) * 0.0015,
         baseSize: 2.5 + _random.nextDouble() * 4,
+        mass: 0.6 + _random.nextDouble() * 0.8,
         phase: _random.nextDouble() * pi * 2,
         lightnessOffset: (_random.nextDouble() - 0.5) * 0.18,
       );
@@ -78,30 +81,55 @@ class _SoundReactiveParticlesState extends ConsumerState<SoundReactiveParticles>
     _energy = energy;
     _updateParticles();
     _frame++;
-    if (mounted) setState(() {});
+    if (!_disposed && mounted) setState(() {});
   }
+
+  static const double _gravity = 0.00018;
 
   void _updateParticles() {
     final energyBoost = _energy.energy * 0.65 + _beatBoost * 0.35;
-    for (final particle in _particles) {
-      particle.vx += (_random.nextDouble() - 0.5) * 0.00005 * energyBoost;
-      particle.vy += (_random.nextDouble() - 0.5) * 0.00005 * energyBoost;
+    final isBeat = _energy.beatPulse && _energy.isPlaying;
 
-      if (_energy.beatPulse) {
-        particle.vx += (_random.nextDouble() - 0.5) * 0.0012;
-        particle.vy += (_random.nextDouble() - 0.5) * 0.0012;
+    for (final particle in _particles) {
+      // Gravity — heavier particles fall slightly slower
+      particle.vy += _gravity / particle.mass;
+
+      // Brownian drift scaled by energy
+      particle.vx +=
+          (_random.nextDouble() - 0.5) * 0.00008 * energyBoost / particle.mass;
+      particle.vy +=
+          (_random.nextDouble() - 0.5) * 0.00008 * energyBoost / particle.mass;
+
+      // Beat burst — strong upward kick with sideways scatter
+      if (isBeat) {
+        particle.vx +=
+            (_random.nextDouble() - 0.5) * 0.0035 / particle.mass;
+        particle.vy -= _random.nextDouble() * 0.006 / particle.mass;
       }
 
+      // Apply velocity
       particle.x += particle.vx;
       particle.y += particle.vy;
 
-      if (particle.x < 0) particle.x = 1;
-      if (particle.x > 1) particle.x = 0;
-      if (particle.y < 0) particle.y = 1;
-      if (particle.y > 1) particle.y = 0;
+      // Bounce off edges with energy loss
+      if (particle.x < 0) {
+        particle.x = -particle.x;
+        particle.vx = -particle.vx * 0.55;
+      } else if (particle.x > 1) {
+        particle.x = 2 - particle.x;
+        particle.vx = -particle.vx * 0.55;
+      }
+      if (particle.y < 0) {
+        particle.y = -particle.y;
+        particle.vy = -particle.vy * 0.45;
+      } else if (particle.y > 1) {
+        particle.y = 2 - particle.y;
+        particle.vy = -particle.vy * 0.45;
+      }
 
-      particle.vx *= 0.995;
-      particle.vy *= 0.995;
+      // Drag
+      particle.vx *= 0.992;
+      particle.vy *= 0.992;
     }
   }
 
@@ -128,6 +156,7 @@ class _Particle {
   double vx;
   double vy;
   final double baseSize;
+  final double mass;
   final double phase;
   final double lightnessOffset;
 
@@ -137,6 +166,7 @@ class _Particle {
     required this.vx,
     required this.vy,
     required this.baseSize,
+    required this.mass,
     required this.phase,
     required this.lightnessOffset,
   });
