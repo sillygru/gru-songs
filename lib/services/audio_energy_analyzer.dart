@@ -20,6 +20,7 @@ class AudioEnergyState {
   static const idle = AudioEnergyState();
 }
 
+/// Samples cached waveform peaks at the playhead to approximate live energy.
 class AudioEnergyAnalyzer with WidgetsBindingObserver {
   AudioEnergyAnalyzer({
     required AudioPlayer player,
@@ -36,10 +37,9 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
   final Future<String?> Function() _resolveCurrentSongPath;
   final Future<String?> Function() _resolveCurrentSongFilename;
 
-  // Rapid sample rate (50Hz) ensures high-speed successive beats are never skipped
   static const Duration _sampleInterval = Duration(milliseconds: 20);
   static const int _historySize = 10;
-  static const double _beatMultiplier = 1.05; // Lower ratio threshold to capture subtle accents
+  static const double _beatMultiplier = 1.06;
 
   final _controller = StreamController<AudioEnergyState>.broadcast();
   final Queue<double> _energyHistory = Queue<double>();
@@ -58,6 +58,9 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
   double _smoothedEnergy = 0;
   double _baselineEnergy = 0;
   double _visualEnergy = 0;
+
+  // Prevents frame double-triggering on single messy sound peaks
+  int _ticksSinceLastBeat = 0;
 
   void start() {
     if (_running) return;
@@ -86,6 +89,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     _smoothedEnergy = 0;
     _baselineEnergy = 0;
     _visualEnergy = 0;
+    _ticksSinceLastBeat = 0;
     _emit(const AudioEnergyState());
   }
 
@@ -107,6 +111,7 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
       _smoothedEnergy = 0;
       _baselineEnergy = 0;
       _visualEnergy = 0;
+      _ticksSinceLastBeat = 0;
       _emit(AudioEnergyState(energy: 0, isPlaying: false));
     }
   }
@@ -115,7 +120,10 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     final token = ++_loadToken;
     final filename = await _resolveCurrentSongFilename();
     final path = await _resolveCurrentSongPath();
-    if (token != _loadToken || filename == null || path == null || path.isEmpty) {
+    if (token != _loadToken ||
+        filename == null ||
+        path == null ||
+        path.isEmpty) {
       if (token == _loadToken) {
         _waveform = const [];
         _loadedFilename = filename;
@@ -138,14 +146,16 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
         _smoothedEnergy *= 0.70;
         _baselineEnergy *= 0.80;
         _visualEnergy *= 0.70;
-        _emit(AudioEnergyState(energy: _visualEnergy.clamp(0.0, 1.0), isPlaying: _isPlaying));
+        _emit(AudioEnergyState(
+            energy: _visualEnergy.clamp(0.0, 1.0), isPlaying: _isPlaying));
       }
       return;
     }
 
     final duration = _player.duration;
     if (duration == null || duration == Duration.zero || _waveform.isEmpty) {
-      _emit(AudioEnergyState(energy: _visualEnergy.clamp(0.0, 1.0), isPlaying: _isPlaying));
+      _emit(AudioEnergyState(
+          energy: _visualEnergy.clamp(0.0, 1.0), isPlaying: _isPlaying));
       return;
     }
 
@@ -153,31 +163,43 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
       waveform: _waveform,
       position: _player.position,
       duration: duration,
-      windowRadius: 1, // Ultra tight single-frame tracking for snappy alignment
+      windowRadius: 1,
     );
 
     final rawEnergy = sample * 64;
 
     _smoothedEnergy = _smoothedEnergy * 0.20 + rawEnergy * 0.80;
-    _baselineEnergy = _baselineEnergy * 0.96 + rawEnergy * 0.04;
+    _baselineEnergy = _baselineEnergy * 0.95 + rawEnergy * 0.05;
 
     final excess = (rawEnergy - _baselineEnergy).clamp(0.0, double.infinity);
     final strength = (excess / (_baselineEnergy + 0.01)).clamp(0.0, 2.0) / 2.0;
 
-    // Asymmetric Zero-Dampened Envelope: Instant spike on impact, snappy collapse
     if (strength > _visualEnergy) {
-      _visualEnergy = strength; // 0% delay attack
+      _visualEnergy = strength;
     } else {
-      _visualEnergy = _visualEnergy * 0.70 + strength * 0.30; // Quick decay to mirror real bass drop dynamics
+      _visualEnergy = _visualEnergy * 0.75 + strength * 0.25;
     }
 
-    final beatPulse = detectBeatPulse(
-      rawEnergy: rawEnergy,
-      baseline: _baselineEnergy,
-      history: _energyHistory,
-      historySize: _historySize,
-      beatMultiplier: _beatMultiplier,
-    );
+    _ticksSinceLastBeat++;
+    bool beatPulse = false;
+
+    // 6 frames * 20ms = ~120ms rhythmic refractory period to prevent machine-gunning stutters
+    if (_ticksSinceLastBeat >= 6) {
+      beatPulse = detectBeatPulse(
+        rawEnergy: rawEnergy,
+        baseline: _baselineEnergy,
+        history: _energyHistory,
+        historySize: _historySize,
+        beatMultiplier: _beatMultiplier,
+      );
+      if (beatPulse) {
+        _ticksSinceLastBeat = 0;
+      }
+    } else {
+      // Keep updating history even during cooldown window to prevent stale data spikes
+      if (_energyHistory.length >= _historySize) _energyHistory.removeFirst();
+      _energyHistory.add(rawEnergy);
+    }
 
     _emit(
       AudioEnergyState(
@@ -238,7 +260,6 @@ bool detectBeatPulse({
 
   if (history.length < 3) return false;
 
-  // Dynamic noise floor adapts instantly to quiet or loud sections
-  final localFloor = baseline * 0.35;
+  final localFloor = baseline * 0.25;
   return rawEnergy > baseline * beatMultiplier && rawEnergy > localFloor;
 }

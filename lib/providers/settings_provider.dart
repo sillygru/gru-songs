@@ -60,7 +60,7 @@ class SettingsState {
     this.keepScreenAwakeOnLyrics = true,
     this.coverSizingMode = PlayerCoverSizingMode.autoFit,
     this.lyricsBlurOverlayEnabled = true,
-    this.beatReactiveCoverEnabled = true,
+    this.beatReactiveCoverEnabled = false,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -218,7 +218,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       lyricsBlurOverlayEnabled:
           prefs.getBool(_keyLyricsBlurOverlayEnabled) ?? true,
       beatReactiveCoverEnabled:
-          prefs.getBool(_keyBeatReactiveCoverEnabled) ?? true,
+          prefs.getBool(_keyBeatReactiveCoverEnabled) ?? false,
     );
   }
 
@@ -477,7 +477,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyBeatReactiveCoverEnabled, enabled);
   }
-
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, SettingsState>(

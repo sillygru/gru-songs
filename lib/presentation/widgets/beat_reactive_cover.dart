@@ -16,7 +16,7 @@ class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
     with SingleTickerProviderStateMixin {
   static const double _baseIdleScale = 0.95;
   static const double _maxBreathingBonus = 0.06;
-  static const double _maxBeatPunch = 0.12;
+  static const double _maxBeatPunch = 0.11;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
@@ -26,19 +26,20 @@ class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 160),
     );
 
     _pulseAnimation = TweenSequence<double>([
       TweenSequenceItem(
         tween: Tween<double>(begin: 0.0, end: _maxBeatPunch)
             .chain(CurveTween(curve: Curves.linear)),
-        weight: 5, // Instant forward punch (~9ms)
+        weight: 6, // Instantaneous zero-latency explosive pop (~10ms)
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: _maxBeatPunch, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeOutQuad)), // Fixed valid snappy curve
-        weight: 95,
+        tween: Tween<double>(begin: _maxBeatPunch, end: 0.0).chain(CurveTween(
+            curve: Curves
+                .easeOutQuad)), // Consistent, predictable elastic snapping return
+        weight: 94,
       ),
     ]).animate(_pulseController);
   }
@@ -59,7 +60,8 @@ class _BeatReactiveCoverState extends ConsumerState<BeatReactiveCover>
       }
     });
 
-    final dynamicBreathing = _baseIdleScale + (energyState.energy * _maxBreathingBonus);
+    final dynamicBreathing =
+        _baseIdleScale + (energyState.energy * _maxBreathingBonus);
 
     return AnimatedBuilder(
       animation: _pulseController,

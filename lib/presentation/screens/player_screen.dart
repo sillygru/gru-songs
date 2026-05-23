@@ -1321,8 +1321,7 @@ class _ArtPanelContent extends ConsumerWidget {
                                                     color: Colors.black
                                                         .withValues(alpha: 0.4),
                                                     blurRadius: 25,
-                                                    offset:
-                                                        const Offset(0, 10),
+                                                    offset: const Offset(0, 10),
                                                   ),
                                                 ],
                                         ),
@@ -1353,11 +1352,10 @@ class _ArtPanelContent extends ConsumerWidget {
                                             ? []
                                             : [
                                                 BoxShadow(
-                                                  color: Colors.black.withValues(
-                                                      alpha: 0.4),
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.4),
                                                   blurRadius: 25,
-                                                  offset:
-                                                      const Offset(0, 10),
+                                                  offset: const Offset(0, 10),
                                                 ),
                                               ],
                                       ),

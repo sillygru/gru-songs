@@ -36,7 +36,6 @@ void main() {
         history: history,
         historySize: 14,
         beatMultiplier: 1.10,
-        beatFloor: 0.08,
       );
       expect(beat, isTrue);
     });
@@ -49,7 +48,6 @@ void main() {
         history: history,
         historySize: 14,
         beatMultiplier: 1.10,
-        beatFloor: 0.08,
       );
       expect(beat, isFalse);
     });
@@ -69,7 +67,6 @@ void main() {
           history: history,
           historySize: 14,
           beatMultiplier: 1.10,
-          beatFloor: 1.5,
         ),
         isTrue,
       );
@@ -87,7 +84,6 @@ void main() {
           history: history,
           historySize: 14,
           beatMultiplier: 1.10,
-          beatFloor: 1.5,
         ),
         isFalse,
       );

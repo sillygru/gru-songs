@@ -7,6 +7,7 @@ void main() {
       final state = SettingsState();
       expect(state.autoPauseOnVolumeZero, true);
       expect(state.autoResumeOnVolumeRestore, true);
+      expect(state.beatReactiveCoverEnabled, false);
     });
 
     test('Should copy with new values', () {

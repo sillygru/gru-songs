@@ -104,7 +104,8 @@ class _AppearanceSettingsScreenState
                 secondary: const Icon(Icons.album_outlined),
                 title: const Text('Beat-reactive cover'),
                 subtitle: const Text(
-                    'Pulse album art with the beat (performance-intensive)'),
+                  'Work in progress, not yet stable. Pulses album art with the beat.',
+                ),
                 value: settings.beatReactiveCoverEnabled,
                 onChanged: (val) {
                   ref
