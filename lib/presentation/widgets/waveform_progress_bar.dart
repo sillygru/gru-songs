@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 
@@ -341,6 +343,21 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   }
 }
 
+@visibleForTesting
+double calculateWaveformBarHeight(double amplitude, double height) {
+  final shapedAmplitude = calibrateWaveformAmplitude(amplitude);
+  return math.max(1.0, shapedAmplitude * height * 0.85);
+}
+
+@visibleForTesting
+double calibrateWaveformAmplitude(double amplitude) {
+  if (amplitude < 0.15) return amplitude * 0.8;
+  if (amplitude < 0.35) return 0.12 + (amplitude - 0.15) * 0.6;
+  if (amplitude < 0.6) return 0.24 + (amplitude - 0.35) * 0.5;
+  if (amplitude < 0.8) return 0.36 + (amplitude - 0.6) * 0.5;
+  return 0.46 + (amplitude - 0.8) * 0.4;
+}
+
 class WaveformPainter extends CustomPainter {
   final List<double>? peaks;
   final ValueNotifier<Duration> positionNotifier;
@@ -442,8 +459,8 @@ class WaveformPainter extends CustomPainter {
         colorIntensity,
       )!;
 
-      final targetHeight = (v * size.height * 35).clamp(3.0, size.height * 0.9);
-      final animatedHeight = targetHeight * animationValue;
+      final animatedHeight =
+          calculateWaveformBarHeight(v, size.height) * animationValue;
 
       final x = i * (barWidth + spacing) + spacing / 2;
       final y = (size.height - animatedHeight) / 2;
