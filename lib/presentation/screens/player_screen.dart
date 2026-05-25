@@ -1,12 +1,16 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
@@ -79,6 +83,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   VideoPlayerController? _videoController;
   String? _videoSongId;
   bool _isVideoReady = false;
+  String? _videoTempFilePath;
   bool _videoWakeLockHeld = false;
   bool _isAppForeground = true;
   DateTime? _lastVideoDriftCorrectionAt;
@@ -86,6 +91,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       Duration(milliseconds: 1800);
   static const int _videoDriftCorrectionThresholdMs = 1400;
   static const int _videoPausedCorrectionThresholdMs = 120;
+
+  static const MethodChannel _iosMediaChannel = MethodChannel(
+    'gru_songs/ios_media_access',
+  );
 
   final ValueNotifier<Duration> _positionNotifier =
       ValueNotifier(Duration.zero);
@@ -379,9 +388,68 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     setState(() => _hasLyricsForCurrentSong = hasLyrics);
   }
 
+  Future<String> _prepareIosVideoPath(String originalPath) async {
+    final file = File(originalPath);
+    if (!await file.exists()) return originalPath;
+
+    // Quick check: files already inside the app sandbox (Documents,
+    // Application Support, temp) are directly accessible by AVFoundation.
+    // This covers FFmpeg proxy files stored in applicationSupportDirectory.
+    final supportDir = await getApplicationSupportDirectory();
+    final docsDir = await getApplicationDocumentsDirectory();
+    final inSandbox = originalPath.startsWith(supportDir.path) ||
+        originalPath.startsWith(docsDir.path) ||
+        originalPath.startsWith(Directory.systemTemp.path);
+    if (inSandbox) return originalPath;
+
+    // Full native fix: try the iOS method channel first. The native side
+    // uses NSFileManager which properly handles security-scoped URLs
+    // (the security scope is tied to the original URL object, not the
+    // string path). On modern iOS this uses APFS clone/copy-on-write
+    // which is instant and shares data blocks with the original.
+    try {
+      final result = await _iosMediaChannel.invokeMethod<String>(
+        'prepareVideoPath',
+        {'path': originalPath},
+      );
+      if (result != null && result != originalPath) {
+        return result;
+      }
+      if (result == originalPath) return originalPath;
+    } catch (_) {
+      // Channel not available, fall through to Dart copy.
+    }
+
+    // Fallback: copy to temp directory via Dart (byte-for-byte).
+    final cacheDir = Directory(
+      '${Directory.systemTemp.path}/wispie_video_cache',
+    );
+    if (!await cacheDir.exists()) {
+      await cacheDir.create(recursive: true);
+    }
+
+    final ext = originalPath.contains('.')
+        ? '.${originalPath.split('.').last}'
+        : '.mp4';
+    final hash = md5.convert(utf8.encode(originalPath)).toString();
+    final cachedPath = '${cacheDir.path}/$hash$ext';
+    final cachedFile = File(cachedPath);
+
+    if (await cachedFile.exists()) {
+      final srcStat = await file.stat();
+      final dstStat = await cachedFile.stat();
+      if (srcStat.modified.millisecondsSinceEpoch <=
+          dstStat.modified.millisecondsSinceEpoch) {
+        return cachedPath;
+      }
+    }
+
+    await file.copy(cachedPath);
+    return cachedPath;
+  }
+
   Future<void> _syncVideoForCurrentTrack(MediaItem? mediaItem) async {
     if (!mounted) return;
-    // Check video mode FIRST before any video controller operations
     if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
       await _disposeVideoController();
       return;
@@ -423,13 +491,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
     } else {
-      // For local files, ensure proper file path handling
-      final file = File(track.mediaPath!);
+      String videoFilePath = track.mediaPath!;
+      if (Platform.isIOS) {
+        videoFilePath =
+            await _prepareIosVideoPath(track.mediaPath!);
+        if (videoFilePath != track.mediaPath!) {
+          _videoTempFilePath = videoFilePath;
+        }
+      }
+      final file = File(videoFilePath);
       controller = VideoPlayerController.file(
         file,
         videoPlayerOptions: VideoPlayerOptions(
           mixWithOthers: true,
-          allowBackgroundPlayback: true,
         ),
       );
     }
@@ -450,12 +524,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         controller.play();
       }
       if (mounted) setState(() {});
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint(
+        'PlayerScreen: video init failed for ${track.mediaPath}: $e\n$st',
+      );
       controller.removeListener(_onVideoControllerUpdated);
       await controller.dispose();
       _videoController = null;
       _videoSongId = null;
       _isVideoReady = false;
+      _videoTempFilePath = null;
       if (mounted) setState(() {});
     }
   }
@@ -517,8 +595,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _lastVideoDriftCorrectionAt = null;
     if (controller != null) {
       controller.removeListener(_onVideoControllerUpdated);
-      await controller.pause(); // Stop decoding immediately
+      await controller.pause();
       await controller.dispose();
+    }
+    if (_videoTempFilePath != null) {
+      try {
+        await File(_videoTempFilePath!).delete();
+      } catch (_) {}
+      _videoTempFilePath = null;
     }
     if (notify && mounted) setState(() {});
   }

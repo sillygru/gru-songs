@@ -3,6 +3,7 @@ import UIKit
 import UniformTypeIdentifiers
 import Security
 import AVFoundation
+import CommonCrypto
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -15,12 +16,20 @@ import AVFoundation
     GeneratedPluginRegistrant.register(with: self)
 
     if let controller = window?.rootViewController as? FlutterViewController {
-      let channel = FlutterMethodChannel(
+      let folderChannel = FlutterMethodChannel(
         name: "gru_songs/ios_folder_access",
         binaryMessenger: controller.binaryMessenger
       )
-      channel.setMethodCallHandler { [weak self] call, result in
+      folderChannel.setMethodCallHandler { [weak self] call, result in
         self?.folderAccessManager.handle(call, result: result, presenter: controller)
+      }
+
+      let mediaChannel = FlutterMethodChannel(
+        name: "gru_songs/ios_media_access",
+        binaryMessenger: controller.binaryMessenger
+      )
+      mediaChannel.setMethodCallHandler { [weak self] call, result in
+        self?.handleMediaAccess(call, result: result)
       }
     }
 
@@ -28,7 +37,7 @@ import AVFoundation
       try AVAudioSession.sharedInstance().setCategory(
         .playback,
         mode: .moviePlayback,
-        options: [.mixWithOthers, .allowAirPlay]
+        options: [.allowAirPlay]
       )
       try AVAudioSession.sharedInstance().setActive(true)
     } catch {
@@ -161,6 +170,84 @@ private final class IOSFolderAccessManager: NSObject, UIDocumentPickerDelegate, 
     try? store.removeRecord(bookmarkId: bookmarkId)
   }
 
+  /// Checks whether the given file path lies inside any currently active
+  /// security-scoped folder. AVFoundation cannot directly access files in
+  /// security-scoped locations via a plain path string (the security scope
+  /// is tied to the original URL object). If the file is scoped, we copy it
+  /// to /tmp using NSFileManager (which uses APFS clone/copy-on-write on
+  /// modern iOS, making it instant with zero data duplication).
+  func prepareVideoPathForAccess(_ path: String) -> String? {
+    let fileManager = FileManager.default
+    let sourceURL = URL(fileURLWithPath: path)
+    guard fileManager.fileExists(atPath: path) else { return nil }
+
+    // Check if the file is already inside the app sandbox.
+    // If so, no workaround is needed.
+    if _pathIsInAppSandbox(path, fileManager: fileManager) { return path }
+
+    // Check if the file is inside a security-scoped folder.
+    // We need to verify that the current process has access granted.
+    let isScoped = activeAccess.values.contains { folderURL in
+      let folderPath = folderURL.path.hasSuffix("/") ? folderURL.path : folderURL.path + "/"
+      return path.hasPrefix(folderPath)
+    }
+
+    if !isScoped { return path }
+
+    // Build temp path, preserving the original extension.
+    let tempDir = fileManager.temporaryDirectory
+      .appendingPathComponent("wispie_video_cache", isDirectory: true)
+    try? fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+    let ext = (path as NSString).pathExtension
+    let hash = _sha1(path)
+    let destURL = tempDir.appendingPathComponent("\(hash).\(ext)")
+
+    // Remove stale temp file if present.
+    if fileManager.fileExists(atPath: destURL.path) {
+      // Verify the temp file is not older than the source.
+      let srcAttrs = try? fileManager.attributesOfItem(atPath: path)
+      let dstAttrs = try? fileManager.attributesOfItem(atPath: destURL.path)
+      if let srcMod = srcAttrs?[.modificationDate] as? Date,
+         let dstMod = dstAttrs?[.modificationDate] as? Date,
+         srcMod <= dstMod {
+        return destURL.path
+      }
+      // Stale or unreadable — remove and recreate below.
+      try? fileManager.removeItem(at: destURL)
+    }
+
+    // Use NSFileManager to copy — this leverages APFS clone/copy-on-write
+    // on modern iOS, which is instantaneous and shares data blocks with
+    // the original until either is modified.
+    do {
+      try fileManager.copyItem(at: sourceURL, to: destURL)
+      return destURL.path
+    } catch {
+      return nil
+    }
+  }
+
+  private func _pathIsInAppSandbox(_ path: String, fileManager: FileManager) -> Bool {
+    let sandboxPaths: [String] = [
+      fileManager.temporaryDirectory.path,
+      NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first ?? "",
+      NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first ?? "",
+    ]
+    return sandboxPaths.contains { path.hasPrefix($0) }
+  }
+
+  private func _sha1(_ string: String) -> String {
+    let data = Data(string.utf8)
+    var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+    data.withUnsafeBytes { buffer in
+      _ = CC_SHA1(buffer.baseAddress, CC_LONG(buffer.count), &digest)
+    }
+    return digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  /// Resolves a folder bookmark record to a live URL, refreshing access
+  /// and handling stale bookmark data.
   private func resolve(record: FolderBookmarkRecord) throws -> FolderBookmarkRecord {
     guard let bookmarkData = Data(base64Encoded: record.bookmarkDataBase64) else {
       throw NSError(domain: "WispieFolders", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid bookmark data"])
@@ -191,6 +278,25 @@ private final class IOSFolderAccessManager: NSObject, UIDocumentPickerDelegate, 
       updated.bookmarkDataBase64 = refreshed.base64EncodedString()
     }
     return updated
+  }
+}
+
+/// Handles the `gru_songs/ios_media_access` channel for iOS media file
+/// access coordination.
+extension AppDelegate {
+  func handleMediaAccess(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "prepareVideoPath":
+      guard let args = call.arguments as? [String: Any],
+            let path = args["path"] as? String else {
+        result(FlutterError(code: "bad_args", message: "Missing path", details: nil))
+        return
+      }
+      let prepared = folderAccessManager.prepareVideoPathForAccess(path)
+      result(prepared)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
   }
 }
 
