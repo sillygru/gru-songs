@@ -2,7 +2,6 @@ import Flutter
 import UIKit
 import UniformTypeIdentifiers
 import Security
-import AVFoundation
 import CommonCrypto
 
 @main
@@ -31,17 +30,6 @@ import CommonCrypto
       mediaChannel.setMethodCallHandler { [weak self] call, result in
         self?.handleMediaAccess(call, result: result)
       }
-    }
-
-    do {
-      try AVAudioSession.sharedInstance().setCategory(
-        .playback,
-        mode: .moviePlayback,
-        options: [.allowAirPlay]
-      )
-      try AVAudioSession.sharedInstance().setActive(true)
-    } catch {
-      print("Failed to set audio session category: \(error)")
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
