@@ -113,6 +113,19 @@ class _AppearanceSettingsScreenState
                       .setBeatReactiveCoverEnabled(val);
                 },
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.blur_on_rounded),
+                title: const Text('Progressive blur on list headers'),
+                subtitle: const Text(
+                  'Blur effect at the top of scrolling lists (performance intensive)',
+                ),
+                value: settings.showProgressiveBlurHeaders,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setProgressiveBlurHeaders(val);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.photo_size_select_large_outlined),
                 title: const Text('Player Cover Sizing'),
@@ -138,6 +151,48 @@ class _AppearanceSettingsScreenState
                     ),
                   ],
                 ),
+              ),
+            ],
+          ),
+          _buildSettingsGroup(
+            title: 'Home screen',
+            icon: Icons.home_outlined,
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.auto_awesome_rounded),
+                title: const Text('Quick Picks'),
+                subtitle: const Text(
+                    'Show quick pick recommendations on home screen'),
+                value: settings.showQuickPicks,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setShowQuickPicks(val);
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.history_rounded),
+                title: const Text('Recent Queues'),
+                subtitle: const Text(
+                    'Show recently played queues on home screen'),
+                value: settings.showRecentQueues,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setShowRecentQueues(val);
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.explore_rounded),
+                title: const Text('For You'),
+                subtitle: const Text(
+                    'Show recommended playlists on home screen'),
+                value: settings.showForYou,
+                onChanged: (val) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setShowForYou(val);
+                },
               ),
             ],
           ),

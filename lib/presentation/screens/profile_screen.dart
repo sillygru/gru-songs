@@ -12,7 +12,9 @@ import 'backup_management_screen.dart';
 import 'custom_shuffle_settings_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
-  const ProfileScreen({super.key});
+  final ScrollController? scrollController;
+
+  const ProfileScreen({super.key, this.scrollController});
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
@@ -127,6 +129,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         child: NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
           child: CustomScrollView(
+            controller: widget.scrollController,
             slivers: [
               SliverAppBar(
                 expandedHeight: 200,

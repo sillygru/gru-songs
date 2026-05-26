@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,8 +22,9 @@ import 'select_songs_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   final String? relativePath;
+  final ScrollController? scrollController;
 
-  const LibraryScreen({super.key, this.relativePath});
+  const LibraryScreen({super.key, this.relativePath, this.scrollController});
 
   @override
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
@@ -56,7 +58,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final songsAsyncValue = ref.watch(songsProvider);
     final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
-    final sortOrder = ref.watch(settingsProvider).sortOrder;
+    final settings = ref.watch(settingsProvider);
+    final sortOrder = settings.sortOrder;
     final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
     final playCounts = ref.watch(playCountsProvider).value ?? {};
     final isRoot = widget.relativePath == null;
@@ -88,13 +91,28 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: NestedScrollView(
+          controller: widget.scrollController,
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
               SliverAppBar(
                 floating: true,
                 snap: true,
                 pinned: true,
-                backgroundColor: Colors.transparent,
+                backgroundColor: innerBoxIsScrolled
+                    ? (settings.showProgressiveBlurHeaders
+                        ? Colors.transparent
+                        : Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.95))
+                    : Colors.transparent,
+                flexibleSpace: settings.showProgressiveBlurHeaders && innerBoxIsScrolled
+                    ? RepaintBoundary(
+                        child: ClipRect(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                            child: Container(color: Colors.transparent),
+                          ),
+                        ),
+                      )
+                    : null,
                 title: const Text('Library'),
                 actions: [
                   songsAsyncValue.when(

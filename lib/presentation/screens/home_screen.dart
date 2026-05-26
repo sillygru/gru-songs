@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/album_art_image.dart';
@@ -22,7 +23,9 @@ import 'search_screen.dart';
 import 'player_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+  final ScrollController? scrollController;
+
+  const HomeScreen({super.key, this.scrollController});
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -30,10 +33,16 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const double _bottomDockDragDistance = 88.0;
+  bool _isScrolled = false;
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) {
       return false;
+    }
+
+    final scrolled = notification.metrics.pixels > 0;
+    if (scrolled != _isScrolled) {
+      setState(() => _isScrolled = scrolled);
     }
 
     if (notification is ScrollUpdateNotification &&
@@ -642,6 +651,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     final theme = Theme.of(context);
+    final settings = ref.watch(settingsProvider);
     final songsAsyncValue = ref.watch(songsProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
 
@@ -727,48 +737,61 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: NotificationListener<ScrollNotification>(
               onNotification: _handleScrollNotification,
               child: CustomScrollView(
+                controller: widget.scrollController,
                 physics: const BouncingScrollPhysics(),
                 slivers: [
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                          20, MediaQuery.of(context).padding.top + 16, 20, 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Wispie',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
+                  SliverAppBar(
+                    pinned: true,
+                    backgroundColor: _isScrolled
+                        ? (settings.showProgressiveBlurHeaders
+                            ? Colors.transparent
+                            : Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.95))
+                        : Colors.transparent,
+                    flexibleSpace: settings.showProgressiveBlurHeaders && _isScrolled
+                        ? RepaintBoundary(
+                            child: ClipRect(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                child: Container(color: Colors.transparent),
+                              ),
                             ),
+                          )
+                        : null,
+                    title: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Wispie',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
                           ),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.shuffle_rounded,
-                                    color: theme.colorScheme.primary),
-                                onPressed: () {
-                                  if (songs.isNotEmpty) {
-                                    audioManager.shuffleAndPlay(songs,
-                                        isRestricted: false);
-                                  }
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.search_rounded),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) => const SearchScreen()),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.shuffle_rounded,
+                                  color: theme.colorScheme.primary),
+                              onPressed: () {
+                                if (songs.isNotEmpty) {
+                                  audioManager.shuffleAndPlay(songs,
+                                      isRestricted: false);
+                                }
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.search_rounded),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const SearchScreen()),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   SliverToBoxAdapter(
@@ -777,7 +800,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (topRecommendations.isNotEmpty) ...[
+                          if (settings.showQuickPicks && topRecommendations.isNotEmpty) ...[
                             Text(
                               'Quick Picks',
                               style: theme.textTheme.titleMedium?.copyWith(
@@ -809,7 +832,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                   ),
-                  if (displayQueues.isNotEmpty) ...[
+                  if (settings.showRecentQueues && displayQueues.isNotEmpty) ...[
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
@@ -849,44 +872,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
-                  SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                          child: Text(
-                            'For You',
-                            style: theme.textTheme.titleLarge,
+                  if (settings.showForYou)
+                    SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                            child: Text(
+                              'For You',
+                              style: theme.textTheme.titleLarge,
+                            ),
                           ),
-                        ),
-                        SizedBox(
-                          height: 300,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: mixedPlaylists.length + 1,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemBuilder: (context, index) {
-                              final autoMoodMix =
-                                  ref.watch(autoMoodMixProvider);
-                              if (index == 0 && autoMoodMix.hasEnoughData) {
-                                return _buildAutoMoodMixCard(
-                                    theme, autoMoodMix);
-                              }
-                              final playlistIndex =
-                                  autoMoodMix.hasEnoughData ? index - 1 : index;
-                              if (playlistIndex < mixedPlaylists.length) {
-                                final playlist = mixedPlaylists[playlistIndex];
-                                return _buildAutoPlaylistCard(
-                                    playlist, theme, audioManager, ref);
-                              }
-                              return const SizedBox.shrink();
-                            },
+                          SizedBox(
+                            height: 300,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: mixedPlaylists.length + 1,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemBuilder: (context, index) {
+                                final autoMoodMix =
+                                    ref.watch(autoMoodMixProvider);
+                                if (index == 0 && autoMoodMix.hasEnoughData) {
+                                  return _buildAutoMoodMixCard(
+                                      theme, autoMoodMix);
+                                }
+                                final playlistIndex =
+                                    autoMoodMix.hasEnoughData ? index - 1 : index;
+                                if (playlistIndex < mixedPlaylists.length) {
+                                  final playlist = mixedPlaylists[playlistIndex];
+                                  return _buildAutoPlaylistCard(
+                                      playlist, theme, audioManager, ref);
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),

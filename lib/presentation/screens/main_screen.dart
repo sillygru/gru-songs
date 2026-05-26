@@ -144,10 +144,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
   // Track which screens have been built to enable lazy loading
   final Set<int> _builtScreens = {0};
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const LibraryScreen(),
-    const ProfileScreen(),
+  late final List<ScrollController> _scrollControllers;
+
+  List<Widget> get _screens => [
+    HomeScreen(scrollController: _scrollControllers[0]),
+    LibraryScreen(scrollController: _scrollControllers[1]),
+    ProfileScreen(scrollController: _scrollControllers[2]),
   ];
 
   Future<void> _closeDrawer() async {
@@ -161,10 +163,18 @@ class _MainScreenState extends ConsumerState<MainScreen>
   }
 
   void _onTabSelected(int index) {
-    setState(() {
-      _selectedIndex = index;
-      _builtScreens.add(index);
-    });
+    if (index == _selectedIndex) {
+      _scrollControllers[index].animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    } else {
+      setState(() {
+        _selectedIndex = index;
+        _builtScreens.add(index);
+      });
+    }
   }
 
   void _onHorizontalDragStart(DragStartDetails details) {
@@ -202,8 +212,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
     super.initState();
     _drawerController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 280),
     );
+    _scrollControllers = List.generate(3, (_) => ScrollController());
     WidgetsBinding.instance.addObserver(this);
     // Track app launch (Level 1)
     TelemetryService.instance.trackEvent('app_launch', {}, requiredLevel: 1);
@@ -222,6 +233,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
   @override
   void dispose() {
     _drawerController.dispose();
+    for (final c in _scrollControllers) {
+      c.dispose();
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

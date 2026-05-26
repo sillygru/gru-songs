@@ -32,6 +32,10 @@ class SettingsState {
   final PlayerCoverSizingMode coverSizingMode;
   final bool lyricsBlurOverlayEnabled;
   final bool beatReactiveCoverEnabled;
+  final bool showProgressiveBlurHeaders;
+  final bool showQuickPicks;
+  final bool showRecentQueues;
+  final bool showForYou;
 
   SettingsState({
     this.visualizerEnabled = true,
@@ -61,6 +65,10 @@ class SettingsState {
     this.coverSizingMode = PlayerCoverSizingMode.autoFit,
     this.lyricsBlurOverlayEnabled = true,
     this.beatReactiveCoverEnabled = false,
+    this.showProgressiveBlurHeaders = false,
+    this.showQuickPicks = true,
+    this.showRecentQueues = true,
+    this.showForYou = true,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -91,6 +99,10 @@ class SettingsState {
     PlayerCoverSizingMode? coverSizingMode,
     bool? lyricsBlurOverlayEnabled,
     bool? beatReactiveCoverEnabled,
+    bool? showProgressiveBlurHeaders,
+    bool? showQuickPicks,
+    bool? showRecentQueues,
+    bool? showForYou,
   }) {
     return SettingsState(
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
@@ -132,6 +144,11 @@ class SettingsState {
           lyricsBlurOverlayEnabled ?? this.lyricsBlurOverlayEnabled,
       beatReactiveCoverEnabled:
           beatReactiveCoverEnabled ?? this.beatReactiveCoverEnabled,
+      showProgressiveBlurHeaders:
+          showProgressiveBlurHeaders ?? this.showProgressiveBlurHeaders,
+      showQuickPicks: showQuickPicks ?? this.showQuickPicks,
+      showRecentQueues: showRecentQueues ?? this.showRecentQueues,
+      showForYou: showForYou ?? this.showForYou,
     );
   }
 }
@@ -164,6 +181,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyCoverSizingMode = 'cover_sizing_mode';
   static const _keyLyricsBlurOverlayEnabled = 'lyrics_blur_overlay_enabled';
   static const _keyBeatReactiveCoverEnabled = 'beat_reactive_cover_enabled';
+  static const _keyProgressiveBlurHeaders = 'progressive_blur_headers';
+  static const _keyShowQuickPicks = 'show_quick_picks';
+  static const _keyShowRecentQueues = 'show_recent_queues';
+  static const _keyShowForYou = 'show_for_you';
   static const double maxDelayDuration = 12.0;
 
   @override
@@ -219,6 +240,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
           prefs.getBool(_keyLyricsBlurOverlayEnabled) ?? true,
       beatReactiveCoverEnabled:
           prefs.getBool(_keyBeatReactiveCoverEnabled) ?? false,
+      showProgressiveBlurHeaders:
+          prefs.getBool(_keyProgressiveBlurHeaders) ?? false,
+      showQuickPicks: prefs.getBool(_keyShowQuickPicks) ?? true,
+      showRecentQueues: prefs.getBool(_keyShowRecentQueues) ?? true,
+      showForYou: prefs.getBool(_keyShowForYou) ?? true,
     );
   }
 
@@ -476,6 +502,30 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(beatReactiveCoverEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyBeatReactiveCoverEnabled, enabled);
+  }
+
+  Future<void> setProgressiveBlurHeaders(bool enabled) async {
+    state = state.copyWith(showProgressiveBlurHeaders: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyProgressiveBlurHeaders, enabled);
+  }
+
+  Future<void> setShowQuickPicks(bool show) async {
+    state = state.copyWith(showQuickPicks: show);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShowQuickPicks, show);
+  }
+
+  Future<void> setShowRecentQueues(bool show) async {
+    state = state.copyWith(showRecentQueues: show);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShowRecentQueues, show);
+  }
+
+  Future<void> setShowForYou(bool show) async {
+    state = state.copyWith(showForYou: show);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShowForYou, show);
   }
 }
 

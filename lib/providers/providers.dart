@@ -1131,10 +1131,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 }
 
 Song _extractFeatFromSong(Song song) {
-  // Matches patterns like: "ft. Artist", "feat. Artist", "(ft. Artist)", "(feat. Artist)"
-  // at the end of the title or as a parenthesized/bracketed segment
   final regex = RegExp(
-    r'\s*[\(\[]?\s*(?:feat\.?|ft\.?)\s*[:\.]?\s*([^\)\]\n]+?)[\)\]]?\s*$',
+    r'\s*[\(\[]?\s*(?:feat\.?|ft\.?|featuring)\s+(.+?)[\)\]]?\s*$',
     caseSensitive: false,
   );
   final match = regex.firstMatch(song.title);

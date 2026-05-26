@@ -1198,6 +1198,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _playStartTime = DateTime.now();
     }
     unawaited(_statsService.flush());
+    _ref?.read(songsProvider.notifier).refreshPlayCounts();
   }
 
   Future<void> checkAndSendWeeklyUsageReport() async {
@@ -1679,6 +1680,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }) async {
     if (songs.isEmpty) return;
 
+    _resetFading();
+    await _player.setShuffleModeEnabled(false);
+
     _shuffleState = _shuffleState.copyWith(
       config: _shuffleState.config.copyWith(enabled: true),
     );
@@ -1686,20 +1690,38 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     shuffleStateNotifier.value = _shuffleState;
     _saveShuffleState();
 
-    final randomIdx = Random().nextInt(songs.length);
+    // Clear any pending queue replacement
+    _pendingQueueSongs = null;
+    _pendingQueuePlaylistId = null;
+    pendingQueueNotifier.value = false;
 
-    if (isRestricted) {
-      _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
-      _effectiveQueue = [];
-      _isRestrictedToOriginal = true;
-      await playSong(songs[randomIdx], contextQueue: songs, startPlaying: true);
-    } else {
-      _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
-      _effectiveQueue = [];
-      _isRestrictedToOriginal = false;
-      await playSong(songs[randomIdx], startPlaying: true);
+    // Set up fresh queue (always replaces current queue entirely)
+    _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
+    _isRestrictedToOriginal = isRestricted;
+    _currentPlaylistId = null;
+
+    final randomIdx = Random().nextInt(songs.length);
+    final selectedItem = _originalQueue[randomIdx];
+
+    // Build shuffled effective queue for the selected song
+    final otherItems = List<QueueItem>.from(_originalQueue)
+      ..removeAt(randomIdx);
+    final shuffledOthers = await _weightedShuffle(
+      otherItems,
+      lastItem: selectedItem,
+    );
+    _effectiveQueue = [selectedItem, ...shuffledOthers];
+    _updateQueueNotifier();
+
+    // Replace player queue and start playing
+    await _rebuildQueue(initialIndex: 0, startPlaying: true);
+
+    // Save snapshot for non-folder shuffles
+    if (!isRestricted) {
       await _saveQueueSnapshot(songs, playlistId: null);
     }
+
+    _savePlaybackState();
   }
 
   Future<void> toggleShuffle() async {
