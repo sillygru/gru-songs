@@ -682,11 +682,12 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       );
     }).toList();
 
+    await DatabaseService.instance.insertSongsBatch(updatedSongs);
+
     state = AsyncValue.data(updatedSongs);
 
     // Update player manager and cache
     ref.read(audioPlayerManagerProvider).refreshSongs(updatedSongs);
-    await DatabaseService.instance.insertSongsBatch(updatedSongs);
   }
 
   Future<void> hideSong(Song song) async {
@@ -1190,10 +1191,15 @@ final recommendationsProvider = Provider<List<Song>>((ref) {
   return result;
 });
 
-final playCountsProvider = FutureProvider<Map<String, int>>((ref) async {
-  // Watch userData to refresh when stats might have changed or synced
-  ref.watch(userDataProvider);
-  return DatabaseService.instance.getPlayCounts();
+final playCountsProvider = Provider<Map<String, int>>((ref) {
+  final songsAsync = ref.watch(songsProvider);
+  if (songsAsync is AsyncData<List<Song>>) {
+    return {
+      for (final song in songsAsync.value) song.filename: song.playCount,
+    };
+  }
+
+  return const {};
 });
 
 final artistListProvider = FutureProvider<List<String>>((ref) async {

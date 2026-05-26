@@ -598,8 +598,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final currentSong = songByFilename[filename];
     // Accept playCounts as parameter to avoid circular dependency.
     // If not provided, fall back to reading directly (may cause issues).
-    final effectivePlayCounts = playCounts ??
-        (ref.read(playCountsProvider).value ?? const <String, int>{});
+    final Map<String, int> effectivePlayCounts =
+        playCounts ?? ref.read(playCountsProvider);
 
     final scoreByMood = <String, double>{};
     for (final mood in state.moodTags) {

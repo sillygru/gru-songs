@@ -672,7 +672,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final userData = ref.watch(userDataProvider);
           final shuffleState =
               ref.watch(audioPlayerManagerProvider).shuffleStateNotifier.value;
-          final playCounts = ref.watch(playCountsProvider).value ?? {};
+          final playCounts = ref.watch(playCountsProvider);
 
           final sortedSongs = LibraryLogic.sortSongs(
             songs,

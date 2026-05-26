@@ -31,7 +31,7 @@ class SongListScreen extends ConsumerWidget {
     final sortOrder = ref.watch(settingsProvider).sortOrder;
     final userData = ref.watch(userDataProvider);
     final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
-    final playCounts = ref.watch(playCountsProvider).value ?? {};
+    final playCounts = ref.watch(playCountsProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
     final sortedSongs = LibraryLogic.sortSongs(

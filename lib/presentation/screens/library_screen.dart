@@ -61,7 +61,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final settings = ref.watch(settingsProvider);
     final sortOrder = settings.sortOrder;
     final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
-    final playCounts = ref.watch(playCountsProvider).value ?? {};
+    final playCounts = ref.watch(playCountsProvider);
     final isRoot = widget.relativePath == null;
 
     if (!isRoot) {

@@ -825,7 +825,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     final isFavorite = userData.isFavorite(widget.songFilename);
     final isSuggestLess = userData.isSuggestLess(widget.songFilename);
     final playCounts =
-        ref.watch(playCountsProvider).value ?? const <String, int>{};
+        ref.watch(playCountsProvider);
 
     final currentSong =
         ref.read(audioPlayerManagerProvider).currentSongNotifier.value;
