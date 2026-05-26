@@ -261,8 +261,8 @@ bool detectBeatPulse({
 
   if (history.length < 3) return false;
 
-  const double _minEnergyFloor = 0.2;
+  const double minEnergyFloor = 0.2;
   final localFloor = baseline * 0.25;
   return rawEnergy > baseline * beatMultiplier &&
-      rawEnergy > max(localFloor, _minEnergyFloor);
+      rawEnergy > max(localFloor, minEnergyFloor);
 }

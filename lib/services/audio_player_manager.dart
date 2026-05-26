@@ -829,7 +829,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _fadeDurationMs = duration * 1000;
     _fadeStartTime = DateTime.now();
 
-    _fadeTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+    _fadeTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       if (_fadeStartTime == null || _fadeDurationMs == null) {
         timer.cancel();
         return;
@@ -839,7 +839,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       final targetMs = _fadeDurationMs!;
 
       if (elapsed >= targetMs) {
-        _setVolumeWithSafety(0.0);
+        _setVolumeWithSafety(0.01);
         _isFadingOut = false;
         _holdMutedUntilNextTrack = true;
         _fadeStartTime = null;
@@ -891,12 +891,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final startVolume = _targetVolume;
 
     _playPauseFadeTimer =
-        Timer.periodic(const Duration(milliseconds: 16), (timer) {
+        Timer.periodic(const Duration(milliseconds: 33), (timer) {
       final elapsed = DateTime.now().difference(startTime).inMilliseconds;
       if (elapsed >= fadeDurationMs || !_player.playing) {
         timer.cancel();
         _isPlayPauseFading = false;
         _isPausingByFade = true;
+        _setVolumeWithSafety(0.01);
         _player.pause();
         _setVolumeWithSafety(1.0);
         return;
@@ -928,7 +929,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final startTime = DateTime.now();
 
     _playPauseFadeTimer =
-        Timer.periodic(const Duration(milliseconds: 16), (timer) {
+        Timer.periodic(const Duration(milliseconds: 33), (timer) {
       final elapsed = DateTime.now().difference(startTime).inMilliseconds;
       if (elapsed >= fadeDurationMs) {
         timer.cancel();
@@ -1460,10 +1461,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         );
 
         _effectiveQueue = [...prefix, ...shuffled];
-        await _rebuildQueue(
-          initialIndex: currentIndex,
-          startPlaying: _player.playing,
-        );
+        await _mutateQueueAfterIndex(currentIndex);
         await _updateCurrentSnapshotSongs();
         _savePlaybackState();
         return;
@@ -2301,8 +2299,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     Duration? initialPosition,
   }) async {
     if (_effectiveQueue.isEmpty) return;
-    _resetFading();
 
+    final sequenceState = _player.sequenceState;
+    final currentMediaItem = sequenceState.currentSource?.tag as MediaItem?;
     final requestedIndex = initialIndex ?? _player.currentIndex ?? 0;
     final targetIndex = requestedIndex.clamp(0, _effectiveQueue.length - 1);
     final currentItem =
@@ -2310,8 +2309,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             ? _effectiveQueue[targetIndex]
             : null;
 
-    final sequenceState = _player.sequenceState;
-    final currentMediaItem = sequenceState.currentSource?.tag as MediaItem?;
+    final trackChanged = currentItem != null
+        ? currentMediaItem?.id != currentItem.song.filename
+        : currentMediaItem != null;
+    if (trackChanged) {
+      _resetFading();
+    }
+
     final currentPosition = _player.position;
 
     Duration position = Duration.zero;
@@ -2334,6 +2338,30 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _updateEffectivePlaybackMode(currentItem?.song);
 
     if (startPlaying) await _player.play();
+    _updateQueueNotifier();
+  }
+
+  Future<void> _mutateQueueAfterIndex(int currentIndex) async {
+    if (currentIndex < 0) return;
+
+    final playerLen = _player.sequenceState.sequence.length;
+    for (int i = playerLen - 1; i > currentIndex; i--) {
+      try {
+        await _player.removeAudioSourceAt(i);
+      } catch (_) {
+        break;
+      }
+    }
+
+    for (int i = currentIndex + 1; i < _effectiveQueue.length; i++) {
+      final source = await _createAudioSource(_effectiveQueue[i]);
+      try {
+        await _player.insertAudioSource(i, source);
+      } catch (_) {
+        break;
+      }
+    }
+
     _updateQueueNotifier();
   }
 
