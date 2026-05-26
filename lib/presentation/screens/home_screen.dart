@@ -745,9 +745,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     backgroundColor: _isScrolled
                         ? (settings.showProgressiveBlurHeaders
                             ? Colors.transparent
-                            : Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.95))
+                            : Theme.of(context)
+                                .scaffoldBackgroundColor
+                                .withValues(alpha: 0.95))
                         : Colors.transparent,
-                    flexibleSpace: settings.showProgressiveBlurHeaders && _isScrolled
+                    flexibleSpace: settings.showProgressiveBlurHeaders &&
+                            _isScrolled
                         ? RepaintBoundary(
                             child: ClipRect(
                               child: BackdropFilter(
@@ -800,7 +803,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (settings.showQuickPicks && topRecommendations.isNotEmpty) ...[
+                          if (settings.showQuickPicks &&
+                              topRecommendations.isNotEmpty) ...[
                             Text(
                               'Quick Picks',
                               style: theme.textTheme.titleMedium?.copyWith(
@@ -832,7 +836,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                   ),
-                  if (settings.showRecentQueues && displayQueues.isNotEmpty) ...[
+                  if (settings.showRecentQueues &&
+                      displayQueues.isNotEmpty) ...[
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
@@ -889,7 +894,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             child: ListView.builder(
                               scrollDirection: Axis.horizontal,
                               itemCount: mixedPlaylists.length + 1,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
                               itemBuilder: (context, index) {
                                 final autoMoodMix =
                                     ref.watch(autoMoodMixProvider);
@@ -897,10 +903,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   return _buildAutoMoodMixCard(
                                       theme, autoMoodMix);
                                 }
-                                final playlistIndex =
-                                    autoMoodMix.hasEnoughData ? index - 1 : index;
+                                final playlistIndex = autoMoodMix.hasEnoughData
+                                    ? index - 1
+                                    : index;
                                 if (playlistIndex < mixedPlaylists.length) {
-                                  final playlist = mixedPlaylists[playlistIndex];
+                                  final playlist =
+                                      mixedPlaylists[playlistIndex];
                                   return _buildAutoPlaylistCard(
                                       playlist, theme, audioManager, ref);
                                 }

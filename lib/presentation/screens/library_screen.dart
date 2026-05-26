@@ -101,18 +101,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 backgroundColor: innerBoxIsScrolled
                     ? (settings.showProgressiveBlurHeaders
                         ? Colors.transparent
-                        : Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.95))
+                        : Theme.of(context)
+                            .scaffoldBackgroundColor
+                            .withValues(alpha: 0.95))
                     : Colors.transparent,
-                flexibleSpace: settings.showProgressiveBlurHeaders && innerBoxIsScrolled
-                    ? RepaintBoundary(
-                        child: ClipRect(
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                            child: Container(color: Colors.transparent),
-                          ),
-                        ),
-                      )
-                    : null,
+                flexibleSpace:
+                    settings.showProgressiveBlurHeaders && innerBoxIsScrolled
+                        ? RepaintBoundary(
+                            child: ClipRect(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                child: Container(color: Colors.transparent),
+                              ),
+                            ),
+                          )
+                        : null,
                 title: const Text('Library'),
                 actions: [
                   songsAsyncValue.when(

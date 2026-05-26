@@ -165,33 +165,27 @@ class _AppearanceSettingsScreenState
                     'Show quick pick recommendations on home screen'),
                 value: settings.showQuickPicks,
                 onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setShowQuickPicks(val);
+                  ref.read(settingsProvider.notifier).setShowQuickPicks(val);
                 },
               ),
               SwitchListTile(
                 secondary: const Icon(Icons.history_rounded),
                 title: const Text('Recent Queues'),
-                subtitle: const Text(
-                    'Show recently played queues on home screen'),
+                subtitle:
+                    const Text('Show recently played queues on home screen'),
                 value: settings.showRecentQueues,
                 onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setShowRecentQueues(val);
+                  ref.read(settingsProvider.notifier).setShowRecentQueues(val);
                 },
               ),
               SwitchListTile(
                 secondary: const Icon(Icons.explore_rounded),
                 title: const Text('For You'),
-                subtitle: const Text(
-                    'Show recommended playlists on home screen'),
+                subtitle:
+                    const Text('Show recommended playlists on home screen'),
                 value: settings.showForYou,
                 onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setShowForYou(val);
+                  ref.read(settingsProvider.notifier).setShowForYou(val);
                 },
               ),
             ],

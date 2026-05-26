@@ -147,10 +147,10 @@ class _MainScreenState extends ConsumerState<MainScreen>
   late final List<ScrollController> _scrollControllers;
 
   List<Widget> get _screens => [
-    HomeScreen(scrollController: _scrollControllers[0]),
-    LibraryScreen(scrollController: _scrollControllers[1]),
-    ProfileScreen(scrollController: _scrollControllers[2]),
-  ];
+        HomeScreen(scrollController: _scrollControllers[0]),
+        LibraryScreen(scrollController: _scrollControllers[1]),
+        ProfileScreen(scrollController: _scrollControllers[2]),
+      ];
 
   Future<void> _closeDrawer() async {
     if (!_isDrawerOpen && !_drawerController.isAnimating) return;

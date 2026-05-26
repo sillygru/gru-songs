@@ -147,12 +147,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         const SizedBox(height: 8),
         Consumer(builder: (context, ref, child) {
           final settings = ref.watch(settingsProvider);
-          const levels = [
-            'Level 0',
-            'Level 1',
-            'Level 2',
-            'Level 3'
-          ];
+          const levels = ['Level 0', 'Level 1', 'Level 2', 'Level 3'];
           return Column(
             children: [
               Slider(
@@ -231,12 +226,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 'never shared.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color:
-                          Theme.of(context).colorScheme.onSurfaceVariant,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
               const SizedBox(height: 24),
-
               if (!_permissionGranted) ...[
                 FilledButton.icon(
                   onPressed: _isLoading ? null : _requestPermission,
