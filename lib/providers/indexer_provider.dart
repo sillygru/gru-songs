@@ -969,14 +969,14 @@ class IndexerNotifier extends Notifier<IndexerState> {
         }
 
         // Generate blurred version using Dart image package:
-        // 1. Scale down to 60x60 (matching our widget's memCacheWidth)
+        // 1. Scale down to 300x300 square (covers any screen size)
         // 2. Apply Gaussian blur
         final success = await ffmpeg.generateBlurredImage(
           inputPath: song.coverUrl!,
           outputPath: cacheFile.path,
-          width: 60,
-          height: 60,
-          blurSigma: 10, // FFmpeg's boxblur radius
+          width: 300,
+          height: 300,
+          blurSigma: 15,
         );
 
         if (success) {

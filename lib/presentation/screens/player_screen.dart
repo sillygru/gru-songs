@@ -1021,6 +1021,7 @@ class _PlayerBackground extends StatelessWidget {
               key: ValueKey('bg_${metadata.id}'),
               url: resolveCoverUrl(metadata) ?? '',
               filename: metadata.id,
+              slowSpin: true,
               gradientColors: [
                 Colors.black.withValues(alpha: 0.5),
                 Colors.black.withValues(alpha: 0.8),

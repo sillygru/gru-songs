@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/album_art_image.dart';
@@ -81,14 +82,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.invalidate(songsProvider);
   }
 
-  Widget _buildQuickPickTile(Song song, ThemeData theme,
-      AudioPlayerManager audioManager, List<Song> contextSongs) {
+  Widget _buildQuickPickTile(
+      Song song, ThemeData theme, AudioPlayerManager audioManager) {
     return GestureDetector(
       onTap: () {
         audioManager.playSong(
           song,
-          contextQueue: contextSongs,
-          playlistId: 'quick_picks',
+          playlistId: audioManager.currentPlaylistId,
         );
       },
       child: Container(
@@ -825,10 +825,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               itemCount: topRecommendations.length.clamp(0, 6),
                               itemBuilder: (context, index) {
                                 final song = topRecommendations[index];
-                                final contextSongs =
-                                    topRecommendations.take(6).toList();
                                 return _buildQuickPickTile(
-                                    song, theme, audioManager, contextSongs);
+                                    song, theme, audioManager);
                               },
                             ),
                           ],
@@ -956,8 +954,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           song: song,
                           heroTagPrefix: 'all_songs',
                           onTap: () {
-                            audioManager.playSong(song,
-                                contextQueue: sortedSongs);
+                            audioManager.playSong(
+                              song,
+                              playlistId: audioManager.currentPlaylistId,
+                            );
                           },
                         );
                       },

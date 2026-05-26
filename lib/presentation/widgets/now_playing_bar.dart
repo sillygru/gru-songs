@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -103,6 +104,7 @@ class _NowPlayingContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final double barHeight =
         compact ? (isDesktopOrTablet ? 72 : 60) : (isDesktopOrTablet ? 78 : 64);
     final double imageSize = compact ? 40 : 44;
@@ -310,6 +312,8 @@ class _NowPlayingContent extends ConsumerWidget {
       ),
     );
 
+    final showBlur = settings.showProgressiveBlurHeaders;
+
     if (embedded) {
       return ClipRRect(
         borderRadius: borderRadius,
@@ -317,22 +321,39 @@ class _NowPlayingContent extends ConsumerWidget {
       );
     }
 
-    return ClipRRect(
-      borderRadius: borderRadius,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.75),
-          borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: content,
+    Widget mainContainer = Container(
+      decoration: BoxDecoration(
+        color: showBlur
+            ? Colors.black.withValues(alpha: 0.45)
+            : Colors.black.withValues(alpha: 0.75),
+        borderRadius: borderRadius,
+        border: null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
+      child: content,
     );
+
+    if (showBlur) {
+      mainContainer = ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: mainContainer,
+        ),
+      );
+    } else {
+      mainContainer = ClipRRect(
+        borderRadius: borderRadius,
+        child: mainContainer,
+      );
+    }
+
+    return mainContainer;
   }
 }

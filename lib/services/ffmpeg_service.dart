@@ -560,9 +560,9 @@ class FFmpegService {
   Future<bool> generateBlurredImage({
     required String inputPath,
     required String outputPath,
-    int width = 60,
-    int height = 60,
-    int blurSigma = 10,
+    int width = 300,
+    int height = 300,
+    int blurSigma = 15,
   }) async {
     try {
       String normalizedInput = inputPath;
