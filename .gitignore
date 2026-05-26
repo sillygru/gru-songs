@@ -56,6 +56,12 @@ GruSongs.ipa
 # Android Caches
 .gradle/
 .kotlin/
+
+# Keystore (contains private key)
+/android/upload-keystore.jks
+
+# Keystore properties (contains passwords)
+/android/key.properties
 android/build/reports/problems/problems-report.html
 /macos
 /temp
