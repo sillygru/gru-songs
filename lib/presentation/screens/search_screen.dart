@@ -372,11 +372,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _playSearchResult(SearchResult result, AudioPlayerManager audioManager) {
     if (!mounted) return;
-    // Get all search results to use as context queue
-    final allResults = ref.read(searchResultsProvider(_query)).value ?? [];
-    final songs = allResults.map((r) => r.song).toList();
-
-    audioManager.playSong(result.song, contextQueue: songs);
+    audioManager.playSong(result.song);
   }
 
   void _showArtistSongs(String artistName, List<SearchResult> results) {

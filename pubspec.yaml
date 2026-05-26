@@ -1,7 +1,7 @@
 name: wispie
 description: "A feature packed local music player."
 publish_to: "none"
-version: 3.23.1-beta+276
+version: 3.23.2-beta+277
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

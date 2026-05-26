@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math';
 
 import 'package:flutter/widgets.dart';
 import 'package:just_audio/just_audio.dart';
@@ -260,6 +261,8 @@ bool detectBeatPulse({
 
   if (history.length < 3) return false;
 
+  const double _minEnergyFloor = 0.2;
   final localFloor = baseline * 0.25;
-  return rawEnergy > baseline * beatMultiplier && rawEnergy > localFloor;
+  return rawEnergy > baseline * beatMultiplier &&
+      rawEnergy > max(localFloor, _minEnergyFloor);
 }

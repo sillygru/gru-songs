@@ -881,7 +881,7 @@ class ScannerService {
                 await _acquireSharedLock(params.lockDirPath, file.path);
             final song = await _processSingleFile(
                 file, coversDir, folderCoverCache, params.playCounts,
-                mtime: currentMtime);
+                mtime: currentMtime, existingSong: existingSong);
             songs.add(song);
           } finally {
             await _releaseLock(lockHandle);
@@ -915,7 +915,7 @@ class ScannerService {
 
   static Future<Song> _processSingleFile(File file, Directory coversDir,
       Map<String, String?> folderCoverCache, Map<String, int> playCounts,
-      {double? mtime}) async {
+      {double? mtime, Song? existingSong}) async {
     final filename = p.basename(file.path);
     final parentPath = file.parent.path;
     p.extension(file.path).toLowerCase();
@@ -928,7 +928,8 @@ class ScannerService {
     bool hasLyrics = false;
     double? songDateEpochSec;
     final fileStat = await file.stat();
-    final createdEpochSec = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final createdEpochSec = existingSong?.createdEpochSec ??
+        DateTime.now().millisecondsSinceEpoch / 1000.0;
     final isVideo = _isVideoFile(file.path);
 
     // Calculate mtimeMs for cache lookup
@@ -961,6 +962,8 @@ class ScannerService {
         if (metadata.year != null) {
           songDateEpochSec =
               metadata.year!.millisecondsSinceEpoch.toDouble() / 1000.0;
+        } else {
+          songDateEpochSec = existingSong?.songDateEpochSec;
         }
         duration = metadata.duration;
 

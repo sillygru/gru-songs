@@ -366,6 +366,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   DateTime? _lastRefreshTime;
   Timer? _debounceTimer;
 
+  static const String _startupMaintenancePendingKey =
+      'startup_cache_maintenance_pending';
+
   @override
   Future<List<Song>> build() async {
     ref.onDispose(() {
@@ -379,14 +382,44 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     if (cached.isNotEmpty) {
       final filtered =
           cached.where((s) => !userData.isHidden(s.filename)).toList();
-      // Trigger background scan on startup to ensure library is up to date
-      _scheduleBackgroundScanUpdate(cached, showIndicator: false);
+      // Only trigger background scan if the app version changed or a
+      // library change was explicitly marked. Avoids unnecessary full
+      // rescans on every startup which can cause date-added reset and
+      // cover re-extraction.
+      if (await _shouldRunStartupScan()) {
+        _scheduleBackgroundScanUpdate(cached, showIndicator: false);
+      }
       return filtered;
     }
 
     // 3. If no cache, perform initial scan
     final scanned = await _performFullScan();
     return scanned.where((s) => !userData.isHidden(s.filename)).toList();
+  }
+
+  Future<bool> _shouldRunStartupScan() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getBool(_startupMaintenancePendingKey) ?? false;
+      if (pending) return true;
+
+      final lastVersion = prefs.getString('last_scan_version');
+      final info = await PackageInfo.fromPlatform();
+      final currentVersion = '${info.version}+${info.buildNumber}';
+      return lastVersion != currentVersion;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> _markStartupScanComplete() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final info = await PackageInfo.fromPlatform();
+      await prefs.setString(
+          'last_scan_version', '${info.version}+${info.buildNumber}');
+      await prefs.setBool(_startupMaintenancePendingKey, false);
+    } catch (_) {}
   }
 
   void _scheduleBackgroundScanUpdate(List<Song> existingSongs,
@@ -470,6 +503,38 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         uniqueSongs = uniqueSongs.map(_extractFeatFromSong).toList();
       }
 
+      // Preserve createdEpochSec and songDateEpochSec from existing songs.
+      // The scanner may overwrite these values (e.g. when a file is re-processed
+      // because mtime changed or isolate serialization lost existing data).
+      if (existingSongs != null) {
+        final existingByUrl = {
+          for (final s in existingSongs) s.url: s,
+        };
+        uniqueSongs = uniqueSongs.map((s) {
+          final existing = existingByUrl[s.url];
+          if (existing == null) return s;
+          final needsCreated = existing.createdEpochSec != null &&
+              s.createdEpochSec != existing.createdEpochSec;
+          final needsSongDate = existing.songDateEpochSec != null &&
+              s.songDateEpochSec != existing.songDateEpochSec;
+          if (!needsCreated && !needsSongDate) return s;
+          return Song(
+            title: s.title,
+            artist: s.artist,
+            album: s.album,
+            filename: s.filename,
+            url: s.url,
+            coverUrl: s.coverUrl,
+            hasLyrics: s.hasLyrics,
+            playCount: s.playCount,
+            duration: s.duration,
+            mtime: s.mtime,
+            createdEpochSec: existing.createdEpochSec ?? s.createdEpochSec,
+            songDateEpochSec: existing.songDateEpochSec ?? s.songDateEpochSec,
+          );
+        }).toList();
+      }
+
       await DatabaseService.instance.insertSongsBatch(uniqueSongs);
 
       // Return all songs from scan, build() will filter them
@@ -514,6 +579,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         ref.read(audioPlayerManagerProvider).refreshSongs(songs);
         state = AsyncValue.data(filteredSongs);
       }
+
+      await _markStartupScanComplete();
     } catch (e) {
       debugPrint('Background scan failed: $e');
     }

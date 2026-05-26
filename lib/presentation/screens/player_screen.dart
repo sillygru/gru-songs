@@ -493,8 +493,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } else {
       String videoFilePath = track.mediaPath!;
       if (Platform.isIOS) {
-        videoFilePath =
-            await _prepareIosVideoPath(track.mediaPath!);
+        videoFilePath = await _prepareIosVideoPath(track.mediaPath!);
         if (videoFilePath != track.mediaPath!) {
           _videoTempFilePath = videoFilePath;
         }
