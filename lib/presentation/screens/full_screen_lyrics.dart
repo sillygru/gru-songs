@@ -476,45 +476,44 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   }
 
   Widget _buildContent(bool hasTimedLyrics) {
-    return SafeArea(
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onDoubleTap: () => Navigator.pop(context),
-            ),
+    final mediaPadding = MediaQuery.paddingOf(context);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onDoubleTap: () => Navigator.pop(context),
           ),
-          Column(
-            children: [
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
-                  child: _activeLyrics.isEmpty
-                      ? KeyedSubtree(
-                          key: const ValueKey('lyrics-empty'),
-                          child: _buildEmptyState(),
-                        )
-                      : KeyedSubtree(
-                          key: ValueKey('lyrics$_activeSongId'),
-                          child: _buildLyricsList(hasTimedLyrics),
-                        ),
-                ),
+        ),
+        Column(
+          children: [
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                child: _activeLyrics.isEmpty
+                    ? KeyedSubtree(
+                        key: const ValueKey('lyrics-empty'),
+                        child: _buildEmptyState(),
+                      )
+                    : KeyedSubtree(
+                        key: ValueKey('lyrics$_activeSongId'),
+                        child: _buildLyricsList(hasTimedLyrics),
+                      ),
               ),
-            ],
-          ),
-          Positioned(
-            top: 8,
-            right: 12,
-            child: _buildCloseButton(),
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
+        Positioned(
+          top: 8 + mediaPadding.top,
+          right: 12,
+          child: _buildCloseButton(),
+        ),
+      ],
     );
   }
 
@@ -584,6 +583,7 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
   Widget _buildLyricsList(bool hasTimedLyrics) {
     final settings = ref.watch(settingsProvider);
     final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    final mediaPadding = MediaQuery.paddingOf(context);
 
     return Stack(
       children: [
@@ -594,7 +594,7 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
           },
           child: ListView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(8, 88, 8, 136),
+            padding: EdgeInsets.fromLTRB(8, 88 + mediaPadding.top, 8, 136 + mediaPadding.bottom),
             itemCount:
                 _activeLyrics.length + (_renderedGapLoaderIndex >= 0 ? 1 : 0),
             physics: const BouncingScrollPhysics(
@@ -655,78 +655,78 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
             },
           ),
         ),
-        IgnorePointer(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: RepaintBoundary(
-              child: SizedBox(
-                height: 90,
-                child: ClipRect(
-                  child: settings.lyricsBlurOverlayEnabled
-                      ? ShaderMask(
-                          shaderCallback: (rect) {
-                            return const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.white, Colors.transparent],
-                            ).createShader(rect);
-                          },
-                          blendMode: BlendMode.dstIn,
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                            child: Container(
-                              color: Colors.black,
-                            ),
-                          ),
-                        )
-                      : Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.black, Colors.transparent],
-                            ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: RepaintBoundary(
+            child: SizedBox(
+              height: 90,
+              child: ClipRect(
+                child: settings.lyricsBlurOverlayEnabled
+                    ? ShaderMask(
+                        shaderCallback: (rect) {
+                          return const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.white, Colors.transparent],
+                          ).createShader(rect);
+                        },
+                        blendMode: BlendMode.dstIn,
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            color: Colors.black,
                           ),
                         ),
-                ),
+                      )
+                    : Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.black, Colors.transparent],
+                          ),
+                        ),
+                      ),
               ),
             ),
           ),
         ),
-        IgnorePointer(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: RepaintBoundary(
-              child: SizedBox(
-                height: 90,
-                child: ClipRect(
-                  child: (settings.lyricsBlurOverlayEnabled && !isAndroid)
-                      ? ShaderMask(
-                          shaderCallback: (rect) {
-                            return const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Colors.white],
-                            ).createShader(rect);
-                          },
-                          blendMode: BlendMode.dstIn,
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                            child: Container(
-                              color: Colors.black,
-                            ),
-                          ),
-                        )
-                      : Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Colors.black],
-                            ),
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: RepaintBoundary(
+            child: SizedBox(
+              height: 90,
+              child: ClipRect(
+                child: (settings.lyricsBlurOverlayEnabled && !isAndroid)
+                    ? ShaderMask(
+                        shaderCallback: (rect) {
+                          return const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Colors.white],
+                          ).createShader(rect);
+                        },
+                        blendMode: BlendMode.dstIn,
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            color: Colors.black,
                           ),
                         ),
-                ),
+                      )
+                    : Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Colors.black],
+                          ),
+                        ),
+                      ),
               ),
             ),
           ),
