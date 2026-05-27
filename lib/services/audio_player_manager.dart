@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart'; // For AppLifecycleListener
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
@@ -157,6 +158,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     preferredMediaModeNotifier.value = mode;
     _updateEffectivePlaybackMode();
     await _savePlaybackState();
+  }
+
+  Future<void> refreshNowPlaying() async {
+    await AudioSession.instance.then(
+      (session) => session.configure(const AudioSessionConfiguration.music()),
+    );
+    await _player.seek(_player.position);
   }
 
   PlaybackMediaMode _resolveEffectiveMode(Song? song) {

@@ -452,6 +452,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!mounted) return;
     if (_audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
       await _disposeVideoController();
+      unawaited(_audioManager.refreshNowPlaying());
       return;
     }
 
@@ -463,6 +464,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         track.mediaPath == null ||
         track.mediaPath!.isEmpty) {
       await _disposeVideoController();
+      unawaited(_audioManager.refreshNowPlaying());
       return;
     }
 
@@ -543,6 +545,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!_isAppForeground ||
         _audioManager.effectiveMediaMode != PlaybackMediaMode.video) {
       unawaited(_disposeVideoController(notify: false));
+      unawaited(_audioManager.refreshNowPlaying());
       return;
     }
     if (player.playing) {
