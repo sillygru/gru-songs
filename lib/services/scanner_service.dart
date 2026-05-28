@@ -120,8 +120,8 @@ class ScannerService {
     List<Song> songs, {
     void Function(double progress)? onProgress,
   }) async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final coversDir = Directory(p.join(docsDir.path, 'extracted_covers'));
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
     if (!await coversDir.exists()) {
       await coversDir.create(recursive: true);
     }
@@ -273,12 +273,12 @@ class ScannerService {
     final effectivePlayCounts =
         playCounts ?? await DatabaseService.instance.getPlayCounts();
 
-    final docsDir = await getApplicationDocumentsDirectory();
-    final coversDir = Directory(p.join(docsDir.path, 'extracted_covers'));
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
     if (!await coversDir.exists()) {
       await coversDir.create(recursive: true);
     }
-    final lockDir = Directory(p.join(docsDir.path, 'file_locks'));
+    final lockDir = Directory(p.join(supportDir.path, 'file_locks'));
     if (!await lockDir.exists()) {
       await lockDir.create(recursive: true);
     }
@@ -414,12 +414,12 @@ class ScannerService {
       return [];
     }
 
-    final docsDir = await getApplicationDocumentsDirectory();
-    final coversDir = Directory(p.join(docsDir.path, 'extracted_covers'));
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
     if (!await coversDir.exists()) {
       await coversDir.create(recursive: true);
     }
-    final lockDir = Directory(p.join(docsDir.path, 'file_locks'));
+    final lockDir = Directory(p.join(supportDir.path, 'file_locks'));
     if (!await lockDir.exists()) {
       await lockDir.create(recursive: true);
     }
@@ -570,13 +570,13 @@ class ScannerService {
     void Function(double progress)? onProgress,
     bool force = false,
   }) async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final coversDir = Directory(p.join(docsDir.path, 'extracted_covers'));
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
 
     if (!await coversDir.exists()) {
       await coversDir.create(recursive: true);
     }
-    final lockDir = Directory(p.join(docsDir.path, 'file_locks'));
+    final lockDir = Directory(p.join(supportDir.path, 'file_locks'));
     if (!await lockDir.exists()) {
       await lockDir.create(recursive: true);
     }
@@ -857,7 +857,8 @@ class ScannerService {
             (existingSong.mtime! - currentMtime).abs() < 2.0) {
           final updatedPlayCount = params.playCounts[existingSong.filename] ??
               existingSong.playCount;
-          final createdEpochSec = existingSong.createdEpochSec;
+          final createdEpochSec = existingSong.createdEpochSec ??
+              DateTime.now().millisecondsSinceEpoch / 1000.0;
 
           songs.add(Song(
             title: existingSong.title,
@@ -927,7 +928,8 @@ class ScannerService {
     bool hasLyrics = false;
     double? songDateEpochSec;
     final fileStat = await file.stat();
-    final createdEpochSec = existingSong?.createdEpochSec;
+    final createdEpochSec = existingSong?.createdEpochSec ??
+        DateTime.now().millisecondsSinceEpoch / 1000.0;
     final isVideo = _isVideoFile(file.path);
 
     // Calculate mtimeMs for cache lookup

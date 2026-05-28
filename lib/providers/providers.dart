@@ -504,8 +504,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       }
 
       // Preserve createdEpochSec and songDateEpochSec from existing songs.
-      // Always prefer the existing value to prevent DateTime.now() overwrites
-      // when the scanner isolate can't find an existing song by URL.
+      // The scanner may overwrite these values (e.g. when a file is re-processed
+      // because mtime changed or isolate serialization lost existing data).
       if (existingSongs != null) {
         final existingByUrl = {
           for (final s in existingSongs) s.url: s,
@@ -513,6 +513,11 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         uniqueSongs = uniqueSongs.map((s) {
           final existing = existingByUrl[s.url];
           if (existing == null) return s;
+          final needsCreated = existing.createdEpochSec != null &&
+              s.createdEpochSec != existing.createdEpochSec;
+          final needsSongDate = existing.songDateEpochSec != null &&
+              s.songDateEpochSec != existing.songDateEpochSec;
+          if (!needsCreated && !needsSongDate) return s;
           return Song(
             title: s.title,
             artist: s.artist,
@@ -524,11 +529,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             playCount: s.playCount,
             duration: s.duration,
             mtime: s.mtime,
-            createdEpochSec: existing.createdEpochSec ??
-                s.createdEpochSec ??
-                DateTime.now().millisecondsSinceEpoch / 1000.0,
-            songDateEpochSec:
-                existing.songDateEpochSec ?? s.songDateEpochSec,
+            createdEpochSec: existing.createdEpochSec ?? s.createdEpochSec,
+            songDateEpochSec: existing.songDateEpochSec ?? s.songDateEpochSec,
           );
         }).toList();
       }

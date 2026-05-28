@@ -542,8 +542,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
     // Pre-calculate target count by checking which songs don't have cached covers
     int targetCount = songs.length;
     if (!force) {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final coversDir = Directory('${docsDir.path}/extracted_covers');
+      final supportDir = await getApplicationSupportDirectory();
+      final coversDir = Directory('${supportDir.path}/extracted_covers');
       int missingCount = 0;
       for (final song in songs) {
         final file = File(song.url);

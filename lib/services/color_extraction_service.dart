@@ -173,7 +173,7 @@ class ColorExtractionService {
 
   static Future<void> _initInternal() async {
     try {
-      final appSupportDir = await getApplicationDocumentsDirectory();
+      final appSupportDir = await getApplicationSupportDirectory();
       _cacheFile = File(p.join(appSupportDir.path, 'palette_cache.json'));
       _paletteDir = Directory(p.join(appSupportDir.path, 'palettes'));
 

@@ -143,7 +143,7 @@ class SongRepository {
   }
 
   Future<Directory> _getLyricsCacheDirectory() async {
-    final supportDir = await getApplicationDocumentsDirectory();
+    final supportDir = await getApplicationSupportDirectory();
     return Directory(
         p.join(supportDir.path, 'gru_cache_v3', _lyricsCacheFolder));
   }

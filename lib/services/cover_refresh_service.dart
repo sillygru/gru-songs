@@ -37,7 +37,7 @@ class CoverRefreshService {
 
     _inFlight.add(songFilename);
     try {
-      final supportDir = await getApplicationDocumentsDirectory();
+      final supportDir = await getApplicationSupportDirectory();
       final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
       if (!await coversDir.exists()) {
         await coversDir.create(recursive: true);
