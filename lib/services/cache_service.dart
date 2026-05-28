@@ -23,6 +23,7 @@ class CacheService {
       'startup_cache_maintenance_version';
   static const String _startupMaintenancePendingKey =
       'startup_cache_maintenance_pending';
+  static const int _maxCacheSizeBytes = 2 * 1024 * 1024 * 1024; // 2GB limit
 
   bool _initialized = false;
   bool _maintenanceRequested = false;
@@ -145,6 +146,40 @@ class CacheService {
           .where((path) => path.isNotEmpty)
           .toSet(),
     );
+  }
+
+  Future<void> pruneEvictBySize() async {
+    await init();
+    final maxBytes = _maxCacheSizeBytes;
+    int total = 0;
+    final entries = <FileSystemEntity>[];
+    try {
+      await for (final entity in _v3Dir.list(recursive: true)) {
+        if (entity is File) {
+          total += await entity.length();
+          entries.add(entity);
+        }
+      }
+    } catch (_) {}
+    if (total <= maxBytes) return;
+    entries.sort((a, b) {
+      try {
+        return a.statSync().modified.compareTo(b.statSync().modified);
+      } catch (_) {
+        return 0;
+      }
+    });
+    int deleted = 0;
+    for (final entry in entries) {
+      if (total <= maxBytes) break;
+      try {
+        final len = await (entry as File).length();
+        await entry.delete();
+        total -= len;
+        deleted++;
+      } catch (_) {}
+    }
+    debugPrint('CacheService: evicted $deleted files to stay under limit');
   }
 
   Future<void> clearCache() async {
@@ -282,6 +317,8 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
   final v3Dir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
   final extractedCoversDir =
       Directory(p.join(supportDir.path, 'extracted_covers'));
+  final iosProxyDir = Directory(
+      p.join(supportDir.path, 'gru_cache_v3', 'ios_media_proxy'));
 
   for (final song in songs) {
     final coverUrl = (song['coverUrl'] as String?) ?? '';
@@ -372,8 +409,22 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
           relativePath.startsWith('waveform_');
     },
   );
+  // ios_media_proxy files are transcoded copies that get recreated on playback.
+  // Since we can't reconstruct their exact cache keys (they depend on mtime+size
+  // which are not tracked in prune payload), we delete the entire directory on
+  // prune to prevent unbounded growth.
+  await _deleteDirectoryContents(iosProxyDir);
   await pruneEmptyDirectories(extractedCoversDir);
   await pruneEmptyDirectories(blurredDir);
   await pruneEmptyDirectories(notificationDir);
   await pruneEmptyDirectories(lyricsDir);
+}
+
+Future<void> _deleteDirectoryContents(Directory dir) async {
+  if (!await dir.exists()) return;
+  try {
+    await for (final entity in dir.list()) {
+      await entity.delete(recursive: true);
+    }
+  } catch (_) {}
 }

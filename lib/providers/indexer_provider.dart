@@ -548,10 +548,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       for (final song in songs) {
         final file = File(song.url);
         if (await file.exists()) {
-          final mtimeMs = song.mtime != null
-              ? (song.mtime! * 1000).round()
-              : (await file.stat()).modified.millisecondsSinceEpoch;
-          final hash = md5.convert(utf8.encode(song.url)).toString();
+          final hash = sha1.convert(utf8.encode(song.filename)).toString();
           bool hasCover = false;
           for (final ext in [
             '.jpg',
@@ -561,7 +558,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
             '.bmp',
             '_ffmpeg.jpg'
           ]) {
-            final cachedFile = File('${coversDir.path}/${hash}_$mtimeMs$ext');
+            final cachedFile = File('${coversDir.path}/$hash$ext');
             if (await hasValidCache(cachedFile)) {
               hasCover = true;
               break;

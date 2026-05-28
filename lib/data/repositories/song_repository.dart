@@ -29,7 +29,6 @@ class SongRepository {
 
     final cacheEntry = await _readLyricsCache(song);
     if (cacheEntry != null &&
-        cacheEntry.isFresh &&
         cacheEntry.hasLyrics &&
         cacheEntry.lyrics != null) {
       return cacheEntry.lyrics;
@@ -55,7 +54,7 @@ class SongRepository {
   /// Checks if a song has lyrics using cached data first, then FFmpeg if needed.
   Future<bool> hasLyrics(Song song) async {
     final cacheEntry = await _readLyricsCache(song);
-    if (cacheEntry != null && cacheEntry.isFresh) {
+    if (cacheEntry != null) {
       if (song.hasLyrics && !cacheEntry.hasLyrics) return true;
       return cacheEntry.hasLyrics;
     }
@@ -73,7 +72,7 @@ class SongRepository {
   /// This is useful for rebuild operations to know if a song has already been checked.
   Future<bool> hasLyricsCacheEntry(Song song) async {
     final cacheEntry = await _readLyricsCache(song);
-    return cacheEntry != null && cacheEntry.isFresh;
+    return cacheEntry != null;
   }
 
   Future<void> clearLyricsCache() async {
@@ -99,14 +98,7 @@ class SongRepository {
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
 
-      final file = File(song.url);
-      if (!await file.exists()) return null;
-      final mtime = await file.lastModified();
-
-      return _LyricsCacheEntry.fromJson(
-        decoded,
-        expectedMtimeMs: mtime.millisecondsSinceEpoch,
-      );
+      return _LyricsCacheEntry.fromJson(decoded);
     } catch (_) {
       return null;
     }
@@ -118,21 +110,16 @@ class SongRepository {
     bool? hasLyricsOverride,
   }) async {
     try {
-      final file = File(song.url);
-      if (!await file.exists()) return;
-      final mtime = await file.lastModified();
       final hasLyrics =
           hasLyricsOverride ?? (lyrics != null && lyrics.isNotEmpty);
 
       final cacheFile = await _getCacheFileForSong(song);
       await cacheFile.parent.create(recursive: true);
       await cacheFile.writeAsString(jsonEncode({
-        'mtimeMs': mtime.millisecondsSinceEpoch,
         'hasLyrics': hasLyrics,
         if (lyrics != null && lyrics.isNotEmpty) 'lyrics': lyrics,
       }));
     } catch (_) {
-      // Cache failures should never block playback/UI.
     }
   }
 
@@ -150,23 +137,16 @@ class SongRepository {
 }
 
 class _LyricsCacheEntry {
-  final bool isFresh;
   final bool hasLyrics;
   final String? lyrics;
 
   _LyricsCacheEntry({
-    required this.isFresh,
     required this.hasLyrics,
     required this.lyrics,
   });
 
-  factory _LyricsCacheEntry.fromJson(
-    Map<String, dynamic> json, {
-    required int expectedMtimeMs,
-  }) {
-    final cachedMtime = (json['mtimeMs'] as num?)?.toInt();
+  factory _LyricsCacheEntry.fromJson(Map<String, dynamic> json) {
     return _LyricsCacheEntry(
-      isFresh: cachedMtime != null && cachedMtime == expectedMtimeMs,
       hasLyrics: json['hasLyrics'] == true,
       lyrics: json['lyrics'] as String?,
     );

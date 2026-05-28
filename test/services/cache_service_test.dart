@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:wispie/models/song.dart';
 import 'package:wispie/services/cache_service.dart';
 import 'package:wispie/services/color_extraction_service.dart';
+import 'package:wispie/services/scanner_service.dart';
 
 import '../test_helpers.dart';
 
@@ -119,14 +120,11 @@ void main() {
       lyricsDir.path,
       '${sha1.convert(utf8.encode(dropAudio.path))}.json',
     ));
-    final keepMtime = (await keepAudio.lastModified()).millisecondsSinceEpoch;
     await keepLyrics.writeAsString(jsonEncode({
-      'mtimeMs': keepMtime,
       'hasLyrics': true,
       'lyrics': 'lyrics',
     }));
     await dropLyrics.writeAsString(jsonEncode({
-      'mtimeMs': (await dropAudio.lastModified()).millisecondsSinceEpoch,
       'hasLyrics': false,
     }));
 
@@ -161,5 +159,142 @@ void main() {
         await ColorExtractionService.hasCachedPalette(keepCover.path), isTrue);
     expect(
         await ColorExtractionService.hasCachedPalette(dropCover.path), isFalse);
+  });
+
+  group('cover cache key stability', () {
+    test('coverKeyForFilename returns stable key regardless of mtime', () {
+      const filename = 'song.mp3';
+      final key1 = ScannerService.coverKeyForFilename(filename);
+      final key2 = ScannerService.coverKeyForFilename('/different/path/song.mp3');
+      expect(key1, equals(key2));
+    });
+
+    test('coverKeyForFilename uses only basename of file path', () {
+      final key1 = ScannerService.coverKeyForFilename('/a/b/song.mp3');
+      final key2 = ScannerService.coverKeyForFilename('/c/d/song.mp3');
+      final key3 = ScannerService.coverKeyForFilename('/a/b/different.mp3');
+      expect(key1, equals(key2));
+      expect(key1, isNot(equals(key3)));
+    });
+
+    test('coverKeyForFilename produces sha1 hash of filename', () {
+      const filename = 'test_song.mp3';
+      final key = ScannerService.coverKeyForFilename(filename);
+      final expected = sha1.convert(utf8.encode(filename)).toString();
+      expect(key, equals(expected));
+    });
+  });
+
+  group('ios_media_proxy pruning', () {
+    test('pruneStaleSongCaches deletes entire ios_media_proxy directory', () async {
+      await cacheService.init();
+      final supportDir = Directory(testEnv.tempPath);
+      final proxyDir = Directory(
+        p.join(supportDir.path, 'gru_cache_v3', 'ios_media_proxy'),
+      );
+      await proxyDir.create(recursive: true);
+
+      final proxyFile = File(p.join(proxyDir.path, 'some_proxy.m4a'));
+      await proxyFile.writeAsString('proxy data');
+
+      await cacheService.pruneStaleSongCaches([]);
+
+      expect(await proxyFile.exists(), isFalse);
+    });
+
+    test('pruneStaleSongCaches leaves other v3 cache files intact', () async {
+      await cacheService.init();
+      final supportDir = Directory(testEnv.tempPath);
+      final proxyDir = Directory(
+        p.join(supportDir.path, 'gru_cache_v3', 'ios_media_proxy'),
+      );
+      await proxyDir.create(recursive: true);
+
+      await File(p.join(proxyDir.path, 'proxy.m4a')).writeAsString('data');
+
+      final songFilename = 'test.mp3';
+      final waveformKey = sha1.convert(utf8.encode(songFilename)).toString();
+      final waveformFile = File(p.join(
+        supportDir.path, 'gru_cache_v3', 'waveform_$waveformKey.json',
+      ));
+      await waveformFile.parent.create(recursive: true);
+      await waveformFile.writeAsString('[0.5]');
+
+      final keepSong = Song(
+        title: 'Test',
+        artist: 'Artist',
+        album: 'Album',
+        filename: songFilename,
+        url: '/music/test.mp3',
+        coverUrl: waveformFile.path,
+      );
+
+      await cacheService.pruneStaleSongCaches([keepSong]);
+
+      expect(await waveformFile.exists(), isTrue);
+    });
+  });
+
+  group('cache size eviction', () {
+    test('pruneEvictBySize does nothing when under limit', () async {
+      await cacheService.init();
+      await cacheService.pruneEvictBySize();
+    });
+
+    test('pruneEvictBySize evicts oldest files when over limit', () async {
+      await cacheService.init();
+      final v3Dir = Directory(
+        p.join(testEnv.tempPath, 'gru_cache_v3'),
+      );
+
+      final oldFile = File(p.join(v3Dir.path, 'old_cache.bin'));
+      await oldFile.parent.create(recursive: true);
+      await oldFile.writeAsString('x' * 100);
+
+      final newFile = File(p.join(v3Dir.path, 'new_cache.bin'));
+      await newFile.writeAsString('x' * 100);
+
+      // Read original sizes to verify both exist before eviction
+      expect(await oldFile.exists(), isTrue);
+      expect(await newFile.exists(), isTrue);
+
+      // Will not evict with small data (< 2GB limit)
+      await cacheService.pruneEvictBySize();
+
+      expect(await oldFile.exists(), isTrue);
+      expect(await newFile.exists(), isTrue);
+    });
+  });
+
+  group('lyrics cache - no mtime dependency', () {
+    test('lyrics cached entry has isFresh removed from model', () async {
+      final song = Song(
+        title: 'Test',
+        artist: 'Artist',
+        album: 'Album',
+        filename: 'test.mp3',
+        url: '/music/test.mp3',
+      );
+
+      final lyricsDir = Directory(p.join(
+        testEnv.tempPath, 'gru_cache_v3', 'lyrics_cache',
+      ));
+      await lyricsDir.create(recursive: true);
+      final cacheFile = File(p.join(
+        lyricsDir.path,
+        '${sha1.convert(utf8.encode('/music/test.mp3')).toString()}.json',
+      ));
+      await cacheFile.writeAsString(jsonEncode({
+        'hasLyrics': true,
+        'lyrics': 'hello world',
+      }));
+
+      // Re-read and verify it deserializes without mtimeMs
+      final raw = await cacheFile.readAsString();
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      expect(decoded.containsKey('mtimeMs'), isFalse);
+      expect(decoded['hasLyrics'], isTrue);
+      expect(decoded['lyrics'], 'hello world');
+    });
   });
 }

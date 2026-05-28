@@ -154,15 +154,16 @@ class FileManagerService {
         await coversDir.create(recursive: true);
       }
 
-      final hash = md5.convert(utf8.encode(song.url)).toString();
+      final filename = p.basename(song.url);
+      final hash = sha1.convert(utf8.encode(filename)).toString();
 
       // Clean up ALL old cached files for this song
       try {
         final files = await coversDir.list().toList();
         for (final entity in files) {
           if (entity is File) {
-            final filename = p.basename(entity.path);
-            if (filename.startsWith(hash)) {
+            final fname = p.basename(entity.path);
+            if (fname.startsWith(hash)) {
               await entity.delete();
             }
           }
@@ -173,20 +174,13 @@ class FileManagerService {
 
       if (imagePath != null) {
         final songFile = File(song.url);
-        final stat = await songFile.stat();
-        final mtimeMs = stat.modified.millisecondsSinceEpoch;
 
-        // Re-extract the cover from the actual file on disk to verify the
-        // metadata write persisted and to build the cache using the exact same
-        // logic the scanner/rebuild uses.  Skip folder covers — we are setting
-        // a per-song cover, not picking up a shared folder image.
         String? extractedPath;
         try {
           extractedPath = await ScannerService.extractCoverForFile(
             songFile,
             coversDir,
-            hash,
-            mtimeMs,
+            filename,
             skipFolderCover: true,
             useFFmpegFallback: true,
           );
@@ -201,14 +195,11 @@ class FileManagerService {
           return extractedPath;
         }
 
-        // Fallback: the metadata write may not have been readable by the
-        // extraction libraries, but we know the bytes are correct so write
-        // them to cache directly.
         debugPrint(
             'FileManager: extraction could not read back cover, writing bytes directly');
         final ext = p.extension(imagePath).toLowerCase();
         final newCoverFile =
-            File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+            File(p.join(coversDir.path, '$hash$ext'));
         await newCoverFile.writeAsBytes(newPicture!.data);
         return newCoverFile.path;
       }

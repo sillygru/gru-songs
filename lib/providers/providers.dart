@@ -537,7 +537,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
       await DatabaseService.instance.insertSongsBatch(uniqueSongs);
 
-      // Return all songs from scan, build() will filter them
+      unawaited(CacheService.instance.pruneStaleSongCaches(uniqueSongs));
+      unawaited(CacheService.instance.pruneEvictBySize());
+
       return uniqueSongs;
     } finally {
       if (!isBackground || showIndicator) {
@@ -895,26 +897,12 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           .read(fileManagerServiceProvider)
           .updateSongCover(song, imagePath);
 
-      // Read the file's new mtime. Prefer the one embedded in the cache filename
-      // to ensure consistency with the scanner service.
       double? newMtime;
-      if (newCoverPath != null) {
-        final match = RegExp(r'_(\d+)(\.[^.]+)?$').firstMatch(newCoverPath);
-        if (match != null) {
-          final ms = int.tryParse(match.group(1)!);
-          if (ms != null) {
-            newMtime = ms / 1000.0;
-          }
-        }
-      }
-
-      if (newMtime == null) {
-        try {
-          final stat = await File(song.url).stat();
-          newMtime = stat.modified.millisecondsSinceEpoch / 1000.0;
-        } catch (_) {
-          newMtime = song.mtime;
-        }
+      try {
+        final stat = await File(song.url).stat();
+        newMtime = stat.modified.millisecondsSinceEpoch / 1000.0;
+      } catch (_) {
+        newMtime = song.mtime;
       }
 
       if (state.hasValue) {

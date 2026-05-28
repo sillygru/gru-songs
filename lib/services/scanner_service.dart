@@ -134,17 +134,13 @@ class ScannerService {
       final file = File(song.url);
       if (!await file.exists()) continue;
 
-      final mtimeMs = song.mtime != null
-          ? (song.mtime! * 1000).round()
-          : (await file.stat()).modified.millisecondsSinceEpoch;
-      final hash = md5.convert(utf8.encode(file.path)).toString();
-      final expectedPrefix = '${hash}_$mtimeMs';
+      final hash = coverKeyForFilename(file.path);
 
       final existingCoverPath = song.coverUrl;
       if (existingCoverPath != null && existingCoverPath.isNotEmpty) {
         final existing = File(existingCoverPath);
         final isSongScopedCachedCover =
-            p.basename(existingCoverPath).startsWith(expectedPrefix);
+            p.basename(existingCoverPath).startsWith(hash);
         if (isSongScopedCachedCover &&
             await _isValidCoverFile(existing, requireDecodable: true)) {
           continue;
@@ -165,10 +161,7 @@ class ScannerService {
         final file = File(song.url);
         if (!await file.exists()) continue;
 
-        final mtimeMs = song.mtime != null
-            ? (song.mtime! * 1000).round()
-            : (await file.stat()).modified.millisecondsSinceEpoch;
-        final hash = md5.convert(utf8.encode(file.path)).toString();
+        final hash = coverKeyForFilename(file.path);
 
         // Check if a cached cover already exists (may have been created by a
         // parallel path we aren't aware of).
@@ -182,7 +175,7 @@ class ScannerService {
           '_ffmpeg.jpg'
         ]) {
           final candidate =
-              File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+              File(p.join(coversDir.path, '$hash$ext'));
           if (await _isValidCoverFile(candidate, requireDecodable: true)) {
             existing = candidate.path;
             break;
@@ -193,7 +186,7 @@ class ScannerService {
           updated[idx] = _songWithCover(song, existing);
         } else {
           final outputPath =
-              p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg');
+              p.join(coversDir.path, '${hash}_ffmpeg.jpg');
           // Use extractVideoThumbnail — NOT extractCover.
           // extractCover does a stream-copy of 0:v:0 which works for audio
           // files whose video stream is an attached picture, but for real
@@ -498,15 +491,14 @@ class ScannerService {
   static Future<String?> extractCoverForFile(
     File file,
     Directory coversDir,
-    String hash,
-    int mtimeMs, {
+    String filename, {
     bool skipFolderCover = false,
     bool useFFmpegFallback = false,
   }) async {
     if (!await file.exists()) return null;
     final isVideo = _isVideoFile(file.path);
+    final hash = coverKeyForFilename(filename);
 
-    // Try metadata extraction first (audio files only).
     if (!isVideo) {
       try {
         final metadata = amr.readMetadata(file);
@@ -514,7 +506,7 @@ class ScannerService {
           final picture = metadata.pictures.first;
           final coverExt = _getExtFromMime(picture.mimetype);
           final coverFile =
-              File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+              File(p.join(coversDir.path, '$hash$coverExt'));
           await coverFile.writeAsBytes(picture.bytes);
           return coverFile.path;
         }
@@ -522,24 +514,20 @@ class ScannerService {
         debugPrint('extractCoverForFile: metadata read failed: $e');
       }
 
-      // Try manual byte-level extraction
       final manual =
-          await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+          await _tryManualCoverExtraction(file, coversDir, filename);
       if (manual != null) return manual;
     }
 
-    // (Old comment about enabling FFmpeg fallback for Main Isolate only)
-    // Actually, we want to try this whenever manual extraction fails, provided we can trust FFmpegService.
     if (useFFmpegFallback || isVideo) {
       try {
         debugPrint(
             'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
         final coverFile =
-            File(p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg'));
+            File(p.join(coversDir.path, '${hash}_ffmpeg.jpg'));
 
         String? extracted;
         if (_isVideoFile(file.path)) {
-          // For real video files we need a frame-grab, not a stream-copy.
           extracted = await _extractVideoThumbnailWithFallback(
             inputPath: file.path,
             outputPath: coverFile.path,
@@ -560,7 +548,6 @@ class ScannerService {
       }
     }
 
-    // Try folder cover as last resort
     if (skipFolderCover) return null;
     return _findCoverInFolder(p.dirname(file.path));
   }
@@ -635,10 +622,7 @@ class ScannerService {
         final file = File(song.url);
         if (!await file.exists()) continue;
 
-        final mtimeMs = song.mtime != null
-            ? (song.mtime! * 1000).round()
-            : (await file.stat()).modified.millisecondsSinceEpoch;
-        final hash = md5.convert(utf8.encode(file.path)).toString();
+        final hash = coverKeyForFilename(file.path);
 
         // Check existing cache first
         String? existing;
@@ -651,7 +635,7 @@ class ScannerService {
           '_ffmpeg.jpg'
         ]) {
           final candidate =
-              File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+              File(p.join(coversDir.path, '$hash$ext'));
           if (await _isValidCoverFile(candidate, requireDecodable: true)) {
             existing = candidate.path;
             break;
@@ -662,7 +646,7 @@ class ScannerService {
           coverResults[song.url] = existing;
         } else {
           final outputPath =
-              p.join(coversDir.path, '${hash}_${mtimeMs}_ffmpeg.jpg');
+              p.join(coversDir.path, '${hash}_ffmpeg.jpg');
           final result = await _extractVideoThumbnailWithFallback(
             inputPath: file.path,
             outputPath: outputPath,
@@ -690,21 +674,13 @@ class ScannerService {
         RandomAccessFile? lockHandle;
         try {
           lockHandle = await _acquireSharedLock(params.lockDirPath, file.path);
-          int mtimeMs;
-          if (song.mtime != null) {
-            mtimeMs = (song.mtime! * 1000).round();
-          } else {
-            final stat = await file.stat();
-            mtimeMs = stat.modified.millisecondsSinceEpoch;
-          }
-
-          final hash = md5.convert(utf8.encode(file.path)).toString();
+          final hash = coverKeyForFilename(file.path);
 
           // Check if already exists - unless force is true
           if (!params.force) {
             for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
               final cachedFile =
-                  File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+                  File(p.join(coversDir.path, '$hash$ext'));
               if (await _isValidCoverFile(cachedFile)) {
                 resolvedCoverUrl = cachedFile.path;
                 break;
@@ -713,8 +689,6 @@ class ScannerService {
           }
 
           if (resolvedCoverUrl == null || params.force) {
-            // Skip audio_metadata_reader for video files — it can crash or
-            // return nothing useful for most video containers.
             if (!_isVideoFile(file.path)) {
               try {
                 final metadata = amr.readMetadata(file);
@@ -722,7 +696,7 @@ class ScannerService {
                   final picture = metadata.pictures.first;
                   final coverExt = _getExtFromMime(picture.mimetype);
                   final coverFile =
-                      File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+                      File(p.join(coversDir.path, '$hash$coverExt'));
                   await coverFile.writeAsBytes(picture.bytes);
                   resolvedCoverUrl = coverFile.path;
                 }
@@ -731,9 +705,8 @@ class ScannerService {
               }
             }
 
-            // Try manual extraction if no embedded cover found
             resolvedCoverUrl ??=
-                await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+                await _tryManualCoverExtraction(file, coversDir, p.basename(file.path));
 
             // Try folder cover as last resort
             if (resolvedCoverUrl == null) {
@@ -932,19 +905,11 @@ class ScannerService {
         DateTime.now().millisecondsSinceEpoch / 1000.0;
     final isVideo = _isVideoFile(file.path);
 
-    // Calculate mtimeMs for cache lookup
-    int mtimeMs;
-    if (mtime != null) {
-      mtimeMs = (mtime * 1000).round();
-    } else {
-      mtimeMs = fileStat.modified.millisecondsSinceEpoch;
-    }
+    final hash = coverKeyForFilename(filename);
 
-    final hash = md5.convert(utf8.encode(file.path)).toString();
-
-    // Check for valid cache first (hash_mtimeMs.ext)
+    // Check for valid cache first
     for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
-      final cachedFile = File(p.join(coversDir.path, '${hash}_$mtimeMs$ext'));
+      final cachedFile = File(p.join(coversDir.path, '$hash$ext'));
       if (await _isValidCoverFile(cachedFile, requireDecodable: isVideo)) {
         coverUrl = cachedFile.path;
         break;
@@ -977,7 +942,7 @@ class ScannerService {
           final picture = metadata.pictures.first;
           final coverExt = _getExtFromMime(picture.mimetype);
           final coverFile =
-              File(p.join(coversDir.path, '${hash}_$mtimeMs$coverExt'));
+              File(p.join(coversDir.path, '$hash$coverExt'));
 
           if (!await coverFile.exists()) {
             await coverFile.writeAsBytes(picture.bytes);
@@ -994,7 +959,7 @@ class ScannerService {
     // thread via FFmpeg frame extraction to avoid false-positive embedded data.
     if (!isVideo) {
       coverUrl ??=
-          await _tryManualCoverExtraction(file, coversDir, hash, mtimeMs);
+          await _tryManualCoverExtraction(file, coversDir, filename);
     }
 
     if (coverUrl == null) {
@@ -1021,12 +986,11 @@ class ScannerService {
   }
 
   static Future<String?> _tryManualCoverExtraction(
-      File file, Directory coversDir, String hash, int mtimeMs) async {
+      File file, Directory coversDir, String filename) async {
     RandomAccessFile? raf;
     try {
       raf = await file.open();
       final length = await raf.length();
-      // hash is passed in
       final ext = p.extension(file.path).toLowerCase();
 
       final bool scanEverything = length < 50 * 1024 * 1024;
@@ -1037,16 +1001,16 @@ class ScannerService {
 
       if (ext == '.m4a') {
         final covrResult = await _scanForCovrBox(
-            headerChunk, raf, 0, coversDir, hash, mtimeMs);
+            headerChunk, raf, 0, coversDir, filename);
         if (covrResult != null) return covrResult;
       }
 
       final apicResult =
-          await _scanForAPIC(headerChunk, raf, 0, coversDir, hash, mtimeMs);
+          await _scanForAPIC(headerChunk, raf, 0, coversDir, filename);
       if (apicResult != null) return apicResult;
 
       final sigResult = await _scanBufferForSignatures(
-          headerChunk, raf, 0, coversDir, hash, mtimeMs);
+          headerChunk, raf, 0, coversDir, filename);
       if (sigResult != null) return sigResult;
 
       if (!scanEverything && length > firstScanSize) {
@@ -1055,7 +1019,7 @@ class ScannerService {
         final footerChunk = await raf.read(footerSize);
 
         final sigFooterResult = await _scanBufferForSignatures(
-            footerChunk, raf, length - footerSize, coversDir, hash, mtimeMs);
+            footerChunk, raf, length - footerSize, coversDir, filename);
         if (sigFooterResult != null) return sigFooterResult;
       }
 
@@ -1068,7 +1032,7 @@ class ScannerService {
   }
 
   static Future<String?> _scanForAPIC(List<int> bytes, RandomAccessFile raf,
-      int offset, Directory coversDir, String hash, int mtimeMs) async {
+      int offset, Directory coversDir, String filename) async {
     for (int i = 0; i < bytes.length - 20; i++) {
       if (bytes[i] == 0x41 &&
           bytes[i + 1] == 0x50 &&
@@ -1082,7 +1046,7 @@ class ScannerService {
           final subChunk =
               bytes.sublist(i, (i + tagSize + 20).clamp(0, bytes.length));
           return await _scanBufferForSignatures(
-              subChunk, raf, offset + i, coversDir, hash, mtimeMs);
+              subChunk, raf, offset + i, coversDir, filename);
         }
       }
     }
@@ -1090,12 +1054,13 @@ class ScannerService {
   }
 
   static Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf,
-      int offset, Directory coversDir, String hash, int mtimeMs) async {
+      int offset, Directory coversDir, String filename) async {
+    final hash = coverKeyForFilename(filename);
     for (int i = 0; i < bytes.length - 24; i++) {
       if (bytes[i] == 0x63 &&
           bytes[i + 1] == 0x6F &&
-          bytes[i + 2] == 0x76 &&
-          bytes[i + 3] == 0x72) {
+          bytes[i + 2] == 0x72 &&
+          bytes[i + 3] == 0x76) {
         for (int j = i + 4; j < i + 128 && j < bytes.length - 16; j++) {
           if (bytes[j] == 0x64 &&
               bytes[j + 1] == 0x61 &&
@@ -1120,7 +1085,7 @@ class ScannerService {
               }
 
               final coverFile =
-                  File(p.join(coversDir.path, '${hash}_$mtimeMs.$type'));
+                  File(p.join(coversDir.path, '$hash.$type'));
               await coverFile.writeAsBytes(imgData);
               return coverFile.path;
             }
@@ -1136,15 +1101,11 @@ class ScannerService {
       RandomAccessFile raf,
       int offset,
       Directory coversDir,
-      String hash,
-      int mtimeMs) async {
+      String filename) async {
     for (int i = 0; i < bytes.length - 8; i++) {
-      // Relaxed JPEG check: Valid JPEGs start with FF D8.
-      // The byte after D8 can vary (e.g. FF E0 for JFIF, FF E1 for Exif, FF DB for DQT).
-      // Strict FF D8 FF check fails for valid JPEGs embedded by FFmpeg.
       if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8) {
         final res = await _extractImageAt(
-            raf, offset + i, 'jpg', coversDir, hash, mtimeMs);
+            raf, offset + i, 'jpg', coversDir, filename);
         if (res != null) return res;
       }
       if (bytes[i] == 0x89 &&
@@ -1152,7 +1113,7 @@ class ScannerService {
           bytes[i + 2] == 0x4E &&
           bytes[i + 3] == 0x47) {
         final res = await _extractImageAt(
-            raf, offset + i, 'png', coversDir, hash, mtimeMs);
+            raf, offset + i, 'png', coversDir, filename);
         if (res != null) return res;
       }
       if (bytes[i] == 0x52 &&
@@ -1165,7 +1126,7 @@ class ScannerService {
             bytes[i + 10] == 0x42 &&
             bytes[i + 11] == 0x50) {
           final res = await _extractImageAt(
-              raf, offset + i, 'webp', coversDir, hash, mtimeMs);
+              raf, offset + i, 'webp', coversDir, filename);
           if (res != null) return res;
         }
       }
@@ -1174,7 +1135,8 @@ class ScannerService {
   }
 
   static Future<String?> _extractImageAt(RandomAccessFile raf, int pos,
-      String type, Directory coversDir, String hash, int mtimeMs) async {
+      String type, Directory coversDir, String filename) async {
+    final hash = coverKeyForFilename(filename);
     await raf.setPosition(pos);
     final data = await raf.read(15 * 1024 * 1024);
 
@@ -1212,7 +1174,7 @@ class ScannerService {
     }
 
     if (actualEnd > 1024) {
-      final coverFile = File(p.join(coversDir.path, '${hash}_$mtimeMs.$type'));
+      final coverFile = File(p.join(coversDir.path, '$hash.$type'));
       await coverFile.writeAsBytes(data.sublist(0, actualEnd));
       return coverFile.path;
     }
@@ -1228,6 +1190,10 @@ class ScannerService {
     if (mime.contains('gif')) return '.gif';
     if (mime.contains('bmp')) return '.bmp';
     return '.jpg';
+  }
+
+  static String coverKeyForFilename(String filename) {
+    return sha1.convert(utf8.encode(p.basename(filename))).toString();
   }
 
   static Future<String?> _findCoverInFolder(String folderPath) async {

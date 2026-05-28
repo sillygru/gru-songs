@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -43,17 +41,10 @@ class CoverRefreshService {
         await coversDir.create(recursive: true);
       }
 
-      final stat = await audioFile.stat();
-      final mtimeMs = song.mtime != null
-          ? (song.mtime! * 1000).round()
-          : stat.modified.millisecondsSinceEpoch;
-      final hash = md5.convert(utf8.encode(audioFile.path)).toString();
-
       final coverPath = await ScannerService.extractCoverForFile(
         audioFile,
         coversDir,
-        hash,
-        mtimeMs,
+        songFilename,
         useFFmpegFallback: true,
       );
       if (coverPath == null) return null;
