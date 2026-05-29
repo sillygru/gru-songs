@@ -119,8 +119,7 @@ class SongRepository {
         'hasLyrics': hasLyrics,
         if (lyrics != null && lyrics.isNotEmpty) 'lyrics': lyrics,
       }));
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   Future<File> _getCacheFileForSong(Song song) async {

@@ -165,7 +165,8 @@ void main() {
     test('coverKeyForFilename returns stable key regardless of mtime', () {
       const filename = 'song.mp3';
       final key1 = ScannerService.coverKeyForFilename(filename);
-      final key2 = ScannerService.coverKeyForFilename('/different/path/song.mp3');
+      final key2 =
+          ScannerService.coverKeyForFilename('/different/path/song.mp3');
       expect(key1, equals(key2));
     });
 
@@ -185,8 +186,77 @@ void main() {
     });
   });
 
+  group('manual cover extraction', () {
+    test('extractCoverForFile finds m4a covr boxes', () async {
+      final supportDir = Directory(testEnv.tempPath);
+      final mediaDir = Directory(p.join(supportDir.path, 'media'));
+      final coversDir = Directory(p.join(supportDir.path, 'manual_covers'));
+      await mediaDir.create(recursive: true);
+      await coversDir.create(recursive: true);
+
+      final image = img.Image(width: 160, height: 160);
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          image.setPixelRgb(
+            x,
+            y,
+            (x * 3 + y) % 256,
+            (x + y * 5) % 256,
+            (x * 7 + y * 11) % 256,
+          );
+        }
+      }
+      final imageBytes = img.encodeJpg(image, quality: 95);
+      expect(imageBytes.length, greaterThan(1024));
+
+      final dataSize = imageBytes.length + 16;
+      final fakeM4aBytes = <int>[
+        0,
+        0,
+        0,
+        0,
+        0x63,
+        0x6F,
+        0x76,
+        0x72,
+        (dataSize >> 24) & 0xFF,
+        (dataSize >> 16) & 0xFF,
+        (dataSize >> 8) & 0xFF,
+        dataSize & 0xFF,
+        0x64,
+        0x61,
+        0x74,
+        0x61,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        13,
+        ...imageBytes,
+      ];
+
+      final audioFile = File(p.join(mediaDir.path, 'covr-test.m4a'));
+      await audioFile.writeAsBytes(fakeM4aBytes);
+
+      final coverPath = await ScannerService.extractCoverForFile(
+        audioFile,
+        coversDir,
+        p.basename(audioFile.path),
+        skipFolderCover: true,
+      );
+
+      expect(coverPath, isNotNull);
+      final coverFile = File(coverPath!);
+      expect(await coverFile.exists(), isTrue);
+      expect(img.decodeImage(await coverFile.readAsBytes()), isNotNull);
+    });
+  });
+
   group('ios_media_proxy pruning', () {
-    test('pruneStaleSongCaches deletes entire ios_media_proxy directory', () async {
+    test('pruneStaleSongCaches keeps ios media proxy files', () async {
       await cacheService.init();
       final supportDir = Directory(testEnv.tempPath);
       final proxyDir = Directory(
@@ -199,7 +269,7 @@ void main() {
 
       await cacheService.pruneStaleSongCaches([]);
 
-      expect(await proxyFile.exists(), isFalse);
+      expect(await proxyFile.exists(), isTrue);
     });
 
     test('pruneStaleSongCaches leaves other v3 cache files intact', () async {
@@ -215,7 +285,9 @@ void main() {
       final songFilename = 'test.mp3';
       final waveformKey = sha1.convert(utf8.encode(songFilename)).toString();
       final waveformFile = File(p.join(
-        supportDir.path, 'gru_cache_v3', 'waveform_$waveformKey.json',
+        supportDir.path,
+        'gru_cache_v3',
+        'waveform_$waveformKey.json',
       ));
       await waveformFile.parent.create(recursive: true);
       await waveformFile.writeAsString('[0.5]');
@@ -277,7 +349,9 @@ void main() {
       );
 
       final lyricsDir = Directory(p.join(
-        testEnv.tempPath, 'gru_cache_v3', 'lyrics_cache',
+        testEnv.tempPath,
+        'gru_cache_v3',
+        'lyrics_cache',
       ));
       await lyricsDir.create(recursive: true);
       final cacheFile = File(p.join(

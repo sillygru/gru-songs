@@ -594,7 +594,8 @@ class _FullScreenLyricsState extends ConsumerState<FullScreenLyrics> {
           },
           child: ListView.builder(
             controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(8, 88 + mediaPadding.top, 8, 136 + mediaPadding.bottom),
+            padding: EdgeInsets.fromLTRB(
+                8, 88 + mediaPadding.top, 8, 136 + mediaPadding.bottom),
             itemCount:
                 _activeLyrics.length + (_renderedGapLoaderIndex >= 0 ? 1 : 0),
             physics: const BouncingScrollPhysics(

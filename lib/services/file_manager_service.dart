@@ -198,8 +198,7 @@ class FileManagerService {
         debugPrint(
             'FileManager: extraction could not read back cover, writing bytes directly');
         final ext = p.extension(imagePath).toLowerCase();
-        final newCoverFile =
-            File(p.join(coversDir.path, '$hash$ext'));
+        final newCoverFile = File(p.join(coversDir.path, '$hash$ext'));
         await newCoverFile.writeAsBytes(newPicture!.data);
         return newCoverFile.path;
       }
