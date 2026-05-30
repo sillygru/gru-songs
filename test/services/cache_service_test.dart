@@ -340,14 +340,6 @@ void main() {
 
   group('lyrics cache - no mtime dependency', () {
     test('lyrics cached entry has isFresh removed from model', () async {
-      final song = Song(
-        title: 'Test',
-        artist: 'Artist',
-        album: 'Album',
-        filename: 'test.mp3',
-        url: '/music/test.mp3',
-      );
-
       final lyricsDir = Directory(p.join(
         testEnv.tempPath,
         'gru_cache_v3',

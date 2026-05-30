@@ -125,6 +125,7 @@ class CacheService {
 
   Future<void> pruneStaleSongCaches(List<Song> songs) async {
     await init();
+    if (songs.isEmpty) return;
 
     final supportDir = _appSupportDir.path;
     final songPayload = songs

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'album_art_image.dart';
 import '../../services/cache_service.dart';
+import '../../services/cover_refresh_service.dart';
 import '../../services/ffmpeg_service.dart';
 
 class BlurredBackground extends StatefulWidget {
@@ -45,7 +46,7 @@ class _BlurredBackgroundState extends State<BlurredBackground>
   @override
   void didUpdateWidget(BlurredBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.filename != oldWidget.filename) {
+    if (widget.filename != oldWidget.filename || widget.url != oldWidget.url) {
       _updateBlurFile();
     }
     if (widget.slowSpin != oldWidget.slowSpin) {
@@ -84,7 +85,17 @@ class _BlurredBackgroundState extends State<BlurredBackground>
 
     if (mounted) setState(() {});
 
-    final coverUrl = widget.url;
+    var coverUrl = widget.url;
+    final needsCoverRefresh = coverUrl.isEmpty ||
+        (!coverUrl.startsWith('content://') &&
+            !coverUrl.startsWith('http://') &&
+            !coverUrl.startsWith('https://') &&
+            !await File(_normalizeFilePath(coverUrl)).exists());
+    if (needsCoverRefresh && filename.isNotEmpty) {
+      coverUrl =
+          await CoverRefreshService.instance.ensureCoverForSong(filename) ??
+              coverUrl;
+    }
     if (coverUrl.isEmpty) return;
 
     final success = await FFmpegService().generateBlurredImage(
@@ -103,6 +114,15 @@ class _BlurredBackgroundState extends State<BlurredBackground>
 
   bool get _hasBlurredBackground =>
       _blurFile != null && _blurFile!.existsSync();
+
+  String _normalizeFilePath(String path) {
+    if (path.startsWith('file://')) {
+      try {
+        return Uri.parse(path).toFilePath();
+      } catch (_) {}
+    }
+    return path;
+  }
 
   Widget _buildImageLayers({double? squareSize}) {
     final child = Stack(

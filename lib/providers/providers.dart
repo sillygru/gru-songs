@@ -537,9 +537,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
       await DatabaseService.instance.insertSongsBatch(uniqueSongs);
 
-      unawaited(CacheService.instance.pruneStaleSongCaches(uniqueSongs));
-      unawaited(CacheService.instance.pruneEvictBySize());
-
       return uniqueSongs;
     } finally {
       if (!isBackground || showIndicator) {
