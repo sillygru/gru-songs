@@ -43,6 +43,9 @@ class TestEnvironment {
 
     // Initialize SQLite for testing
     sqfliteFfiInit();
+    // Reset to null first to suppress the sqflite warning about changing
+    // the default factory. This is intentional for test environment setup.
+    databaseFactory = null;
     databaseFactory = databaseFactoryFfi;
 
     // Mock path_provider via MethodChannel - this is more reliable than
@@ -73,15 +76,41 @@ class TestEnvironment {
     // Also mock the platform interface as a backup
     PathProviderPlatform.instance = _MockPathProviderPlatform(_tempDir!.path);
 
+    // Mock the volume monitoring channel to prevent MissingPluginException
+    // when AudioPlayerManager initializes VolumeMonitorService.
+    final volumeChannel = MethodChannel('gru_songs/volume');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(volumeChannel,
+            (MethodCall methodCall) async {
+      if (methodCall.method == 'getCurrentVolume') {
+        return 1.0;
+      }
+      return null;
+    });
+    // Mock the volume event channel to prevent unhandled stream errors.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler(
+      'gru_songs/volume_events',
+      (ByteData? message) async => null,
+    );
+
     // Mock SharedPreferences
     SharedPreferencesStorePlatform.instance = MockSharedPreferencesStore();
   }
 
   /// Cleans up the temporary directory.
   void tearDown() {
-    // Clear method channel handler
+    // Clear method channel handlers
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('gru_songs/volume'), null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler(
+      'gru_songs/volume_events',
+      null,
+    );
 
     // Clean up temp directory
     if (_tempDir != null && _tempDir!.existsSync()) {

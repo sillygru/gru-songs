@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
+  databaseFactory = null;
   databaseFactory = databaseFactoryFfi;
 
   group('Backup Comparison Tests', () {

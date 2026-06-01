@@ -102,6 +102,7 @@ void main() {
 
     setUp(() async {
       sqfliteFfiInit();
+      databaseFactory = null;
       databaseFactory = databaseFactoryFfi;
       db = await databaseFactory.openDatabase(
         inMemoryDatabasePath,

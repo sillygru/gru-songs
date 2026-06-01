@@ -13,6 +13,7 @@ import 'package:wispie/models/song.dart';
 // Initialize sqflite for tests
 void setupTestDatabase() {
   sqfliteFfiInit();
+  databaseFactory = null;
   databaseFactory = databaseFactoryFfi;
 }
 
