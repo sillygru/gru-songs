@@ -28,21 +28,32 @@ class LibraryLogic {
   }) {
     final sorted = List<Song>.from(songs);
 
+    // Pre-compute lowercase title/artist/album strings once per sort to avoid
+    // calling toLowerCase() O(N log N) times during comparator evaluations.
+    final lowerTitle = <String, String>{};
+    final lowerArtist = <String, String>{};
+    final lowerAlbum = <String, String>{};
+    for (final s in sorted) {
+      lowerTitle[s.filename] = s.title.toLowerCase();
+      lowerArtist[s.filename] = s.artist.toLowerCase();
+      lowerAlbum[s.filename] = s.album.toLowerCase();
+    }
+
     switch (sortOrder) {
       case SongSortOrder.title:
-        sorted.sort(
-            (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        sorted.sort((a, b) =>
+            lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!));
 
         break;
 
       case SongSortOrder.artist:
         sorted.sort((a, b) {
           int artistCompare =
-              a.artist.toLowerCase().compareTo(b.artist.toLowerCase());
+              lowerArtist[a.filename]!.compareTo(lowerArtist[b.filename]!);
 
           if (artistCompare != 0) return artistCompare;
 
-          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+          return lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!);
         });
 
         break;
@@ -50,11 +61,11 @@ class LibraryLogic {
       case SongSortOrder.album:
         sorted.sort((a, b) {
           int albumCompare =
-              a.album.toLowerCase().compareTo(b.album.toLowerCase());
+              lowerAlbum[a.filename]!.compareTo(lowerAlbum[b.filename]!);
 
           if (albumCompare != 0) return albumCompare;
 
-          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+          return lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!);
         });
 
         break;

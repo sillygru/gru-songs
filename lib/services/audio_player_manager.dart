@@ -60,12 +60,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final ValueNotifier<bool> pendingQueueNotifier = ValueNotifier(false);
 
   // User data for weighting (Fallback / Offline)
-  List<String> _favorites = [];
-  List<String> _suggestLess = [];
-  List<String> _hidden = [];
+  // O(1) lookup sets for membership checks (shuffle weighting path is hot).
+  Set<String> _favoriteKeys = const <String>{};
+  Set<String> _suggestLessKeys = const <String>{};
+  Set<String> _hiddenKeys = const <String>{};
 
   // Merged song groups for shuffle weighting
   Map<String, List<String>> _mergedGroups = {};
+  // Filename -> groupId lookup, rebuilt on setUserData().
+  Map<String, String> _filenameToGroupId = const <String, String>{};
 
   // Shuffle state
   ShuffleState _shuffleState = const ShuffleState();
@@ -90,7 +93,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   VolumeMonitorService? _volumeMonitorService;
 
   // Fading and delay state
-  bool _isFadingIn = false;
   bool _isFadingOut = false;
   bool _isInGap = false;
   bool _pausedByGap = false;
@@ -99,6 +101,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Timer? _gapTimer;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<SequenceState?>? _sequenceSubscription;
+  final List<StreamSubscription<dynamic>> _trackedSubscriptions = [];
+  SettingsState? _cachedSettings;
   Future<void> _queueMutationChain = Future<void>.value();
 
   // Play/pause fade state (separate from track-transition fades)
@@ -186,30 +190,21 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   bool _isFavorite(String filename) {
-    if (_favorites.contains(filename)) return true;
-    final searchBasename = p.basename(filename);
-    for (final fav in _favorites) {
-      if (p.basename(fav) == searchBasename) return true;
-    }
-    return false;
+    final lower = filename.toLowerCase();
+    return _favoriteKeys.contains(lower) ||
+        _favoriteKeys.contains(p.basename(lower));
   }
 
   bool _isSuggestLess(String filename) {
-    if (_suggestLess.contains(filename)) return true;
-    final searchBasename = p.basename(filename);
-    for (final sl in _suggestLess) {
-      if (p.basename(sl) == searchBasename) return true;
-    }
-    return false;
+    final lower = filename.toLowerCase();
+    return _suggestLessKeys.contains(lower) ||
+        _suggestLessKeys.contains(p.basename(lower));
   }
 
   bool _isHidden(String filename) {
-    if (_hidden.contains(filename)) return true;
-    final searchBasename = p.basename(filename);
-    for (final h in _hidden) {
-      if (p.basename(h) == searchBasename) return true;
-    }
-    return false;
+    final lower = filename.toLowerCase();
+    return _hiddenKeys.contains(lower) ||
+        _hiddenKeys.contains(p.basename(lower));
   }
 
   void setUserData({
@@ -218,10 +213,41 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     List<String>? hidden,
     Map<String, List<String>>? mergedGroups,
   }) {
-    if (favorites != null) _favorites = favorites;
-    if (suggestLess != null) _suggestLess = suggestLess;
-    if (hidden != null) _hidden = hidden;
-    if (mergedGroups != null) _mergedGroups = mergedGroups;
+    if (favorites != null) {
+      _favoriteKeys = _buildFilenameKeys(favorites);
+    }
+    if (suggestLess != null) {
+      _suggestLessKeys = _buildFilenameKeys(suggestLess);
+    }
+    if (hidden != null) {
+      _hiddenKeys = _buildFilenameKeys(hidden);
+    }
+    if (mergedGroups != null) {
+      _mergedGroups = mergedGroups;
+      _filenameToGroupId = _buildFilenameToGroupId(mergedGroups);
+    }
+  }
+
+  static Set<String> _buildFilenameKeys(List<String> filenames) {
+    if (filenames.isEmpty) return const <String>{};
+    final keys = <String>{};
+    for (final f in filenames) {
+      keys.add(f.toLowerCase());
+      keys.add(p.basename(f).toLowerCase());
+    }
+    return keys;
+  }
+
+  static Map<String, String> _buildFilenameToGroupId(
+      Map<String, List<String>> groups) {
+    if (groups.isEmpty) return const <String, String>{};
+    final map = <String, String>{};
+    for (final entry in groups.entries) {
+      for (final filename in entry.value) {
+        map[filename] = entry.key;
+      }
+    }
+    return map;
   }
 
   List<String> _getMergedSiblings(String filename) {
@@ -377,11 +403,16 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _savePlaybackState();
   }
 
+  StreamSubscription<T> _track<T>(StreamSubscription<T> sub) {
+    _trackedSubscriptions.add(sub);
+    return sub;
+  }
+
   void _initStatsListeners() {
     // Track previous playing state for manual pause detection
     bool wasPlaying = false;
 
-    _player.playerStateStream.listen((state) {
+    _track(_player.playerStateStream.listen((state) {
       // Confirm fade-pause completion before checking for manual intervention
       if (_isPausingByFade && !state.playing) {
         _isPausingByFade = false;
@@ -426,26 +457,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _isCompleting = true;
         _flushStats(isTerminal: true);
       }
-    });
+    }));
 
-    // Listen for seek operations to cancel fade out
-    _player.positionStream.listen((position) {
-      if (_isFadingOut) {
-        final totalDuration = _player.duration;
-        if (totalDuration != null && _ref != null) {
-          final remaining = totalDuration - position;
-          final settings = _ref!.read(settingsProvider);
-          final fadeOutDuration = settings.fadeOutDuration;
-          if (fadeOutDuration > 0 &&
-              remaining.inMilliseconds > fadeOutDuration * 1000 + 500) {
-            // User seeked back, cancel fade
-            _cancelTransitions();
-          }
-        }
-      }
-    });
+    // Listen for seek operations to cancel fade out. The fade-related seek
+    // detection lives in _initFadingListeners, which owns the single
+    // positionStream subscription for this player.
 
-    _player.sequenceStateStream.listen((state) {
+    _track(_player.sequenceStateStream.listen((state) {
       _syncEffectiveQueueWithPlayerSequence(state);
       final currentItem = state.currentSource?.tag;
 
@@ -514,8 +532,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             ColorExtractionService.extractPalette(
               song.coverUrl,
               useIsolate: true,
-            )
-                .then((palette) {
+            ).then((palette) {
               if (palette != null &&
                   _currentSongFilename == filenameAtExtraction) {
                 final processedPalette =
@@ -529,7 +546,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           }
         }
       }
-    });
+    }));
   }
 
   // ==================== FADE AND GAP LOGIC ====================
@@ -537,7 +554,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _initFadingListeners() {
     _positionSubscription = _player.positionStream.listen((position) {
       if (_ref == null) return;
-      final settings = _ref!.read(settingsProvider);
+      // Use the cached settings populated by the settingsProvider listener
+      // (set up in _initVolumeMonitoring). positionStream fires many times
+      // per second, so avoid a Riverpod lookup per tick.
+      final settings = _cachedSettings;
+      if (settings == null) return;
 
       final totalDuration = _player.duration;
       if (totalDuration == null) return;
@@ -567,24 +588,24 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _startFadeOut(settings.fadeOutDuration);
       }
 
-      // Reset fade if user seeks back
+      // Reset fade if user seeks back. The +500 ms hysteresis matches the
+      // original duplicate listener that lived in _initStatsListeners.
       if (_isFadingOut) {
         final fadeOutMs = settings.fadeOutDuration * 1000;
-        if (remaining.inMilliseconds > fadeOutMs) {
-          _fadeTimer?.cancel();
-          _isFadingOut = false;
-          _fadeStartTime = null;
-          _fadeDurationMs = null;
-          if (!_isFadingIn) {
-            _setVolumeWithSafety(1.0);
-          }
+        if (fadeOutMs > 0 && remaining.inMilliseconds > fadeOutMs + 500) {
+          _cancelTransitions();
         }
       }
     });
 
-    _sequenceSubscription = _player.sequenceStateStream.listen((state) async {
+    _sequenceSubscription =
+        _track(_player.sequenceStateStream.listen((state) async {
       if (_ref == null) return;
-      final settings = _ref!.read(settingsProvider);
+      // Use cached settings to avoid Riverpod lookups on every sequence
+      // update (fires on every track change, but in a tighter loop during
+      // gap-driven replays).
+      final settings = _cachedSettings;
+      if (settings == null) return;
 
       final currentItem = state.currentSource?.tag;
       if (currentItem is MediaItem) {
@@ -606,10 +627,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           }
         }
       }
-    });
+    }));
 
     // Handle completion - apply pending queue if exists, reset volume
-    _player.processingStateStream.listen((state) {
+    _track(_player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         if (!_holdMutedUntilNextTrack) {
           _setVolumeWithSafety(1.0);
@@ -629,7 +650,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
               clearCurrentSong: true);
         }
       }
-    });
+    }));
   }
 
   void _generateOfflineNext() async {
@@ -714,6 +735,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _volumeMonitorService?.initialize();
 
       _ref!.listen(settingsProvider, (previous, next) {
+        _cachedSettings = next;
         if (previous?.autoPauseOnVolumeZero != next.autoPauseOnVolumeZero) {
           _volumeMonitorService
               ?.setAutoPauseEnabled(next.autoPauseOnVolumeZero);
@@ -721,6 +743,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       });
 
       final initialSettings = _ref!.read(settingsProvider);
+      _cachedSettings = initialSettings;
       _volumeMonitorService?.setAutoPauseEnabled(
         initialSettings.autoPauseOnVolumeZero,
       );
@@ -799,7 +822,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   void _startFadeIn(double duration) {
     _fadeTimer?.cancel();
-    _isFadingIn = true;
     _fadeDurationMs = duration * 1000;
     _fadeStartTime = DateTime.now();
     _targetVolume = 1.0;
@@ -817,7 +839,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       if (elapsed >= targetMs) {
         _setVolumeWithSafety(1.0);
-        _isFadingIn = false;
         _fadeStartTime = null;
         _fadeDurationMs = null;
         timer.cancel();
@@ -953,7 +974,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   void _resetFading() {
     _fadeTimer?.cancel();
     _playPauseFadeTimer?.cancel();
-    _isFadingIn = false;
     _isFadingOut = false;
     _holdMutedUntilNextTrack = false;
     _isPlayPauseFading = false;
@@ -968,7 +988,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _cancelGap();
     _fadeTimer?.cancel();
     _playPauseFadeTimer?.cancel();
-    _isFadingIn = false;
     _isFadingOut = false;
     _holdMutedUntilNextTrack = false;
     _isPlayPauseFading = false;
@@ -1063,11 +1082,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
-  void _clearNonEssentialCaches() {
-    PaintingBinding.instance.imageCache.clear();
-    PaintingBinding.instance.imageCache.clearLiveImages();
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_playStartTime != null) {
@@ -1093,7 +1107,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void onMemoryPressure() {
-    _clearNonEssentialCaches();
+    // Lower the LRU caps so Flutter trims aggressively on its own; this
+    // avoids the wholesale clear() that would force regen of expensive
+    // blurred backgrounds.
     PaintingBinding.instance.imageCache.maximumSize = 20;
     PaintingBinding.instance.imageCache.maximumSizeBytes = 5 * 1024 * 1024;
   }
@@ -1622,7 +1638,24 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _updateQueueNotifier() {
-    queueNotifier.value = List.from(_effectiveQueue);
+    final next = List<QueueItem>.from(_effectiveQueue);
+    // Skip the new-list allocation and listener notification when the
+    // queue contents are identical. queueNotifier listeners rebuild
+    // large UI sections, so the comparison is well worth the O(N) walk.
+    final current = queueNotifier.value;
+    if (_listEqualsQueue(current, next)) {
+      return;
+    }
+    queueNotifier.value = next;
+  }
+
+  static bool _listEqualsQueue(List<QueueItem> a, List<QueueItem> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].song.filename != b[i].song.filename) return false;
+    }
+    return true;
   }
 
   Future<T> _runSerializedQueueMutation<T>(
@@ -1870,6 +1903,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         snapshot.source,
         snapshot.songFilenames,
       );
+      // Trim the queue history so it doesn't grow unbounded across long
+      // sessions. Runs only on fresh insertions.
+      unawaited(DatabaseService.instance.pruneQueueSnapshots());
       _notifyQueueHistoryChanged();
       await _savePlaybackState();
     } catch (e) {
@@ -1986,10 +2022,34 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }) async {
     if (items.isEmpty) return [];
 
-    final playCounts = await DatabaseService.instance.getPlayCounts();
-    final skipStats = await DatabaseService.instance.getSkipStats();
-    final playHistory = await DatabaseService.instance
-        .getPlayHistory(limit: _shuffleState.config.historyLimit);
+    final results = await Future.wait([
+      DatabaseService.instance.getPlayCounts(),
+      DatabaseService.instance.getSkipStats(),
+      DatabaseService.instance
+          .getPlayHistory(limit: _shuffleState.config.historyLimit),
+    ]);
+    final playCounts = results[0] as Map<String, int>;
+    final skipStats = results[1] as Map<String, ({int count, double avgRatio})>;
+    final playHistory = results[2] as List<
+        ({
+          String filename,
+          double timestamp,
+          double playRatio,
+          String eventType
+        })>;
+
+    // Build O(1) lookup tables for play history. The naive implementation
+    // scanned playHistory for every item on every weight iteration, leading
+    // to O(N * historySize) per pass.
+    final historyIndexByFilename = <String, int>{};
+    final playRatioByFilename = <String, double>{};
+    for (int i = 0; i < playHistory.length; i++) {
+      final entry = playHistory[i];
+      // First occurrence wins (smallest index), which is what the original
+      // linear scan captured.
+      historyIndexByFilename.putIfAbsent(entry.filename, () => i);
+      playRatioByFilename.putIfAbsent(entry.filename, () => entry.playRatio);
+    }
 
     final Map<String, List<QueueItem>> mergeGroups = {};
     final List<QueueItem> standaloneItems = [];
@@ -2036,7 +2096,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     while (remaining.isNotEmpty) {
       final weights = remaining
           .map((item) => _calculateVirtualWeight(
-              item, prev, playCounts, skipStats, maxPlayCount, playHistory))
+                item,
+                prev,
+                playCounts,
+                skipStats,
+                maxPlayCount,
+                historyIndexByFilename,
+                playRatioByFilename,
+              ))
           .toList();
 
       final totalWeight = weights.fold(0.0, (a, b) => a + b);
@@ -2098,12 +2165,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   String? _getMergedGroupId(String filename) {
-    for (final entry in _mergedGroups.entries) {
-      if (entry.value.contains(filename)) {
-        return entry.key;
-      }
-    }
-    return null;
+    return _filenameToGroupId[filename];
   }
 
   QueueItem? _selectSongFromVirtualItem(_VirtualShuffleItem virtualItem) {
@@ -2144,14 +2206,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     Map<String, int> playCounts,
     Map<String, ({int count, double avgRatio})> skipStats,
     int maxPlayCount,
-    List<
-            ({
-              String filename,
-              double timestamp,
-              double playRatio,
-              String eventType
-            })>
-        playHistory,
+    Map<String, int> historyIndexByFilename,
+    Map<String, double> playRatioByFilename,
   ) {
     double weight = 1.0;
     final representative = item.representative;
@@ -2172,27 +2228,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final bool shouldAvoidRepeatingSongs = config.antiRepeatEnabled &&
         (isCustomMode ? config.avoidRepeatingSongs : !isConsistentMode);
 
-    if (shouldAvoidRepeatingSongs && playHistory.isNotEmpty) {
+    if (shouldAvoidRepeatingSongs && historyIndexByFilename.isNotEmpty) {
       int historyIndex = -1;
       double playRatioInHistory = 0.0;
 
-      for (int i = 0; i < playHistory.length; i++) {
-        if (item.type == _VirtualItemType.mergeGroup) {
-          for (final queueItem in item.items) {
-            if (playHistory[i].filename == queueItem.song.filename) {
-              if (historyIndex == -1 || i < historyIndex) {
-                historyIndex = i;
-                playRatioInHistory = playHistory[i].playRatio;
-              }
-              break;
-            }
+      if (item.type == _VirtualItemType.mergeGroup) {
+        // Pick the smallest (most recent) index across all group members.
+        for (final queueItem in item.items) {
+          final idx = historyIndexByFilename[queueItem.song.filename];
+          if (idx != null && (historyIndex == -1 || idx < historyIndex)) {
+            historyIndex = idx;
+            playRatioInHistory = playRatioByFilename[queueItem.song.filename] ??
+                playRatioInHistory;
           }
-        } else {
-          if (playHistory[i].filename == representative.song.filename) {
-            historyIndex = i;
-            playRatioInHistory = playHistory[i].playRatio;
-            break;
-          }
+        }
+      } else {
+        historyIndex =
+            historyIndexByFilename[representative.song.filename] ?? -1;
+        if (historyIndex != -1) {
+          playRatioInHistory =
+              playRatioByFilename[representative.song.filename] ?? 0.0;
         }
       }
 
@@ -2598,6 +2653,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _volumeMonitorService?.dispose();
     _positionSubscription?.cancel();
     _sequenceSubscription?.cancel();
+    for (final sub in _trackedSubscriptions) {
+      sub.cancel();
+    }
+    _trackedSubscriptions.clear();
     _fadeTimer?.cancel();
     _gapTimer?.cancel();
     _clearGapState();

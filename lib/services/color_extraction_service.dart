@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
@@ -154,12 +155,20 @@ class ExtractedPalette {
 }
 
 class ColorExtractionService {
-  static Map<String, ExtractedPalette> _paletteCache = {};
+  // Insertion-ordered map: most recently accessed keys sit at the end. On
+  // each cache hit we re-insert to mark it as fresh, so the head of the
+  // map is always the least-recently-used entry we can evict when the cap
+  // is hit.
+  static LinkedHashMap<String, ExtractedPalette> _paletteCache =
+      LinkedHashMap();
   static final Map<String, Future<ExtractedPalette?>> _pendingPalettes = {};
   static File? _cacheFile;
   static Directory? _paletteDir;
   static bool _initialized = false;
   static Future<void>? _initFuture;
+  static Timer? _saveDebounceTimer;
+  static const Duration _saveDebounce = Duration(seconds: 5);
+  static const int _maxCachedPalettes = 500;
 
   static Future<void> init() async {
     if (_initialized) return;
@@ -185,10 +194,12 @@ class ColorExtractionService {
       if (await _cacheFile!.exists()) {
         final Map<String, dynamic> json =
             await compute(_loadPaletteCacheSnapshot, _cacheFile!.path);
-        _paletteCache = json.map(
-          (key, value) => MapEntry(
-              key, ExtractedPalette.fromJson(value as Map<String, dynamic>)),
-        );
+        final loaded = <String, ExtractedPalette>{};
+        json.forEach((key, value) {
+          loaded[key] =
+              ExtractedPalette.fromJson(value as Map<String, dynamic>);
+        });
+        _paletteCache = LinkedHashMap.from(loaded);
         debugPrint(
             'ColorExtractionService: Loaded ${_paletteCache.length} cached palettes');
       }
@@ -210,6 +221,9 @@ class ColorExtractionService {
 
     final cached = _paletteCache[imagePath];
     if (cached != null) {
+      // Re-insert to mark as recently used for the LRU eviction policy.
+      _paletteCache.remove(imagePath);
+      _paletteCache[imagePath] = cached;
       return cached;
     }
 
@@ -250,8 +264,19 @@ class ColorExtractionService {
     );
 
     _paletteCache[imagePath] = extractedPalette;
-    await _saveCacheToDisk();
+    // Cap the in-memory cache to avoid unbounded growth in long sessions.
+    // Persisted cache on disk keeps the full set so future restarts reload
+    // what was previously extracted.
+    _enforceMaxSize();
+    _scheduleCacheSave();
     return extractedPalette;
+  }
+
+  static void _enforceMaxSize() {
+    while (_paletteCache.length > _maxCachedPalettes) {
+      final oldestKey = _paletteCache.keys.first;
+      _paletteCache.remove(oldestKey);
+    }
   }
 
   static Future<List<Color>?> _extractPalette(
@@ -399,15 +424,26 @@ class ColorExtractionService {
     final originalLength = _paletteCache.length;
     _paletteCache.removeWhere((path, _) => !keepPaths.contains(path));
     if (_paletteCache.length != originalLength) {
-      await _saveCacheToDisk();
+      _scheduleCacheSave();
     }
+  }
+
+  static void _scheduleCacheSave() {
+    // Coalesce multiple back-to-back extractions (common during a fresh
+    // library scan) into a single disk write. 5 s is a comfortable window
+    // for bursts without risking data loss if the process is killed.
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(_saveDebounce, () {
+      _saveDebounceTimer = null;
+      _saveCacheToDisk();
+    });
   }
 
   static Future<void> _saveCacheToDisk() async {
     if (_cacheFile == null) return;
     try {
-      final json =
-          _paletteCache.map((key, value) => MapEntry(key, value.toJson()));
+      final snapshot = _paletteCache;
+      final json = snapshot.map((key, value) => MapEntry(key, value.toJson()));
       await _cacheFile!.writeAsString(jsonEncode(json));
     } catch (e) {
       debugPrint('Error saving palette cache: $e');
@@ -415,6 +451,8 @@ class ColorExtractionService {
   }
 
   static Future<void> clearCache() async {
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = null;
     _paletteCache.clear();
     _pendingPalettes.clear();
     if (_cacheFile != null && await _cacheFile!.exists()) {

@@ -73,14 +73,26 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     });
     _onPlayerState(_player.playerState);
     unawaited(_loadWaveformForCurrentTrack());
-    _timer = Timer.periodic(_sampleInterval, (_) => _tick());
+    // _onPlayerState decides whether the timer is needed; do not start it
+    // unconditionally here or we will keep ticking while paused.
+    if (_isPlaying) {
+      _startTimer();
+    }
+  }
+
+  void _startTimer() {
+    _timer ??= Timer.periodic(_sampleInterval, (_) => _tick());
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   void stop() {
     if (!_running) return;
     _running = false;
-    _timer?.cancel();
-    _timer = null;
+    _stopTimer();
     _playerStateSub?.cancel();
     _playerStateSub = null;
     _sequenceSub?.cancel();
@@ -100,7 +112,12 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     if (_isAppActive == isActive) return;
     _isAppActive = isActive;
     if (!isActive) {
+      // Avoid burning a 20ms tick in the background. Resume when foregrounded
+      // and the player is actively playing.
+      _stopTimer();
       _emit(const AudioEnergyState());
+    } else if (_isPlaying) {
+      _startTimer();
     }
   }
 
@@ -108,12 +125,17 @@ class AudioEnergyAnalyzer with WidgetsBindingObserver {
     if (!_running) return;
     _isPlaying = state.playing;
     if (!state.playing) {
+      // Pause-driven timer shutdown: the next 20ms tick would just decay and
+      // emit zeros, which is wasteful while paused.
+      _stopTimer();
       _energyHistory.clear();
       _smoothedEnergy = 0;
       _baselineEnergy = 0;
       _visualEnergy = 0;
       _ticksSinceLastBeat = 0;
       _emit(AudioEnergyState(energy: 0, isPlaying: false));
+    } else {
+      _startTimer();
     }
   }
 

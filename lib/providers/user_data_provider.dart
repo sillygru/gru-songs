@@ -26,6 +26,13 @@ class UserDataState {
   final List<String> removedRecommendations;
   final bool isLoading;
 
+  // Pre-computed lookups to make membership checks O(1).
+  // Rebuilt in the constructor on every state change.
+  final Set<String> _favoriteKeys;
+  final Set<String> _suggestLessKeys;
+  final Set<String> _hiddenKeys;
+  final Map<String, String> _filenameToGroupId;
+
   UserDataState({
     this.favorites = const [],
     this.suggestLess = const [],
@@ -38,50 +45,56 @@ class UserDataState {
     this.recommendationPreferences = const {},
     this.removedRecommendations = const [],
     this.isLoading = false,
-  });
+  })  : _favoriteKeys = _buildFilenameKeys(favorites),
+        _suggestLessKeys = _buildFilenameKeys(suggestLess),
+        _hiddenKeys = _buildFilenameKeys(hidden),
+        _filenameToGroupId = _buildFilenameToGroupId(mergedGroups);
+
+  static Set<String> _buildFilenameKeys(List<String> filenames) {
+    if (filenames.isEmpty) return const <String>{};
+    final keys = <String>{};
+    for (final f in filenames) {
+      keys.add(f.toLowerCase());
+      keys.add(p.basename(f).toLowerCase());
+    }
+    return keys;
+  }
+
+  static Map<String, String> _buildFilenameToGroupId(
+      Map<String, List<String>> groups) {
+    if (groups.isEmpty) return const <String, String>{};
+    final map = <String, String>{};
+    for (final entry in groups.entries) {
+      for (final filename in entry.value) {
+        map[filename] = entry.key;
+      }
+    }
+    return map;
+  }
 
   bool isFavorite(String filename) {
-    final searchBasename = p.basename(filename).toLowerCase();
-    for (final fav in favorites) {
-      if (fav.toLowerCase() == filename.toLowerCase()) return true;
-      if (p.basename(fav).toLowerCase() == searchBasename) return true;
-    }
-    return false;
+    final lower = filename.toLowerCase();
+    return _favoriteKeys.contains(lower) ||
+        _favoriteKeys.contains(p.basename(lower));
   }
 
   bool isSuggestLess(String filename) {
-    final searchBasename = p.basename(filename).toLowerCase();
-    for (final sl in suggestLess) {
-      if (sl.toLowerCase() == filename.toLowerCase()) return true;
-      if (p.basename(sl).toLowerCase() == searchBasename) return true;
-    }
-    return false;
+    final lower = filename.toLowerCase();
+    return _suggestLessKeys.contains(lower) ||
+        _suggestLessKeys.contains(p.basename(lower));
   }
 
   bool isHidden(String filename) {
-    final searchBasename = p.basename(filename).toLowerCase();
-    for (final h in hidden) {
-      if (h.toLowerCase() == filename.toLowerCase()) return true;
-      if (p.basename(h).toLowerCase() == searchBasename) return true;
-    }
-    return false;
+    final lower = filename.toLowerCase();
+    return _hiddenKeys.contains(lower) ||
+        _hiddenKeys.contains(p.basename(lower));
   }
 
   /// Checks if a song is part of a merged group
-  bool isMerged(String filename) {
-    for (final group in mergedGroups.values) {
-      if (group.contains(filename)) return true;
-    }
-    return false;
-  }
+  bool isMerged(String filename) => _filenameToGroupId.containsKey(filename);
 
   /// Gets the merge group ID for a song
-  String? getMergedGroupId(String filename) {
-    for (final entry in mergedGroups.entries) {
-      if (entry.value.contains(filename)) return entry.key;
-    }
-    return null;
-  }
+  String? getMergedGroupId(String filename) => _filenameToGroupId[filename];
 
   /// Gets all songs in the same merge group as the given song
   List<String> getMergedSiblings(String filename) {

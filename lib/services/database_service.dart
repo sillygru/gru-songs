@@ -678,6 +678,31 @@ class DatabaseService {
     });
   }
 
+  // Keep the queue history table from growing unbounded. Caller invokes
+  // this after inserting a new snapshot. We retain the most recent N
+  // snapshots by created_at and drop older ones in a single transaction.
+  static const int _maxQueueSnapshotsRetained = 50;
+
+  Future<void> pruneQueueSnapshots() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+
+    await _userDataDatabase!.transaction((txn) async {
+      final rows = await txn.rawQuery(
+        'SELECT id FROM queue_snapshot ORDER BY created_at DESC '
+        'LIMIT -1 OFFSET ?',
+        [_maxQueueSnapshotsRetained],
+      );
+      if (rows.isEmpty) return;
+      final ids = rows.map((r) => r['id'] as String).toList();
+      final placeholders = List.filled(ids.length, '?').join(',');
+      await txn.delete('queue_snapshot_song',
+          where: 'snapshot_id IN ($placeholders)', whereArgs: ids);
+      await txn.delete('queue_snapshot',
+          where: 'id IN ($placeholders)', whereArgs: ids);
+    });
+  }
+
   Future<List<Map<String, dynamic>>> exportQueueHistory() async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return [];

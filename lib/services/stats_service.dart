@@ -37,6 +37,11 @@ class StatsService {
     }
   }
 
+  // Cap on the in-memory pending list. If repeated flushes fail we
+  // would otherwise grow unbounded; the cap is high enough that brief
+  // outages don't drop events.
+  static const int _maxPendingStats = 500;
+
   Future<void> trackStats(Map<String, dynamic> stats) async {
     final statsWithMeta = Map<String, dynamic>.from(stats);
     statsWithMeta['platform'] = _platform;
@@ -44,6 +49,11 @@ class StatsService {
     statsWithMeta['timestamp'] = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
     _pendingStats.add(statsWithMeta);
+
+    // Drop oldest events if we are in a sustained flush-failure state.
+    if (_pendingStats.length > _maxPendingStats) {
+      _pendingStats.removeRange(0, _pendingStats.length - _maxPendingStats);
+    }
 
     if (!_isBackground || _pendingStats.length >= 50) {
       await flush();

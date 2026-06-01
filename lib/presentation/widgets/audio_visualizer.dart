@@ -19,14 +19,55 @@ class AudioVisualizer extends StatefulWidget {
   State<AudioVisualizer> createState() => _AudioVisualizerState();
 }
 
+class _BarsModel extends ChangeNotifier {
+  final List<double> _barHeights;
+  final List<double> _targetHeights;
+  final Random _random;
+
+  _BarsModel({
+    required int barCount,
+    required Random random,
+  })  : _barHeights = List<double>.filled(barCount, 0.2),
+        _targetHeights = List<double>.filled(barCount, 0.5),
+        _random = random {
+    for (var i = 0; i < _barHeights.length; i++) {
+      _targetHeights[i] = _random.nextDouble() * 0.8 + 0.2;
+    }
+  }
+
+  List<double> get barHeights => _barHeights;
+
+  void tick({required bool isPlaying, required bool isAppActive}) {
+    if (!isPlaying || !isAppActive) {
+      // Don't notify when idle, but keep the static heights so the
+      // last-rendered frame is preserved.
+      return;
+    }
+    for (int i = 0; i < _barHeights.length; i++) {
+      _barHeights[i] =
+          _barHeights[i] + (_targetHeights[i] - _barHeights[i]) * 0.2;
+      if ((_targetHeights[i] - _barHeights[i]).abs() < 0.1) {
+        _targetHeights[i] = _random.nextDouble() * 0.8 + 0.2;
+      }
+    }
+    notifyListeners();
+  }
+
+  void reset(double value) {
+    for (int i = 0; i < _barHeights.length; i++) {
+      _barHeights[i] = value;
+    }
+    notifyListeners();
+  }
+}
+
 class _AudioVisualizerState extends State<AudioVisualizer>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const Duration _targetFrameInterval = Duration(milliseconds: 16);
+  static const int _barCount = 4;
 
   late AnimationController _controller;
-  final List<double> _barHeights = [0.2, 0.5, 0.8, 0.4];
-  final List<double> _targetHeights = [0.8, 0.2, 0.5, 0.9];
-  final Random _random = Random();
+  late _BarsModel _bars;
   bool _isAppActive = true;
   Duration? _lastVisualUpdate;
 
@@ -34,37 +75,30 @@ class _AudioVisualizerState extends State<AudioVisualizer>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _bars = _BarsModel(barCount: _barCount, random: Random());
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 150),
-    )..addListener(() {
-        final elapsed = _controller.lastElapsedDuration;
-        if (elapsed == null) return;
-        if (_lastVisualUpdate != null &&
-            elapsed - _lastVisualUpdate! < _targetFrameInterval) {
-          return;
-        }
-        _lastVisualUpdate = elapsed;
-
-        if (widget.isPlaying && _isAppActive && mounted) {
-          setState(() {
-            for (int i = 0; i < _barHeights.length; i++) {
-              // Move current height towards target
-              _barHeights[i] =
-                  _barHeights[i] + (_targetHeights[i] - _barHeights[i]) * 0.2;
-
-              // If close to target, pick a new target
-              if ((_targetHeights[i] - _barHeights[i]).abs() < 0.1) {
-                _targetHeights[i] = _random.nextDouble() * 0.8 + 0.2;
-              }
-            }
-          });
-        }
-      });
+    )..addListener(_onControllerTick);
 
     if (widget.isPlaying) {
       _controller.repeat();
     }
+  }
+
+  void _onControllerTick() {
+    final elapsed = _controller.lastElapsedDuration;
+    if (elapsed == null) return;
+    if (_lastVisualUpdate != null &&
+        elapsed - _lastVisualUpdate! < _targetFrameInterval) {
+      return;
+    }
+    _lastVisualUpdate = elapsed;
+
+    _bars.tick(
+      isPlaying: widget.isPlaying,
+      isAppActive: _isAppActive,
+    );
   }
 
   @override
@@ -97,11 +131,7 @@ class _AudioVisualizerState extends State<AudioVisualizer>
       } else {
         _controller.stop();
         _lastVisualUpdate = null;
-        if (mounted) {
-          setState(() {
-            _barHeights.fillRange(0, _barHeights.length, 0.3);
-          });
-        }
+        _bars.reset(0.3);
       }
     }
   }
@@ -109,7 +139,9 @@ class _AudioVisualizerState extends State<AudioVisualizer>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _controller.removeListener(_onControllerTick);
     _controller.dispose();
+    _bars.dispose();
     super.dispose();
   }
 
@@ -118,19 +150,27 @@ class _AudioVisualizerState extends State<AudioVisualizer>
     return SizedBox(
       width: widget.width,
       height: widget.height,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: List.generate(_barHeights.length, (index) {
-          return Container(
-            width: widget.width / (_barHeights.length * 2),
-            height: widget.height * _barHeights[index],
-            decoration: BoxDecoration(
-              color: widget.color,
-              borderRadius: BorderRadius.circular(2),
-            ),
+      // AnimatedBuilder only rebuilds the bar row on each frame, not the
+      // outer widget tree, so it skips the parent State.build that
+      // setState() would force.
+      child: ListenableBuilder(
+        listenable: _bars,
+        builder: (context, _) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: List.generate(_barCount, (index) {
+              return Container(
+                width: widget.width / (_barCount * 2),
+                height: widget.height * _bars.barHeights[index],
+                decoration: BoxDecoration(
+                  color: widget.color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              );
+            }),
           );
-        }),
+        },
       ),
     );
   }
