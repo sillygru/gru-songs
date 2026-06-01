@@ -504,10 +504,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
 
+          if (state.currentIndex != null) {
+            _warmThemePalettesAroundIndex(state.currentIndex!);
+          }
+
           // Extract color from cover
           if (song != null && _ref != null) {
             final filenameAtExtraction = newFilename;
-            ColorExtractionService.extractPalette(song.coverUrl)
+            ColorExtractionService.extractPalette(
+              song.coverUrl,
+              useIsolate: true,
+            )
                 .then((palette) {
               if (palette != null &&
                   _currentSongFilename == filenameAtExtraction) {
@@ -1102,7 +1109,30 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final nextSong = _effectiveQueue[nextIndex].song;
     if (nextSong.coverUrl != null) {
-      ColorExtractionService.extractPalette(nextSong.coverUrl);
+      ColorExtractionService.extractPalette(
+        nextSong.coverUrl,
+        useIsolate: true,
+      );
+    }
+  }
+
+  void _warmThemePalette(String? coverUrl) {
+    if (coverUrl == null || coverUrl.isEmpty) return;
+    unawaited(
+      ColorExtractionService.extractPalette(
+        coverUrl,
+        useIsolate: true,
+      ),
+    );
+  }
+
+  void _warmThemePalettesAroundIndex(int centerIndex, {int radius = 1}) {
+    if (_effectiveQueue.isEmpty) return;
+
+    for (int offset = -radius; offset <= radius; offset++) {
+      final index = centerIndex + offset;
+      if (index < 0 || index >= _effectiveQueue.length) continue;
+      _warmThemePalette(_effectiveQueue[index].song.coverUrl);
     }
   }
 
@@ -1463,6 +1493,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
         _effectiveQueue = [...prefix, ...shuffled];
         await _mutateQueueAfterIndex(currentIndex);
+        _warmThemePalettesAroundIndex(currentIndex);
         await _updateCurrentSnapshotSongs();
         _savePlaybackState();
         return;
@@ -2337,6 +2368,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (trackChanged) {
       _resetFading();
     }
+
+    _warmThemePalettesAroundIndex(targetIndex);
 
     final currentPosition = _player.position;
 

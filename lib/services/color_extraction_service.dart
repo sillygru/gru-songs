@@ -155,6 +155,7 @@ class ExtractedPalette {
 
 class ColorExtractionService {
   static Map<String, ExtractedPalette> _paletteCache = {};
+  static final Map<String, Future<ExtractedPalette?>> _pendingPalettes = {};
   static File? _cacheFile;
   static Directory? _paletteDir;
   static bool _initialized = false;
@@ -207,28 +208,50 @@ class ColorExtractionService {
 
     await init();
 
-    if (_paletteCache.containsKey(imagePath)) {
-      return _paletteCache[imagePath];
+    final cached = _paletteCache[imagePath];
+    if (cached != null) {
+      return cached;
     }
 
+    final pending = _pendingPalettes[imagePath];
+    if (pending != null) {
+      return pending;
+    }
+
+    final extraction = _extractAndCachePalette(
+      imagePath,
+      useIsolate: useIsolate,
+    );
+    _pendingPalettes[imagePath] = extraction;
     try {
-      final file = File(imagePath);
-      if (!await file.exists()) return null;
-
-      final palette = await _extractPalette(file, useIsolate: useIsolate);
-      if (palette == null) return null;
-
-      final extractedPalette = ExtractedPalette.create(
-        palette: palette,
-      );
-
-      _paletteCache[imagePath] = extractedPalette;
-      await _saveCacheToDisk();
-      return extractedPalette;
+      return await extraction;
     } catch (e) {
       debugPrint('Error extracting palette from $imagePath: $e');
       return null;
+    } finally {
+      if (identical(_pendingPalettes[imagePath], extraction)) {
+        _pendingPalettes.remove(imagePath);
+      }
     }
+  }
+
+  static Future<ExtractedPalette?> _extractAndCachePalette(
+    String imagePath, {
+    required bool useIsolate,
+  }) async {
+    final file = File(imagePath);
+    if (!await file.exists()) return null;
+
+    final palette = await _extractPalette(file, useIsolate: useIsolate);
+    if (palette == null) return null;
+
+    final extractedPalette = ExtractedPalette.create(
+      palette: palette,
+    );
+
+    _paletteCache[imagePath] = extractedPalette;
+    await _saveCacheToDisk();
+    return extractedPalette;
   }
 
   static Future<List<Color>?> _extractPalette(
@@ -393,6 +416,7 @@ class ColorExtractionService {
 
   static Future<void> clearCache() async {
     _paletteCache.clear();
+    _pendingPalettes.clear();
     if (_cacheFile != null && await _cacheFile!.exists()) {
       await _cacheFile!.delete();
     }
