@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class UpdateReleaseInfo {
@@ -18,6 +19,17 @@ class UpdateService {
       'https://api.github.com/repos/sillygru/wispie/releases/latest';
   static const String latestReleaseUrl =
       'https://github.com/sillygru/wispie/releases/latest';
+  static const String _dismissedVersionKey = 'update_dismissed_version';
+
+  static Future<bool> isVersionDismissed(String tagName) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_dismissedVersionKey) == tagName;
+  }
+
+  static Future<void> dismissVersion(String tagName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_dismissedVersionKey, tagName);
+  }
 
   Future<UpdateReleaseInfo?> fetchLatestRelease() async {
     final client = HttpClient();
@@ -31,8 +43,8 @@ class UpdateService {
           await request.close().timeout(const Duration(seconds: 8));
       if (response.statusCode != HttpStatus.ok) return null;
 
-      final body = await response.transform(utf8.decoder).join();
-      final decoded = jsonDecode(body);
+      final responseBody = await response.transform(utf8.decoder).join();
+      final decoded = jsonDecode(responseBody);
       if (decoded is! Map<String, dynamic>) return null;
 
       final tagName = decoded['tag_name']?.toString().trim();
@@ -40,8 +52,10 @@ class UpdateService {
 
       final releaseUrl = Uri.tryParse(decoded['html_url']?.toString() ?? '') ??
           Uri.parse(latestReleaseUrl);
-
-      return UpdateReleaseInfo(tagName: tagName, releaseUrl: releaseUrl);
+      return UpdateReleaseInfo(
+        tagName: tagName,
+        releaseUrl: releaseUrl,
+      );
     } catch (_) {
       return null;
     } finally {

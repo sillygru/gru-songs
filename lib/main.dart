@@ -16,6 +16,8 @@ import 'services/cache_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
 import 'services/color_extraction_service.dart';
+import 'services/update_service.dart';
+import 'presentation/widgets/update_available_dialog.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -100,6 +102,9 @@ class WispieApp extends ConsumerStatefulWidget {
 
 class _WispieAppState extends ConsumerState<WispieApp>
     with WidgetsBindingObserver {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  bool _updateDialogShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -108,7 +113,11 @@ class _WispieAppState extends ConsumerState<WispieApp>
       unawaited(CacheService.instance.init());
       unawaited(ColorExtractionService.init());
       unawaited(CacheService.instance.scheduleStartupMaintenance());
-      unawaited(ref.read(updateCheckProvider.notifier).prime());
+      unawaited(
+        ref.read(updateCheckProvider.notifier).prime().then((_) {
+          if (mounted) _checkAndShowUpdateDialog();
+        }).catchError((_) {}),
+      );
     });
   }
 
@@ -116,6 +125,35 @@ class _WispieAppState extends ConsumerState<WispieApp>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  Future<void> _checkAndShowUpdateDialog() async {
+    if (_updateDialogShown) return;
+    // Don't interrupt the setup flow.
+    if (!ref.read(setupProvider)) return;
+
+    final state = ref.read(updateCheckProvider);
+    if (!state.hasUpdate) return;
+
+    try {
+      final dismissed =
+          await UpdateService.isVersionDismissed(state.latestTag!);
+      if (!mounted || _updateDialogShown || dismissed) return;
+
+      _updateDialogShown = true;
+      final dialogContext = _navigatorKey.currentContext;
+      if (dialogContext == null || !dialogContext.mounted) return;
+      showUpdateAvailableDialog(
+        dialogContext,
+        currentVersion: state.currentVersion,
+        newVersion: state.latestVersionLabel ?? state.latestTag!,
+        dismissalTag: state.latestTag!,
+        releaseUrl:
+            state.releaseUrl ?? Uri.parse(UpdateService.latestReleaseUrl),
+      );
+    } catch (_) {
+      // Fail silently — update dialogs are best-effort.
+    }
   }
 
   @override
@@ -139,6 +177,7 @@ class _WispieAppState extends ConsumerState<WispieApp>
     return MaterialApp(
       title: 'Wispie',
       debugShowCheckedModeBanner: false,
+      navigatorKey: _navigatorKey,
       theme: AppTheme.getTheme(themeState),
       home: AnimatedTheme(
         data: AppTheme.getTheme(themeState),

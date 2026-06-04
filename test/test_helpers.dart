@@ -80,8 +80,7 @@ class TestEnvironment {
     // when AudioPlayerManager initializes VolumeMonitorService.
     final volumeChannel = MethodChannel('gru_songs/volume');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(volumeChannel,
-            (MethodCall methodCall) async {
+        .setMockMethodCallHandler(volumeChannel, (MethodCall methodCall) async {
       if (methodCall.method == 'getCurrentVolume') {
         return 1.0;
       }
