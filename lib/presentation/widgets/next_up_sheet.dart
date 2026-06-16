@@ -229,12 +229,12 @@ class _QueueListContent extends StatelessWidget {
       scrollController: scrollController,
       // PERFORMANCE: Fixed item height avoids constructing a prototype widget on every build
       itemExtent: 80.0,
-      cacheExtent:
-          400, // Reduced from 1000 — budget phones can't afford pre-rendering 15 items
+      // ignore: deprecated_member_use
+      cacheExtent: 400,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
       // Keep drag reorder scoped to the explicit handle only.
       buildDefaultDragHandles: false,
-      onReorder: (oldIndex, newIndex) {
+      onReorderItem: (oldIndex, newIndex) {
         HapticFeedback.selectionClick();
         audioManager.reorderQueue(
           currentIndex + 1 + oldIndex,

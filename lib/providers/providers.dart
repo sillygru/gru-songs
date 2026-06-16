@@ -22,8 +22,6 @@ import 'settings_provider.dart';
 
 export 'auto_backup_provider.dart';
 
-enum SyncStatus { idle }
-
 enum MetadataSaveStatus { idle, saving, success, error }
 
 class MetadataSaveState {
@@ -34,50 +32,6 @@ class MetadataSaveState {
     this.status = MetadataSaveStatus.idle,
     this.message = '',
   });
-}
-
-class SyncState {
-  final Map<String, SyncStatus> tasks;
-  final bool hasError;
-
-  SyncState({
-    this.tasks = const {},
-    this.hasError = false,
-  });
-
-  SyncStatus get status {
-    if (hasError) return SyncStatus.idle;
-    return SyncStatus.idle;
-  }
-
-  SyncState copyWith({
-    Map<String, SyncStatus>? tasks,
-    bool? hasError,
-  }) {
-    return SyncState(
-      tasks: tasks ?? this.tasks,
-      hasError: hasError ?? this.hasError,
-    );
-  }
-}
-
-class SyncNotifier extends Notifier<SyncState> {
-  @override
-  SyncState build() => SyncState();
-
-  void updateTask(String task, SyncStatus status) {
-    final newTasks = Map<String, SyncStatus>.from(state.tasks);
-    newTasks[task] = status;
-    state = state.copyWith(tasks: newTasks, hasError: false);
-  }
-
-  void setError() => state = state.copyWith(hasError: true);
-
-  void setUpToDate() {
-    final newTasks = Map<String, SyncStatus>.from(state.tasks);
-    newTasks.forEach((key, value) => newTasks[key] = SyncStatus.idle);
-    state = state.copyWith(tasks: newTasks, hasError: false);
-  }
 }
 
 class MetadataSaveNotifier extends Notifier<MetadataSaveState> {
@@ -235,9 +189,6 @@ class UpdateCheckNotifier extends Notifier<UpdateCheckState> {
   }
 }
 
-final syncProvider =
-    NotifierProvider<SyncNotifier, SyncState>(SyncNotifier.new);
-
 final metadataSaveProvider =
     NotifierProvider<MetadataSaveNotifier, MetadataSaveState>(
         MetadataSaveNotifier.new);
@@ -375,9 +326,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       _debounceTimer?.cancel();
     });
 
-    final userData = ref.read(userDataProvider);
+    final userData = ref.watch(userDataProvider);
 
-    // 2. Load from SQLite
     final cached = await DatabaseService.instance.getAllSongs();
     if (cached.isNotEmpty) {
       final filtered =
@@ -498,7 +448,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             .toList();
       }
 
-      // Extract feat. artists from titles (in-memory transform only)
       if (settings.extractFeatArtists) {
         uniqueSongs = uniqueSongs.map(_extractFeatFromSong).toList();
       }
@@ -807,82 +756,78 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   Future<void> updateSongTitle(Song song, String newTitle) async {
     final notifier = ref.read(metadataSaveProvider.notifier);
     notifier.start();
-    unawaited(() async {
-      try {
-        await ref
-            .read(fileManagerServiceProvider)
-            .updateSongTitle(song, newTitle);
-        if (state.hasValue) {
-          final current = state.value ?? [];
-          state = AsyncValue.data([
-            for (final s in current)
-              if (s.filename == song.filename)
-                Song(
-                  title: newTitle,
-                  artist: s.artist,
-                  album: s.album,
-                  filename: s.filename,
-                  url: s.url,
-                  coverUrl: s.coverUrl,
-                  hasLyrics: s.hasLyrics,
-                  playCount: s.playCount,
-                  duration: s.duration,
-                  mtime: s.mtime,
-                  createdEpochSec: s.createdEpochSec,
-                  songDateEpochSec: s.songDateEpochSec,
-                )
-              else
-                s,
-          ]);
-        }
-        await refresh(isBackground: true);
-        notifier.success();
-      } catch (e) {
-        notifier.error();
-        debugPrint('Failed to update song title: $e');
+    try {
+      await ref
+          .read(fileManagerServiceProvider)
+          .updateSongTitle(song, newTitle);
+      if (state.hasValue) {
+        final current = state.value ?? [];
+        state = AsyncValue.data([
+          for (final s in current)
+            if (s.filename == song.filename)
+              Song(
+                title: newTitle,
+                artist: s.artist,
+                album: s.album,
+                filename: s.filename,
+                url: s.url,
+                coverUrl: s.coverUrl,
+                hasLyrics: s.hasLyrics,
+                playCount: s.playCount,
+                duration: s.duration,
+                mtime: s.mtime,
+                createdEpochSec: s.createdEpochSec,
+                songDateEpochSec: s.songDateEpochSec,
+              )
+            else
+              s,
+        ]);
       }
-    }());
+      await refresh(isBackground: true);
+      notifier.success();
+    } catch (e) {
+      notifier.error();
+      debugPrint('Failed to update song title: $e');
+    }
   }
 
   Future<void> updateSongMetadata(
       Song song, String title, String artist, String album) async {
     final notifier = ref.read(metadataSaveProvider.notifier);
     notifier.start();
-    unawaited(() async {
-      try {
-        await ref
-            .read(fileManagerServiceProvider)
-            .updateSongMetadata(song, title, artist, album);
-        if (state.hasValue) {
-          final current = state.value ?? [];
-          state = AsyncValue.data([
-            for (final s in current)
-              if (s.filename == song.filename)
-                Song(
-                  title: title,
-                  artist: artist,
-                  album: album,
-                  filename: s.filename,
-                  url: s.url,
-                  coverUrl: s.coverUrl,
-                  hasLyrics: s.hasLyrics,
-                  playCount: s.playCount,
-                  duration: s.duration,
-                  mtime: s.mtime,
-                  createdEpochSec: s.createdEpochSec,
-                  songDateEpochSec: s.songDateEpochSec,
-                )
-              else
-                s,
-          ]);
-        }
-        await refresh(isBackground: true);
-        notifier.success();
-      } catch (e) {
-        notifier.error();
-        debugPrint('Failed to update song metadata: $e');
+    try {
+      await ref
+          .read(fileManagerServiceProvider)
+          .updateSongMetadata(song, title, artist, album);
+      if (state.hasValue) {
+        final current = state.value ?? [];
+        state = AsyncValue.data([
+          for (final s in current)
+            if (s.filename == song.filename)
+              Song(
+                title: title,
+                artist: artist,
+                album: album,
+                filename: s.filename,
+                url: s.url,
+                coverUrl: s.coverUrl,
+                hasLyrics: s.hasLyrics,
+                playCount: s.playCount,
+                duration: s.duration,
+                mtime: s.mtime,
+                createdEpochSec: s.createdEpochSec,
+                songDateEpochSec: s.songDateEpochSec,
+              )
+            else
+              s,
+        ]);
       }
-    }());
+      await refresh(isBackground: true);
+      notifier.success();
+    } catch (e) {
+      notifier.error();
+      debugPrint('Failed to update song metadata: $e');
+    }
   }
 
   Future<void> updateSongCover(Song song, String? imagePath) async {
@@ -1166,14 +1111,11 @@ final recommendationsProvider = Provider<List<Song>>((ref) {
 
   if (quickPicks == null) return [];
 
-  final result = <Song>[];
-  for (final ps in quickPicks.songs) {
-    final song =
-        allSongs.where((s) => s.filename == ps.songFilename).firstOrNull;
-    if (song != null) result.add(song);
-  }
-
-  return result;
+  final songByFilename = {for (final s in allSongs) s.filename: s};
+  return quickPicks.songs
+      .map((ps) => songByFilename[ps.songFilename])
+      .whereType<Song>()
+      .toList();
 });
 
 final playCountsProvider = Provider<Map<String, int>>((ref) {
@@ -1188,15 +1130,19 @@ final playCountsProvider = Provider<Map<String, int>>((ref) {
 });
 
 final artistListProvider = FutureProvider<List<String>>((ref) async {
-  // Watch songsProvider to refresh when library changes
   ref.watch(songsProvider);
-  return DatabaseService.instance.getArtists();
+  if (ref.watch(songsProvider).hasValue) {
+    return DatabaseService.instance.getArtists();
+  }
+  return [];
 });
 
 final albumListProvider = FutureProvider<List<String>>((ref) async {
-  // Watch songsProvider to refresh when library changes
   ref.watch(songsProvider);
-  return DatabaseService.instance.getAlbums();
+  if (ref.watch(songsProvider).hasValue) {
+    return DatabaseService.instance.getAlbums();
+  }
+  return [];
 });
 
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(() {

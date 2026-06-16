@@ -118,7 +118,7 @@ void main() {
         expect(listenEvent.eventType, 'listen');
         expect(skipEvent.eventType, 'skip');
       } finally {
-        testDb.dispose();
+        await testDb.close();
         DatabaseService.instance = previousDb;
       }
     });

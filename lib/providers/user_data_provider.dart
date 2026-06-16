@@ -26,8 +26,6 @@ class UserDataState {
   final List<String> removedRecommendations;
   final bool isLoading;
 
-  // Pre-computed lookups to make membership checks O(1).
-  // Rebuilt in the constructor on every state change.
   final Set<String> _favoriteKeys;
   final Set<String> _suggestLessKeys;
   final Set<String> _hiddenKeys;
@@ -45,10 +43,15 @@ class UserDataState {
     this.recommendationPreferences = const {},
     this.removedRecommendations = const [],
     this.isLoading = false,
-  })  : _favoriteKeys = _buildFilenameKeys(favorites),
-        _suggestLessKeys = _buildFilenameKeys(suggestLess),
-        _hiddenKeys = _buildFilenameKeys(hidden),
-        _filenameToGroupId = _buildFilenameToGroupId(mergedGroups);
+    Set<String>? favoriteKeys,
+    Set<String>? suggestLessKeys,
+    Set<String>? hiddenKeys,
+    Map<String, String>? filenameToGroupId,
+  })  : _favoriteKeys = favoriteKeys ?? _buildFilenameKeys(favorites),
+        _suggestLessKeys = suggestLessKeys ?? _buildFilenameKeys(suggestLess),
+        _hiddenKeys = hiddenKeys ?? _buildFilenameKeys(hidden),
+        _filenameToGroupId =
+            filenameToGroupId ?? _buildFilenameToGroupId(mergedGroups);
 
   static Set<String> _buildFilenameKeys(List<String> filenames) {
     if (filenames.isEmpty) return const <String>{};
@@ -168,6 +171,10 @@ class UserDataState {
       removedRecommendations:
           removedRecommendations ?? this.removedRecommendations,
       isLoading: isLoading ?? this.isLoading,
+      favoriteKeys: favorites != null ? null : _favoriteKeys,
+      suggestLessKeys: suggestLess != null ? null : _suggestLessKeys,
+      hiddenKeys: hidden != null ? null : _hiddenKeys,
+      filenameToGroupId: mergedGroups != null ? null : _filenameToGroupId,
     );
   }
 }
@@ -301,11 +308,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
       );
       _updateManager();
 
-      if (_latestSongs != null) {
-        await updateRecommendationPlaylists(force: true);
-      }
-
-      // Try to update recommendations if they are old or missing
       await updateRecommendationPlaylists(force: true);
     } catch (e) {
       debugPrint('Error loading local user data: $e');
@@ -939,15 +941,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _updateManager();
   }
 
-  /// Removes a song from its merge group
   Future<void> unmergeSong(String filename) async {
-    // Find the group and check if we're removing the priority song
-    for (final entry in state.mergedGroups.entries) {
-      if (entry.value.contains(filename)) {
-        break;
-      }
-    }
-
     await DatabaseService.instance.removeSongFromMergedGroup(filename);
 
     // Update state

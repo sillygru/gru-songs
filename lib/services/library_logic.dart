@@ -80,35 +80,31 @@ class LibraryLogic {
         break;
 
       case SongSortOrder.playCount:
-        sorted.sort(
-            (a, b) => b.playCount.compareTo(a.playCount)); // Most played first
-
+        sorted.sort((a, b) {
+          final countA = playCounts?[a.filename] ?? a.playCount;
+          final countB = playCounts?[b.filename] ?? b.playCount;
+          return countB.compareTo(countA);
+        });
         break;
 
       case SongSortOrder.recommended:
         if (userData == null || shuffleConfig == null) {
-          // Fallback to title if data is missing
-
-          sorted.sort(
-              (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-
+          sorted.sort((a, b) {
+            final titleA = lowerTitle[a.filename]!;
+            final titleB = lowerTitle[b.filename]!;
+            return titleA.compareTo(titleB);
+          });
           break;
         }
 
-        // Calculate max play count for consistent mode logic
-
         int maxPlayCount = 0;
-
         if (playCounts != null && playCounts.isNotEmpty) {
           maxPlayCount = playCounts.values.fold(0, max);
         }
 
         double calculateScore(Song song) {
           double weight = 1.0;
-
           final count = playCounts?[song.filename] ?? 0;
-
-          // 1. User Preferences
 
           if (userData.isFavorite(song.filename)) {
             if (shuffleConfig.personality == ShufflePersonality.consistent) {
@@ -125,8 +121,6 @@ class LibraryLogic {
             weight *= 0.2;
           }
 
-          // 2. Personality Weights
-
           if (shuffleConfig.personality == ShufflePersonality.explorer) {
             if (count == 0) {
               weight *= 1.2;
@@ -134,28 +128,20 @@ class LibraryLogic {
           } else if (shuffleConfig.personality ==
               ShufflePersonality.consistent) {
             int threshold = 10;
-
             if (maxPlayCount < 10) {
               threshold = max(1, (maxPlayCount * 0.7).floor());
             } else if (maxPlayCount < 20) {
               threshold = 5;
             }
-
             if (count >= threshold && count > 0) {
               weight *= 1.3;
             }
           }
 
-          // Add a very small tie-breaker based on title to keep sort stable
-
-          double tieBreaker =
-              (song.title.toLowerCase().hashCode % 1000) / 1000000.0;
-
-          return weight + tieBreaker;
+          return weight;
         }
 
         sorted.sort((a, b) => calculateScore(b).compareTo(calculateScore(a)));
-
         break;
 
       case SongSortOrder.songDate:
@@ -235,13 +221,19 @@ class LibraryLogic {
       final artist = song.artist.isEmpty ? 'Unknown Artist' : song.artist;
       artistMap.putIfAbsent(artist, () => []).add(song);
     }
-    // Sort songs within each artist by album then title
     for (var artist in artistMap.keys) {
-      artistMap[artist]!.sort((a, b) {
+      final songs = artistMap[artist]!;
+      final lowerAlbum = <String, String>{};
+      final lowerTitle = <String, String>{};
+      for (final s in songs) {
+        lowerAlbum[s.filename] = s.album.toLowerCase();
+        lowerTitle[s.filename] = s.title.toLowerCase();
+      }
+      songs.sort((a, b) {
         int albumCompare =
-            a.album.toLowerCase().compareTo(b.album.toLowerCase());
+            lowerAlbum[a.filename]!.compareTo(lowerAlbum[b.filename]!);
         if (albumCompare != 0) return albumCompare;
-        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        return lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!);
       });
     }
     return artistMap;
@@ -253,10 +245,14 @@ class LibraryLogic {
       final album = song.album.isEmpty ? 'Unknown Album' : song.album;
       albumMap.putIfAbsent(album, () => []).add(song);
     }
-    // Sort songs within each album by title (or track number if we had it)
     for (var album in albumMap.keys) {
-      albumMap[album]!.sort(
-          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      final songs = albumMap[album]!;
+      final lowerTitle = <String, String>{};
+      for (final s in songs) {
+        lowerTitle[s.filename] = s.title.toLowerCase();
+      }
+      songs.sort(
+          (a, b) => lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!));
     }
     return albumMap;
   }

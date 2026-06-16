@@ -73,6 +73,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Shuffle state
   ShuffleState _shuffleState = const ShuffleState();
 
+  // Cache DB query results across rapid shuffle calls
+  Map<String, int>? _cachedPlayCounts;
+  Map<String, ({int count, double avgRatio})>? _cachedSkipStats;
+  List<
+      ({
+        String filename,
+        double timestamp,
+        double playRatio,
+        String eventType
+      })>? _cachedPlayHistory;
+  DateTime? _shuffleCacheTimestamp;
+  static const Duration _shuffleCacheDuration = Duration(seconds: 30);
+
   // Stats tracking state
   String? _currentSongFilename;
   String? _currentPlaylistId;
@@ -226,6 +239,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _mergedGroups = mergedGroups;
       _filenameToGroupId = _buildFilenameToGroupId(mergedGroups);
     }
+    _invalidateShuffleCache();
+  }
+
+  void _invalidateShuffleCache() {
+    _cachedPlayCounts = null;
+    _cachedSkipStats = null;
+    _cachedPlayHistory = null;
+    _shuffleCacheTimestamp = null;
   }
 
   static Set<String> _buildFilenameKeys(List<String> filenames) {
@@ -281,6 +302,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _shuffleState = _shuffleState.copyWith(config: config);
     shuffleStateNotifier.value = _shuffleState;
     shuffleNotifier.value = config.enabled;
+    _invalidateShuffleCache();
     _saveShuffleState();
 
     if (applyToCurrentQueue && _effectiveQueue.isNotEmpty) {
@@ -325,42 +347,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _pendingQueuePlaylistId = null;
     pendingQueueNotifier.value = false;
 
-    // Check if we're providing a new context queue (different from current)
-    bool isNewQueue = false;
-    if (contextQueue != null) {
-      if (_originalQueue.isEmpty) {
-        isNewQueue = true;
-      } else {
-        // Compare to see if it's a different queue
-        final currentFilenames =
-            _originalQueue.map((q) => q.song.filename).toSet();
-        final newFilenames = contextQueue.map((s) => s.filename).toSet();
-        isNewQueue = !currentFilenames.containsAll(newFilenames) ||
-            !newFilenames.containsAll(currentFilenames);
-      }
-    }
-
     // Check if song is already in current queue - if so, just jump to it
-    // Skip this optimization if a new context queue is provided (e.g.
-    // switching from library to a playlist), so the queue gets rebuilt
-    // with the correct songs.
+    // regardless of contextQueue.
     final existingIdx = _effectiveQueue.indexWhere(
       (item) => item.song.filename == song.filename,
     );
-    if (existingIdx != -1 && !isNewQueue) {
-      // Song exists in current queue - just seek to it without rebuilding
+    if (existingIdx != -1) {
       await _rebuildQueue(
           initialIndex: existingIdx, startPlaying: startPlaying);
       _savePlaybackState();
       return;
     }
 
-    // 1. Setup Local Queue (Optimistic)
-    if (contextQueue != null) {
-      _originalQueue = contextQueue.map((s) => QueueItem(song: s)).toList();
-      _isRestrictedToOriginal = true;
-    } else {
-      if (_originalQueue.isEmpty) {
+    // 1. Setup Local Queue - preserve existing queue if non-empty
+    bool usedContextQueue = false;
+    if (_originalQueue.isEmpty) {
+      if (contextQueue != null) {
+        _originalQueue = contextQueue.map((s) => QueueItem(song: s)).toList();
+        _isRestrictedToOriginal = true;
+        usedContextQueue = true;
+      } else {
         _originalQueue = [QueueItem(song: song)];
         _isRestrictedToOriginal = false;
       }
@@ -395,9 +401,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       );
     }
 
-    // Only save snapshot for new queues, not for jumping within existing queue
-    if (contextQueue != null && isNewQueue) {
-      await _saveQueueSnapshot(contextQueue, playlistId: playlistId);
+    if (usedContextQueue) {
+      await _saveQueueSnapshot(contextQueue!, playlistId: playlistId);
     }
 
     _savePlaybackState();
@@ -1231,10 +1236,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       // Accumulate usage stats for Level 3 telemetry
       _totalForegroundSeconds += _foregroundDuration;
       _totalBackgroundSeconds += _backgroundDuration;
-
-      if (finalDuration > 5.0) {
-        _addToShuffleHistory(_currentSongFilename!);
-      }
     }
     _foregroundDuration = 0.0;
     _backgroundDuration = 0.0;
@@ -1311,10 +1312,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     } catch (e) {
       debugPrint('AudioPlayerManager: Failed to load usage stats: $e');
     }
-  }
-
-  void _addToShuffleHistory(String filename) {
-    // History is tracked via database play events
   }
 
   // ==================== INIT & QUEUE ====================
@@ -1664,7 +1661,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     final next = _queueMutationChain.then((_) => mutation());
     _queueMutationChain = next.then<void>(
       (_) {},
-      onError: (_, __) {},
+      onError: (e, _) {
+        debugPrint('Queue mutation failed: $e');
+      },
     );
     return next;
   }
@@ -2022,21 +2021,33 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }) async {
     if (items.isEmpty) return [];
 
-    final results = await Future.wait([
-      DatabaseService.instance.getPlayCounts(),
-      DatabaseService.instance.getSkipStats(),
-      DatabaseService.instance
-          .getPlayHistory(limit: _shuffleState.config.historyLimit),
-    ]);
-    final playCounts = results[0] as Map<String, int>;
-    final skipStats = results[1] as Map<String, ({int count, double avgRatio})>;
-    final playHistory = results[2] as List<
-        ({
-          String filename,
-          double timestamp,
-          double playRatio,
-          String eventType
-        })>;
+    final now = DateTime.now();
+    final cacheValid = _shuffleCacheTimestamp != null &&
+        now.difference(_shuffleCacheTimestamp!) < _shuffleCacheDuration;
+
+    if (!cacheValid || _cachedPlayCounts == null) {
+      final results = await Future.wait([
+        DatabaseService.instance.getPlayCounts(),
+        DatabaseService.instance.getSkipStats(),
+        DatabaseService.instance
+            .getPlayHistory(limit: _shuffleState.config.historyLimit),
+      ]);
+      _cachedPlayCounts = results[0] as Map<String, int>;
+      _cachedSkipStats =
+          results[1] as Map<String, ({int count, double avgRatio})>;
+      _cachedPlayHistory = results[2] as List<
+          ({
+            String filename,
+            double timestamp,
+            double playRatio,
+            String eventType
+          })>;
+      _shuffleCacheTimestamp = now;
+    }
+
+    final playCounts = _cachedPlayCounts!;
+    final skipStats = _cachedSkipStats!;
+    final playHistory = _cachedPlayHistory!;
 
     // Build O(1) lookup tables for play history. The naive implementation
     // scanned playHistory for every item on every weight iteration, leading
@@ -2251,7 +2262,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
       }
 
-      if (historyIndex != -1 && historyIndex < 200) {
+      if (historyIndex != -1 &&
+          historyIndex < _shuffleState.config.historyLimit) {
         double basePenaltyPercent;
 
         if (isConsistentMode) {
@@ -2360,6 +2372,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
 
       // Apply skip score adjustment in custom mode
+      // Low skip ratio = user listens to the whole song (boost it)
+      // High skip ratio = user frequently skips (penalize it)
       if (item.type == _VirtualItemType.mergeGroup) {
         double totalSkipRatio = 0;
         int count = 0;
@@ -2372,18 +2386,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
         if (count > 0) {
           final avgSkipRatio = totalSkipRatio / count;
-          if (avgSkipRatio < 0.3) {
+          if (avgSkipRatio > 0.7) {
             weight *= 0.5;
-          } else if (avgSkipRatio > 0.7) {
+          } else if (avgSkipRatio < 0.3) {
             weight *= 1.2;
           }
         }
       } else {
         final skipStat = skipStats[representative.song.filename];
         if (skipStat != null && skipStat.count > 0) {
-          if (skipStat.avgRatio < 0.3) {
+          if (skipStat.avgRatio > 0.7) {
             weight *= 0.5;
-          } else if (skipStat.avgRatio > 0.7) {
+          } else if (skipStat.avgRatio < 0.3) {
             weight *= 1.2;
           }
         }

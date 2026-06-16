@@ -162,9 +162,8 @@ class _QuickActionsSettingsScreenState
               padding: const EdgeInsets.symmetric(horizontal: 16),
               sliver: SliverReorderableList(
                 itemCount: enabledActions.length,
-                onReorder: (oldIndex, newIndex) {
+                onReorderItem: (oldIndex, newIndex) {
                   setState(() {
-                    if (newIndex > oldIndex) newIndex--;
                     final item = enabledActions.removeAt(oldIndex);
                     enabledActions.insert(newIndex, item);
                     _orderedActions = [

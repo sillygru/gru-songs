@@ -285,7 +285,7 @@ class _NextUpScreenState extends ConsumerState<NextUpScreen> {
                         if (visibleUpcomingQueue.isNotEmpty)
                           SliverReorderableList(
                             itemCount: visibleUpcomingQueue.length,
-                            onReorder: (oldIndex, newIndex) {
+                            onReorderItem: (oldIndex, newIndex) {
                               HapticFeedback.selectionClick();
                               final oldItem = visibleUpcomingQueue[oldIndex];
                               final oldAbsoluteIndex = queue.indexWhere(

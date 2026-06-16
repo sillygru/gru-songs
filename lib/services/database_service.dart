@@ -6,6 +6,7 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../models/playlist.dart';
 import '../models/mood_tag.dart';
 import '../models/queue_snapshot.dart';
@@ -1679,7 +1680,7 @@ class DatabaseService {
             ? priorityFilename
             : null;
 
-    final groupId = DateTime.now().millisecondsSinceEpoch.toString();
+    final groupId = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
     await _userDataDatabase!.transaction((txn) async {
@@ -3168,14 +3169,6 @@ class DatabaseService {
         }
       }
     });
-  }
-
-  void dispose() {
-    _statsDatabase?.close();
-    _userDataDatabase?.close();
-    _statsDatabase = null;
-    _userDataDatabase = null;
-    _initCompleter = null;
   }
 
   Future<void> close() async {

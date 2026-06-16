@@ -60,10 +60,8 @@ class SearchFilterNotifier extends Notifier<SearchFilterState> {
 /// Provider for search results
 final searchResultsProvider =
     FutureProvider.family<List<SearchResult>, String>((ref, query) async {
-  // Watch filter state - this is the primary dependency
   final filterState = ref.watch(searchFilterProvider);
 
-  // Read songs and user data without watching to avoid circular dependencies
   final songsAsync = ref.watch(songsProvider);
   final userData = ref.watch(userDataProvider);
   final searchService = ref.read(searchServiceProvider);
@@ -80,50 +78,12 @@ final searchResultsProvider =
         allSongs: songs,
       );
       if (filterState.selectedMoodIds.isEmpty) return results;
-
-      final selectedMoodIds = filterState.selectedMoodIds.toSet();
       return results
-          .where(
-              (r) => userData.songHasAnyMood(r.song.filename, selectedMoodIds))
+          .where((r) => userData.songHasAnyMood(
+              r.song.filename, filterState.selectedMoodIds.toSet()))
           .toList();
     },
     loading: () => [],
     error: (_, __) => [],
   );
 });
-
-/// Provider for debounced search query
-final debouncedSearchQueryProvider =
-    NotifierProvider<DebouncedSearchNotifier, String>(() {
-  return DebouncedSearchNotifier();
-});
-
-/// Notifier that debounces search query changes
-class DebouncedSearchNotifier extends Notifier<String> {
-  @override
-  String build() {
-    return '';
-  }
-
-  void setQuery(String query) {
-    state = query;
-  }
-}
-
-/// Provider for search index stats
-final searchIndexStatsProvider = FutureProvider<SearchIndexStats>((ref) async {
-  final searchService = ref.watch(searchServiceProvider);
-  return searchService.getIndexStats();
-});
-
-/// Mixin for widgets that need search functionality
-mixin SearchMixin<T> {
-  /// Debounces search operations
-  Future<void> debouncedSearch(
-    String query,
-    void Function(String) onSearch,
-  ) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    onSearch(query);
-  }
-}

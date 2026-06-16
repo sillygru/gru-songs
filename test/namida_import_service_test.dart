@@ -110,7 +110,7 @@ void main() {
       });
 
       tearDown(() async {
-        dbService.dispose();
+        await dbService.close();
       });
 
       test('performs full import from Namida backup structure', () async {
