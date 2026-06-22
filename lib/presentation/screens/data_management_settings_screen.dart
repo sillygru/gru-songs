@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
-import '../../services/data_export_service.dart';
+import '../../services/backup_service.dart';
 import '../../services/import_options.dart';
 import '../../services/telemetry_service.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
@@ -43,8 +43,8 @@ class _DataManagementSettingsScreenState
                     final options = await _showExportOptionsDialog();
                     if (options == null) return;
 
-                    final exportService = DataExportService();
-                    await exportService.exportUserData(options: options);
+                    await BackupService.instance
+                        .exportUserData(options: options);
 
                     TelemetryService.instance.trackEvent(
                         'data_management',
@@ -117,14 +117,14 @@ class _DataManagementSettingsScreenState
     );
   }
 
-  Future<ExportOptions?> _showExportOptionsDialog() async {
-    final selectedTypes = <ExportContentType>{
-      ExportContentType.userStats,
-      ExportContentType.userData,
-      ExportContentType.userSettings,
+  Future<BackupOptions?> _showExportOptionsDialog() async {
+    final selectedTypes = <BackupContentType>{
+      BackupContentType.userStats,
+      BackupContentType.userData,
+      BackupContentType.userSettings,
     };
 
-    return showDialog<ExportOptions>(
+    return showDialog<BackupOptions>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
@@ -143,13 +143,13 @@ class _DataManagementSettingsScreenState
                   _buildExportCheckbox(
                     title: 'User Stats',
                     subtitle: 'Play counts, sessions, fun stats',
-                    value: selectedTypes.contains(ExportContentType.userStats),
+                    value: selectedTypes.contains(BackupContentType.userStats),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.userStats);
+                          selectedTypes.add(BackupContentType.userStats);
                         } else {
-                          selectedTypes.remove(ExportContentType.userStats);
+                          selectedTypes.remove(BackupContentType.userStats);
                         }
                       });
                     },
@@ -157,13 +157,13 @@ class _DataManagementSettingsScreenState
                   _buildExportCheckbox(
                     title: 'User Data',
                     subtitle: 'Favorites, hidden, playlists, moods',
-                    value: selectedTypes.contains(ExportContentType.userData),
+                    value: selectedTypes.contains(BackupContentType.userData),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.userData);
+                          selectedTypes.add(BackupContentType.userData);
                         } else {
-                          selectedTypes.remove(ExportContentType.userData);
+                          selectedTypes.remove(BackupContentType.userData);
                         }
                       });
                     },
@@ -172,13 +172,13 @@ class _DataManagementSettingsScreenState
                     title: 'User Settings',
                     subtitle: 'Theme, sort order, preferences',
                     value:
-                        selectedTypes.contains(ExportContentType.userSettings),
+                        selectedTypes.contains(BackupContentType.userSettings),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.userSettings);
+                          selectedTypes.add(BackupContentType.userSettings);
                         } else {
-                          selectedTypes.remove(ExportContentType.userSettings);
+                          selectedTypes.remove(BackupContentType.userSettings);
                         }
                       });
                     },
@@ -187,13 +187,13 @@ class _DataManagementSettingsScreenState
                   _buildExportCheckbox(
                     title: 'Cover Cache',
                     subtitle: 'Album artwork images',
-                    value: selectedTypes.contains(ExportContentType.coverCache),
+                    value: selectedTypes.contains(BackupContentType.coverCache),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.coverCache);
+                          selectedTypes.add(BackupContentType.coverCache);
                         } else {
-                          selectedTypes.remove(ExportContentType.coverCache);
+                          selectedTypes.remove(BackupContentType.coverCache);
                         }
                       });
                     },
@@ -202,13 +202,13 @@ class _DataManagementSettingsScreenState
                     title: 'Library Cache',
                     subtitle: 'Cached song metadata',
                     value:
-                        selectedTypes.contains(ExportContentType.libraryCache),
+                        selectedTypes.contains(BackupContentType.libraryCache),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.libraryCache);
+                          selectedTypes.add(BackupContentType.libraryCache);
                         } else {
-                          selectedTypes.remove(ExportContentType.libraryCache);
+                          selectedTypes.remove(BackupContentType.libraryCache);
                         }
                       });
                     },
@@ -217,13 +217,13 @@ class _DataManagementSettingsScreenState
                     title: 'Search Index',
                     subtitle: 'Indexed search data',
                     value:
-                        selectedTypes.contains(ExportContentType.searchIndex),
+                        selectedTypes.contains(BackupContentType.searchIndex),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.searchIndex);
+                          selectedTypes.add(BackupContentType.searchIndex);
                         } else {
-                          selectedTypes.remove(ExportContentType.searchIndex);
+                          selectedTypes.remove(BackupContentType.searchIndex);
                         }
                       });
                     },
@@ -232,13 +232,13 @@ class _DataManagementSettingsScreenState
                     title: 'Waveform Cache',
                     subtitle: 'Audio waveform data',
                     value:
-                        selectedTypes.contains(ExportContentType.waveformCache),
+                        selectedTypes.contains(BackupContentType.waveformCache),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.waveformCache);
+                          selectedTypes.add(BackupContentType.waveformCache);
                         } else {
-                          selectedTypes.remove(ExportContentType.waveformCache);
+                          selectedTypes.remove(BackupContentType.waveformCache);
                         }
                       });
                     },
@@ -246,13 +246,13 @@ class _DataManagementSettingsScreenState
                   _buildExportCheckbox(
                     title: 'Color Cache',
                     subtitle: 'Album color themes',
-                    value: selectedTypes.contains(ExportContentType.colorCache),
+                    value: selectedTypes.contains(BackupContentType.colorCache),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.colorCache);
+                          selectedTypes.add(BackupContentType.colorCache);
                         } else {
-                          selectedTypes.remove(ExportContentType.colorCache);
+                          selectedTypes.remove(BackupContentType.colorCache);
                         }
                       });
                     },
@@ -261,13 +261,13 @@ class _DataManagementSettingsScreenState
                     title: 'Lyrics Cache',
                     subtitle: 'Stored lyrics data',
                     value:
-                        selectedTypes.contains(ExportContentType.lyricsCache),
+                        selectedTypes.contains(BackupContentType.lyricsCache),
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          selectedTypes.add(ExportContentType.lyricsCache);
+                          selectedTypes.add(BackupContentType.lyricsCache);
                         } else {
-                          selectedTypes.remove(ExportContentType.lyricsCache);
+                          selectedTypes.remove(BackupContentType.lyricsCache);
                         }
                       });
                     },
@@ -284,7 +284,7 @@ class _DataManagementSettingsScreenState
                 onPressed: selectedTypes.isEmpty
                     ? null
                     : () => Navigator.pop(
-                        context, ExportOptions(contentTypes: selectedTypes)),
+                        context, BackupOptions(contentTypes: selectedTypes)),
                 child: const Text("EXPORT"),
               ),
             ],
@@ -412,8 +412,7 @@ class _DataManagementSettingsScreenState
     if (confirmed != true) return;
 
     try {
-      final exportService = DataExportService();
-      final validation = await exportService.validateBackup();
+      final validation = await BackupService.instance.validateBackup();
 
       if (validation == null) return;
 
@@ -436,7 +435,7 @@ class _DataManagementSettingsScreenState
         return;
       }
 
-      final availableCategories = exportService.getAvailableCategories(
+      final availableCategories = BackupService.instance.getAvailableCategories(
         validation.cast<String, dynamic>(),
       );
 
@@ -462,7 +461,7 @@ class _DataManagementSettingsScreenState
         );
       }
 
-      await exportService.performImport(
+      await BackupService.instance.performImport(
         statsDbPath: validation['statsDbPath'],
         dataDbPath: validation['dataDbPath'],
         options: importOptions,

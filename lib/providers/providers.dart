@@ -257,15 +257,11 @@ final bottomDockVisibilityProvider =
 class ScanProgressNotifier extends Notifier<double> {
   @override
   double build() => 0.0;
-  @override
-  set state(double value) => super.state = value;
 }
 
 class IsScanningNotifier extends Notifier<bool> {
   @override
   bool build() => false;
-  @override
-  set state(bool value) => super.state = value;
 }
 
 final scanProgressProvider =
@@ -497,7 +493,11 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
   Future<void> _backgroundScanUpdate(List<Song> existingSongs,
       {bool showIndicator = false}) async {
+    if (_isRefreshing) return;
+
     try {
+      _isRefreshing = true;
+
       // Background scan doesn't trigger the scanning indicator by default
       final songs = await _performFullScan(
           isBackground: true,
@@ -524,13 +524,15 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       }
 
       if (hasChanges) {
-        ref.read(audioPlayerManagerProvider).refreshSongs(songs);
+        ref.read(audioPlayerManagerProvider).refreshSongs(filteredSongs);
         state = AsyncValue.data(filteredSongs);
       }
 
       await _markStartupScanComplete();
     } catch (e) {
       debugPrint('Background scan failed: $e');
+    } finally {
+      _isRefreshing = false;
     }
   }
 
@@ -754,41 +756,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   }
 
   Future<void> updateSongTitle(Song song, String newTitle) async {
-    final notifier = ref.read(metadataSaveProvider.notifier);
-    notifier.start();
-    try {
-      await ref
-          .read(fileManagerServiceProvider)
-          .updateSongTitle(song, newTitle);
-      if (state.hasValue) {
-        final current = state.value ?? [];
-        state = AsyncValue.data([
-          for (final s in current)
-            if (s.filename == song.filename)
-              Song(
-                title: newTitle,
-                artist: s.artist,
-                album: s.album,
-                filename: s.filename,
-                url: s.url,
-                coverUrl: s.coverUrl,
-                hasLyrics: s.hasLyrics,
-                playCount: s.playCount,
-                duration: s.duration,
-                mtime: s.mtime,
-                createdEpochSec: s.createdEpochSec,
-                songDateEpochSec: s.songDateEpochSec,
-              )
-            else
-              s,
-        ]);
-      }
-      await refresh(isBackground: true);
-      notifier.success();
-    } catch (e) {
-      notifier.error();
-      debugPrint('Failed to update song title: $e');
-    }
+    await updateSongMetadata(song, newTitle, song.artist, song.album);
   }
 
   Future<void> updateSongMetadata(
@@ -877,17 +845,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     } catch (e) {
       notifier.error('Failed to update cover');
       debugPrint('Failed to update song cover: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> exportSongCover(Song song, String destinationPath) async {
-    try {
-      await ref
-          .read(fileManagerServiceProvider)
-          .exportSongCover(song, destinationPath);
-    } catch (e) {
-      debugPrint('Failed to export cover: $e');
       rethrow;
     }
   }
@@ -1130,16 +1087,16 @@ final playCountsProvider = Provider<Map<String, int>>((ref) {
 });
 
 final artistListProvider = FutureProvider<List<String>>((ref) async {
-  ref.watch(songsProvider);
-  if (ref.watch(songsProvider).hasValue) {
+  final songsAsync = ref.watch(songsProvider);
+  if (songsAsync.hasValue) {
     return DatabaseService.instance.getArtists();
   }
   return [];
 });
 
 final albumListProvider = FutureProvider<List<String>>((ref) async {
-  ref.watch(songsProvider);
-  if (ref.watch(songsProvider).hasValue) {
+  final songsAsync = ref.watch(songsProvider);
+  if (songsAsync.hasValue) {
     return DatabaseService.instance.getAlbums();
   }
   return [];

@@ -44,16 +44,19 @@ Future<void> main() async {
 
   if (migrated) {
     debugPrint("Data migrated to single-user format. Restarting app...");
-    // Direct exit to force restart/relaunch with new state
-    exit(0);
+    await storage.setIsLocalMode(true);
+    unawaited(Future.microtask(() => runApp(ProviderScope(
+          overrides: [
+            setupProvider
+                .overrideWith(() => InitializedSetupNotifier(isSetupComplete)),
+            authProvider.overrideWith(() => PreloadedAuthNotifier(username)),
+          ],
+          child: const WispieApp(),
+        ))));
+    return;
   }
 
-  // Set local mode by default
   await storage.setIsLocalMode(true);
-
-  if (!isSetupComplete) {
-    // If setup not complete, we might need migration check or fresh start
-  }
 
   runApp(ProviderScope(
     overrides: [

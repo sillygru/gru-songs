@@ -16,7 +16,7 @@ enum PlayerCoverSizingMode {
 }
 
 class Song extends Equatable {
-  static const Set<String> _videoExtensions = {
+  static const Set<String> videoExtensions = {
     '.mp4',
     '.m4v',
     '.mov',
@@ -111,7 +111,7 @@ class Song extends Equatable {
     final dotIndex = filename.lastIndexOf('.');
     if (dotIndex < 0 || dotIndex >= filename.length - 1) return false;
     final ext = filename.substring(dotIndex).toLowerCase();
-    return _videoExtensions.contains(ext);
+    return videoExtensions.contains(ext);
   }
 }
 

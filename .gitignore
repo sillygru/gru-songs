@@ -1,4 +1,4 @@
-# Miscellaneous
+# Misc & macOS
 *.class
 *.log
 *.pyc
@@ -11,6 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+._*
 
 # IntelliJ related
 *.iml
@@ -43,7 +44,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-GruSongs.ipa
 
 # Python
 .pytest_cache/
@@ -65,6 +65,4 @@ GruSongs.ipa
 android/build/reports/problems/problems-report.html
 /macos
 /temp
-/.gemini
-setup-project-ramdisk.sh
 /.opencode

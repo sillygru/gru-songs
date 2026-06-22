@@ -30,9 +30,12 @@ class SessionEvent extends Equatable {
     final playRatio = (dbEvent['play_ratio'] as num?)?.toDouble() ??
         (totalLength > 0 ? durationPlayed / totalLength : 0.0);
 
+    final storedType = dbEvent['event_type'] as String?;
+    final computedType = playRatio < _skipRatioThreshold ? 'skip' : 'listen';
+
     return SessionEvent(
       songFilename: dbEvent['song_filename'] as String,
-      eventType: playRatio < _skipRatioThreshold ? 'skip' : 'listen',
+      eventType: storedType ?? computedType,
       timestamp: (dbEvent['timestamp'] as num?)?.toDouble() ?? 0,
       durationPlayed: durationPlayed,
       totalLength: totalLength,

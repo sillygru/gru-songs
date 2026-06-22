@@ -13,9 +13,9 @@ class SongRepository {
 
   SongRepository();
 
+  @Deprecated('Songs are managed by the scanner service, not this repository')
   Future<List<Song>> getSongs() async {
-    // Local-only - songs are managed by the scanner service
-    return [];
+    throw UnsupportedError('Songs are managed by the scanner service');
   }
 
   /// Gets lyrics from embedded metadata in the audio file using FFmpeg.

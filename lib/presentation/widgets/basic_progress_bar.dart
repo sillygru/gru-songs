@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -23,6 +24,7 @@ class _BasicProgressBarState extends State<BasicProgressBar> {
   final ValueNotifier<double> _dragProgressNotifier = ValueNotifier(0.0);
   bool _isDragging = false;
   String _formattedTotalTime = '';
+  StreamSubscription<PlayerState>? _playerStateSubscription;
 
   @override
   void initState() {
@@ -30,7 +32,7 @@ class _BasicProgressBarState extends State<BasicProgressBar> {
     _positionNotifier.value = widget.player.position;
     _formattedTotalTime = _formatDuration(widget.total);
 
-    widget.player.playerStateStream.listen((state) {
+    _playerStateSubscription = widget.player.playerStateStream.listen((state) {
       if (mounted && state.playing) {
         _startUpdating();
       }
@@ -61,6 +63,7 @@ class _BasicProgressBarState extends State<BasicProgressBar> {
 
   @override
   void dispose() {
+    _playerStateSubscription?.cancel();
     _positionNotifier.dispose();
     _dragProgressNotifier.dispose();
     super.dispose();

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../services/backup_service.dart';
-import '../../services/data_export_service.dart';
 import '../../services/database_service.dart';
 import '../../services/import_options.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
@@ -94,10 +93,9 @@ class _BackupManagementScreenState
   }
 
   Future<void> _restoreBackup(BackupInfo backupInfo) async {
-    final exportService = DataExportService();
     Map<String, dynamic>? validation;
     try {
-      validation = await exportService.validateBackup();
+      validation = await BackupService.instance.validateBackup();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -117,7 +115,7 @@ class _BackupManagementScreenState
     }
 
     final availableCategories =
-        exportService.getAvailableCategories(validation);
+        BackupService.instance.getAvailableCategories(validation);
 
     if (!mounted) return;
 

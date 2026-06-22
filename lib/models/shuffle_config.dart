@@ -48,25 +48,26 @@ class ShuffleConfig extends Equatable {
 
   factory ShuffleConfig.fromJson(Map<String, dynamic> json) {
     return ShuffleConfig(
-      enabled: json['enabled'] ?? false,
-      antiRepeatEnabled: json['anti_repeat_enabled'] ?? true,
-      streakBreakerEnabled: json['streak_breaker_enabled'] ?? true,
-      favoriteMultiplier: (json['favorite_multiplier'] ?? 1.2).toDouble(),
+      enabled: (json['enabled'] as bool?) ?? false,
+      antiRepeatEnabled: (json['anti_repeat_enabled'] as bool?) ?? true,
+      streakBreakerEnabled: (json['streak_breaker_enabled'] as bool?) ?? true,
+      favoriteMultiplier:
+          ((json['favorite_multiplier'] as num?) ?? 1.2).toDouble(),
       suggestLessMultiplier:
-          (json['suggest_less_multiplier'] ?? 0.2).toDouble(),
-      historyLimit: json['history_limit'] ?? 200,
-      personality: _parsePersonality(json['personality']),
+          ((json['suggest_less_multiplier'] as num?) ?? 0.2).toDouble(),
+      historyLimit: (json['history_limit'] as int?) ?? 200,
+      personality: _parsePersonality(json['personality'] as String?),
       // Custom mode - Simple
-      avoidRepeatingSongs: json['avoid_repeating_songs'] ?? true,
-      avoidRepeatingArtists: json['avoid_repeating_artists'] ?? true,
-      avoidRepeatingAlbums: json['avoid_repeating_albums'] ?? true,
-      favorLeastPlayed: json['favor_least_played'] ?? true,
+      avoidRepeatingSongs: (json['avoid_repeating_songs'] as bool?) ?? true,
+      avoidRepeatingArtists: (json['avoid_repeating_artists'] as bool?) ?? true,
+      avoidRepeatingAlbums: (json['avoid_repeating_albums'] as bool?) ?? true,
+      favorLeastPlayed: (json['favor_least_played'] as bool?) ?? true,
       // Custom mode - Advanced
-      leastPlayedWeight: json['least_played_weight'] ?? 0,
-      mostPlayedWeight: json['most_played_weight'] ?? 0,
-      favoritesWeight: json['favorites_weight'] ?? 0,
-      suggestLessWeight: json['suggest_less_weight'] ?? 0,
-      playlistSongsWeight: json['playlist_songs_weight'] ?? 0,
+      leastPlayedWeight: (json['least_played_weight'] as int?) ?? 0,
+      mostPlayedWeight: (json['most_played_weight'] as int?) ?? 0,
+      favoritesWeight: (json['favorites_weight'] as int?) ?? 0,
+      suggestLessWeight: (json['suggest_less_weight'] as int?) ?? 0,
+      playlistSongsWeight: (json['playlist_songs_weight'] as int?) ?? 0,
     );
   }
 

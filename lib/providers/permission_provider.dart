@@ -12,19 +12,3 @@ final storagePermissionProvider = FutureProvider<bool>((ref) async {
   }
   return true;
 });
-
-final requestStoragePermissionProvider =
-    Provider<Future<bool> Function()>((ref) {
-  return () async {
-    if (Platform.isAndroid) {
-      final status = await Permission.manageExternalStorage.request();
-      ref.invalidate(storagePermissionProvider);
-      return status.isGranted;
-    } else if (Platform.isIOS) {
-      final status = await Permission.photos.request();
-      ref.invalidate(storagePermissionProvider);
-      return status.isGranted || status.isLimited;
-    }
-    return true;
-  };
-});

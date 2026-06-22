@@ -10,6 +10,7 @@ import '../models/song.dart';
 import '../models/queue_item.dart';
 import '../models/queue_snapshot.dart';
 import '../models/shuffle_config.dart';
+import '../domain/services/shuffle_weight_service.dart';
 import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
@@ -2220,199 +2221,86 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     Map<String, int> historyIndexByFilename,
     Map<String, double> playRatioByFilename,
   ) {
-    double weight = 1.0;
     final representative = item.representative;
     final config = _shuffleState.config;
 
-    int groupPlayCount = 0;
+    final bool isCustomMode = config.personality == ShufflePersonality.custom;
+
+    // Compute merge-group aggregates, or use single-item values directly.
+    int groupPlayCount;
+    bool isFavorite;
+    bool isSuggestLess;
+    int? historyIndex;
+    double? playRatioInHistory;
+    int? skipCount;
+    double? skipAvgRatio;
+
     if (item.type == _VirtualItemType.mergeGroup) {
+      groupPlayCount = 0;
+      isFavorite = false;
+      isSuggestLess = false;
+      double totalSkipRatio = 0.0;
+      int skipItems = 0;
+
+      int? bestHistoryIndex;
+
       for (final queueItem in item.items) {
         groupPlayCount += playCounts[queueItem.song.filename] ?? 0;
+
+        if (_isFavorite(queueItem.song.filename)) isFavorite = true;
+        if (_isSuggestLess(queueItem.song.filename)) isSuggestLess = true;
+
+        final idx = historyIndexByFilename[queueItem.song.filename];
+        if (idx != null &&
+            (bestHistoryIndex == null || idx < bestHistoryIndex)) {
+          bestHistoryIndex = idx;
+          playRatioInHistory = playRatioByFilename[queueItem.song.filename];
+        }
+
+        if (isCustomMode) {
+          final ss = skipStats[queueItem.song.filename];
+          if (ss != null && ss.count > 0) {
+            totalSkipRatio += ss.avgRatio;
+            skipItems++;
+          }
+        }
+      }
+
+      historyIndex = bestHistoryIndex;
+
+      if (isCustomMode && skipItems > 0) {
+        skipCount = skipItems;
+        skipAvgRatio = totalSkipRatio / skipItems;
       }
     } else {
       groupPlayCount = playCounts[representative.song.filename] ?? 0;
-    }
+      isFavorite = _isFavorite(representative.song.filename);
+      isSuggestLess = _isSuggestLess(representative.song.filename);
+      historyIndex = historyIndexByFilename[representative.song.filename];
+      playRatioInHistory = playRatioByFilename[representative.song.filename];
 
-    final bool isConsistentMode =
-        config.personality == ShufflePersonality.consistent;
-    final bool isCustomMode = config.personality == ShufflePersonality.custom;
-    final bool shouldAvoidRepeatingSongs = config.antiRepeatEnabled &&
-        (isCustomMode ? config.avoidRepeatingSongs : !isConsistentMode);
-
-    if (shouldAvoidRepeatingSongs && historyIndexByFilename.isNotEmpty) {
-      int historyIndex = -1;
-      double playRatioInHistory = 0.0;
-
-      if (item.type == _VirtualItemType.mergeGroup) {
-        // Pick the smallest (most recent) index across all group members.
-        for (final queueItem in item.items) {
-          final idx = historyIndexByFilename[queueItem.song.filename];
-          if (idx != null && (historyIndex == -1 || idx < historyIndex)) {
-            historyIndex = idx;
-            playRatioInHistory = playRatioByFilename[queueItem.song.filename] ??
-                playRatioInHistory;
-          }
-        }
-      } else {
-        historyIndex =
-            historyIndexByFilename[representative.song.filename] ?? -1;
-        if (historyIndex != -1) {
-          playRatioInHistory =
-              playRatioByFilename[representative.song.filename] ?? 0.0;
-        }
-      }
-
-      if (historyIndex != -1 &&
-          historyIndex < _shuffleState.config.historyLimit) {
-        double basePenaltyPercent;
-
-        if (isConsistentMode) {
-          if (historyIndex < 10) {
-            basePenaltyPercent = 60.0;
-          } else if (historyIndex < 20) {
-            basePenaltyPercent = 50.0;
-          } else if (historyIndex < 30) {
-            basePenaltyPercent = 40.0;
-          } else if (historyIndex < 40) {
-            basePenaltyPercent = 30.0;
-          } else if (historyIndex < 50) {
-            basePenaltyPercent = 20.0;
-          } else if (historyIndex < 60) {
-            basePenaltyPercent = 15.0;
-          } else if (historyIndex < 80) {
-            basePenaltyPercent = 10.0;
-          } else if (historyIndex < 100) {
-            basePenaltyPercent = 5.0;
-          } else {
-            basePenaltyPercent = 0.0;
-          }
-        } else {
-          if (historyIndex < 10) {
-            basePenaltyPercent = 95.0;
-          } else if (historyIndex < 20) {
-            basePenaltyPercent = 90.0;
-          } else if (historyIndex < 30) {
-            basePenaltyPercent = 80.0;
-          } else if (historyIndex < 40) {
-            basePenaltyPercent = 70.0;
-          } else if (historyIndex < 50) {
-            basePenaltyPercent = 60.0;
-          } else if (historyIndex < 60) {
-            basePenaltyPercent = 50.0;
-          } else if (historyIndex < 80) {
-            basePenaltyPercent = 40.0;
-          } else if (historyIndex < 100) {
-            basePenaltyPercent = 30.0;
-          } else if (historyIndex < 120) {
-            basePenaltyPercent = 20.0;
-          } else if (historyIndex < 150) {
-            basePenaltyPercent = 10.0;
-          } else {
-            basePenaltyPercent = 5.0;
-          }
-        }
-
-        double penaltyMultiplier = basePenaltyPercent / 100.0;
-        if (playRatioInHistory >= 0.9) {
-          penaltyMultiplier *= 1.2;
-        }
-
-        weight *= (1.0 - penaltyMultiplier.clamp(0.0, 0.95));
-      }
-    }
-
-    if (config.streakBreakerEnabled && prev != null) {
-      final prevArtist = prev.representative.song.artist.toLowerCase().trim();
-      final currentArtist = representative.song.artist.toLowerCase().trim();
-
-      if (prevArtist.isNotEmpty &&
-          currentArtist.isNotEmpty &&
-          prevArtist == currentArtist) {
-        weight *= 0.1;
-      }
-
-      final prevAlbum = prev.representative.song.album.toLowerCase().trim();
-      final currentAlbum = representative.song.album.toLowerCase().trim();
-
-      if (prevAlbum.isNotEmpty &&
-          currentAlbum.isNotEmpty &&
-          prevAlbum == currentAlbum) {
-        weight *= 0.3;
-      }
-    }
-
-    if (isCustomMode) {
-      // Apply favorites weight (-99 to +99, convert to multiplier)
-      final favoriteBoost = config.favoritesWeight / 100.0;
-      final suggestLessPenalty = -config.suggestLessWeight / 100.0;
-
-      if (item.type == _VirtualItemType.mergeGroup) {
-        bool hasFavorite = false;
-        bool hasSuggestLess = false;
-
-        for (final queueItem in item.items) {
-          if (_isFavorite(queueItem.song.filename)) hasFavorite = true;
-          if (_isSuggestLess(queueItem.song.filename)) hasSuggestLess = true;
-        }
-
-        if (hasFavorite && favoriteBoost != 0) {
-          weight *= (1.0 + favoriteBoost);
-        }
-        if (hasSuggestLess && suggestLessPenalty != 0) {
-          weight *= (1.0 + suggestLessPenalty);
-        }
-      } else {
-        if (_isFavorite(representative.song.filename) && favoriteBoost != 0) {
-          weight *= (1.0 + favoriteBoost);
-        }
-        if (_isSuggestLess(representative.song.filename) &&
-            suggestLessPenalty != 0) {
-          weight *= (1.0 + suggestLessPenalty);
-        }
-      }
-
-      // Apply skip score adjustment in custom mode
-      // Low skip ratio = user listens to the whole song (boost it)
-      // High skip ratio = user frequently skips (penalize it)
-      if (item.type == _VirtualItemType.mergeGroup) {
-        double totalSkipRatio = 0;
-        int count = 0;
-        for (final queueItem in item.items) {
-          final skipStat = skipStats[queueItem.song.filename];
-          if (skipStat != null && skipStat.count > 0) {
-            totalSkipRatio += skipStat.avgRatio;
-            count++;
-          }
-        }
-        if (count > 0) {
-          final avgSkipRatio = totalSkipRatio / count;
-          if (avgSkipRatio > 0.7) {
-            weight *= 0.5;
-          } else if (avgSkipRatio < 0.3) {
-            weight *= 1.2;
-          }
-        }
-      } else {
-        final skipStat = skipStats[representative.song.filename];
-        if (skipStat != null && skipStat.count > 0) {
-          if (skipStat.avgRatio > 0.7) {
-            weight *= 0.5;
-          } else if (skipStat.avgRatio < 0.3) {
-            weight *= 1.2;
-          }
+      if (isCustomMode) {
+        final ss = skipStats[representative.song.filename];
+        if (ss != null && ss.count > 0) {
+          skipCount = ss.count;
+          skipAvgRatio = ss.avgRatio;
         }
       }
     }
 
-    if (!isConsistentMode) {
-      if (maxPlayCount > 0 && groupPlayCount > 0) {
-        final playCountRatio = groupPlayCount / maxPlayCount;
-        final playCountPenalty = playCountRatio * 0.3;
-        weight *= (1.0 - playCountPenalty);
-      }
-    }
-
-    return weight.clamp(0.01, double.infinity);
+    return calculateWeight(
+      item: representative,
+      prev: prev?.representative,
+      config: config,
+      isFavorite: isFavorite,
+      isSuggestLess: isSuggestLess,
+      playCount: groupPlayCount,
+      maxPlayCount: maxPlayCount,
+      historyIndex: historyIndex,
+      playRatioInHistory: playRatioInHistory,
+      skipCount: skipCount,
+      skipAvgRatio: skipAvgRatio,
+    );
   }
 
   Future<void> _rebuildQueue({

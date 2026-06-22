@@ -75,20 +75,9 @@ class ScannerService {
     '.3gp',
   ];
 
-  static const Set<String> _videoExtensions = {
-    '.mp4',
-    '.m4v',
-    '.mov',
-    '.mkv',
-    '.webm',
-    '.avi',
-    '.3gp',
-    '.av1',
-  };
-
   static bool _isVideoFile(String path) {
     final ext = p.extension(path).toLowerCase();
-    return _videoExtensions.contains(ext);
+    return Song.videoExtensions.contains(ext);
   }
 
   static Future<bool> _isValidCoverFile(
@@ -776,7 +765,8 @@ class ScannerService {
 
               // Skip video files if includeVideos is off
               if (!params.includeVideos &&
-                  _videoExtensions.contains(p.extension(path).toLowerCase())) {
+                  Song.videoExtensions
+                      .contains(p.extension(path).toLowerCase())) {
                 continue;
               }
 

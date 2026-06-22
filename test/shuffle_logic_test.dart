@@ -2,104 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wispie/models/song.dart';
 import 'package:wispie/models/queue_item.dart';
 import 'package:wispie/models/shuffle_config.dart';
-import 'dart:math';
-
-// Mock/Simplified version of the weight calculation logic from AudioPlayerManager for isolated testing
-double calculateWeight(
-    QueueItem item,
-    QueueItem? prev,
-    ShuffleState shuffleState,
-    List<String> favorites,
-    List<String> suggestLess,
-    List<
-            ({
-              String filename,
-              double timestamp,
-              double playRatio,
-              String eventType
-            })>
-        playHistory,
-    [Map<String, ({int count, double avgRatio})>? skipStats,
-    int maxPlayCount = 0]) {
-  double weight = 1.0;
-  final song = item.song;
-  final config = shuffleState.config;
-
-  // HIERARCHY 1: Global Recency Penalty (Last 200 songs with play ratio weighting)
-  if (playHistory.isNotEmpty) {
-    int historyIndex = -1;
-    double playRatioInHistory = 0.0;
-
-    for (int i = 0; i < playHistory.length; i++) {
-      if (playHistory[i].filename == song.filename) {
-        historyIndex = i;
-        playRatioInHistory = playHistory[i].playRatio;
-        break;
-      }
-    }
-
-    if (historyIndex != -1 && historyIndex < 200) {
-      int basePenaltyPercent = 100 - (historyIndex ~/ 2);
-
-      double penaltyMultiplier = 1.0;
-      if (playRatioInHistory < 0.25) {
-        penaltyMultiplier = 0.3;
-      } else if (playRatioInHistory < 0.5) {
-        penaltyMultiplier = 0.5;
-      } else if (playRatioInHistory < 0.8) {
-        penaltyMultiplier = 0.8;
-      }
-
-      int adjustedPenaltyPercent =
-          (basePenaltyPercent * penaltyMultiplier).round();
-      weight *= (1.0 - (adjustedPenaltyPercent / 100.0));
-    }
-  }
-
-  // HIERARCHY 2: Global Skip Penalty
-  if (skipStats != null) {
-    final stats = skipStats[song.filename];
-    if (stats != null && stats.count >= 3 && stats.avgRatio <= 0.25) {
-      double skipPenaltyMultiplier = stats.avgRatio;
-      weight *= skipPenaltyMultiplier;
-    }
-  }
-
-  // HIERARCHY 3: Mode-specific weights
-  // 2. Streak Breaker (Same Artist/Album) - only in default mode
-  if (config.personality == ShufflePersonality.defaultMode &&
-      config.streakBreakerEnabled &&
-      prev != null) {
-    final prevSong = prev.song;
-    if (song.artist != 'Unknown Artist' &&
-        prevSong.artist != 'Unknown Artist') {
-      if (song.artist == prevSong.artist) {
-        weight *= 0.5;
-      }
-    }
-    if (song.album != 'Unknown Album' && prevSong.album != 'Unknown Album') {
-      if (song.album == prevSong.album) {
-        weight *= 0.7;
-      }
-    }
-  }
-
-  // LOWER PRIORITY: User Preferences
-  if (favorites.contains(song.filename)) {
-    if (config.personality == ShufflePersonality.consistent) {
-      weight *= 1.4;
-    } else if (config.personality == ShufflePersonality.explorer) {
-      weight *= 1.12;
-    } else {
-      weight *= config.favoriteMultiplier; // 1.2 default
-    }
-  }
-  if (suggestLess.contains(song.filename)) {
-    weight *= 0.2; // 80% penalty
-  }
-
-  return max(0.0001, weight);
-}
+import 'package:wispie/domain/services/shuffle_weight_service.dart';
 
 void main() {
   group('Shuffle Logic Tests', () {
@@ -110,126 +13,244 @@ void main() {
         filename: 's1.mp3',
         url: '');
 
-    final item1 = QueueItem(song: song1);
+    final songOther = Song(
+        title: 'Other',
+        artist: 'Other Artist',
+        album: 'Other Album',
+        filename: 'other.mp3',
+        url: '');
 
-    test('Recency penalty gives 100% penalty for most recent 2 songs', () {
-      final state = const ShuffleState(
-        config: ShuffleConfig(historyLimit: 200),
+    final item1 = QueueItem(song: song1);
+    final itemOther = QueueItem(song: songOther);
+
+    test('Anti-repeat penalty reduces weight for recently played songs', () {
+      final config = const ShuffleConfig(
+        antiRepeatEnabled: true,
+        historyLimit: 200,
       );
 
-      final history = [
-        (
-          filename: 's1.mp3',
-          timestamp: 1000.0,
-          playRatio: 1.0,
-          eventType: 'complete'
-        )
-      ];
-
-      final weight = calculateWeight(item1, null, state, [], [], history);
-      expect(weight, equals(0.0001)); // max(0.0001, 0.0) - 100% penalty
+      // historyIndex 0 = most recent -> 95% penalty in non-consistent mode
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 0,
+      );
+      // 1.0 * (1.0 - 0.95) = 0.05
+      expect(weight, closeTo(0.05, 0.0001));
     });
 
-    test('Favorite boost increases weight (+20% default)', () {
-      final state =
-          const ShuffleState(config: ShuffleConfig(favoriteMultiplier: 1.2));
-      final weight = calculateWeight(item1, null, state, ['s1.mp3'], [], []);
-      expect(weight, equals(1.2));
+    test('Anti-repeat penalty is less severe for older history entries', () {
+      final config = const ShuffleConfig(
+        antiRepeatEnabled: true,
+        historyLimit: 200,
+      );
+
+      // historyIndex 60 -> 50% penalty (non-consistent)
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 60,
+      );
+      // 1.0 * (1.0 - 0.50) = 0.50
+      expect(weight, closeTo(0.50, 0.0001));
     });
 
-    test('Suggest-less penalty decreases weight (80% penalty)', () {
-      final state = const ShuffleState();
-      final weight = calculateWeight(item1, null, state, [], ['s1.mp3'], []);
+    test('High play ratio (>0.9) increases anti-repeat penalty', () {
+      final config = const ShuffleConfig(
+        antiRepeatEnabled: true,
+        historyLimit: 200,
+      );
+
+      // historyIndex 10 -> 90% penalty * 1.2 = 108% clamped to 95%
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 10,
+        playRatioInHistory: 0.95,
+      );
+      // 1.0 * (1.0 - 0.95) = 0.05
+      expect(weight, closeTo(0.05, 0.0001));
+    });
+
+    test('Custom mode favorite boost increases weight', () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.custom,
+        favoritesWeight: 20, // +20% boost
+      );
+
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: true,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+      );
+      // 1.0 * (1.0 + 20/100) = 1.2
+      expect(weight, closeTo(1.2, 0.0001));
+    });
+
+    test('Custom mode suggest-less penalty decreases weight', () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.custom,
+        suggestLessWeight: 80, // -80% = 0.2 multiplier
+      );
+
+      // suggestLessWeight = 80 -> suggestLessPenalty = -80/100 = -0.8
+      // weight *= (1.0 + (-0.8)) = 0.2
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: true,
+        playCount: 0,
+        maxPlayCount: 0,
+      );
       expect(weight, closeTo(0.2, 0.0001));
     });
 
-    test('Weights stack correctly', () {
-      final state = const ShuffleState(
-        config: ShuffleConfig(
-            streakBreakerEnabled: true,
-            favoriteMultiplier: 1.2,
-            historyLimit: 200),
+    test('Custom mode skip boost: low skip ratio (<0.3) increases weight', () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.custom,
       );
 
-      final history = [
-        (
-          filename: 'other.mp3',
-          timestamp: 100.0,
-          playRatio: 1.0,
-          eventType: 'complete'
-        ),
-        (
-          filename: 's1.mp3',
-          timestamp: 99.0,
-          playRatio: 1.0,
-          eventType: 'complete'
-        ),
-      ]; // 2nd last: 100% penalty (1% per 2 songs)
-
-      // s1.mp3 is favorite, 2nd last in history
-      // Base: 1.0
-      // Recency (historyIndex=1, basePenalty=100%, fullListen=100%): * 0.0 = 0.0
-      // Favorite: * 1.2
-      // Result: max(0.0001, 0.0) = 0.0001
-      final weight =
-          calculateWeight(item1, null, state, ['s1.mp3'], [], history);
-      expect(weight, equals(0.0001));
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        skipCount: 5,
+        skipAvgRatio: 0.1,
+      );
+      // 1.0 * 1.2 = 1.2
+      expect(weight, closeTo(1.2, 0.0001));
     });
 
-    test('Play ratio affects history penalty (low ratio = less penalty)', () {
-      final state =
-          const ShuffleState(config: ShuffleConfig(historyLimit: 200));
+    test('Custom mode skip penalty: high skip ratio (>0.7) decreases weight',
+        () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.custom,
+      );
 
-      // Song with low play ratio (0.2) - should get 30% of base penalty
-      final historyLowRatio = [
-        (
-          filename: 's1.mp3',
-          timestamp: 100.0,
-          playRatio: 0.2,
-          eventType: 'skip'
-        )
-      ];
-
-      // historyIndex=0, basePenalty=100%, but playRatio < 0.25 so multiplier=0.3
-      // adjustedPenalty = 100 * 0.3 = 30%
-      // weight = 1.0 * (1.0 - 0.30) = 0.7
-      final weightLow =
-          calculateWeight(item1, null, state, [], [], historyLowRatio);
-      expect(weightLow, closeTo(0.7, 0.0001));
-
-      // Song with high play ratio (0.9) - should get full penalty
-      final historyHighRatio = [
-        (
-          filename: 's1.mp3',
-          timestamp: 100.0,
-          playRatio: 0.9,
-          eventType: 'complete'
-        )
-      ];
-
-      // historyIndex=0, basePenalty=100%, playRatio > 0.8 so multiplier=1.0
-      // adjustedPenalty = 100 * 1.0 = 100%
-      // weight = 1.0 * (1.0 - 1.0) = 0.0 -> max(0.0001, 0.0) = 0.0001
-      final weightHigh =
-          calculateWeight(item1, null, state, [], [], historyHighRatio);
-      expect(weightHigh, equals(0.0001));
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        skipCount: 3,
+        skipAvgRatio: 0.9,
+      );
+      // 1.0 * 0.5 = 0.5
+      expect(weight, closeTo(0.5, 0.0001));
     });
 
-    test('Skip penalty: 3+ skips, low avg ratio (90% reduction)', () {
-      final state = const ShuffleState();
-      final stats = {'s1.mp3': (count: 3, avgRatio: 0.10)};
-      // avgRatio = 0.10, so penalty multiplier = 0.10
-      // weight = 1.0 * 0.10 = 0.10
-      final weight = calculateWeight(item1, null, state, [], [], [], stats);
-      expect(weight, closeTo(0.10, 0.001));
+    test('Streak breaker penalizes same artist', () {
+      final songA = Song(
+          title: 'A',
+          artist: 'Same Artist',
+          album: 'Album X',
+          filename: 'a.mp3',
+          url: '');
+      final songB = Song(
+          title: 'B',
+          artist: 'Same Artist',
+          album: 'Album Y',
+          filename: 'b.mp3',
+          url: '');
+      final itemA = QueueItem(song: songA);
+      final itemB = QueueItem(song: songB);
+
+      final config = const ShuffleConfig(
+        streakBreakerEnabled: true,
+      );
+
+      final weight = calculateWeight(
+        item: itemA,
+        prev: itemB,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+      );
+      // Same artist -> 0.1
+      expect(weight, closeTo(0.1, 0.0001));
     });
 
-    test('Skip penalty: 3+ skips, high avg ratio (no penalty)', () {
-      final state = const ShuffleState();
-      final stats = {'s1.mp3': (count: 3, avgRatio: 0.5)};
-      // avgRatio > 0.25, so no skip penalty applied
-      final weight = calculateWeight(item1, null, state, [], [], [], stats);
-      expect(weight, equals(1.0));
+    test('Lowest weight is clamped to 0.01', () {
+      final config = const ShuffleConfig(
+        antiRepeatEnabled: true,
+        streakBreakerEnabled: true,
+        historyLimit: 200,
+      );
+
+      // historyIndex 0 + same artist should produce very low weight
+      final weight = calculateWeight(
+        item: item1,
+        prev: itemOther,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 0,
+      );
+      expect(weight, greaterThanOrEqualTo(0.01));
+    });
+
+    test('Play count penalty reduces weight for frequently played songs', () {
+      final config = const ShuffleConfig(
+        antiRepeatEnabled: false,
+        streakBreakerEnabled: false,
+      );
+
+      // maxPlayCount = 100, playCount = 80 -> ratio = 0.8
+      // penalty = 0.8 * 0.3 = 0.24
+      // weight = 1.0 * (1.0 - 0.24) = 0.76
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 80,
+        maxPlayCount: 100,
+      );
+      expect(weight, closeTo(0.76, 0.0001));
+    });
+
+    test('No play count penalty in consistent mode', () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.consistent,
+        antiRepeatEnabled: false,
+        streakBreakerEnabled: false,
+      );
+
+      final weight = calculateWeight(
+        item: item1,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 80,
+        maxPlayCount: 100,
+      );
+      // Consistent mode skips the play count penalty -> weight stays 1.0
+      expect(weight, closeTo(1.0, 0.0001));
     });
   });
 }

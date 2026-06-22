@@ -38,10 +38,9 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
   void _scheduleAutoDismiss() {
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
-        _fadeController.forward().then((_) {
+        _fadeController.reverse().then((_) {
           if (mounted) {
             ref.read(autoBackupProvider.notifier).clearLastError();
-            _fadeController.reset();
           }
         });
       }
@@ -57,6 +56,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
       return const SizedBox.shrink();
     }
 
+    _fadeController.value = 1.0;
+
     if (autoBackupState.isRunning) {
       return _buildNotification(
         context,
@@ -65,11 +66,15 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
         subtitle: 'Creating backup...',
         iconColor: Colors.blue,
         showSpinner: true,
+        onDismiss: () {
+          ref.read(autoBackupProvider.notifier).clearLastError();
+        },
       );
     }
 
+    _scheduleAutoDismiss();
+
     if (lastResult.success) {
-      _scheduleAutoDismiss();
       return _buildNotification(
         context,
         icon: Icons.check_circle_rounded,

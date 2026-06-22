@@ -3,49 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wispie/models/song.dart';
 import 'package:wispie/models/queue_item.dart';
 import 'package:wispie/models/shuffle_config.dart';
+import 'package:wispie/domain/services/shuffle_weight_service.dart';
 import 'dart:math';
-
-// Extraction of the logic to be tested
-double calculateWeight(
-    QueueItem item,
-    QueueItem? prev,
-    ShuffleState shuffleState,
-    List<String> favorites,
-    List<String> suggestLess) {
-  double weight = 1.0;
-  final song = item.song;
-  final config = shuffleState.config;
-
-  // User Preferences
-  if (favorites.contains(song.filename)) {
-    if (config.personality == ShufflePersonality.consistent) {
-      weight *= 1.4;
-    } else if (config.personality == ShufflePersonality.explorer) {
-      weight *= 1.12;
-    } else {
-      weight *= config.favoriteMultiplier; // 1.2 default
-    }
-  }
-  if (suggestLess.contains(song.filename)) {
-    weight *= 0.2; // 80% penalty
-  }
-
-  // Streak Breaker (only for default mode)
-  if (config.personality == ShufflePersonality.defaultMode &&
-      config.streakBreakerEnabled &&
-      prev != null) {
-    final prevSong = prev.song;
-    if (song.artist != 'Unknown Artist' &&
-        prevSong.artist != 'Unknown Artist') {
-      if (song.artist == prevSong.artist) weight *= 0.5;
-    }
-    if (song.album != 'Unknown Album' && prevSong.album != 'Unknown Album') {
-      if (song.album == prevSong.album) weight *= 0.7;
-    }
-  }
-
-  return max(0.0001, weight);
-}
 
 List<QueueItem> weightedShuffle(List<QueueItem> items, ShuffleState state,
     List<String> favs, List<String> sl, Random random,
@@ -55,11 +14,26 @@ List<QueueItem> weightedShuffle(List<QueueItem> items, ShuffleState state,
   final remaining = List<QueueItem>.from(items);
   QueueItem? prev = lastItem;
 
+  final config = state.config;
+  final isCustomMode = config.personality == ShufflePersonality.custom;
+
   int iteration = 0;
   while (remaining.isNotEmpty) {
-    final weights = remaining
-        .map((item) => calculateWeight(item, prev, state, favs, sl))
-        .toList();
+    final weights = remaining.map((item) {
+      final isFav = favs.contains(item.song.filename);
+      final isSl = sl.contains(item.song.filename);
+      return calculateWeight(
+        item: item,
+        prev: prev,
+        config: config,
+        isFavorite: isFav,
+        isSuggestLess: isSl,
+        playCount: 0,
+        maxPlayCount: 0,
+        skipCount: isCustomMode ? 0 : null,
+        skipAvgRatio: isCustomMode ? 0.5 : null,
+      );
+    }).toList();
     final totalWeight = weights.fold(0.0, (a, b) => a + b);
 
     if (debug && iteration == 0) {
@@ -105,9 +79,15 @@ void main() {
             filename: 's$i.mp3',
             url: ''));
     final items = songs.map((s) => QueueItem(song: s)).toList();
-    final favorites = ['s0.mp3']; // Only s0 is favorite
-    final state = const ShuffleState(
-        config: ShuffleConfig(enabled: true, favoriteMultiplier: 2.0));
+    final favorites = ['s0.mp3'];
+
+    // Use custom mode with favoritesWeight to get weighted behavior
+    final state = ShuffleState(
+        config: const ShuffleConfig(
+      enabled: true,
+      personality: ShufflePersonality.custom,
+      favoritesWeight: 100, // 2x weight for favorites
+    ));
 
     int s0FirstCount = 0;
     const iterations = 2000;
@@ -121,7 +101,7 @@ void main() {
       }
     }
 
-    // With 20 songs, uniform chance is 5%. With 2x weight, it should be ~2 / (2 + 19) = 2/21 ~= 9.5%
+    // With 20 songs and 2x weight: expected ~ (2) / (2 + 19) = 2/21 ~= 9.5%
     debugPrint(
         's0 (favorite) appeared first $s0FirstCount times out of $iterations');
     expect(s0FirstCount, greaterThan(120));
@@ -139,8 +119,15 @@ void main() {
             url: ''));
     final items = songs.map((s) => QueueItem(song: s)).toList();
     final suggestLess = ['s0.mp3'];
-    final state = const ShuffleState(
-        config: ShuffleConfig(enabled: true, suggestLessMultiplier: 0.2));
+
+    // Use custom mode with suggestLessWeight to get weighted behavior
+    // suggestLessWeight = 80 -> multiplier = 1.0 + (-80/100) = 0.2
+    final state = ShuffleState(
+        config: const ShuffleConfig(
+      enabled: true,
+      personality: ShufflePersonality.custom,
+      suggestLessWeight: 80, // 0.2x weight
+    ));
 
     int s0FirstCount = 0;
     const iterations = 1000;

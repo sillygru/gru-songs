@@ -186,12 +186,3 @@ class MockSharedPreferencesStore extends SharedPreferencesStorePlatform {
     return true;
   }
 }
-
-/// Legacy function for backwards compatibility.
-/// Prefer using [TestEnvironment] for new tests.
-void setUpMockPlugins() {
-  final env = TestEnvironment();
-  env.setUp();
-  // Note: This won't clean up properly in tearDown.
-  // Use TestEnvironment class with setUpAll/tearDownAll instead.
-}

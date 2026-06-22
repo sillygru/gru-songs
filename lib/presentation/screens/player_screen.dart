@@ -54,16 +54,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late AnimationController _controlsController;
   late Animation<double> _artScaleAnimation;
   late Animation<double> _fadeAnimation;
-  static const Set<String> _videoExtensions = {
-    '.mp4',
-    '.m4v',
-    '.mov',
-    '.mkv',
-    '.webm',
-    '.avi',
-    '.3gp',
-  };
-
   bool _hasLyricsForCurrentSong = false;
   String? _lastSongId;
   int _lyricsAvailabilityRequestToken = 0;
@@ -317,7 +307,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   bool _hasVideoExtension(String path) {
     final lowerPath = path.toLowerCase();
-    return _videoExtensions.any(lowerPath.endsWith);
+    return Song.videoExtensions.any(lowerPath.endsWith);
   }
 
   String? _resolveCoverUrl(MediaItem? mediaItem) {

@@ -2,194 +2,198 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wispie/models/song.dart';
 import 'package:wispie/models/queue_item.dart';
 import 'package:wispie/models/shuffle_config.dart';
-import 'dart:math';
-
-// Mock/Simplified version of the weight calculation logic from AudioPlayerManager for isolated testing
-double calculateWeight(
-    QueueItem item,
-    QueueItem? prev,
-    ShuffleState shuffleState,
-    List<String> favorites,
-    List<String> suggestLess,
-    Map<String, int> playCounts,
-    int maxPlayCount,
-    List<
-            ({
-              String filename,
-              double timestamp,
-              double playRatio,
-              String eventType
-            })>
-        playHistory) {
-  double weight = 1.0;
-  final song = item.song;
-  final config = shuffleState.config;
-  final count = playCounts[song.filename] ?? 0;
-
-  // HIERARCHY 1: Global Recency Penalty (applied first)
-  if (playHistory.isNotEmpty) {
-    int historyIndex = -1;
-    double playRatioInHistory = 0.0;
-
-    for (int i = 0; i < playHistory.length; i++) {
-      if (playHistory[i].filename == song.filename) {
-        historyIndex = i;
-        playRatioInHistory = playHistory[i].playRatio;
-        break;
-      }
-    }
-
-    if (historyIndex != -1 && historyIndex < 200) {
-      int basePenaltyPercent = 100 - (historyIndex ~/ 2);
-
-      double penaltyMultiplier = 1.0;
-      if (playRatioInHistory < 0.25) {
-        penaltyMultiplier = 0.3;
-      } else if (playRatioInHistory < 0.5) {
-        penaltyMultiplier = 0.5;
-      } else if (playRatioInHistory < 0.8) {
-        penaltyMultiplier = 0.8;
-      }
-
-      int adjustedPenaltyPercent =
-          (basePenaltyPercent * penaltyMultiplier).round();
-      weight *= (1.0 - (adjustedPenaltyPercent / 100.0));
-    }
-  }
-
-  // HIERARCHY 3: Personality Weights
-  if (config.personality == ShufflePersonality.explorer) {
-    if (maxPlayCount > 0) {
-      final playRatio = count / maxPlayCount;
-      if (playRatio <= 0.4) {
-        double explorerReward = 1.0 + (1.0 - (playRatio / 0.4));
-        weight *= explorerReward;
-      }
-    } else if (count == 0) {
-      weight *= 2.0;
-    }
-  } else if (config.personality == ShufflePersonality.consistent) {
-    int threshold = 10;
-    if (maxPlayCount < 10) {
-      threshold = max(1, (maxPlayCount * 0.7).floor());
-    } else if (maxPlayCount < 20) {
-      threshold = 5;
-    }
-
-    if (count >= threshold && count > 0) {
-      weight *= 1.3;
-    }
-  } else if (config.personality == ShufflePersonality.defaultMode) {
-    if (config.streakBreakerEnabled && prev != null) {
-      final prevSong = prev.song;
-
-      if (song.artist != 'Unknown Artist' &&
-          prevSong.artist != 'Unknown Artist' &&
-          song.artist == prevSong.artist) {
-        weight *= 0.5;
-      }
-      if (song.album != 'Unknown Album' &&
-          prevSong.album != 'Unknown Album' &&
-          song.album == prevSong.album) {
-        weight *= 0.7;
-      }
-    }
-  }
-
-  // LOWER PRIORITY: User Preferences
-  if (favorites.contains(song.filename)) {
-    if (config.personality == ShufflePersonality.consistent) {
-      weight *= 1.4;
-    } else if (config.personality == ShufflePersonality.explorer) {
-      weight *= 1.12;
-    } else {
-      weight *= config.favoriteMultiplier;
-    }
-  }
-  if (suggestLess.contains(song.filename)) {
-    weight *= 0.2;
-  }
-
-  return max(0.0001, weight);
-}
+import 'package:wispie/domain/services/shuffle_weight_service.dart';
 
 void main() {
-  final songNew = Song(
-      title: 'New',
-      artist: 'A',
-      album: 'X',
-      filename: 'new.mp3',
-      url: '',
-      playCount: 0);
-  final songFrequent = Song(
-      title: 'Frequent',
-      artist: 'A',
-      album: 'X',
-      filename: 'freq.mp3',
-      url: '',
-      playCount: 60);
-  final songFav = Song(
-      title: 'Fav',
-      artist: 'B',
-      album: 'Y',
-      filename: 'fav.mp3',
-      url: '',
-      playCount: 20);
+  group('Consistent personality anti-repeat buckets', () {
+    final song = Song(
+        title: 'Test', artist: 'A', album: 'X', filename: 'test.mp3', url: '');
+    final item = QueueItem(song: song);
 
-  final itemNew = QueueItem(song: songNew);
-  final itemFreq = QueueItem(song: songFrequent);
-  final itemFav = QueueItem(song: songFav);
+    final config = const ShuffleConfig(
+      personality: ShufflePersonality.consistent,
+      antiRepeatEnabled: true,
+      historyLimit: 200,
+    );
 
-  group('Personality: EXPLORER', () {
-    final config =
-        const ShuffleConfig(personality: ShufflePersonality.explorer);
-    final state = ShuffleState(config: config);
-
-    test('Explorer gives 2x boost to unplayed songs', () {
-      final weight =
-          calculateWeight(itemNew, null, state, [], [], {'new.mp3': 0}, 60, []);
-      expect(weight, closeTo(2.0, 0.001));
+    test('historyIndex 0-9: 60% penalty', () {
+      final weight = calculateWeight(
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 0,
+      );
+      // 1.0 * (1.0 - 0.60) = 0.40
+      expect(weight, closeTo(0.40, 0.0001));
     });
 
-    test(
-        'Explorer favorite multiplier is 1.12, plus explorer boost for low play ratio',
-        () {
+    test('historyIndex 10-19: 50% penalty', () {
       final weight = calculateWeight(
-          itemFav, null, state, ['fav.mp3'], [], {'fav.mp3': 20}, 60, []);
-      // playRatio = 20/60 = 0.33 (< 0.4)
-      // explorerReward = 1.0 + (1.0 - (0.33/0.4)) = 1.0 + 0.175 = 1.175
-      // favorite = 1.12
-      // total = 1.175 * 1.12 = 1.316
-      expect(weight, closeTo(1.316, 0.02));
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 15,
+      );
+      // 1.0 * (1.0 - 0.50) = 0.50
+      expect(weight, closeTo(0.50, 0.0001));
+    });
+
+    test('historyIndex 50-59: 15% penalty', () {
+      final weight = calculateWeight(
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 55,
+      );
+      // 1.0 * (1.0 - 0.15) = 0.85
+      expect(weight, closeTo(0.85, 0.0001));
+    });
+
+    test('historyIndex >= 100: no penalty in consistent mode', () {
+      final weight = calculateWeight(
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 100,
+      );
+      // basePenaltyPercent = 0.0 -> no penalty
+      expect(weight, closeTo(1.0, 0.0001));
     });
   });
 
-  group('Personality: CONSISTENT', () {
-    final config =
-        const ShuffleConfig(personality: ShufflePersonality.consistent);
-    final state = ShuffleState(config: config);
+  group('Default mode anti-repeat buckets', () {
+    final song = Song(
+        title: 'Test', artist: 'A', album: 'X', filename: 'test.mp3', url: '');
+    final item = QueueItem(song: song);
 
-    test('Consistent gives boost to often played songs', () {
+    final config = const ShuffleConfig(
+      antiRepeatEnabled: true,
+      historyLimit: 200,
+    );
+
+    test('historyIndex 0-9: 95% penalty', () {
       final weight = calculateWeight(
-          itemFreq, null, state, [], [], {'freq.mp3': 60}, 60, []);
-      expect(weight, closeTo(1.3, 0.001));
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 3,
+      );
+      // 1.0 * (1.0 - 0.95) = 0.05
+      expect(weight, closeTo(0.05, 0.0001));
     });
 
-    test('Consistent favorite multiplier is 1.4, plus often-played boost', () {
+    test('historyIndex 100-119: 20% penalty', () {
       final weight = calculateWeight(
-          itemFav, null, state, ['fav.mp3'], [], {'fav.mp3': 20}, 60, []);
-      // fav.mp3 has 20 plays, threshold is 10, so it gets often-played boost
-      // often-played = 1.3
-      // favorite = 1.4
-      // total = 1.3 * 1.4 = 1.82
-      expect(weight, closeTo(1.82, 0.001));
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+        historyIndex: 110,
+      );
+      // 1.0 * (1.0 - 0.20) = 0.80
+      expect(weight, closeTo(0.80, 0.0001));
+    });
+  });
+
+  group('Play count penalty skipped in consistent mode', () {
+    final song = Song(
+        title: 'Test', artist: 'A', album: 'X', filename: 'test.mp3', url: '');
+    final item = QueueItem(song: song);
+
+    test('Consistent mode: no play count penalty', () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.consistent,
+        antiRepeatEnabled: false,
+        streakBreakerEnabled: false,
+      );
+
+      final weight = calculateWeight(
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 90,
+        maxPlayCount: 100,
+      );
+      // Consistent mode skips play count penalty
+      expect(weight, closeTo(1.0, 0.0001));
     });
 
-    test('Consistent adapts to new users (maxPlayCount < 10)', () {
-      // maxPlayCount = 2, threshold = floor(2 * 0.7) = 1
-      final weight =
-          calculateWeight(itemFav, null, state, [], [], {'fav.mp3': 1}, 2, []);
-      expect(weight, closeTo(1.3, 0.001));
+    test('Default mode: play count penalty applies', () {
+      final config = const ShuffleConfig(
+        antiRepeatEnabled: false,
+        streakBreakerEnabled: false,
+      );
+
+      final weight = calculateWeight(
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: false,
+        playCount: 90,
+        maxPlayCount: 100,
+      );
+      // ratio = 0.9, penalty = 0.9 * 0.3 = 0.27, weight = 1.0 * 0.73 = 0.73
+      expect(weight, closeTo(0.73, 0.0001));
+    });
+  });
+
+  group('Custom mode personality', () {
+    final song = Song(
+        title: 'Test', artist: 'A', album: 'X', filename: 'test.mp3', url: '');
+    final item = QueueItem(song: song);
+
+    test('Positive favoritesWeight increases weight', () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.custom,
+        favoritesWeight: 50, // +50%
+      );
+
+      final weight = calculateWeight(
+        item: item,
+        config: config,
+        isFavorite: true,
+        isSuggestLess: false,
+        playCount: 0,
+        maxPlayCount: 0,
+      );
+      // 1.0 * (1.0 + 0.50) = 1.50
+      expect(weight, closeTo(1.50, 0.0001));
+    });
+
+    test('Negative suggestLessWeight decreases weight', () {
+      final config = const ShuffleConfig(
+        personality: ShufflePersonality.custom,
+        suggestLessWeight: 50, // -50% -> 0.5x
+      );
+
+      final weight = calculateWeight(
+        item: item,
+        config: config,
+        isFavorite: false,
+        isSuggestLess: true,
+        playCount: 0,
+        maxPlayCount: 0,
+      );
+      // 1.0 * (1.0 + (-0.50)) = 0.50
+      expect(weight, closeTo(0.50, 0.0001));
     });
   });
 }
