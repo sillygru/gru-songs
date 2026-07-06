@@ -338,9 +338,10 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       return filtered;
     }
 
-    // 3. If no cache, perform initial scan
-    final scanned = await _performFullScan();
-    return scanned.where((s) => !userData.isHidden(s.filename)).toList();
+    // 3. If no cache, return empty immediately and scan in background.
+    //    This avoids blocking the UI on first startup.
+    _scheduleBackgroundScanUpdate([], showIndicator: true);
+    return [];
   }
 
   Future<bool> _shouldRunStartupScan() async {

@@ -21,7 +21,7 @@ jobs:
 
       - name: Set iOS Info.plist values
         run: |
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign --dart-define=TELEMETRY_SECRET=${{ secrets.TELEMETRY_SECRET }}
 
       - name: Package IPA
         run: |

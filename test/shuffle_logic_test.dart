@@ -49,7 +49,7 @@ void main() {
         historyLimit: 200,
       );
 
-      // historyIndex 60 -> 50% penalty (non-consistent)
+      // historyIndex 59 -> 50% penalty (non-consistent)
       final weight = calculateWeight(
         item: item1,
         config: config,
@@ -57,7 +57,7 @@ void main() {
         isSuggestLess: false,
         playCount: 0,
         maxPlayCount: 0,
-        historyIndex: 60,
+        historyIndex: 59,
       );
       // 1.0 * (1.0 - 0.50) = 0.50
       expect(weight, closeTo(0.50, 0.0001));

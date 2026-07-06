@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../services/backup_service.dart';
 import '../../services/import_options.dart';
-import '../../services/telemetry_service.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
 import 'namida_import_screen.dart';
 import 'backup_management_screen.dart';
@@ -45,13 +44,6 @@ class _DataManagementSettingsScreenState
 
                     await BackupService.instance
                         .exportUserData(options: options);
-
-                    TelemetryService.instance.trackEvent(
-                        'data_management',
-                        {
-                          'action': 'export_data',
-                        },
-                        requiredLevel: 2);
                   } catch (e) {
                     if (mounted) {
                       messenger.showSnackBar(
@@ -466,14 +458,6 @@ class _DataManagementSettingsScreenState
         dataDbPath: validation['dataDbPath'],
         options: importOptions,
       );
-
-      TelemetryService.instance.trackEvent(
-          'data_management',
-          {
-            'action': 'import_data',
-            'strategy': 'replace',
-          },
-          requiredLevel: 2);
 
       if (mounted) {
         Navigator.pop(context);

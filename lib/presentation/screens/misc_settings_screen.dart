@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
-import '../../services/telemetry_service.dart';
 
 class MiscSettingsScreen extends ConsumerStatefulWidget {
   const MiscSettingsScreen({super.key});
@@ -54,79 +53,17 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
   }
 
   Widget _buildTelemetryWidget(SettingsState settings) {
-    final levels = [
-      'Level 0',
-      'Level 1',
-      'Level 2',
-      'Level 3',
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.analytics_outlined,
-                  size: 20,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-              const SizedBox(width: 12),
-              const Text(
-                'Telemetry Level',
-                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
-              ),
-              const Spacer(),
-              Text(
-                levels[settings.telemetryLevel.clamp(0, 3)],
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Slider(
-            value: settings.telemetryLevel.toDouble().clamp(0, 3),
-            min: 0,
-            max: 3,
-            divisions: 3,
-            label: levels[settings.telemetryLevel.clamp(0, 3)],
-            onChanged: (val) {
-              ref
-                  .read(settingsProvider.notifier)
-                  .setTelemetryLevel(val.toInt());
-            },
-          ),
-          _buildLevelExplanation(settings.telemetryLevel.clamp(0, 3)),
-        ],
+    return SwitchListTile(
+      secondary: const Icon(Icons.analytics_outlined),
+      title: const Text('Telemetry'),
+      subtitle: const Text(
+        'Help improve Wispie with anonymous usage stats. '
+        'No personal data is collected.',
       ),
-    );
-  }
-
-  Widget _buildLevelExplanation(int level) {
-    final explanations = [
-      '• No data will be shared with developers.',
-      '• Basic app information (version, platform).\n• App startup notification.',
-      '• Everything in level 1.\n• Anonymous usage events (settings changed).\n• Library rescans and data management (import/export).',
-      '• Everything in level 2.\n• Usage data: how often and how long you use the app.\n• Weekly listening statistics (hours played).',
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        explanations[level],
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
+      value: settings.telemetryEnabled,
+      onChanged: (val) {
+        ref.read(settingsProvider.notifier).setTelemetryEnabled(val);
+      },
     );
   }
 
@@ -199,15 +136,6 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
           value: snapshot.data ?? true,
           onChanged: (val) async {
             await ref.read(storageServiceProvider).setPullToRefreshEnabled(val);
-
-            await TelemetryService.instance.trackEvent(
-                'setting_changed',
-                {
-                  'setting': 'pull_to_refresh_enabled',
-                  'value': val,
-                },
-                requiredLevel: 2);
-
             setState(() {});
           },
         );
@@ -247,14 +175,6 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
                 .read(settingsProvider.notifier)
                 .setAutoBackupFrequencyHours(val);
             await ref.read(autoBackupProvider.notifier).setFrequencyHours(val);
-
-            await TelemetryService.instance.trackEvent(
-                'setting_changed',
-                {
-                  'setting': 'auto_backup_frequency_hours',
-                  'value': val,
-                },
-                requiredLevel: 2);
           }
         },
       ),
@@ -292,14 +212,6 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
                 .read(settingsProvider.notifier)
                 .setAutoBackupDeleteAfterDays(val);
             await ref.read(autoBackupProvider.notifier).setDeleteAfterDays(val);
-
-            await TelemetryService.instance.trackEvent(
-                'setting_changed',
-                {
-                  'setting': 'auto_backup_delete_after_days',
-                  'value': val,
-                },
-                requiredLevel: 2);
           }
         },
       ),

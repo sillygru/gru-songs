@@ -7,7 +7,7 @@ import '../services/telemetry_service.dart';
 class SettingsState {
   final bool visualizerEnabled;
   final bool autoHideBottomBarOnScroll;
-  final int telemetryLevel;
+  final bool telemetryEnabled;
   final bool autoPauseOnVolumeZero;
   final bool autoResumeOnVolumeRestore;
   final SongSortOrder sortOrder;
@@ -40,7 +40,7 @@ class SettingsState {
   SettingsState({
     this.visualizerEnabled = true,
     this.autoHideBottomBarOnScroll = true,
-    this.telemetryLevel = 1,
+    this.telemetryEnabled = true,
     this.autoPauseOnVolumeZero = true,
     this.autoResumeOnVolumeRestore = true,
     this.sortOrder = SongSortOrder.title,
@@ -74,7 +74,7 @@ class SettingsState {
   SettingsState copyWith({
     bool? visualizerEnabled,
     bool? autoHideBottomBarOnScroll,
-    int? telemetryLevel,
+    bool? telemetryEnabled,
     bool? autoPauseOnVolumeZero,
     bool? autoResumeOnVolumeRestore,
     SongSortOrder? sortOrder,
@@ -108,7 +108,7 @@ class SettingsState {
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
       autoHideBottomBarOnScroll:
           autoHideBottomBarOnScroll ?? this.autoHideBottomBarOnScroll,
-      telemetryLevel: telemetryLevel ?? this.telemetryLevel,
+      telemetryEnabled: telemetryEnabled ?? this.telemetryEnabled,
       autoPauseOnVolumeZero:
           autoPauseOnVolumeZero ?? this.autoPauseOnVolumeZero,
       autoResumeOnVolumeRestore:
@@ -156,7 +156,7 @@ class SettingsState {
 class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyVisualizerEnabled = 'visualizer_enabled';
   static const _keyAutoHideBottomBarOnScroll = 'auto_hide_bottom_bar_on_scroll';
-  static const _keyTelemetryLevel = 'telemetry_level';
+  static const _keyTelemetryEnabled = 'telemetry_enabled';
   static const _keyAutoPauseOnVolumeZero = 'auto_pause_on_volume_zero';
   static const _keyAutoResumeOnVolumeRestore = 'auto_resume_on_volume_restore';
   static const _keySortOrder = 'sort_order';
@@ -201,7 +201,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       visualizerEnabled: prefs.getBool(_keyVisualizerEnabled) ?? true,
       autoHideBottomBarOnScroll:
           prefs.getBool(_keyAutoHideBottomBarOnScroll) ?? true,
-      telemetryLevel: prefs.getInt(_keyTelemetryLevel) ?? 1,
+      telemetryEnabled: prefs.getBool(_keyTelemetryEnabled) ?? true,
       autoPauseOnVolumeZero: prefs.getBool(_keyAutoPauseOnVolumeZero) ?? true,
       autoResumeOnVolumeRestore:
           prefs.getBool(_keyAutoResumeOnVolumeRestore) ?? true,
@@ -292,126 +292,56 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(showSongDuration: show);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyShowSongDuration, show);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'show_song_duration',
-          'value': show,
-        },
-        requiredLevel: 2);
   }
 
   Future<void> setSortOrder(SongSortOrder order) async {
     state = state.copyWith(sortOrder: order);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keySortOrder, order.index);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'sort_order',
-          'value': order.name,
-        },
-        requiredLevel: 2);
   }
 
   Future<void> setVisualizerEnabled(bool enabled) async {
     state = state.copyWith(visualizerEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyVisualizerEnabled, enabled);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'visualizer_enabled',
-          'value': enabled,
-        },
-        requiredLevel: 2);
   }
 
   Future<void> setAutoHideBottomBarOnScroll(bool enabled) async {
     state = state.copyWith(autoHideBottomBarOnScroll: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAutoHideBottomBarOnScroll, enabled);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'auto_hide_bottom_bar_on_scroll',
-          'value': enabled,
-        },
-        requiredLevel: 2);
   }
 
-  Future<void> setTelemetryLevel(int level) async {
-    state = state.copyWith(telemetryLevel: level);
+  Future<void> setTelemetryEnabled(bool enabled) async {
+    state = state.copyWith(telemetryEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyTelemetryLevel, level);
+    await prefs.setBool(_keyTelemetryEnabled, enabled);
 
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'telemetry_level',
-          'value': level,
-        },
-        requiredLevel: 2);
+    TelemetryService.instance.reportTelemetryToggle(enabled);
   }
 
   Future<void> setAutoPauseOnVolumeZero(bool enabled) async {
     state = state.copyWith(autoPauseOnVolumeZero: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAutoPauseOnVolumeZero, enabled);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'auto_pause_on_volume_zero',
-          'value': enabled,
-        },
-        requiredLevel: 2);
   }
 
   Future<void> setAutoResumeOnVolumeRestore(bool enabled) async {
     state = state.copyWith(autoResumeOnVolumeRestore: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAutoResumeOnVolumeRestore, enabled);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'auto_resume_on_volume_restore',
-          'value': enabled,
-        },
-        requiredLevel: 2);
   }
 
   Future<void> setAnimatedSoundWaveEnabled(bool enabled) async {
     state = state.copyWith(animatedSoundWaveEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAnimatedSoundWaveEnabled, enabled);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'animated_sound_wave_enabled',
-          'value': enabled,
-        },
-        requiredLevel: 2);
   }
 
   Future<void> setShowWaveform(bool enabled) async {
     state = state.copyWith(showWaveform: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyShowWaveform, enabled);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'show_waveform',
-          'value': enabled,
-        },
-        requiredLevel: 2);
   }
 
   Future<void> setQuickActionConfig(QuickActionConfig config) async {

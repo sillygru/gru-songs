@@ -7,7 +7,6 @@ import '../widgets/song_list_item.dart';
 import '../widgets/scanning_progress_bar.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
-import '../../services/telemetry_service.dart';
 import '../../services/library_logic.dart';
 import '../../models/song.dart';
 import '../../models/queue_snapshot.dart';
@@ -719,14 +718,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           return RefreshIndicator(
             onRefresh: () async {
-              await TelemetryService.instance.trackEvent(
-                  'library_action',
-                  {
-                    'action': 'pull_to_refresh',
-                    'screen': 'home',
-                  },
-                  requiredLevel: 2);
-
               await Future.wait([
                 ref.read(songsProvider.notifier).refresh(),
                 ref.read(userDataProvider.notifier).refresh(force: true),

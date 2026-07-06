@@ -9,21 +9,35 @@
 - **File-based identity** - User data (favorites, stats) is linked to filenames. Do not change this
 - **Comments** - Minimal. Explain _why_, not _what_. No LLM-specific comments like "// added this"
 
+## Code & Architecture Standards
+
+Do not generate "vibe-coded" logic. Follow these rules:
+
+- **Explicit error handling** - Catch specific exceptions. No broad `try/catch` that silences errors. No happy-path assumptions.
+- **Modular structure** - Break monolithic widgets and functions into small, testable units. If a `build` method exceeds 50 lines, extract stateless widgets.
+- **Strong typing** - No force unwrap (`!`). No `dynamic`. Leverage Dart's null safety properly.
+- **No magic values** - No blind timeouts or arbitrary sleeps. Use proper state synchronization.
+- **Riverpod everywhere** - Do not use `StatefulWidget` + `setState` for global state. Use the existing Riverpod providers.
+
+Before writing code, reason through: side effects, failure modes, security, and reversibility.
+
 ## Architecture Summary
 
 Local-First Flutter music player using Riverpod for state management with MVVM/Repository pattern.
 
-## Documentation Index
+## UI / Design Standard (Flat Design 2.0)
 
-Read only the file you need for your task:
+Do not generate "vibe-coded" UI. Adhere to Flat Design 2.0:
 
-| File                                                             | When to Read                                                    |
-| ---------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`agents/01-architecture.md`](agents/01-architecture.md)         | Understanding overall structure, tech stack, initialization     |
-| [`agents/02-playback-shuffle.md`](agents/02-playback-shuffle.md) | Modifying playback, queue, or shuffle algorithm                 |
-| [`agents/03-library-state.md`](agents/03-library-state.md)       | Adding/removing songs, scanning, bulk metadata operations       |
-| [`agents/04-data-layer.md`](agents/04-data-layer.md)             | Database operations, caching, file management, FFmpeg           |
-| [`agents/05-models.md`](agents/05-models.md)                     | Understanding data models (Song, Playlist, ShuffleConfig, etc.) |
+- **Vibrant color blocking** - Use intentional, high-contrast solid colors in large blocks. Define a strict palette.
+- **No gradients** - Forbidden in UI elements, backgrounds, and text.
+- **No borders or outlines** - Do not use `border`, `ring`, or outlines to separate elements. Use color blocking, whitespace, and layout geometry instead.
+- **Smooth animations** - Use subtle, deliberate transitions (`cubic-bezier(0.4, 0, 0.2, 1)`) for state changes.
+- **Design tokens first** - Never hardcode hex values or pixel sizes. Reference a theme provider or token system.
+- **Consistent component hierarchy** - Use a predictable grid/flexbox layout. No absolute positioning unless mathematically necessary.
+- **Semantic accessibility** - Use semantic Flutter widgets (`ListTile`, `IconButton`, etc.), manage focus states, and ensure proper labeling.
+
+Before returning UI code, verify: no gradients, no borders used for separation, all styling references design tokens, animations are deliberate.
 
 ## Quick Reference
 

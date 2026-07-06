@@ -47,6 +47,20 @@ User data in Wispie is tied to the music file's name. If you rename a file outsi
 I do not hide the fact that this is a vibe coded project. Though, from personal daily use, it is stable and functional.
 This was originally a personal side project, so there might be leftovers of old features that are no longer relevant.
 
+## Telemetry
+
+Wispie collects optional, anonymous usage data (startup events only) to help
+understand how many people use the app. No personal data (names, emails, file
+paths, IPs) is ever collected. Telemetry uses a per-installation UUID, never
+linked to your identity.
+
+You can disable telemetry at any time in Settings > Privacy. When disabled, no
+data is sent.
+
+Telemetry only functions when built with a valid `TELEMETRY_SECRET` environment
+variable. Community-built versions or builds without the secret are completely
+telemetry-free.
+
 ## For developers
 
 ### Run the app

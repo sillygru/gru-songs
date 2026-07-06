@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,6 @@ import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/storage_service.dart';
-import '../../services/telemetry_service.dart';
 
 enum _SetupStep { username, telemetry, permissions }
 
@@ -139,39 +139,18 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   Widget _buildTelemetryStep() {
     return Column(
       children: [
-        Text(
-          'Share anonymous data with developers?',
-          style: Theme.of(context).textTheme.titleSmall,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
         Consumer(builder: (context, ref, child) {
           final settings = ref.watch(settingsProvider);
-          const levels = ['Level 0', 'Level 1', 'Level 2', 'Level 3'];
-          return Column(
-            children: [
-              Slider(
-                value: settings.telemetryLevel.toDouble().clamp(0, 3),
-                min: 0,
-                max: 3,
-                divisions: 3,
-                label: levels[settings.telemetryLevel.clamp(0, 3)],
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setTelemetryLevel(val.toInt());
-                },
-              ),
-              Text(
-                levels[settings.telemetryLevel.clamp(0, 3)],
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildLevelExplanation(settings.telemetryLevel.clamp(0, 3)),
-            ],
+          return SwitchListTile(
+            title: const Text('Anonymous usage data'),
+            subtitle: const Text(
+              'Help improve Wispie with anonymous usage stats. '
+              'No personal data is collected.',
+            ),
+            value: settings.telemetryEnabled,
+            onChanged: (val) {
+              ref.read(settingsProvider.notifier).setTelemetryEnabled(val);
+            },
           );
         }),
         const SizedBox(height: 24),
@@ -315,30 +294,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     );
   }
 
-  Widget _buildLevelExplanation(int level) {
-    final explanations = [
-      'No data will be shared with developers.',
-      'Basic app information (version, platform).\nApp startup notification.',
-      'Everything in level 1.\nAnonymous usage events (settings changed).\nLibrary rescans and data management (import/export).',
-      'Everything in level 2.\nUsage data: how often and how long you use the app.\nWeekly listening statistics (hours played).',
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        explanations[level],
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-    );
-  }
-
   Future<void> _handleLogin() async {
     final username = _usernameController.text.trim();
     if (username.isEmpty) {
@@ -366,11 +321,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
       // Set display name
       await ref.read(authProvider.notifier).setDisplayName(username);
-
-      // Track first startup (always sent regardless of level)
-      final settings = ref.read(settingsProvider);
-      await TelemetryService.instance
-          .trackFirstStartup(settings.telemetryLevel);
 
       // On Android, move to permission step before navigating to main screen
       if (Platform.isAndroid && mounted) {

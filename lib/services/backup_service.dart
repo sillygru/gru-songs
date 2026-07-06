@@ -359,6 +359,24 @@ class BackupService {
           }
         }
 
+        final metadata = {
+          'export_date': DateTime.now().toIso8601String(),
+          'version': '1.0',
+          'options': {
+            'includeUserStats': options.includeUserStats,
+            'includeUserData': options.includeUserData,
+            'includeUserSettings': options.includeUserSettings,
+            'includeCoverCache': options.includeCoverCache,
+            'includeLibraryCache': options.includeLibraryCache,
+            'includeSearchIndex': options.includeSearchIndex,
+            'includeWaveformCache': options.includeWaveformCache,
+            'includeColorCache': options.includeColorCache,
+            'includeLyricsCache': options.includeLyricsCache,
+          },
+        };
+        await File(p.join(dataDir.path, _metadataFile))
+            .writeAsString(jsonEncode(metadata));
+
         final zipFile = File(backupPath);
         final archive = Archive();
 
@@ -627,7 +645,54 @@ class BackupService {
       metadataFile = File(p.join(contentPath, _metadataFile));
 
       if (!await metadataFile.exists()) {
-        throw Exception('Invalid backup: metadata.json missing');
+        final reconstructed = <String, dynamic>{
+          'export_date': DateTime.now().toIso8601String(),
+          'version': '1.0',
+          'options': {
+            'includeUserStats':
+                await File(p.join(contentPath, 'wispie_stats.db')).exists(),
+            'includeUserData':
+                await File(p.join(contentPath, 'wispie_data.db')).exists(),
+            'includeUserSettings':
+                await File(p.join(contentPath, 'app_settings.json')).exists(),
+            'includeCoverCache': false,
+            'includeLibraryCache': false,
+            'includeSearchIndex': false,
+            'includeWaveformCache': false,
+            'includeColorCache': false,
+            'includeLyricsCache': false,
+          },
+        };
+
+        final cacheDir = Directory(p.join(contentPath, 'cache'));
+        if (await cacheDir.exists()) {
+          await for (final entity in cacheDir.list(recursive: true)) {
+            if (entity is File) {
+              final name = p.basename(entity.path);
+              final parentDir = p.basename(p.dirname(entity.path));
+              if (name.endsWith('.jpg') || name.endsWith('.png')) {
+                reconstructed['options']['includeCoverCache'] = true;
+              }
+              if (name == 'cached_songs.json') {
+                reconstructed['options']['includeLibraryCache'] = true;
+              }
+              if (name.contains('_search_index.db')) {
+                reconstructed['options']['includeSearchIndex'] = true;
+              }
+              if (name.contains('waveform')) {
+                reconstructed['options']['includeWaveformCache'] = true;
+              }
+              if (name.contains('color')) {
+                reconstructed['options']['includeColorCache'] = true;
+              }
+              if (parentDir == 'lyrics_cache') {
+                reconstructed['options']['includeLyricsCache'] = true;
+              }
+            }
+          }
+        }
+
+        await metadataFile.writeAsString(jsonEncode(reconstructed));
       }
 
       File? foundStats;
@@ -704,6 +769,32 @@ class BackupService {
       final hasUserdata = await _checkTableExists(foundData.path, 'userdata');
       final hasPlayHistory =
           await _checkTableExists(foundStats.path, 'playsession');
+
+      final dbHasUserData = hasFavorites ||
+          hasSuggestless ||
+          hasHidden ||
+          hasPlaylists ||
+          hasMergedGroups ||
+          hasRecommendations ||
+          hasMoods ||
+          hasUserdata;
+      final metadataContent = await metadataFile.readAsString();
+      final metadata = jsonDecode(metadataContent) as Map<String, dynamic>;
+      final options = metadata['options'] as Map<String, dynamic>;
+
+      final actualUserStats = hasPlayHistory;
+      final actualUserData = dbHasUserData;
+      final actualUserSettings = hasAppSettingsJson;
+
+      if (options['includeUserStats'] != actualUserStats ||
+          options['includeUserData'] != actualUserData ||
+          options['includeUserSettings'] != actualUserSettings) {
+        options['includeUserStats'] = actualUserStats;
+        options['includeUserData'] = actualUserData;
+        options['includeUserSettings'] = actualUserSettings;
+        metadata['options'] = options;
+        await metadataFile.writeAsString(jsonEncode(metadata));
+      }
 
       return {
         'valid': true,

@@ -6,7 +6,6 @@ import '../../providers/providers.dart';
 import '../../models/shuffle_config.dart';
 import '../widgets/fun_stats_view.dart';
 import '../widgets/scanning_progress_bar.dart';
-import '../../services/telemetry_service.dart';
 import 'settings_screen.dart';
 import 'backup_management_screen.dart';
 import 'custom_shuffle_settings_screen.dart';
@@ -116,14 +115,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
-          await TelemetryService.instance.trackEvent(
-              'library_action',
-              {
-                'action': 'pull_to_refresh',
-                'screen': 'profile',
-              },
-              requiredLevel: 2);
-
           await ref.read(userDataProvider.notifier).refresh(force: true);
         },
         child: NotificationListener<ScrollNotification>(

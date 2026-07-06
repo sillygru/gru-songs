@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
-import '../services/telemetry_service.dart';
 import '../services/color_extraction_service.dart';
 
 class ThemeState {
@@ -83,14 +82,6 @@ class ThemeNotifier extends Notifier<ThemeState> {
     await prefs.setString('theme_mode', mode.toString());
     await prefs.setBool('use_cover_color', useCover);
     await prefs.setBool('apply_cover_color_to_all', applyAll);
-
-    await TelemetryService.instance.trackEvent(
-        'setting_changed',
-        {
-          'setting': 'theme_mode',
-          'value': mode.toString(),
-        },
-        requiredLevel: 2);
   }
 
   void updateExtractedPalette(ExtractedPalette? palette) {

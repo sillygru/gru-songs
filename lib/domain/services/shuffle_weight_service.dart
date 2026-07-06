@@ -19,8 +19,8 @@ double calculateWeight({
   final bool isConsistentMode =
       config.personality == ShufflePersonality.consistent;
   final bool isCustomMode = config.personality == ShufflePersonality.custom;
-  final bool shouldAvoidRepeatingSongs = config.antiRepeatEnabled &&
-      (isCustomMode ? config.avoidRepeatingSongs : !isConsistentMode);
+  final bool shouldAvoidRepeatingSongs =
+      config.antiRepeatEnabled && (!isCustomMode || config.avoidRepeatingSongs);
 
   if (shouldAvoidRepeatingSongs && historyIndex != null) {
     if (historyIndex < config.historyLimit) {

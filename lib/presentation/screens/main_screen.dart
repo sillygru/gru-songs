@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -195,17 +196,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
     );
     _scrollControllers = List.generate(3, (_) => ScrollController());
     WidgetsBinding.instance.addObserver(this);
-    // Track app launch (Level 1)
-    TelemetryService.instance.trackEvent('app_launch', {}, requiredLevel: 1);
+    // Report app launch telemetry
+    unawaited(TelemetryService.instance.reportLaunch());
 
     // Check and run auto-backup on initial app launch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
-
-      // Check if a weekly usage report is due (Level 3).
-      // This catches the case where a week passed while the app was closed
-      // and the data was persisted via dispose().
-      ref.read(audioPlayerManagerProvider).checkAndSendWeeklyUsageReport();
     });
   }
 
@@ -227,14 +223,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
       // Check and run auto-backup if needed
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
-
-      // Check if it's time to send the weekly usage report (Level 3).
-      // Also triggered on paused below, but checking on resume covers the
-      // case where the app is killed from the switcher without hitting paused.
-      ref.read(audioPlayerManagerProvider).checkAndSendWeeklyUsageReport();
-    } else if (state == AppLifecycleState.paused) {
-      // Check if it's time to send the weekly usage report (Level 3)
-      ref.read(audioPlayerManagerProvider).checkAndSendWeeklyUsageReport();
     }
   }
 

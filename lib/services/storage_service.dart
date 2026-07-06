@@ -18,8 +18,8 @@ class StorageService {
   static const String _isLocalModeKey = 'is_local_mode';
   static const String _localUsernameKey = 'local_username';
   static const String _pullToRefreshEnabledKey = 'pull_to_refresh_enabled';
-  static const String _telemetryLevelKey = 'telemetry_level';
-  static const String _hasSentFirstStartupKey = 'has_sent_first_startup';
+  static const String _telemetryEnabledKey = 'telemetry_enabled';
+  static const String _telemetryIdKey = 'telemetry_id';
 
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -321,24 +321,24 @@ class StorageService {
     await prefs.setBool(_pullToRefreshEnabledKey, value);
   }
 
-  Future<int> getTelemetryLevel() async {
+  Future<bool> getTelemetryEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_telemetryLevelKey) ?? 1; // Default to level 1
+    return prefs.getBool(_telemetryEnabledKey) ?? true;
   }
 
-  Future<void> setTelemetryLevel(int level) async {
+  Future<void> setTelemetryEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_telemetryLevelKey, level);
+    await prefs.setBool(_telemetryEnabledKey, enabled);
   }
 
-  Future<bool> getHasSentFirstStartup() async {
+  Future<String?> getTelemetryId() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_hasSentFirstStartupKey) ?? false;
+    return prefs.getString(_telemetryIdKey);
   }
 
-  Future<void> setHasSentFirstStartup(bool value) async {
+  Future<void> setTelemetryId(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_hasSentFirstStartupKey, value);
+    await prefs.setString(_telemetryIdKey, id);
   }
 
   // Excluded Folders
@@ -438,8 +438,7 @@ class StorageService {
     'visualizer_enabled',
     'auto_hide_bottom_bar_on_scroll',
     'pull_to_refresh_enabled',
-    'telemetry_level',
-    'has_sent_first_startup',
+    'telemetry_enabled',
     'auto_pause_on_volume_zero',
     'auto_resume_on_volume_restore',
     'show_song_duration',
