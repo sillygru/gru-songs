@@ -327,7 +327,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _player.setShuffleModeEnabled(false);
     _currentPlaylistId = playlistId;
 
-    // Automatically disable shuffle if forceLinear is requested
     if (forceLinear && _shuffleState.config.enabled) {
       _shuffleState = _shuffleState.copyWith(
         config: _shuffleState.config.copyWith(enabled: false),
@@ -337,24 +336,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       await _saveShuffleState();
     }
 
-    // Clear any pending queue replacement since we're starting fresh
     _pendingQueueSongs = null;
     _pendingQueuePlaylistId = null;
     pendingQueueNotifier.value = false;
 
-    // Check if song is already in current queue - if so, just jump to it
-    // regardless of contextQueue.
-    final existingIdx = _effectiveQueue.indexWhere(
-      (item) => item.song.filename == song.filename,
-    );
-    if (existingIdx != -1) {
-      await _rebuildQueue(
-          initialIndex: existingIdx, startPlaying: startPlaying);
+    final currentSong = currentSongNotifier.value;
+    if (currentSong != null && currentSong.filename == song.filename) {
+      await _player.seek(Duration.zero);
+      if (startPlaying) await _player.play();
       _savePlaybackState();
       return;
     }
 
-    // 1. Setup Local Queue - preserve existing queue if non-empty
     bool usedContextQueue = false;
     if (_originalQueue.isEmpty) {
       if (contextQueue != null) {
@@ -365,41 +358,62 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _originalQueue = [QueueItem(song: song)];
         _isRestrictedToOriginal = false;
       }
-    }
 
-    int originalIdx = _originalQueue.indexWhere(
-      (item) => item.song.filename == song.filename,
-    );
-    if (originalIdx == -1) {
-      _originalQueue.insert(0, QueueItem(song: song));
-      originalIdx = 0;
-    }
-
-    final selectedItem = _originalQueue[originalIdx];
-
-    if (_shuffleState.config.enabled && !forceLinear) {
-      final otherItems = List<QueueItem>.from(_originalQueue)
-        ..removeAt(originalIdx);
-      final shuffledOthers = await _weightedShuffle(
-        otherItems,
-        lastItem: selectedItem,
+      final originalIdx = _originalQueue.indexWhere(
+        (item) => item.song.filename == song.filename,
       );
-      _effectiveQueue = [selectedItem, ...shuffledOthers];
-      _updateQueueNotifier();
-      await _rebuildQueue(initialIndex: 0, startPlaying: startPlaying);
-    } else {
-      _effectiveQueue = List.from(_originalQueue);
-      _updateQueueNotifier();
-      await _rebuildQueue(
-        initialIndex: originalIdx,
-        startPlaying: startPlaying,
-      );
+
+      if (_shuffleState.config.enabled && !forceLinear) {
+        final otherItems = List<QueueItem>.from(_originalQueue)
+          ..removeAt(originalIdx);
+        final shuffledOthers = await _weightedShuffle(
+          otherItems,
+          lastItem: _originalQueue[originalIdx],
+        );
+        _effectiveQueue = [_originalQueue[originalIdx], ...shuffledOthers];
+        _updateQueueNotifier();
+        await _rebuildQueue(initialIndex: 0, startPlaying: startPlaying);
+      } else {
+        _effectiveQueue = List.from(_originalQueue);
+        _updateQueueNotifier();
+        await _rebuildQueue(
+          initialIndex: originalIdx,
+          startPlaying: startPlaying,
+        );
+      }
+
+      if (usedContextQueue) {
+        await _saveQueueSnapshot(contextQueue!, playlistId: playlistId);
+      }
+
+      _savePlaybackState();
+      return;
     }
 
-    if (usedContextQueue) {
-      await _saveQueueSnapshot(contextQueue!, playlistId: playlistId);
+    final currentIndex = _player.currentIndex ?? 0;
+    final targetIndex = (currentIndex + 1).clamp(0, _effectiveQueue.length);
+
+    final duplicate = QueueItem(song: song);
+    _effectiveQueue.insert(targetIndex, duplicate);
+
+    final origTarget = (currentIndex + 1).clamp(0, _originalQueue.length);
+    _originalQueue.insert(origTarget, QueueItem(song: song));
+
+    _updateQueueNotifier();
+    try {
+      final source = await _createAudioSource(duplicate);
+      await _player.insertAudioSource(targetIndex, source);
+    } catch (e) {
+      _effectiveQueue.removeAt(targetIndex);
+      rethrow;
     }
 
+    if (startPlaying) {
+      await _player.seek(Duration.zero, index: targetIndex);
+      await _player.play();
+    }
+
+    await _updateCurrentSnapshotSongs();
     _savePlaybackState();
   }
 
@@ -2239,8 +2253,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             ? _effectiveQueue[targetIndex]
             : null;
 
+    final currentQueueId = currentMediaItem?.extras?['queueId'] as String?;
     final trackChanged = currentItem != null
-        ? currentMediaItem?.id != currentItem.song.filename
+        ? currentQueueId != currentItem.queueId
         : currentMediaItem != null;
     if (trackChanged) {
       _resetFading();
@@ -2254,7 +2269,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (initialPosition != null) {
       position = initialPosition;
     } else if (currentMediaItem != null && currentItem != null) {
-      if (currentMediaItem.id == currentItem.song.filename) {
+      if (currentQueueId == currentItem.queueId) {
         position = currentPosition;
       }
     }
