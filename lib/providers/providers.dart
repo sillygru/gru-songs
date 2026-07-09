@@ -15,6 +15,7 @@ import '../services/file_manager_service.dart';
 import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
 import '../services/update_service.dart';
+import '../domain/services/search_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import 'user_data_provider.dart';
@@ -380,7 +381,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   Future<List<Song>> _performFullScan(
       {bool isBackground = false,
       List<Song>? existingSongs,
-      bool showIndicator = false}) async {
+      bool showIndicator = false,
+      bool fastMode = false}) async {
     final storage = ref.read(storageServiceProvider);
     final scanner = ref.read(scannerServiceProvider);
 
@@ -410,7 +412,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         final folderSongs = await scanner.scanDirectory(
           path,
           existingSongs: existingSongs,
-          lyricsPath: null, // Use lyricsFolders instead
+          lyricsPath: null,
           onProgress: (progress) {
             // Overall progress across all folders
             final overallProgress = (i + progress) / musicFolders.length;
@@ -418,6 +420,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           },
           includeVideos: settings.includeVideos,
           minimumFileSizeBytes: settings.minimumFileSizeBytes,
+          fastMode: fastMode,
         );
 
         allSongs.addAll(folderSongs);
@@ -436,8 +439,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         uniqueSongs = allSongs;
       }
 
-      // Filter by minimum track duration (keep songs with unknown duration)
-      if (settings.minimumTrackDurationMs > 0) {
+      // Skip duration filter during fast mode — durations are unknown
+      if (!fastMode && settings.minimumTrackDurationMs > 0) {
         uniqueSongs = uniqueSongs
             .where((s) =>
                 s.duration == null ||
@@ -450,8 +453,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       }
 
       // Preserve createdEpochSec and songDateEpochSec from existing songs.
-      // The scanner may overwrite these values (e.g. when a file is re-processed
-      // because mtime changed or isolate serialization lost existing data).
       if (existingSongs != null) {
         final existingByUrl = {
           for (final s in existingSongs) s.url: s,
@@ -481,7 +482,13 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         }).toList();
       }
 
-      await DatabaseService.instance.insertSongsBatch(uniqueSongs);
+      // In fast mode, songs are already batch-inserted by the scanner inner
+      // loop (incremental DB writes). In full mode the full scan also does
+      // incremental inserts, but we re-insert here to capture any post-
+      // processing changes like dedup/filtering.
+      if (!fastMode) {
+        await DatabaseService.instance.insertSongsBatch(uniqueSongs);
+      }
 
       return uniqueSongs;
     } finally {
@@ -498,43 +505,107 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
 
     try {
       _isRefreshing = true;
-
-      // Background scan doesn't trigger the scanning indicator by default
-      final songs = await _performFullScan(
-          isBackground: true,
-          existingSongs: existingSongs,
-          showIndicator: showIndicator);
-
       final userData = ref.read(userDataProvider);
-      final filteredSongs =
-          songs.where((s) => !userData.isHidden(s.filename)).toList();
 
-      // Only update if there are actual changes to avoid unnecessary rebuilds
-      // We compare length and a few other things as a quick check
-      bool hasChanges = filteredSongs.length != (state.value?.length ?? 0);
+      // Show the scanning indicator for the full duration of both passes
+      if (showIndicator) {
+        ref.read(isScanningProvider.notifier).state = true;
+      }
+
+      // === Pass 0: Fast registration (filenames, paths, mtimes only) ===
+      // This runs quickly and lets the user see their library immediately.
+      // Pass showIndicator: false to _performFullScan — we control the
+      // indicator lifecycle ourselves here.
+      final fastSongs = await _performFullScan(
+        isBackground: true,
+        existingSongs: existingSongs,
+        showIndicator: false,
+        fastMode: true,
+      );
+
+      final filteredFast =
+          fastSongs.where((s) => !userData.isHidden(s.filename)).toList();
+
+      // Show filenames immediately so the app is usable
+      bool hasChanges = filteredFast.length != (state.value?.length ?? 0);
       if (!hasChanges) {
         final currentSongs = state.value ?? [];
-        // More thorough check: compare URLs and mtimes
-        for (int i = 0; i < filteredSongs.length; i++) {
-          if (filteredSongs[i].url != currentSongs[i].url ||
-              filteredSongs[i].mtime != currentSongs[i].mtime) {
+        for (int i = 0; i < filteredFast.length; i++) {
+          if (i >= currentSongs.length ||
+              filteredFast[i].url != currentSongs[i].url ||
+              filteredFast[i].mtime != currentSongs[i].mtime) {
             hasChanges = true;
             break;
           }
         }
       }
-
-      if (hasChanges) {
-        ref.read(audioPlayerManagerProvider).refreshSongs(filteredSongs);
-        state = AsyncValue.data(filteredSongs);
+      if (hasChanges && filteredFast.isNotEmpty) {
+        ref.read(audioPlayerManagerProvider).refreshSongs(filteredFast);
+        state = AsyncValue.data(filteredFast);
       }
 
-      await _markStartupScanComplete();
+      // === Pass 1: Metadata enrichment (throttled, background) ===
+      // Read title, artist, album, duration from file headers in batches.
+      // Use all songs (not filteredFast) so hidden songs get metadata too.
+      if (fastSongs.isNotEmpty) {
+        try {
+          final enriched = await ScannerService.enrichAllMetadata(
+            fastSongs,
+            onProgress: (progress) {
+              ref.read(scanProgressProvider.notifier).state = progress;
+            },
+          );
+
+          final filteredEnriched =
+              enriched.where((s) => !userData.isHidden(s.filename)).toList();
+
+          bool enrichmentChanged =
+              filteredEnriched.length != (state.value?.length ?? 0);
+          if (!enrichmentChanged) {
+            final currentSongs = state.value ?? [];
+            for (int i = 0; i < filteredEnriched.length; i++) {
+              if (i >= currentSongs.length ||
+                  filteredEnriched[i].title != currentSongs[i].title ||
+                  filteredEnriched[i].artist != currentSongs[i].artist) {
+                enrichmentChanged = true;
+                break;
+              }
+            }
+          }
+          if (enrichmentChanged) {
+            ref.read(audioPlayerManagerProvider)
+                .refreshSongs(filteredEnriched);
+            state = AsyncValue.data(filteredEnriched);
+          }
+        } catch (e) {
+          debugPrint('Metadata enrichment failed: $e');
+        }
+
+        // Rebuild search index after enrichment (not during fast pass)
+        try {
+          final searchService = SearchService();
+          await searchService.init();
+          await searchService.rebuildIndex(fastSongs);
+        } catch (e) {
+          debugPrint('Search index rebuild failed: $e');
+        }
+      }
+
+      await _saveScanCheckpoint();
     } catch (e) {
       debugPrint('Background scan failed: $e');
     } finally {
       _isRefreshing = false;
+      ref.read(isScanningProvider.notifier).state = false;
+      ref.read(scanProgressProvider.notifier).state = 0.0;
     }
+  }
+
+  /// Persists a scan-complete marker so interrupted scans don't restart
+  /// from scratch on the next app launch. After the marker is saved,
+  /// [_shouldRunStartupScan] returns false on subsequent restarts.
+  Future<void> _saveScanCheckpoint() async {
+    await _markStartupScanComplete();
   }
 
   Future<void> refresh({bool isBackground = false}) async {

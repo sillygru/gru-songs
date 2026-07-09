@@ -33,6 +33,7 @@ class _FakeScannerService extends ScannerService {
     void Function(List<Song>)? onComplete,
     bool includeVideos = true,
     int minimumFileSizeBytes = 0,
+    bool fastMode = false,
   }) async {
     calls += 1;
     return [];

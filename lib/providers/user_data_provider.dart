@@ -220,33 +220,28 @@ class UserDataNotifier extends Notifier<UserDataState> {
       _initialized = true;
       Future.microtask(() async {
         await _initLocal();
-        _setupSongsListener();
       });
       return UserDataState(isLoading: true);
     }
     return state;
   }
 
-  void _setupSongsListener() {
-    ref.listen(songsProvider, (previous, next) {
-      if (next is AsyncData && next.value != null && next.value!.isNotEmpty) {
-        final library = next.value!;
-        DatabaseService.instance
-            .validateRecommendationPlaylists()
-            .then((dbValid) {
-          if (!dbValid) {
-            updateRecommendationPlaylists(force: true);
-            return;
-          }
-          final anyResolve = state.playlists.any((p) {
-            if (!p.isRecommendation || p.songs.isEmpty) return false;
-            return p.songs
-                .any((ps) => library.any((s) => s.filename == ps.songFilename));
-          });
-          if (!anyResolve) {
-            updateRecommendationPlaylists(force: true);
-          }
-        });
+  void onLibraryChanged(List<Song> library) {
+    if (library.isEmpty) return;
+    DatabaseService.instance
+        .validateRecommendationPlaylists()
+        .then((dbValid) {
+      if (!dbValid) {
+        updateRecommendationPlaylists(force: true, allSongs: library);
+        return;
+      }
+      final anyResolve = state.playlists.any((p) {
+        if (!p.isRecommendation || p.songs.isEmpty) return false;
+        return p.songs
+            .any((ps) => library.any((s) => s.filename == ps.songFilename));
+      });
+      if (!anyResolve) {
+        updateRecommendationPlaylists(force: true, allSongs: library);
       }
     });
   }
@@ -308,7 +303,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
       );
       _updateManager();
 
-      await updateRecommendationPlaylists(force: true);
+      final songs = await DatabaseService.instance.getAllSongs();
+      if (songs.isNotEmpty) {
+        _latestSongs = songs;
+        await updateRecommendationPlaylists(force: true, allSongs: songs);
+      }
     } catch (e) {
       debugPrint('Error loading local user data: $e');
     }
@@ -330,7 +329,11 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
 
     await _initLocal();
-    await updateRecommendationPlaylists(force: force);
+    // _initLocal() already calls updateRecommendationPlaylists if songs exist,
+    // but use _latestSongs in case it didn't (e.g. empty DB).
+    if (_latestSongs != null && _latestSongs!.isNotEmpty) {
+      await updateRecommendationPlaylists(force: force, allSongs: _latestSongs);
+    }
   }
 
   Future<void> ensurePresetMoodsSeeded() async {
@@ -607,12 +610,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final availableMoodIds = state.moodTags.map((m) => m.id).toSet();
     if (availableMoodIds.isEmpty) return const [];
     final assigned = state.moodsForSong(filename).toSet();
-    final songs =
-        _latestSongs ?? ref.read(songsProvider).value ?? const <Song>[];
+    final songs = _latestSongs ?? const <Song>[];
     final songByFilename = {for (final song in songs) song.filename: song};
     final currentSong = songByFilename[filename];
-    // Accept playCounts as parameter to avoid circular dependency.
-    // If not provided, fall back to reading directly (may cause issues).
     final Map<String, int> effectivePlayCounts =
         playCounts ?? ref.read(playCountsProvider);
 
@@ -674,8 +674,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
     int length = 25,
     double diversity = 0.65,
   }) async {
-    final songs =
-        _latestSongs ?? ref.read(songsProvider).value ?? const <Song>[];
+    final songs = _latestSongs ?? const <Song>[];
     final selectedMoodIds = moodIds.toSet();
     if (songs.isEmpty || selectedMoodIds.isEmpty) return [];
 
@@ -1181,15 +1180,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
     }
   }
 
-  Future<void> updateRecommendationPlaylists({bool force = false}) async {
-    final songsAsync = ref.read(songsProvider);
+  Future<void> updateRecommendationPlaylists({
+    bool force = false,
+    List<Song>? allSongs,
+  }) async {
+    final songs = allSongs ?? _latestSongs;
+    if (songs == null || songs.isEmpty) return;
+    _latestSongs = songs;
 
-    if (songsAsync is! AsyncData || songsAsync.value == null) return;
-    final allSongs = songsAsync.value!;
-    _latestSongs = allSongs;
-
-    // Read directly to avoid a provider self-dependency loop when this notifier
-    // updates recommendations during initialization in debug mode.
     final playCounts = await DatabaseService.instance.getPlayCounts();
     final sessions = await ref.read(sessionHistoryProvider.future);
 
@@ -1253,9 +1251,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
       }
 
       if (shouldUpdate) {
-        final songs = _generateSongsForRecommendation(
-            type.id, allSongs, playCounts, sessions);
-        if (songs.isNotEmpty) {
+        final recomSongs = _generateSongsForRecommendation(
+            type.id, songs, playCounts, sessions);
+        if (recomSongs.isNotEmpty) {
           final playlist = Playlist(
             id: type.id,
             name: pref?.customTitle ?? (existing?.name ?? type.title),
@@ -1263,7 +1261,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
             isRecommendation: true,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
-            songs: songs
+            songs: recomSongs
                 .map(
                     (s) => PlaylistSong(songFilename: s.filename, addedAt: now))
                 .toList(),

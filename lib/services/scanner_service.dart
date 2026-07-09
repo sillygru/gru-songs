@@ -25,6 +25,7 @@ class _ScanParams {
   final SendPort sendPort;
   final bool includeVideos;
   final int minimumFileSizeBytes;
+  final bool fastMode;
 
   _ScanParams({
     required this.paths,
@@ -36,6 +37,7 @@ class _ScanParams {
     required this.sendPort,
     this.includeVideos = true,
     this.minimumFileSizeBytes = 0,
+    this.fastMode = false,
   });
 }
 
@@ -228,6 +230,7 @@ class ScannerService {
     void Function(List<Song>)? onComplete,
     bool includeVideos = true,
     int minimumFileSizeBytes = 0,
+    bool fastMode = false,
   }) async {
     // Check for storage permission
     if (Platform.isAndroid) {
@@ -274,6 +277,7 @@ class ScannerService {
       sendPort: receivePort.sendPort,
       includeVideos: includeVideos,
       minimumFileSizeBytes: minimumFileSizeBytes,
+      fastMode: fastMode,
     );
 
     await Isolate.spawn(_isolateScan, params);
@@ -289,39 +293,44 @@ class ScannerService {
         // Incremental DB insert to save memory and keep UI responsive
         await DatabaseService.instance.insertSongsBatch(message);
       } else if (message == 'done') {
-        try {
-          final searchService = SearchService();
-          await searchService.init();
-          await searchService.rebuildIndex(allScannedSongs);
-          debugPrint(
-              'Search index rebuilt with ${allScannedSongs.length} songs');
-        } catch (e) {
-          debugPrint('Error rebuilding search index: $e');
-        }
-        // Extract thumbnails for video files on the main thread using FFmpeg.
-        // This must happen here (not in the isolate) because FFmpegService
-        // uses platform channels.
-        List<Song> finalSongs = allScannedSongs;
-        try {
-          finalSongs = await postProcessVideoThumbnails(allScannedSongs);
-          // Persist any newly-extracted cover URLs back to the DB.
-          final updated = <Song>[];
-          for (int i = 0; i < finalSongs.length; i++) {
-            if (finalSongs[i].coverUrl != allScannedSongs[i].coverUrl) {
-              updated.add(finalSongs[i]);
-            }
-          }
-          if (updated.isNotEmpty) {
-            await DatabaseService.instance.insertSongsBatch(updated);
+        if (!fastMode) {
+          try {
+            final searchService = SearchService();
+            await searchService.init();
+            await searchService.rebuildIndex(allScannedSongs);
             debugPrint(
-                'Video thumbnails extracted for ${updated.length} songs');
+                'Search index rebuilt with ${allScannedSongs.length} songs');
+          } catch (e) {
+            debugPrint('Error rebuilding search index: $e');
           }
-        } catch (e) {
-          debugPrint('Error post-processing video thumbnails: $e');
-          finalSongs = allScannedSongs;
+          // Extract thumbnails for video files on the main thread using FFmpeg.
+          // This must happen here (not in the isolate) because FFmpegService
+          // uses platform channels.
+          List<Song> finalSongs = allScannedSongs;
+          try {
+            finalSongs = await postProcessVideoThumbnails(allScannedSongs);
+            // Persist any newly-extracted cover URLs back to the DB.
+            final updated = <Song>[];
+            for (int i = 0; i < finalSongs.length; i++) {
+              if (finalSongs[i].coverUrl != allScannedSongs[i].coverUrl) {
+                updated.add(finalSongs[i]);
+              }
+            }
+            if (updated.isNotEmpty) {
+              await DatabaseService.instance.insertSongsBatch(updated);
+              debugPrint(
+                  'Video thumbnails extracted for ${updated.length} songs');
+            }
+          } catch (e) {
+            debugPrint('Error post-processing video thumbnails: $e');
+            finalSongs = allScannedSongs;
+          }
+          onComplete?.call(finalSongs);
+          completer.complete(finalSongs);
+        } else {
+          onComplete?.call(allScannedSongs);
+          completer.complete(allScannedSongs);
         }
-        onComplete?.call(finalSongs);
-        completer.complete(finalSongs);
         receivePort.close();
       } else if (message is String && message.startsWith('error:')) {
         receivePort.close();
@@ -342,6 +351,7 @@ class ScannerService {
     Map<String, int>? playCounts,
     void Function(double progress)? onProgress,
     void Function(List<Song>)? onComplete,
+    bool fastMode = false,
   }) async {
     // Check for all files access permission
     if (Platform.isAndroid) {
@@ -413,6 +423,7 @@ class ScannerService {
       lockDirPath: lockDir.path,
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
+      fastMode: fastMode,
     );
 
     await Isolate.spawn(_isolateScan, params);
@@ -428,37 +439,42 @@ class ScannerService {
         // Incremental DB insert
         await DatabaseService.instance.insertSongsBatch(message);
       } else if (message == 'done') {
-        // Rebuild search index after scanning
-        try {
-          final searchService = SearchService();
-          await searchService.init();
-          await searchService.rebuildIndex(allScannedSongs);
-          debugPrint(
-              'Search index rebuilt with ${allScannedSongs.length} songs');
-        } catch (e) {
-          debugPrint('Error rebuilding search index: $e');
-        }
-        // Extract thumbnails for video files on the main thread using FFmpeg.
-        List<Song> finalSongs = allScannedSongs;
-        try {
-          finalSongs = await postProcessVideoThumbnails(allScannedSongs);
-          final updated = <Song>[];
-          for (int i = 0; i < finalSongs.length; i++) {
-            if (finalSongs[i].coverUrl != allScannedSongs[i].coverUrl) {
-              updated.add(finalSongs[i]);
-            }
-          }
-          if (updated.isNotEmpty) {
-            await DatabaseService.instance.insertSongsBatch(updated);
+        if (!fastMode) {
+          // Rebuild search index after scanning
+          try {
+            final searchService = SearchService();
+            await searchService.init();
+            await searchService.rebuildIndex(allScannedSongs);
             debugPrint(
-                'Video thumbnails extracted for ${updated.length} songs');
+                'Search index rebuilt with ${allScannedSongs.length} songs');
+          } catch (e) {
+            debugPrint('Error rebuilding search index: $e');
           }
-        } catch (e) {
-          debugPrint('Error post-processing video thumbnails: $e');
-          finalSongs = allScannedSongs;
+          // Extract thumbnails for video files on the main thread using FFmpeg.
+          List<Song> finalSongs = allScannedSongs;
+          try {
+            finalSongs = await postProcessVideoThumbnails(allScannedSongs);
+            final updated = <Song>[];
+            for (int i = 0; i < finalSongs.length; i++) {
+              if (finalSongs[i].coverUrl != allScannedSongs[i].coverUrl) {
+                updated.add(finalSongs[i]);
+              }
+            }
+            if (updated.isNotEmpty) {
+              await DatabaseService.instance.insertSongsBatch(updated);
+              debugPrint(
+                  'Video thumbnails extracted for ${updated.length} songs');
+            }
+          } catch (e) {
+            debugPrint('Error post-processing video thumbnails: $e');
+            finalSongs = allScannedSongs;
+          }
+          onComplete?.call(finalSongs);
+          completer.complete(finalSongs);
+        } else {
+          onComplete?.call(allScannedSongs);
+          completer.complete(allScannedSongs);
         }
-        onComplete?.call(finalSongs);
-        completer.complete(finalSongs);
         receivePort.close();
       } else if (message is String && message.startsWith('error:')) {
         receivePort.close();
@@ -470,6 +486,123 @@ class ScannerService {
     });
 
     return completer.future;
+  }
+
+  /// Enriches minimal song records with metadata (title, artist, album, duration).
+  /// Processes songs in throttled batches to keep CPU usage manageable.
+  /// Call after a fast-mode scan to fill in metadata lazily.
+  static Future<List<Song>> enrichAllMetadata(
+    List<Song> songs, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final updated = <Song>[];
+    final total = songs.length;
+    const batchSize = 50;
+
+    for (int i = 0; i < total; i += batchSize) {
+      final end = (i + batchSize).clamp(0, total);
+      final batch = songs.sublist(i, end);
+      final batchChanges = <Song>[];
+
+      for (final song in batch) {
+        final file = File(song.url);
+        if (!await file.exists()) {
+          updated.add(song);
+          continue;
+        }
+
+        // Only process files that still have default/empty metadata
+        if (song.title != p.basenameWithoutExtension(file.path) ||
+            song.artist == 'Unknown Artist' ||
+            song.album == 'Unknown Album') {
+          // Skip video files — audio_metadata_reader can crash on video
+          // containers like MKV, WebM, AVI. Video metadata (title from
+          // filename) is already populated by the fast scan.
+          if (_isVideoFile(file.path)) {
+            updated.add(song);
+            continue;
+          }
+          try {
+            final metadata = amr.readMetadata(file);
+            String title = song.title;
+            String artist = song.artist;
+            String album = song.album;
+            Duration? duration = song.duration;
+            bool hasLyrics = song.hasLyrics;
+            double? songDateEpochSec = song.songDateEpochSec;
+
+            if (metadata.title?.isNotEmpty == true) title = metadata.title!;
+            if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
+            if (metadata.album?.isNotEmpty == true) album = metadata.album!;
+            if (metadata.year != null) {
+              songDateEpochSec =
+                  metadata.year!.millisecondsSinceEpoch.toDouble() / 1000.0;
+            }
+            duration = metadata.duration;
+            if (metadata.lyrics?.isNotEmpty == true) {
+              hasLyrics = true;
+            }
+
+            final enriched = Song(
+              title: title,
+              artist: artist,
+              album: album,
+              filename: song.filename,
+              url: song.url,
+              coverUrl: song.coverUrl,
+              hasLyrics: hasLyrics,
+              playCount: song.playCount,
+              duration: duration,
+              mtime: song.mtime,
+              createdEpochSec: song.createdEpochSec,
+              songDateEpochSec: songDateEpochSec,
+            );
+            batchChanges.add(enriched);
+            updated.add(enriched);
+          } catch (_) {
+            updated.add(song);
+          }
+        } else {
+          updated.add(song);
+        }
+      }
+
+      // Batch-insert all changes from this batch
+      if (batchChanges.isNotEmpty) {
+        await DatabaseService.instance.insertSongsBatch(batchChanges);
+      }
+
+      onProgress?.call(end / total);
+
+      // Yield CPU between batches so the app stays responsive
+      if (i + batchSize < total) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+    }
+
+    return updated;
+  }
+
+  /// Extracts cover art for a single song on demand.
+  /// Used for lazy cover extraction — only called when a song's cover is
+  /// first viewed. Avoids the cost of extracting every cover during scanning.
+  static Future<String?> extractCoverOnDemand(Song song) async {
+    final file = File(song.url);
+    if (!await file.exists()) return null;
+
+    final isVideo = _isVideoFile(song.url);
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+    if (!await coversDir.exists()) {
+      await coversDir.create(recursive: true);
+    }
+
+    return await extractCoverForFile(
+      file,
+      coversDir,
+      p.basename(file.path),
+      useFFmpegFallback: isVideo,
+    );
   }
 
   /// Extracts cover art from a single song file using the same logic as the
@@ -790,6 +923,7 @@ class ScannerService {
 
       final Map<String, String?> folderCoverCache = {};
       final List<Song> songs = [];
+      int processedCount = 0;
 
       for (int i = 0; i < audioFiles.length; i++) {
         final file = audioFiles[i];
@@ -829,6 +963,21 @@ class ScannerService {
             createdEpochSec: createdEpochSec,
             songDateEpochSec: existingSong.songDateEpochSec,
           ));
+        } else if (params.fastMode) {
+          songs.add(Song(
+            title: p.basenameWithoutExtension(file.path),
+            artist: 'Unknown Artist',
+            album: 'Unknown Album',
+            filename: p.basename(file.path),
+            url: file.path,
+            coverUrl: null,
+            hasLyrics: false,
+            playCount: 0,
+            duration: null,
+            mtime: currentMtime,
+            createdEpochSec: DateTime.now().millisecondsSinceEpoch / 1000.0,
+            songDateEpochSec: null,
+          ));
         } else {
           RandomAccessFile? lockHandle;
           try {
@@ -841,6 +990,12 @@ class ScannerService {
           } finally {
             await _releaseLock(lockHandle);
           }
+        }
+
+        // Yield CPU every 20 files to avoid starving the system
+        processedCount++;
+        if (processedCount % 20 == 0) {
+          await Future.delayed(const Duration(milliseconds: 5));
         }
 
         if (i % 10 == 0) {

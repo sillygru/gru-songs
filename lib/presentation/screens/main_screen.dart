@@ -203,6 +203,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
     });
+
   }
 
   @override
@@ -263,6 +264,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
         }
       },
     );
+
+    ref.listen(songsProvider, (previous, next) {
+      if (next is AsyncData && next.hasValue && next.value!.isNotEmpty) {
+        ref.read(userDataProvider.notifier).onLibraryChanged(next.value!);
+      }
+    });
 
     return Scaffold(
       body: PopScope(
