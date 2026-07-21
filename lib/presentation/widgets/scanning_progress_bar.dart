@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../tokens/app_tokens.dart';
 
 class ScanningProgressBar extends ConsumerWidget {
   const ScanningProgressBar({super.key});
@@ -58,7 +59,7 @@ class ScanningProgressBar extends ConsumerWidget {
               SizedBox(
                 height: 12,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: AppTokens.brPill,
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor:
@@ -85,7 +86,7 @@ class ScanningProgressBar extends ConsumerWidget {
               const Text(
                 'Please wait',
                 style: TextStyle(
-                  color: Colors.grey,
+                  color: AppTokens.fgTertiary,
                   fontWeight: FontWeight.w500,
                 ),
               ),

@@ -4,6 +4,7 @@ import '../../domain/models/search_filter.dart';
 import '../../models/mood_tag.dart';
 import '../../providers/providers.dart';
 import '../../providers/search_provider.dart';
+import '../tokens/app_tokens.dart';
 
 /// Widget displaying filter chips for search filtering
 class SearchFilterChips extends ConsumerWidget {
@@ -107,7 +108,7 @@ class _FilterChip extends StatelessWidget {
           ? BorderSide(color: theme.colorScheme.primary)
           : BorderSide.none,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppTokens.brMd,
         side: isSelected
             ? BorderSide(color: theme.colorScheme.primary)
             : BorderSide.none,
@@ -197,7 +198,7 @@ class _MoodDropdownChip extends StatelessWidget {
       surfaceTintColor: theme.colorScheme.surfaceTint,
       elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppTokens.brSm,
         side: BorderSide(
           color: theme.colorScheme.outlineVariant,
           width: 1,
@@ -304,7 +305,7 @@ class _MoodDropdownChip extends StatelessWidget {
         color: selected.isEmpty
             ? theme.colorScheme.surfaceContainerHighest
             : theme.colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppTokens.brMd,
         child: Container(
           padding: EdgeInsets.symmetric(
             horizontal: compact ? 12 : 14,
@@ -364,10 +365,10 @@ class _CompactChip extends StatelessWidget {
       color: isSelected
           ? theme.colorScheme.primaryContainer
           : theme.colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppTokens.brMd,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppTokens.brMd,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Text(

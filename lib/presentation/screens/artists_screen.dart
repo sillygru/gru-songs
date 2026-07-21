@@ -5,7 +5,11 @@ import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
 import '../widgets/folder_grid_image.dart';
 import '../widgets/duration_display.dart';
+import '../components/app_feedback.dart';
+import '../components/app_media_card.dart';
+import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
+import '../components/app_sheet.dart';
 
 /// Parses a multi-artist string and returns individual artist names.
 /// Handles formats like:
@@ -76,7 +80,6 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
             : const Text('Artists'),
-        centerTitle: true,
         leading: _isSearching
             ? IconButton(
                 onPressed: () {
@@ -126,12 +129,17 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
           }
 
           return GridView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.s4,
+              AppTokens.s4,
+              AppTokens.s4,
+              AppTokens.scrollBottomInset,
+            ),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              childAspectRatio: 0.85,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
+              childAspectRatio: 0.78,
+              crossAxisSpacing: AppTokens.s4,
+              mainAxisSpacing: AppTokens.s4,
             ),
             itemCount: sortedArtists.length,
             itemBuilder: (context, index) {
@@ -147,8 +155,13 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        loading: () => const AppLoading(),
+        error: (e, _) => AppEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Could not load artists',
+          message: '$e',
+          tone: AppTone.danger,
+        ),
       ),
     );
   }
@@ -159,7 +172,11 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
     required List<Song> songs,
     required ColorScheme colorScheme,
   }) {
-    return GestureDetector(
+    return AppMediaCard(
+      expand: true,
+      title: artist,
+      subtitle: collectionSummary(songs),
+      artwork: FolderGridImage(songs: songs, isGridItem: true),
       onTap: () {
         final allSongs = ref.read(songsProvider).value ?? [];
         final artistSongs = allSongs.where((s) {
@@ -176,46 +193,6 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
           ),
         );
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: FolderGridImage(
-                songs: songs,
-                isGridItem: true,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              artist,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-              ),
-            ),
-          ),
-          CollectionDurationDisplay(
-            songs: songs,
-            showSongCount: true,
-            compact: true,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -270,32 +247,30 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
   }
 
   void _showSortOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.sort_by_alpha),
-              title: const Text('Name (A-Z)'),
-              trailing: _sortBy == 'name' ? const Icon(Icons.check) : null,
-              onTap: () {
-                setState(() => _sortBy = 'name');
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.music_note),
-              title: const Text('Most Songs'),
-              trailing: _sortBy == 'songs' ? const Icon(Icons.check) : null,
-              onTap: () {
-                setState(() => _sortBy = 'songs');
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
+    showAppSheet(
+      context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.sort_by_alpha),
+            title: const Text('Name (A-Z)'),
+            trailing: _sortBy == 'name' ? const Icon(Icons.check) : null,
+            onTap: () {
+              setState(() => _sortBy = 'name');
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.music_note),
+            title: const Text('Most Songs'),
+            trailing: _sortBy == 'songs' ? const Icon(Icons.check) : null,
+            onTap: () {
+              setState(() => _sortBy = 'songs');
+              Navigator.pop(context);
+            },
+          ),
+        ],
       ),
     );
   }

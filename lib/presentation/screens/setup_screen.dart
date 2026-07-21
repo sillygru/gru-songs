@@ -9,6 +9,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/storage_service.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 enum _SetupStep { username, telemetry, permissions }
 
@@ -181,7 +183,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 .colorScheme
                 .primaryContainer
                 .withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: AppTokens.brMd,
           ),
           child: Column(
             children: [
@@ -300,7 +302,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter a username'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppTokens.danger,
         ),
       );
       return;
@@ -337,7 +339,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Setup failed: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppTokens.danger,
           ),
         );
       }
@@ -392,14 +394,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       } else {
         // Denied (not permanent) - show message
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Storage permission is needed to access your music files. '
-                'You can enable it later in Settings.',
-              ),
-            ),
-          );
+          appSnack(
+              context,
+              'Storage permission is needed to access your music files. '
+              'You can enable it later in Settings.');
         }
       }
 
@@ -414,11 +412,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     final selection = await storage.pickMusicFolder();
     if (selection == null || selection['path']!.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to access selected folder'),
-          ),
-        );
+        appSnack(context, 'Unable to access selected folder');
       }
       return;
     }
@@ -432,9 +426,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
     if (mounted) {
       setState(() => _folderSelected = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Music folder added')),
-      );
+      appSnack(context, 'Music folder added');
     }
   }
 

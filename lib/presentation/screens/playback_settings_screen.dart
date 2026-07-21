@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
+import '../components/app_screen_header.dart';
+import '../components/app_settings.dart';
 
 class PlaybackSettingsScreen extends ConsumerStatefulWidget {
   const PlaybackSettingsScreen({super.key});
@@ -15,310 +17,115 @@ class _PlaybackSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
 
-    // Determine which mode is active
+    // Gap and fade are mutually exclusive; whichever is non-zero disables the
+    // other's sliders.
     final bool isGapMode = settings.delayDuration > 0;
     final bool isFadeMode =
         settings.fadeOutDuration > 0 || settings.fadeInDuration > 0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Playback"), centerTitle: true),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      appBar: const AppTopBar(title: 'Playback'),
+      body: AppSettingsList(
         children: [
-          _buildSettingsGroup(
-            title: 'Audio',
-            icon: Icons.play_circle_outline,
-            children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.volume_off_rounded),
-                title: const Text('Auto-Pause on Mute'),
-                subtitle: const Text(
-                  'Automatically pause playback when volume is 0',
-                ),
-                value: settings.autoPauseOnVolumeZero,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setAutoPauseOnVolumeZero(val);
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.volume_up_rounded),
-                title: const Text('Auto-Resume on Unmute'),
-                subtitle: const Text(
-                  'Automatically resume playback when volume is restored',
-                ),
-                value: settings.autoResumeOnVolumeRestore,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setAutoResumeOnVolumeRestore(val);
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.screen_lock_portrait_outlined),
-                title: const Text('Keep Screen Awake on Lyrics'),
-                subtitle: const Text(
-                  'Prevent screen sleep while full-screen lyrics is open',
-                ),
-                value: settings.keepScreenAwakeOnLyrics,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setKeepScreenAwakeOnLyrics(val);
-                },
-              ),
-            ],
-          ),
-          _buildSettingsGroup(
-            title: 'Transitions',
-            icon: Icons.swap_horiz_rounded,
-            children: [
-              _buildDurationSlider(
-                context: context,
-                icon: Icons.hourglass_empty_rounded,
-                title: 'Gap / Delay',
-                subtitle: isFadeMode ? 'Disabled when fade is enabled' : null,
-                value: settings.delayDuration,
-                enabled: !isFadeMode,
-                onChanged: isFadeMode
-                    ? null
-                    : (val) => ref
-                        .read(settingsProvider.notifier)
-                        .setDelayDuration(val),
-              ),
-              const Divider(height: 1, indent: 56, endIndent: 16),
-              _buildDurationSlider(
-                context: context,
-                icon: Icons.volume_down_rounded,
-                title: 'Fade Out',
-                subtitle: isGapMode ? 'Disabled when gap is enabled' : null,
-                value: settings.fadeOutDuration,
-                enabled: !isGapMode,
-                onChanged: isGapMode
-                    ? null
-                    : (val) => ref
-                        .read(settingsProvider.notifier)
-                        .setFadeOutDuration(val),
-              ),
-              _buildDurationSlider(
-                context: context,
-                icon: Icons.volume_up_rounded,
-                title: 'Fade In',
-                subtitle: isGapMode ? 'Disabled when gap is enabled' : null,
-                value: settings.fadeInDuration,
-                enabled: !isGapMode,
-                onChanged: isGapMode
-                    ? null
-                    : (val) => ref
-                        .read(settingsProvider.notifier)
-                        .setFadeInDuration(val),
-              ),
-            ],
-          ),
-          _buildSettingsGroup(
-            title: 'Play / Pause',
+          AppSettingsGroup(
+            label: 'Audio',
             icon: Icons.play_circle_outline_rounded,
             children: [
-              _buildFadeSlider(
-                context: context,
+              AppSettingsSwitch(
+                icon: Icons.volume_off_rounded,
+                title: 'Auto-Pause on Mute',
+                subtitle: 'Pause playback when volume reaches 0',
+                value: settings.autoPauseOnVolumeZero,
+                onChanged: notifier.setAutoPauseOnVolumeZero,
+              ),
+              AppSettingsSwitch(
+                icon: Icons.volume_up_rounded,
+                title: 'Auto-Resume on Unmute',
+                subtitle: 'Resume playback when volume is restored',
+                value: settings.autoResumeOnVolumeRestore,
+                onChanged: notifier.setAutoResumeOnVolumeRestore,
+              ),
+              AppSettingsSwitch(
+                icon: Icons.screen_lock_portrait_outlined,
+                title: 'Keep Screen Awake on Lyrics',
+                subtitle: 'Prevent sleep while the lyrics pane is open',
+                value: settings.keepScreenAwakeOnLyrics,
+                onChanged: notifier.setKeepScreenAwakeOnLyrics,
+              ),
+            ],
+          ),
+          AppSettingsGroup(
+            label: 'Transitions',
+            icon: Icons.swap_horiz_rounded,
+            children: [
+              AppSettingsSlider(
+                icon: Icons.hourglass_empty_rounded,
+                title: isFadeMode ? 'Gap / Delay (off)' : 'Gap / Delay',
+                valueLabel: '${settings.delayDuration.toStringAsFixed(1)}s',
+                value: settings.delayDuration,
+                min: 0,
+                max: 12,
+                divisions: 24,
+                onChanged: isFadeMode ? (_) {} : notifier.setDelayDuration,
+              ),
+              AppSettingsSlider(
+                icon: Icons.volume_down_rounded,
+                title: isGapMode ? 'Fade Out (off)' : 'Fade Out',
+                valueLabel: '${settings.fadeOutDuration.toStringAsFixed(1)}s',
+                value: settings.fadeOutDuration,
+                min: 0,
+                max: 12,
+                divisions: 24,
+                onChanged: isGapMode ? (_) {} : notifier.setFadeOutDuration,
+              ),
+              AppSettingsSlider(
+                icon: Icons.volume_up_rounded,
+                title: isGapMode ? 'Fade In (off)' : 'Fade In',
+                valueLabel: '${settings.fadeInDuration.toStringAsFixed(1)}s',
+                value: settings.fadeInDuration,
+                min: 0,
+                max: 12,
+                divisions: 24,
+                onChanged: isGapMode ? (_) {} : notifier.setFadeInDuration,
+              ),
+            ],
+          ),
+          AppSettingsGroup(
+            label: 'Play / Pause',
+            icon: Icons.play_circle_outline_rounded,
+            children: [
+              AppSettingsSlider(
                 icon: Icons.play_arrow_rounded,
                 title: 'Fade on Play',
+                valueLabel: _fadeLabel(settings.playFadeDuration),
                 value: settings.playFadeDuration,
-                onChanged: (val) => ref
-                    .read(settingsProvider.notifier)
-                    .setPlayFadeDuration(val),
+                min: 0,
+                max: 1,
+                divisions: 20,
+                onChanged: notifier.setPlayFadeDuration,
               ),
-              _buildFadeSlider(
-                context: context,
+              AppSettingsSlider(
                 icon: Icons.pause_rounded,
                 title: 'Fade on Pause',
+                valueLabel: _fadeLabel(settings.pauseFadeDuration),
                 value: settings.pauseFadeDuration,
-                onChanged: (val) => ref
-                    .read(settingsProvider.notifier)
-                    .setPauseFadeDuration(val),
+                min: 0,
+                max: 1,
+                divisions: 20,
+                onChanged: notifier.setPauseFadeDuration,
               ),
             ],
-          ),
-          const SizedBox(height: 32),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsGroup({
-    required String title,
-    required List<Widget> children,
-    required IconData icon,
-  }) {
-    final theme = Theme.of(context);
-    final List<Widget> childrenWithDividers = [];
-
-    for (int i = 0; i < children.length; i++) {
-      childrenWithDividers.add(children[i]);
-      if (i < children.length - 1) {
-        childrenWithDividers.add(
-          Divider(
-            height: 1,
-            indent: 56,
-            endIndent: 16,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        );
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Row(
-            children: [
-              Icon(icon, size: 16, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                title.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.2,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: childrenWithDividers),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDurationSlider({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required double value,
-    bool enabled = true,
-    String? subtitle,
-    required ValueChanged<double>? onChanged,
-  }) {
-    final theme = Theme.of(context);
-    final disabledColor = theme.colorScheme.onSurface.withValues(alpha: 0.38);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: enabled
-                    ? theme.colorScheme.onSurfaceVariant
-                    : disabledColor,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: enabled ? null : disabledColor,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${value.toStringAsFixed(1)}s',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: enabled ? theme.colorScheme.primary : disabledColor,
-                ),
-              ),
-            ],
-          ),
-          if (subtitle != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 32.0, top: 4.0),
-              child: Text(
-                subtitle,
-                style: TextStyle(fontSize: 12, color: disabledColor),
-              ),
-            ),
-          Slider(
-            value: value,
-            min: 0,
-            max: 12,
-            divisions: 24,
-            onChanged: onChanged,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFadeSlider({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required double value,
-    required ValueChanged<double> onChanged,
-  }) {
-    final theme = Theme.of(context);
-    final String label = value == 0
-        ? 'Off'
-        : value >= 1.0
-            ? '1.0 s'
-            : '${(value * 1000).round()} ms';
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 12),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-              const Spacer(),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 2,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-            ),
-            child: Slider(
-              value: value,
-              min: 0,
-              max: 1.0,
-              divisions: 20,
-              onChanged: onChanged,
-            ),
-          ),
-        ],
-      ),
-    );
+  static String _fadeLabel(double value) {
+    if (value == 0) return 'Off';
+    if (value >= 1.0) return '1.0 s';
+    return '${(value * 1000).round()} ms';
   }
 }

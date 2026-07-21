@@ -5,6 +5,7 @@ import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/library_logic.dart';
 import '../widgets/album_art_image.dart';
+import '../tokens/app_tokens.dart';
 
 class SelectSongsScreen extends ConsumerStatefulWidget {
   final List<Song> songs;
@@ -86,14 +87,8 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                 color: Theme.of(context)
                     .colorScheme
                     .primary
-                    .withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.3),
-                ),
+                    .withValues(alpha: AppTokens.accentWashAlpha),
+                borderRadius: AppTokens.brSm,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,7 +191,7 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.search_off,
-                            size: 48, color: Colors.grey[600]),
+                            size: 48, color: AppTokens.fgTertiary),
                         const SizedBox(height: 16),
                         Text('No songs found',
                             style: Theme.of(context).textTheme.titleMedium),
@@ -239,7 +234,7 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                                 icon: Icon(
                                   isPriority ? Icons.star : Icons.star_border,
                                   color: isPriority
-                                      ? Colors.amber
+                                      ? AppTokens.warning
                                       : Theme.of(context)
                                           .colorScheme
                                           .onSurface
@@ -256,7 +251,7 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                                 },
                               ),
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: AppTokens.brPill,
                               child: AlbumArtImage(
                                 url: song.coverUrl ?? '',
                                 filename: song.filename,
@@ -283,15 +278,16 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: Colors.amber.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(12),
+                                    color: AppTokens.warning
+                                        .withValues(alpha: 0.2),
+                                    borderRadius: AppTokens.brSm,
                                   ),
                                   child: const Text(
                                     'PRIORITY',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.amber,
+                                      color: AppTokens.warning,
                                     ),
                                   ),
                                 ),

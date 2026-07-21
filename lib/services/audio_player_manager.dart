@@ -301,15 +301,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _saveShuffleState();
 
     if (applyToCurrentQueue && _effectiveQueue.isNotEmpty) {
-      final currentIndex = _player.currentIndex ?? 0;
       if (config.enabled) {
-        await _applyShuffle(
-          currentIndex,
+        await shuffleUpcoming(
           createNewSnapshot: createSnapshotOnQueueApply,
         );
       } else {
-        await _applyLinear(
-          currentIndex,
+        await orderUpcoming(
           createNewSnapshot: createSnapshotOnQueueApply,
         );
       }
@@ -1408,72 +1405,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
-  Future<void> refreshQueue() async {
-    await _runSerializedQueueMutation(() async {
-      if (_effectiveQueue.isEmpty) return;
-
-      final currentIndex = _player.currentIndex ?? -1;
-      if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) return;
-
-      if (_shuffleState.config.enabled) {
-        final currentItem = _effectiveQueue[currentIndex];
-        final prefix = _effectiveQueue.sublist(0, currentIndex + 1);
-        final sourcePool = _isRestrictedToOriginal
-            ? _originalQueue.map((q) => q.song).toList()
-            : _allSongs;
-
-        if (sourcePool.isEmpty) return;
-
-        final excluded = <String>{
-          ...prefix.map((item) => item.song.filename),
-        };
-
-        final candidates = sourcePool
-            .where((song) => !excluded.contains(song.filename))
-            .toList();
-        final candidateItems =
-            candidates.map((s) => QueueItem(song: s)).toList();
-
-        final shuffled = await _weightedShuffle(
-          candidateItems,
-          lastItem: currentItem,
-        );
-
-        _effectiveQueue = [...prefix, ...shuffled];
-        await _mutateQueueAfterIndex(currentIndex);
-        _warmThemePalettesAroundIndex(currentIndex);
-        await _updateCurrentSnapshotSongs();
-        _savePlaybackState();
-        return;
-      }
-
-      await _applyLinear(currentIndex);
-    });
-  }
-
-  Future<void> _applyLinear(
-    int currentIndex, {
-    bool createNewSnapshot = false,
-  }) async {
-    if (currentIndex >= _originalQueue.length) return;
-
-    final prefix = _originalQueue.sublist(0, currentIndex + 1);
-    final suffix = _originalQueue.sublist(currentIndex + 1);
-
-    _effectiveQueue = [...prefix, ...suffix];
-    await _rebuildQueue(
-        initialIndex: currentIndex, startPlaying: _player.playing);
-    if (createNewSnapshot) {
-      await _saveQueueSnapshot(
-        _effectiveQueue.map((item) => item.song).toList(),
-        playlistId: _currentPlaylistId,
-      );
-    } else {
-      await _updateCurrentSnapshotSongs();
-    }
-    _savePlaybackState();
-  }
-
   Future<AudioSource> _createAudioSource(QueueItem item) async {
     final song = item.song;
     final mediaPaths = await _resolvePlayableMediaPaths(song);
@@ -1913,41 +1844,101 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     pendingQueueNotifier.value = false;
   }
 
-  Future<void> _applyShuffle(
-    int currentIndex, {
+  /// Reorders only the tracks after the current one.
+  ///
+  /// The current track and everything already played stay exactly where they
+  /// are, and the set of queued songs is never touched — this is purely a
+  /// reordering, so flipping shuffle can never add or drop tracks. Because only
+  /// sources after the current index are rewritten, the track that is playing
+  /// is never re-created and audio does not stutter.
+  Future<void> _reorderUpcoming(
+    Future<List<QueueItem>> Function(List<QueueItem>, QueueItem) reorder, {
     bool createNewSnapshot = false,
   }) async {
-    if (_effectiveQueue.isEmpty) return;
-    if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) {
-      currentIndex = 0;
-    }
+    await _runSerializedQueueMutation(() async {
+      if (_effectiveQueue.isEmpty) return;
 
-    final currentItem = _effectiveQueue[currentIndex];
-    final otherItems = <QueueItem>[];
-    for (int i = 0; i < _effectiveQueue.length; i++) {
-      if (i == currentIndex) continue;
-      otherItems.add(_effectiveQueue[i]);
-    }
+      final currentIndex =
+          (_player.currentIndex ?? 0).clamp(0, _effectiveQueue.length - 1);
+      final currentItem = _effectiveQueue[currentIndex];
+      final upcoming = _effectiveQueue.sublist(currentIndex + 1);
 
-    final shuffled = await _weightedShuffle(
-      otherItems,
-      lastItem: currentItem,
+      if (upcoming.length > 1) {
+        final reordered = await reorder(upcoming, currentItem);
+        _effectiveQueue = [
+          ..._effectiveQueue.sublist(0, currentIndex + 1),
+          ...reordered,
+        ];
+        await _mutateQueueAfterIndex(currentIndex);
+        _warmThemePalettesAroundIndex(currentIndex);
+      }
+
+      if (createNewSnapshot) {
+        await _saveQueueSnapshot(
+          _effectiveQueue.map((item) => item.song).toList(),
+          playlistId: _currentPlaylistId,
+        );
+      } else {
+        await _updateCurrentSnapshotSongs();
+      }
+      _savePlaybackState();
+    });
+  }
+
+  /// Shuffles everything after the current track, in place.
+  Future<void> shuffleUpcoming({bool createNewSnapshot = false}) {
+    return _reorderUpcoming(
+      (upcoming, current) => _weightedShuffle(upcoming, lastItem: current),
+      createNewSnapshot: createNewSnapshot,
     );
+  }
 
-    _effectiveQueue = [currentItem, ...shuffled];
-    await _rebuildQueue(
-      initialIndex: 0,
-      startPlaying: _player.playing,
+  /// Restores original queue order for everything after the current track.
+  Future<void> orderUpcoming({bool createNewSnapshot = false}) {
+    return _reorderUpcoming(
+      (upcoming, current) async => _inOriginalOrder(upcoming, current),
+      createNewSnapshot: createNewSnapshot,
     );
-    if (createNewSnapshot) {
-      await _saveQueueSnapshot(
-        _effectiveQueue.map((item) => item.song).toList(),
-        playlistId: _currentPlaylistId,
-      );
-    } else {
-      await _updateCurrentSnapshotSongs();
+  }
+
+  /// Sorts [upcoming] back into original queue order, resuming from where
+  /// [current] sits in that order and wrapping around to the start — so turning
+  /// shuffle off continues the album or playlist from the right place rather
+  /// than jumping back to track one.
+  List<QueueItem> _inOriginalOrder(
+    List<QueueItem> upcoming,
+    QueueItem current,
+  ) {
+    final byQueueId = <String, int>{};
+    final byFilename = <String, int>{};
+    for (int i = 0; i < _originalQueue.length; i++) {
+      byQueueId[_originalQueue[i].queueId] = i;
+      byFilename.putIfAbsent(_originalQueue[i].song.filename, () => i);
     }
-    _savePlaybackState();
+
+    // Duplicated entries carry a fresh queueId, so fall back to the filename.
+    int? positionOf(QueueItem item) =>
+        byQueueId[item.queueId] ?? byFilename[item.song.filename];
+
+    final anchor = positionOf(current) ?? -1;
+    final length = _originalQueue.length;
+
+    // Entries the original queue never had — added via Play Next, or generated
+    // on the fly — have no natural position, so they keep their relative order
+    // at the end rather than being dropped.
+    final known = <QueueItem>[];
+    final unknown = <QueueItem>[];
+    for (final item in upcoming) {
+      (positionOf(item) == null ? unknown : known).add(item);
+    }
+
+    int rank(QueueItem item) {
+      final position = positionOf(item)!;
+      return position > anchor ? position : position + length;
+    }
+
+    known.sort((a, b) => rank(a).compareTo(rank(b)));
+    return [...known, ...unknown];
   }
 
   Future<List<QueueItem>> _weightedShuffle(
@@ -2439,42 +2430,55 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     });
   }
 
-  Future<void> moveToFront(int index) async {
+  /// Plays a specific queued entry right now.
+  ///
+  /// An entry that is still upcoming is *moved* to just after the current
+  /// track, so it exists once. An entry that has already played is *copied*
+  /// there instead, leaving the played history intact. Either way nothing at or
+  /// before the current track is disturbed, and playback then skips onto it.
+  Future<void> jumpToQueueItem(String queueId) async {
     await _runSerializedQueueMutation(() async {
-      if (index < 0 || index >= _effectiveQueue.length) return;
-
-      final item = _effectiveQueue[index];
       final currentIndex = _player.currentIndex ?? -1;
-      if (currentIndex < 0) return;
+      if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) return;
 
-      // Don't move if it's already right after current
-      if (index == currentIndex + 1) return;
+      final sourceIndex =
+          _effectiveQueue.indexWhere((item) => item.queueId == queueId);
+      if (sourceIndex < 0 || sourceIndex == currentIndex) return;
 
-      _effectiveQueue.removeAt(index);
-      try {
-        await _player.removeAudioSourceAt(index);
-      } catch (e) {
-        _effectiveQueue.insert(index, item);
-        rethrow;
-      }
+      final targetIndex = currentIndex + 1;
 
-      int targetIndex = max(0, currentIndex + 1);
-      if (index < targetIndex) targetIndex -= 1;
-      targetIndex = targetIndex.clamp(0, _effectiveQueue.length);
-
-      _effectiveQueue.insert(targetIndex, item);
-      try {
-        final source = await _createAudioSource(item);
-        await _player.insertAudioSource(targetIndex, source);
-      } catch (e) {
-        _effectiveQueue.removeAt(targetIndex);
-        _effectiveQueue.insert(index.clamp(0, _effectiveQueue.length), item);
-        rethrow;
+      if (sourceIndex > currentIndex) {
+        if (sourceIndex != targetIndex) {
+          final item = _effectiveQueue.removeAt(sourceIndex);
+          _effectiveQueue.insert(targetIndex, item);
+          try {
+            await _player.moveAudioSource(sourceIndex, targetIndex);
+          } catch (e) {
+            _effectiveQueue.removeAt(targetIndex);
+            _effectiveQueue.insert(sourceIndex, item);
+            rethrow;
+          }
+        }
+      } else {
+        // A fresh QueueItem, so the original entry keeps its own identity in
+        // the played section rather than being yanked out of history.
+        final copy = QueueItem(song: _effectiveQueue[sourceIndex].song);
+        _effectiveQueue.insert(targetIndex, copy);
+        try {
+          final source = await _createAudioSource(copy);
+          await _player.insertAudioSource(targetIndex, source);
+        } catch (e) {
+          _effectiveQueue.removeAt(targetIndex);
+          rethrow;
+        }
       }
 
       _updateQueueNotifier();
       _savePlaybackState();
       await _updateCurrentSnapshotSongs();
+
+      await _player.seek(Duration.zero, index: targetIndex);
+      await _player.play();
     });
   }
 

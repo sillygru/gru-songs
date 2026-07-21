@@ -7,6 +7,8 @@ import 'package:file_picker/file_picker.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../widgets/album_art_image.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class EditMetadataScreen extends ConsumerStatefulWidget {
   final Song song;
@@ -58,16 +60,12 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
             .updateSongCover(currentSong, path);
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Cover updated successfully")),
-          );
+          appSnack(context, "Cover updated successfully");
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error picking image: $e")),
-        );
+        appSnack(context, "Error picking image: $e");
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -98,15 +96,11 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
             .read(songsProvider.notifier)
             .updateSongCover(currentSong, null);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Cover removed")),
-          );
+          appSnack(context, "Cover removed");
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Error removing cover: $e")),
-          );
+          appSnack(context, "Error removing cover: $e");
         }
       } finally {
         if (mounted) setState(() => _isSaving = false);
@@ -152,7 +146,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                                       TextStyle(fontWeight: FontWeight.bold)),
                               const SizedBox(height: 8),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: AppTokens.brSm,
                                 child: Container(
                                   color: Colors
                                       .black12, // Subtle background to see borders
@@ -183,7 +177,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                                       fontWeight: FontWeight.bold)),
                               const SizedBox(height: 8),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: AppTokens.brSm,
                                 child: Container(
                                   color: Colors.black12,
                                   child: Image.memory(
@@ -221,16 +215,15 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                                 onTap: () =>
                                     setState(() => selectedIndex = index),
                                 child: Container(
+                                  padding: const EdgeInsets.all(AppTokens.s1),
                                   decoration: BoxDecoration(
-                                    border: index == selectedIndex
-                                        ? Border.all(
-                                            color:
-                                                Theme.of(context).primaryColor,
-                                            width: 2)
-                                        : Border.all(
-                                            color: Colors.transparent,
-                                            width: 2),
-                                    borderRadius: BorderRadius.circular(4),
+                                    color: index == selectedIndex
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withValues(alpha: 0.28)
+                                        : Colors.transparent,
+                                    borderRadius: AppTokens.brSm,
                                   ),
                                   child: Image.memory(
                                     fixedOptions[index],
@@ -280,16 +273,12 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
         } catch (_) {}
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Thumbnail fixed successfully")),
-          );
+          appSnack(context, "Thumbnail fixed successfully");
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error fixing thumbnail: $e")),
-        );
+        appSnack(context, "Error fixing thumbnail: $e");
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -349,16 +338,12 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
         }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Cover exported to $savePath")),
-          );
+          appSnack(context, "Cover exported to $savePath");
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error exporting cover: $e")),
-        );
+        appSnack(context, "Error exporting cover: $e");
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -392,15 +377,11 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Metadata updated successfully")),
-        );
+        appSnack(context, "Metadata updated successfully");
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving metadata: $e")),
-        );
+        appSnack(context, "Error saving metadata: $e");
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -444,7 +425,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
             Row(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppTokens.brSm,
                   child: AlbumArtImage(
                     url: currentSong.coverUrl ?? '',
                     width: 100,
@@ -499,9 +480,10 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                               onPressed: currentSong.coverUrl == null
                                   ? null
                                   : () => _removeImage(currentSong),
-                              icon: const Icon(Icons.delete, color: Colors.red),
+                              icon: const Icon(Icons.delete,
+                                  color: AppTokens.danger),
                               label: const Text("Remove",
-                                  style: TextStyle(color: Colors.red)),
+                                  style: TextStyle(color: AppTokens.danger)),
                             ),
                           ),
                         ],
@@ -557,8 +539,8 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
               subtitle: const Text("View or edit embedded lyrics"),
               trailing: const Icon(Icons.chevron_right),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(color: Colors.grey.shade800),
+                borderRadius: AppTokens.brSm,
+                side: BorderSide(color: AppTokens.fgTertiary),
               ),
               onTap: () {
                 Navigator.push(
@@ -633,9 +615,7 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error loading lyrics: $e")),
-        );
+        appSnack(context, "Error loading lyrics: $e");
       }
     }
   }
@@ -648,15 +628,11 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
           .updateLyrics(widget.song, _controller.text);
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Lyrics saved")),
-        );
+        appSnack(context, "Lyrics saved");
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving lyrics: $e")),
-        );
+        appSnack(context, "Error saving lyrics: $e");
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -691,7 +667,7 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
                 children: [
                   const Text(
                     "Lyrics are embedded in the audio file. You can use [mm:ss.xx] timestamps for synced lyrics.",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    style: TextStyle(fontSize: 12, color: AppTokens.fgTertiary),
                   ),
                   const SizedBox(height: 16),
                   Expanded(

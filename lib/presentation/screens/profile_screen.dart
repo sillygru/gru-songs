@@ -6,6 +6,13 @@ import '../../providers/providers.dart';
 import '../../models/shuffle_config.dart';
 import '../widgets/fun_stats_view.dart';
 import '../widgets/scanning_progress_bar.dart';
+import '../components/app_dialog.dart';
+import '../components/app_feedback.dart';
+import '../components/app_list_row.dart';
+import '../components/app_screen_header.dart';
+import '../components/app_section_header.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
 import 'settings_screen.dart';
 import 'backup_management_screen.dart';
 import 'custom_shuffle_settings_screen.dart';
@@ -21,14 +28,20 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   static const double _bottomDockDragDistance = 88.0;
-  final _newUsernameController = TextEditingController();
+
   String _appVersion = '';
   ShufflePersonality? _pendingPersonality;
   bool _hasPersonalityChanges = false;
+  bool _isScrolled = false;
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) {
       return false;
+    }
+
+    final scrolled = notification.metrics.pixels > 0;
+    if (scrolled != _isScrolled) {
+      setState(() => _isScrolled = scrolled);
     }
 
     if (notification is ScrollUpdateNotification &&
@@ -55,52 +68,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _getAppVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     if (!mounted) return;
-    setState(() {
-      _appVersion = packageInfo.version;
-    });
+    setState(() => _appVersion = packageInfo.version);
   }
 
-  void _showChangeUsernameDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Display Name'),
-        content: TextField(
-          controller: _newUsernameController,
-          decoration: const InputDecoration(
-            labelText: 'New Name',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () async {
-              if (_newUsernameController.text.isEmpty) return;
-              try {
-                await ref
-                    .read(authProvider.notifier)
-                    .setDisplayName(_newUsernameController.text.trim());
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Name updated")));
-                  _newUsernameController.clear();
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text(e.toString())));
-                }
-              }
-            },
-            child: const Text('Update'),
-          ),
-        ],
-      ),
+  Future<void> _showChangeUsernameDialog(String? current) async {
+    final name = await showAppTextPrompt(
+      context,
+      title: 'Change Display Name',
+      initialValue: current,
+      hintText: 'New name',
+      confirmLabel: 'Update',
     );
+    if (name == null || !mounted) return;
+
+    try {
+      await ref.read(authProvider.notifier).setDisplayName(name);
+      if (mounted) {
+        appSnack(context, 'Name updated', tone: AppTone.success);
+      }
+    } catch (e) {
+      if (mounted) appSnack(context, '$e', tone: AppTone.danger);
+    }
   }
 
   @override
@@ -112,311 +100,341 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final authState = ref.watch(authProvider);
     final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
+    final accent = AppTokens.accentOf(context, ref);
+
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
-        onRefresh: () async {
-          await ref.read(userDataProvider.notifier).refresh(force: true);
-        },
+        onRefresh: () =>
+            ref.read(userDataProvider.notifier).refresh(force: true),
         child: NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
           child: CustomScrollView(
             controller: widget.scrollController,
+            physics: const BouncingScrollPhysics(),
             slivers: [
-              SliverAppBar(
-                expandedHeight: 200,
-                pinned: true,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Theme.of(context).colorScheme.primaryContainer,
-                          Theme.of(context).scaffoldBackgroundColor,
-                        ],
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 40),
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
-                          child: Text(
-                            (authState.username ?? "U")
-                                .substring(0, 1)
-                                .toUpperCase(),
-                            style: const TextStyle(
-                                fontSize: 32,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold),
+              AppSliverHeader(title: 'Profile', isScrolled: _isScrolled),
+
+              // Identity — a plain avatar and name, sitting on the background
+              // rather than on a gradient banner.
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppTokens.s5,
+                    AppTokens.s2,
+                    AppTokens.s5,
+                    AppTokens.s5,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 64,
+                        height: 64,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(
+                            alpha: AppTokens.accentWashAlpha,
                           ),
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          authState.username ?? "User",
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                        child: Text(
+                          (authState.username ?? 'U')
+                              .substring(0, 1)
+                              .toUpperCase(),
+                          style: AppTokens.screenTitle(context)
+                              .copyWith(color: accent),
+                        ),
+                      ),
+                      const SizedBox(width: AppTokens.s4),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              authState.username ?? 'User',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTokens.screenTitle(context),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Wispie v$_appVersion',
+                              style: AppTokens.meta(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Stats
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.s4,
+                  ),
+                  child: AppSurface(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppTokens.s4,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        AppStatTile(
+                          label: 'Favorites',
+                          value: '${userData.favorites.length}',
+                        ),
+                        AppStatTile(
+                          label: 'Playlists',
+                          value:
+                              '${userData.playlists.where((p) => !p.isRecommendation).length}',
+                        ),
+                        AppStatTile(
+                          label: 'Hidden',
+                          value: '${userData.hidden.length}',
+                        ),
+                        AppStatTile(
+                          label: 'Suggest-less',
+                          value: '${userData.suggestLess.length}',
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
+
+              // Fun stats
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildStatColumn('Favorites',
-                              userData.favorites.length.toString()),
-                          _buildStatColumn(
-                              'Playlists',
-                              userData.playlists
-                                  .where((p) => !p.isRecommendation)
-                                  .length
-                                  .toString()),
-                          _buildStatColumn(
-                              'Hidden', userData.hidden.length.toString()),
-                          _buildStatColumn('Suggest-less',
-                              userData.suggestLess.length.toString()),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppTokens.s4,
+                    AppTokens.s4,
+                    AppTokens.s4,
+                    0,
+                  ),
+                  child: AppSurface(
+                    padding: EdgeInsets.zero,
+                    child: ClipRRect(
+                      borderRadius: AppTokens.brMd,
+                      child: ExpansionTile(
+                        leading: Icon(Icons.insights_rounded, color: accent),
+                        title: const Text('Fun Stats'),
+                        subtitle: const Text('Your listening habits analyzed'),
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        children: const [
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              AppTokens.s4,
+                              0,
+                              AppTokens.s4,
+                              AppTokens.s4,
+                            ),
+                            child: FunStatsView(),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 24),
+                    ),
+                  ),
+                ),
+              ),
 
-                      // Fun Stats Section
-                      Card(
-                        elevation: 0,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest
-                            .withValues(alpha: 0.3),
-                        clipBehavior: Clip.antiAlias,
-                        child: const ExpansionTile(
-                          leading: Icon(Icons.insights),
-                          title: Text("Fun Stats",
-                              style: TextStyle(fontWeight: FontWeight.w500)),
-                          subtitle: Text("Your listening habits analyzed"),
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.only(
-                                  bottom: 16.0, left: 16.0, right: 16.0),
-                              child: FunStatsView(),
-                            )
-                          ],
+              // Shuffle personality
+              const SliverToBoxAdapter(
+                child: AppSectionHeader(label: 'Shuffle Personality'),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.s4,
+                  ),
+                  child: ValueListenableBuilder<ShuffleState>(
+                    valueListenable: audioManager.shuffleStateNotifier,
+                    builder: (context, shuffleState, child) {
+                      final current = shuffleState.config.personality;
+                      final selectedValue = _pendingPersonality ?? current;
+
+                      return AppSurface(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppTokens.s2,
                         ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Shuffle Personality Selector
-                      _buildSectionTitle('Shuffle Personality'),
-                      ValueListenableBuilder(
-                          valueListenable: audioManager.shuffleStateNotifier,
-                          builder: (context, shuffleState, child) {
-                            final current = shuffleState.config.personality;
-                            final selectedValue =
-                                _pendingPersonality ?? current;
-
-                            return Card(
-                              elevation: 0,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest
-                                  .withValues(alpha: 0.3),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            RadioGroup<ShufflePersonality>(
+                              groupValue: selectedValue,
+                              onChanged: (v) {
+                                if (v == null) return;
+                                setState(() {
+                                  _pendingPersonality = v;
+                                  _hasPersonalityChanges = v != current;
+                                });
+                              },
+                              child: const Column(
+                                children: [
+                                  _PersonalityTile(
+                                    title: 'Default',
+                                    subtitle: 'Balanced mix with anti-repeat',
+                                    value: ShufflePersonality.defaultMode,
+                                  ),
+                                  _PersonalityTile(
+                                    title: 'Explorer',
+                                    subtitle: 'Prioritizes new & rare songs',
+                                    value: ShufflePersonality.explorer,
+                                  ),
+                                  _PersonalityTile(
+                                    title: 'Consistent',
+                                    subtitle: 'Favorites heavy',
+                                    value: ShufflePersonality.consistent,
+                                  ),
+                                  _PersonalityTile(
+                                    title: 'Custom',
+                                    subtitle: 'Configure your own shuffle',
+                                    value: ShufflePersonality.custom,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_hasPersonalityChanges)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppTokens.s4,
+                                  AppTokens.s2,
+                                  AppTokens.s2,
+                                  AppTokens.s1,
+                                ),
+                                child: Row(
                                   children: [
-                                    RadioGroup<ShufflePersonality>(
-                                      groupValue: selectedValue,
-                                      onChanged: (v) {
-                                        if (v != null) {
-                                          setState(() {
-                                            _pendingPersonality = v;
-                                            _hasPersonalityChanges =
-                                                v != current;
-                                          });
-                                        }
-                                      },
-                                      child: Column(
-                                        children: [
-                                          _buildRadioTile(
-                                            title: 'Default',
-                                            subtitle:
-                                                'Balanced mix with anti-repeat',
-                                            value:
-                                                ShufflePersonality.defaultMode,
-                                          ),
-                                          _buildRadioTile(
-                                            title: 'Explorer',
-                                            subtitle:
-                                                'Prioritizes new & rare songs',
-                                            value: ShufflePersonality.explorer,
-                                          ),
-                                          _buildRadioTile(
-                                            title: 'Consistent',
-                                            subtitle: 'Favorites heavy',
-                                            value:
-                                                ShufflePersonality.consistent,
-                                          ),
-                                          _buildRadioTile(
-                                            title: 'Custom',
-                                            subtitle:
-                                                'Configure your own shuffle',
-                                            value: ShufflePersonality.custom,
-                                          ),
-                                        ],
+                                    Expanded(
+                                      child: Text(
+                                        'Applies to the next queue',
+                                        style: AppTokens.meta(context)
+                                            .copyWith(color: accent),
                                       ),
                                     ),
-                                    if (_hasPersonalityChanges) ...[
-                                      const Divider(),
-                                      Padding(
-                                        padding: const EdgeInsets.all(8.0),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                'Changes will apply to next queue',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primary,
-                                                ),
-                                              ),
-                                            ),
-                                            TextButton(
-                                              onPressed: () {
-                                                setState(() {
-                                                  _pendingPersonality = null;
-                                                  _hasPersonalityChanges =
-                                                      false;
-                                                });
-                                              },
-                                              child: const Text('Cancel'),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            FilledButton(
-                                              onPressed: () {
-                                                audioManager
-                                                    .updateShuffleConfig(
-                                                  shuffleState.config.copyWith(
-                                                    personality:
-                                                        _pendingPersonality!,
-                                                  ),
-                                                  applyToCurrentQueue: false,
-                                                );
-                                                setState(() {
-                                                  _pendingPersonality = null;
-                                                  _hasPersonalityChanges =
-                                                      false;
-                                                });
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                        'Personality saved'),
-                                                  ),
-                                                );
-                                              },
-                                              child: const Text('Apply'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                                    TextButton(
+                                      onPressed: () => setState(() {
+                                        _pendingPersonality = null;
+                                        _hasPersonalityChanges = false;
+                                      }),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    const SizedBox(width: AppTokens.s2),
+                                    FilledButton(
+                                      onPressed: () {
+                                        audioManager.updateShuffleConfig(
+                                          shuffleState.config.copyWith(
+                                            personality: _pendingPersonality!,
+                                          ),
+                                          applyToCurrentQueue: false,
+                                        );
+                                        setState(() {
+                                          _pendingPersonality = null;
+                                          _hasPersonalityChanges = false;
+                                        });
+                                        appSnack(context, 'Personality saved',
+                                            tone: AppTone.success);
+                                      },
+                                      child: const Text('Apply'),
+                                    ),
                                   ],
                                 ),
                               ),
-                            );
-                          }),
-                      // Custom Mode Settings Button
-                      ValueListenableBuilder<ShuffleState>(
-                        valueListenable: audioManager.shuffleStateNotifier,
-                        builder: (context, shuffleState, child) {
-                          if (shuffleState.config.personality !=
-                              ShufflePersonality.custom) {
-                            return const SizedBox.shrink();
-                          }
-                          return Column(
-                            children: [
-                              const SizedBox(height: 12),
-                              _buildListTile(
-                                icon: Icons.tune,
-                                title: 'Configure Custom Shuffle',
-                                subtitle: 'Adjust shuffle behavior settings',
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const CustomShuffleSettingsScreen(),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          );
-                        },
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: ValueListenableBuilder<ShuffleState>(
+                  valueListenable: audioManager.shuffleStateNotifier,
+                  builder: (context, shuffleState, child) {
+                    if (shuffleState.config.personality !=
+                        ShufflePersonality.custom) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTokens.s4,
+                        AppTokens.s3,
+                        AppTokens.s4,
+                        0,
                       ),
-                      const SizedBox(height: 24),
+                      child: AppSurfaceGroup(
+                        children: [
+                          _navRow(
+                            icon: Icons.tune_rounded,
+                            title: 'Configure Custom Shuffle',
+                            subtitle: 'Adjust shuffle behavior settings',
+                            accent: accent,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const CustomShuffleSettingsScreen(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
 
-                      _buildSectionTitle('Profile'),
-                      _buildListTile(
-                        icon: Icons.person_outline,
+              // Profile / Data / App
+              const SliverToBoxAdapter(
+                child: AppSectionHeader(label: 'Profile'),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppTokens.s4),
+                  child: AppSurfaceGroup(
+                    children: [
+                      _navRow(
+                        icon: Icons.person_outline_rounded,
                         title: 'Change Display Name',
                         subtitle: 'Current: ${authState.username}',
-                        onTap: _showChangeUsernameDialog,
+                        accent: accent,
+                        onTap: () =>
+                            _showChangeUsernameDialog(authState.username),
                       ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Data Management'),
-                      _buildListTile(
+                      _navRow(
                         icon: Icons.backup_rounded,
                         title: 'Manage Backups',
                         subtitle: 'Create, restore, and manage app backups',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const BackupManagementScreen()),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('App'),
-                      _buildListTile(
-                        icon: Icons.settings,
-                        title: 'Settings',
-                        subtitle: 'Theme & Storage',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const SettingsScreen()),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        "Wispie v$_appVersion",
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
+                        accent: accent,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BackupManagementScreen(),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 100),
+                      _navRow(
+                        icon: Icons.settings_rounded,
+                        title: 'Settings',
+                        subtitle: 'Theme & storage',
+                        accent: accent,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
+              ),
+
+              const SliverPadding(
+                padding: EdgeInsets.only(bottom: AppTokens.scrollBottomInset),
               ),
             ],
           ),
@@ -425,79 +443,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildRadioTile({
-    required String title,
-    required String subtitle,
-    required ShufflePersonality value,
-  }) {
-    return RadioListTile<ShufflePersonality>(
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: Text(subtitle,
-          style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      value: value,
-      dense: true,
-      activeColor: Theme.of(context).colorScheme.primary,
-    );
-  }
-
-  Widget _buildStatColumn(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.grey),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey,
-            letterSpacing: 1.2,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildListTile({
+  Widget _navRow({
     required IconData icon,
     required String title,
-    String? subtitle,
+    required String subtitle,
+    required Color accent,
     required VoidCallback onTap,
-    Color? textColor,
-    Color? iconColor,
   }) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest
-          .withValues(alpha: 0.3),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: Icon(icon, color: iconColor),
-        title: Text(title,
-            style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
-        subtitle: subtitle != null ? Text(subtitle) : null,
-        trailing: const Icon(Icons.chevron_right, size: 20),
-        onTap: onTap,
+    return AppListRow(
+      leading: AppRowIcon(icon: icon, color: accent),
+      title: title,
+      subtitle: subtitle,
+      onTap: onTap,
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        size: 20,
+        color: AppTokens.fgTertiary,
       ),
+    );
+  }
+}
+
+class _PersonalityTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final ShufflePersonality value;
+
+  const _PersonalityTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RadioListTile<ShufflePersonality>(
+      value: value,
+      dense: true,
+      title: Text(title),
+      subtitle: Text(subtitle),
     );
   }
 }

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/settings_provider.dart';
+import '../components/app_list_row.dart';
+import '../components/app_screen_header.dart';
+import '../components/app_settings.dart';
+import '../tokens/app_tokens.dart';
 import 'theme_selection_screen.dart';
 import 'quick_actions_settings_screen.dart';
 
@@ -18,127 +22,98 @@ class _AppearanceSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+    final accent = AppTokens.accentOf(context, ref);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Appearance"),
-        centerTitle: true,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      appBar: const AppTopBar(title: 'Appearance'),
+      body: AppSettingsList(
         children: [
-          _buildSettingsGroup(
-            title: 'Theme',
+          AppSettingsGroup(
+            label: 'Theme',
             icon: Icons.palette_outlined,
             children: [
-              _buildListTile(
+              AppSettingsTile(
                 icon: Icons.color_lens_outlined,
                 title: 'App Theme',
                 subtitle: 'Choose your visual style',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const ThemeSelectionScreen()),
-                  );
-                },
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const ThemeSelectionScreen()),
+                ),
               ),
             ],
           ),
-          _buildSettingsGroup(
-            title: 'Display',
+          AppSettingsGroup(
+            label: 'Display',
             icon: Icons.view_list_rounded,
             children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.waves_rounded),
-                title: const Text('Audio Visualizer'),
-                subtitle: const Text('Show animated wave while playing'),
+              AppSettingsSwitch(
+                icon: Icons.waves_rounded,
+                title: 'Audio Visualizer',
+                subtitle: 'Show animated wave while playing',
                 value: settings.visualizerEnabled,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setVisualizerEnabled(val);
-                },
+                onChanged: notifier.setVisualizerEnabled,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.graphic_eq_rounded),
-                title: const Text('Waveform Progress Bar'),
-                subtitle: const Text('Show song waveform in player'),
+              AppSettingsSwitch(
+                icon: Icons.graphic_eq_rounded,
+                title: 'Waveform Progress Bar',
+                subtitle: 'Show song waveform in player',
                 value: settings.showWaveform,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setShowWaveform(val);
-                },
+                onChanged: notifier.setShowWaveform,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.timer_outlined),
-                title: const Text('Show Song Duration'),
-                subtitle: const Text('Display duration in song lists'),
+              AppSettingsSwitch(
+                icon: Icons.timer_outlined,
+                title: 'Show Song Duration',
+                subtitle: 'Display duration in song lists',
                 value: settings.showSongDuration,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setShowSongDuration(val);
-                },
+                onChanged: notifier.setShowSongDuration,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.swap_vert_rounded),
-                title: const Text('Auto-Hide Bottom Dock'),
-                subtitle: const Text(
-                    'Hide the bottom dock on downward scroll and restore it on upward scroll'),
+              AppSettingsSwitch(
+                icon: Icons.swap_vert_rounded,
+                title: 'Auto-Hide Bottom Dock',
+                subtitle: 'Hide on downward scroll, restore on upward scroll',
                 value: settings.autoHideBottomBarOnScroll,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setAutoHideBottomBarOnScroll(val);
-                },
+                onChanged: notifier.setAutoHideBottomBarOnScroll,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.blur_on_rounded),
-                title: const Text('Lyrics blur overlay'),
-                subtitle: const Text(
-                    'Add premium progressive blur to top and bottom lyrics overlays'),
+              AppSettingsSwitch(
+                icon: Icons.blur_on_rounded,
+                title: 'Lyrics blur overlay',
+                subtitle: 'Progressive blur on the lyrics top and bottom edges',
                 value: settings.lyricsBlurOverlayEnabled,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setLyricsBlurOverlayEnabled(val);
-                },
+                onChanged: notifier.setLyricsBlurOverlayEnabled,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.album_outlined),
-                title: const Text('Beat-reactive cover'),
-                subtitle: const Text(
-                  'Work in progress, not yet stable. Pulses album art with the beat.',
-                ),
+              AppSettingsSwitch(
+                icon: Icons.album_outlined,
+                title: 'Beat-reactive cover',
+                subtitle: 'Work in progress. Pulses album art with the beat.',
                 value: settings.beatReactiveCoverEnabled,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setBeatReactiveCoverEnabled(val);
-                },
+                onChanged: notifier.setBeatReactiveCoverEnabled,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.blur_on_rounded),
-                title: const Text('Progressive blur on list headers'),
-                subtitle: const Text(
-                  'Blur effect at the top of scrolling lists (performance intensive)',
-                ),
+              AppSettingsSwitch(
+                icon: Icons.blur_linear_rounded,
+                title: 'Progressive blur on list headers',
+                subtitle: 'Blur behind scrolling headers (performance heavy)',
                 value: settings.showProgressiveBlurHeaders,
-                onChanged: (val) {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setProgressiveBlurHeaders(val);
-                },
+                onChanged: notifier.setProgressiveBlurHeaders,
               ),
-              ListTile(
-                leading: const Icon(Icons.photo_size_select_large_outlined),
-                title: const Text('Player Cover Sizing'),
-                subtitle:
-                    const Text('Auto-fit or preserve source aspect ratio'),
+              AppListRow(
+                dense: true,
+                leading: AppRowIcon(
+                  icon: Icons.photo_size_select_large_outlined,
+                  color: accent,
+                  size: 40,
+                ),
+                title: 'Player Cover Sizing',
+                subtitle: 'Auto-fit or preserve source aspect ratio',
                 trailing: DropdownButton<PlayerCoverSizingMode>(
                   value: settings.coverSizingMode,
                   underline: const SizedBox.shrink(),
+                  borderRadius: AppTokens.brMd,
                   onChanged: (value) {
                     if (value == null) return;
-                    ref
-                        .read(settingsProvider.notifier)
-                        .setCoverSizingMode(value);
+                    notifier.setCoverSizingMode(value);
                   },
                   items: const [
                     DropdownMenuItem(
@@ -154,139 +129,51 @@ class _AppearanceSettingsScreenState
               ),
             ],
           ),
-          _buildSettingsGroup(
-            title: 'Home screen',
+          AppSettingsGroup(
+            label: 'Home screen',
             icon: Icons.home_outlined,
             children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.auto_awesome_rounded),
-                title: const Text('Quick Picks'),
-                subtitle: const Text(
-                    'Show quick pick recommendations on home screen'),
+              AppSettingsSwitch(
+                icon: Icons.auto_awesome_rounded,
+                title: 'Quick Picks',
+                subtitle: 'Show quick pick recommendations',
                 value: settings.showQuickPicks,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setShowQuickPicks(val);
-                },
+                onChanged: notifier.setShowQuickPicks,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.history_rounded),
-                title: const Text('Recent Queues'),
-                subtitle:
-                    const Text('Show recently played queues on home screen'),
+              AppSettingsSwitch(
+                icon: Icons.history_rounded,
+                title: 'Recent Queues',
+                subtitle: 'Show recently played queues',
                 value: settings.showRecentQueues,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setShowRecentQueues(val);
-                },
+                onChanged: notifier.setShowRecentQueues,
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.explore_rounded),
-                title: const Text('For You'),
-                subtitle:
-                    const Text('Show recommended playlists on home screen'),
+              AppSettingsSwitch(
+                icon: Icons.explore_rounded,
+                title: 'For You',
+                subtitle: 'Show recommended playlists',
                 value: settings.showForYou,
-                onChanged: (val) {
-                  ref.read(settingsProvider.notifier).setShowForYou(val);
-                },
+                onChanged: notifier.setShowForYou,
               ),
             ],
           ),
-          _buildSettingsGroup(
-            title: 'Interaction',
+          AppSettingsGroup(
+            label: 'Interaction',
             icon: Icons.touch_app_outlined,
             children: [
-              _buildListTile(
+              AppSettingsTile(
                 icon: Icons.flash_on_outlined,
                 title: 'Quick Actions',
                 subtitle: 'Customize long-press actions',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const QuickActionsSettingsScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsGroup({
-    required String title,
-    required List<Widget> children,
-    required IconData icon,
-  }) {
-    final theme = Theme.of(context);
-    final List<Widget> childrenWithDividers = [];
-
-    for (int i = 0; i < children.length; i++) {
-      childrenWithDividers.add(children[i]);
-      if (i < children.length - 1) {
-        childrenWithDividers.add(
-          Divider(
-            height: 1,
-            indent: 56,
-            endIndent: 16,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        );
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Row(
-            children: [
-              Icon(icon, size: 16, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                title.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                  letterSpacing: 1.2,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const QuickActionsSettingsScreen()),
                 ),
               ),
             ],
           ),
-        ),
-        Card(
-          elevation: 0,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          color:
-              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: childrenWithDividers,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildListTile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading:
-          Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: subtitle != null
-          ? Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)
-          : null,
-      trailing: const Icon(Icons.chevron_right, size: 20),
-      onTap: onTap,
+        ],
+      ),
     );
   }
 }

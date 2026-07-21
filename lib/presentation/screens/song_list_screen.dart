@@ -11,6 +11,9 @@ import '../widgets/bulk_selection_bar.dart';
 import '../widgets/folder_grid_image.dart';
 import '../../providers/selection_provider.dart';
 import 'select_songs_screen.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_sheet.dart';
+import '../components/app_feedback.dart';
 
 class SongListScreen extends ConsumerWidget {
   final String title;
@@ -91,17 +94,12 @@ class SongListScreen extends ConsumerWidget {
                                 .createMergedGroup(selected,
                                     priorityFilename: priority);
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(
-                                        'Merged ${selected.length} songs')),
-                              );
+                              appSnack(
+                                  context, 'Merged ${selected.length} songs');
                             }
                           } catch (e) {
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error: $e')),
-                              );
+                              appSnack(context, 'Error: $e');
                             }
                           }
                         }
@@ -118,21 +116,11 @@ class SongListScreen extends ConsumerWidget {
                   children: [
                     const SizedBox(height: 16),
                     Center(
-                      child: Container(
+                      child: SizedBox(
                         width: 220,
                         height: 220,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppTokens.brMd,
                           child: FolderGridImage(
                             songs: sortedSongs,
                             size: 220,
@@ -222,7 +210,7 @@ class SongListScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.music_note_outlined,
-                          size: 64, color: Colors.grey[600]),
+                          size: 64, color: AppTokens.fgTertiary),
                       const SizedBox(height: 16),
                       Text('No songs in this list',
                           style: Theme.of(context).textTheme.titleMedium),
@@ -261,30 +249,29 @@ class SongListScreen extends ConsumerWidget {
   void _showPlaylistOptions(BuildContext context, WidgetRef ref) {
     if (playlistId == null) return;
 
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Rename'),
-              onTap: () {
-                Navigator.pop(context);
-                _showRenameDialog(context, ref);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Delete', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeleteConfirmation(context, ref);
-              },
-            ),
-          ],
-        ),
+    showAppSheet(
+      context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('Rename'),
+            onTap: () {
+              Navigator.pop(context);
+              _showRenameDialog(context, ref);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: AppTokens.danger),
+            title:
+                const Text('Delete', style: TextStyle(color: AppTokens.danger)),
+            onTap: () {
+              Navigator.pop(context);
+              _showDeleteConfirmation(context, ref);
+            },
+          ),
+        ],
       ),
     );
   }
@@ -346,7 +333,7 @@ class SongListScreen extends ConsumerWidget {
               Navigator.pop(context);
             },
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: AppTokens.danger,
             ),
             child: const Text('Delete'),
           ),

@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/play_session.dart';
 import '../../providers/providers.dart';
-import 'player_screen.dart';
+import '../routes/player_route.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class SessionDetailScreen extends ConsumerWidget {
   final PlaySession session;
@@ -20,7 +23,6 @@ class SessionDetailScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Session Details'),
-        centerTitle: true,
       ),
       body: Column(
         children: [
@@ -56,7 +58,7 @@ class SessionDetailScreen extends ConsumerWidget {
             colorScheme.primaryContainer.withValues(alpha: 0.7),
           ],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppTokens.brMd,
       ),
       child: Column(
         children: [
@@ -67,7 +69,7 @@ class SessionDetailScreen extends ConsumerWidget {
                 height: 64,
                 decoration: BoxDecoration(
                   color: colorScheme.primary,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppTokens.brMd,
                 ),
                 child: Icon(
                   Icons.access_time_filled,
@@ -177,7 +179,7 @@ class SessionDetailScreen extends ConsumerWidget {
             height: 20,
             decoration: BoxDecoration(
               color: colorScheme.primary,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: AppTokens.brPill,
             ),
           ),
           const SizedBox(width: 12),
@@ -194,7 +196,7 @@ class SessionDetailScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppTokens.brSm,
             ),
             child: Text(
               '$count',
@@ -260,25 +262,18 @@ class SessionDetailScreen extends ConsumerWidget {
     Color statusColor;
     if (event.isCompleted) {
       statusIcon = Icons.check_circle;
-      statusColor = Colors.green;
+      statusColor = AppTokens.success;
     } else if (event.isSkipped) {
       statusIcon = Icons.skip_next;
-      statusColor = Colors.orange;
+      statusColor = AppTokens.warning;
     } else {
       statusIcon = Icons.play_circle_filled;
       statusColor = colorScheme.primary;
     }
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+    return AppSurface(
+      padding: EdgeInsets.zero,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: colorScheme.outline.withValues(alpha: 0.1),
-        ),
-      ),
       child: ListTile(
         onTap: () {
           if (song != null) {
@@ -292,10 +287,7 @@ class SessionDetailScreen extends ConsumerWidget {
                   playlistId: session.id,
                   forceLinear: true,
                 );
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PlayerScreen()),
-            );
+            Navigator.push(context, PlayerPageRoute());
           }
         },
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -304,7 +296,7 @@ class SessionDetailScreen extends ConsumerWidget {
           height: 36,
           decoration: BoxDecoration(
             color: colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: AppTokens.brSm,
           ),
           child: Center(
             child: Text(
@@ -404,7 +396,7 @@ class SessionDetailScreen extends ConsumerWidget {
               style: FilledButton.styleFrom(
                 minimumSize: const Size(double.infinity, 56),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppTokens.brMd,
                 ),
               ),
             ),
@@ -420,7 +412,7 @@ class SessionDetailScreen extends ConsumerWidget {
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppTokens.brMd,
                 ),
               ),
             ),
@@ -438,9 +430,7 @@ class SessionDetailScreen extends ConsumerWidget {
         events.where((e) => e.song != null).map((e) => e.song!).toList();
 
     if (songs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No songs available to play')),
-      );
+      appSnack(context, 'No songs available to play');
       return;
     }
 
@@ -474,12 +464,7 @@ class SessionDetailScreen extends ConsumerWidget {
             'Playing ${songs.length} ${songs.length == 1 ? 'song' : 'songs'} from session'),
         action: SnackBarAction(
           label: 'Open Player',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PlayerScreen()),
-            );
-          },
+          onPressed: () => Navigator.push(context, PlayerPageRoute()),
         ),
       ),
     );

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/shuffle_config.dart';
 import '../../providers/providers.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class CustomShuffleSettingsScreen extends ConsumerStatefulWidget {
   const CustomShuffleSettingsScreen({super.key});
@@ -45,9 +48,7 @@ class _CustomShuffleSettingsScreenState
       );
       _hasChanges = true;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Settings reset to defaults')),
-    );
+    appSnack(context, 'Settings reset to defaults');
   }
 
   void _saveSettings() {
@@ -59,9 +60,7 @@ class _CustomShuffleSettingsScreenState
     setState(() {
       _hasChanges = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Settings saved')),
-    );
+    appSnack(context, 'Settings saved');
   }
 
   Future<bool> _onWillPop() async {
@@ -125,8 +124,8 @@ class _CustomShuffleSettingsScreenState
           padding: const EdgeInsets.all(16.0),
           children: [
             if (_hasChanges)
-              Card(
-                color: Theme.of(context).colorScheme.primaryContainer,
+              AppSurface(
+                padding: EdgeInsets.zero,
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Row(
@@ -153,12 +152,8 @@ class _CustomShuffleSettingsScreenState
               ),
             if (_hasChanges) const SizedBox(height: 16),
             _buildSectionTitle('Basic Settings'),
-            Card(
-              elevation: 0,
-              color: Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
-                  .withValues(alpha: 0.3),
+            AppSurface(
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   SwitchListTile(
@@ -216,12 +211,8 @@ class _CustomShuffleSettingsScreenState
             ),
             if (_showAdvanced) ...[
               const SizedBox(height: 8),
-              Card(
-                elevation: 0,
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: 0.3),
+              AppSurface(
+                padding: EdgeInsets.zero,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -324,11 +315,11 @@ class _CustomShuffleSettingsScreenState
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
                 color: value == 0
-                    ? Colors.grey.withValues(alpha: 0.2)
+                    ? AppTokens.fgTertiary.withValues(alpha: 0.2)
                     : value > 0
-                        ? Colors.green.withValues(alpha: 0.2)
-                        : Colors.red.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
+                        ? AppTokens.success.withValues(alpha: 0.2)
+                        : AppTokens.danger.withValues(alpha: 0.2),
+                borderRadius: AppTokens.brSm,
               ),
               child: Text(
                 value > 0 ? '+$value' : '$value',
@@ -336,10 +327,10 @@ class _CustomShuffleSettingsScreenState
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: value == 0
-                      ? Colors.grey
+                      ? AppTokens.fgTertiary
                       : value > 0
-                          ? Colors.green
-                          : Colors.red,
+                          ? AppTokens.success
+                          : AppTokens.danger,
                 ),
               ),
             ),
@@ -354,10 +345,10 @@ class _CustomShuffleSettingsScreenState
             onChanged(newValue.round());
           },
           activeColor: value == 0
-              ? Colors.grey
+              ? AppTokens.fgTertiary
               : value > 0
-                  ? Colors.green
-                  : Colors.red,
+                  ? AppTokens.success
+                  : AppTokens.danger,
         ),
         const SizedBox(height: 8),
       ],

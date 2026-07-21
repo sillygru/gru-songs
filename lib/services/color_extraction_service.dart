@@ -127,11 +127,26 @@ class ExtractedPalette {
     return delightned.withAlpha(alpha);
   }
 
+  /// Target lightness for an accent taken from cover art. It is deliberately
+  /// high: the seed is alpha-blended over the near-black app surface before it
+  /// reaches the theme, which knocks roughly a fifth off the lightness again.
+  static const double _accentLightness = 0.72;
+
+  /// Below this the colour is effectively grey, and pushing saturation into it
+  /// would invent a hue the cover doesn't have.
+  static const double _accentHueFloor = 0.1;
+  static const double _minAccentSaturation = 0.35;
+
   static Color _delightnedColor(Color color) {
-    final luminance = color.computeLuminance();
-    if (luminance <= 0.1 || luminance >= 0.9) return color;
     final hslColor = HSLColor.fromColor(color);
-    return hslColor.withLightness(0.4).toColor();
+    final saturation =
+        hslColor.saturation >= _accentHueFloor && hslColor.saturation < _minAccentSaturation
+            ? _minAccentSaturation
+            : hslColor.saturation;
+    return hslColor
+        .withSaturation(saturation)
+        .withLightness(_accentLightness)
+        .toColor();
   }
 
   static Color _lighterColor(Color color) {

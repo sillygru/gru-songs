@@ -7,6 +7,8 @@ import '../../presentation/widgets/import_options_dialog.dart';
 import 'namida_import_screen.dart';
 import 'backup_management_screen.dart';
 import 'storage_management_screen.dart';
+import '../components/app_surface.dart';
+import '../components/app_feedback.dart';
 
 class DataManagementSettingsScreen extends ConsumerStatefulWidget {
   const DataManagementSettingsScreen({super.key});
@@ -23,7 +25,6 @@ class _DataManagementSettingsScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text("Data Management"),
-        centerTitle: true,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -345,13 +346,9 @@ class _DataManagementSettingsScreenState
             ],
           ),
         ),
-        Card(
-          elevation: 0,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          color:
-              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-          clipBehavior: Clip.antiAlias,
+        AppSurface(
+          padding: EdgeInsets.zero,
+          clipContent: true,
           child: Column(
             children: childrenWithDividers,
           ),
@@ -461,18 +458,14 @@ class _DataManagementSettingsScreenState
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Import successful!")),
-        );
+        appSnack(context, "Import successful!");
         ref.invalidate(userDataProvider);
         ref.invalidate(songsProvider);
       }
     } catch (e) {
       if (mounted) {
         if (Navigator.canPop(context)) Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Import failed: $e")),
-        );
+        appSnack(context, "Import failed: $e");
       }
     }
   }

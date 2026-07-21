@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/cache_service.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class CacheManagementScreen extends StatefulWidget {
   const CacheManagementScreen({super.key});
@@ -51,8 +54,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
       await CacheService.instance.clearCache();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Error: $e")));
+        appSnack(context, "Error: $e");
       }
     } finally {
       await _calculateSizes();
@@ -73,7 +75,8 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Card(
+                AppSurface(
+                  padding: EdgeInsets.zero,
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
@@ -97,9 +100,10 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 ),
                 const Divider(),
                 ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.red),
+                  leading:
+                      const Icon(Icons.delete_outline, color: AppTokens.danger),
                   title: const Text("Clear Sync Cache",
-                      style: TextStyle(color: Colors.red)),
+                      style: TextStyle(color: AppTokens.danger)),
                   onTap: () async {
                     final confirm = await showDialog<bool>(
                       context: context,
@@ -114,7 +118,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                           TextButton(
                               onPressed: () => Navigator.pop(context, true),
                               child: const Text("Clear",
-                                  style: TextStyle(color: Colors.red))),
+                                  style: TextStyle(color: AppTokens.danger))),
                         ],
                       ),
                     );

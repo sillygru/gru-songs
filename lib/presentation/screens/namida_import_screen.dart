@@ -5,6 +5,8 @@ import '../../services/storage_service.dart';
 import '../../services/import_options.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
 import '../../providers/providers.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
 
 /// Screen for importing data from Namida backup files
 class NamidaImportScreen extends ConsumerStatefulWidget {
@@ -173,7 +175,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: Colors.green),
+            Icon(Icons.check_circle_rounded, color: AppTokens.success),
             SizedBox(width: 8),
             Text('Import Complete'),
           ],
@@ -230,7 +232,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.red,
+        backgroundColor: AppTokens.danger,
         duration: const Duration(seconds: 5),
       ),
     );
@@ -241,7 +243,6 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Import from Namida'),
-        centerTitle: true,
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -249,7 +250,8 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Info Card
-            Card(
+            AppSurface(
+              padding: EdgeInsets.zero,
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
@@ -343,7 +345,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
             decoration: BoxDecoration(
               color:
                   Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: AppTokens.brSm,
             ),
             child: Icon(
               icon,

@@ -4,6 +4,9 @@ import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/user_data_provider.dart';
 import '../widgets/album_art_image.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class MergedSongsScreen extends ConsumerWidget {
   const MergedSongsScreen({super.key});
@@ -134,9 +137,7 @@ class MergedSongsScreen extends ConsumerWidget {
     if (confirmed == true) {
       await ref.read(userDataProvider.notifier).unmergeSong(song.filename);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('"${song.title}" unmerged')),
-        );
+        appSnack(context, '"${song.title}" unmerged');
       }
     }
   }
@@ -164,9 +165,7 @@ class MergedSongsScreen extends ConsumerWidget {
     if (confirmed == true) {
       await ref.read(userDataProvider.notifier).deleteMergedGroup(groupId);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Merge group deleted')),
-        );
+        appSnack(context, 'Merge group deleted');
       }
     }
   }
@@ -187,7 +186,8 @@ class _MergeGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return AppSurface(
+      padding: EdgeInsets.zero,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,7 +246,7 @@ class _MergeGroupCard extends StatelessWidget {
               final song = songs[index];
               return ListTile(
                 leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: AppTokens.brPill,
                   child: AlbumArtImage(
                     url: song.coverUrl ?? '',
                     filename: song.filename,

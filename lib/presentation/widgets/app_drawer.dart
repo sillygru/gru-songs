@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
@@ -13,8 +11,21 @@ import '../screens/albums_screen.dart';
 import '../screens/session_history_screen.dart';
 import '../screens/settings_screen.dart';
 import 'album_art_image.dart';
-import '../screens/queue_history_screen.dart';
+import '../routes/player_route.dart';
+import '../screens/unified_player_screen.dart';
+import '../components/app_feedback.dart';
+import '../components/app_list_row.dart';
+import '../components/app_screen_header.dart';
+import '../components/app_section_header.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
 
+/// The slide-out navigation panel.
+///
+/// It used to carry nine cached gradients, a blur, a drop shadow and a
+/// different accent colour per row. All of that is gone: the panel is one flat
+/// surface and the rows are [AppListRow]s, so it looks like the screens it
+/// navigates to.
 class AppDrawer extends ConsumerStatefulWidget {
   final Future<void> Function() onClose;
   final double drawerPosition;
@@ -31,102 +42,9 @@ class AppDrawer extends ConsumerStatefulWidget {
 
 class _AppDrawerState extends ConsumerState<AppDrawer> {
   static const _panelRadius = BorderRadius.only(
-    topRight: Radius.circular(34),
-    bottomRight: Radius.circular(34),
+    topRight: Radius.circular(AppTokens.rLg),
+    bottomRight: Radius.circular(AppTokens.rLg),
   );
-
-  Color _surfaceColor = Colors.black;
-  Color _surfaceContainerHigh = Colors.black;
-  Color _surfaceContainerLowest = Colors.black;
-  Color _primaryColor = Colors.black;
-  Color _shadowColor = Colors.black;
-  Color _surfaceContainerHighest = Colors.black;
-  Color _onSurface = Colors.black;
-  Color _onSurfaceVariant = Colors.black;
-  Color _primaryContainer = Colors.black;
-
-  LinearGradient? _backgroundGradient;
-  RadialGradient? _topGlow;
-  RadialGradient? _bottomGlow;
-  LinearGradient? _headerGradient;
-  LinearGradient? _iconBgGradient;
-  LinearGradient? _navItemGradient;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  void _initColors(ColorScheme colorScheme) {
-    _surfaceColor = colorScheme.surface.withValues(alpha: 0.78);
-    _surfaceContainerHigh =
-        colorScheme.surfaceContainerHigh.withValues(alpha: 0.7);
-    _surfaceContainerLowest =
-        colorScheme.surfaceContainerLowest.withValues(alpha: 0.64);
-    _primaryColor = colorScheme.primary;
-    _shadowColor = Colors.black.withValues(alpha: 0.22);
-    _surfaceContainerHighest = colorScheme.surfaceContainerHighest;
-    _onSurface = colorScheme.onSurface;
-    _onSurfaceVariant = colorScheme.onSurfaceVariant;
-    _primaryContainer = colorScheme.primaryContainer;
-
-    _backgroundGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        _surfaceColor,
-        _surfaceContainerHigh,
-        _surfaceContainerLowest,
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    );
-
-    _topGlow = RadialGradient(
-      colors: [
-        _primaryColor.withValues(alpha: 0.26),
-        _primaryColor.withValues(alpha: 0.0),
-      ],
-    );
-
-    _bottomGlow = const RadialGradient(
-      colors: [
-        Color(0x3390CAF9),
-        Color(0x00000000),
-      ],
-    );
-
-    _headerGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        _surfaceContainerHighest.withValues(alpha: 0.5),
-        _surfaceColor.withValues(alpha: 0.3),
-      ],
-    );
-
-    _iconBgGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        _primaryContainer.withValues(alpha: 0.5),
-        _primaryColor.withValues(alpha: 0.18),
-      ],
-    );
-
-    _navItemGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        _surfaceContainerHighest.withValues(alpha: 0.5),
-        _surfaceContainerHighest.withValues(alpha: 0.2),
-      ],
-    );
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
 
   Future<void> _closeDrawer() async {
     await widget.onClose();
@@ -143,14 +61,24 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     });
   }
 
+  /// Queue history lives inside the unified player's Queue pane, so this opens
+  /// the player straight onto that segment rather than a standalone screen.
+  void _openQueueHistory() {
+    _closeDrawer().then((_) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        PlayerPageRoute(
+          initialPane: PlayerPane.queue,
+          queueShowsHistory: true,
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    if (_surfaceColor == Colors.black) {
-      _initColors(colorScheme);
-    }
+    final accent = AppTokens.accentOf(context, ref);
 
     final songCount = ref.watch(songsProvider.select((s) => s.when(
           data: (songs) => songs.length,
@@ -161,39 +89,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       updateCheckProvider.select((state) => state.hasUpdate),
     );
 
-    final BoxDecoration panelDecoration = BoxDecoration(
-      borderRadius: _panelRadius,
-      gradient: _backgroundGradient,
-      boxShadow: [
-        BoxShadow(
-          color: _shadowColor,
-          blurRadius: 36,
-          offset: const Offset(10, 0),
-        ),
-      ],
-    );
-
-    final BoxDecoration topGlowDecoration = BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: _topGlow,
-    );
-
-    final BoxDecoration bottomGlowDecoration = BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: _bottomGlow,
-    );
-
-    final LinearGradient overlayGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        _surfaceColor.withValues(alpha: 0.3),
-        _surfaceColor.withValues(alpha: 0.1),
-        _surfaceContainerHighest.withValues(alpha: 0.1),
-      ],
-    );
-
-    // Entrance animation: slide in from left + fade in as content reveals
+    // Entrance: slide in from the left and fade up as the panel is revealed.
     final animationValue = widget.drawerPosition;
     final slideInOffset = (1.0 - animationValue) * -40.0;
 
@@ -205,207 +101,147 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
           offset: Offset(slideInOffset, 0),
           child: Opacity(
             opacity: animationValue.clamp(0.0, 1.0),
-            child: ClipRRect(
-              borderRadius: _panelRadius,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: DecoratedBox(
-                  decoration: panelDecoration,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: -56,
-                        top: -16,
-                        child: IgnorePointer(
-                          child: Container(
-                            width: 160,
-                            height: 160,
-                            decoration: topGlowDecoration,
-                          ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(
+                  AppTokens.surface(1),
+                  Theme.of(context).scaffoldBackgroundColor,
+                ),
+                borderRadius: _panelRadius,
+              ),
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(context, accent, songCount),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppTokens.s3,
+                          0,
+                          AppTokens.s3,
+                          AppTokens.s5,
                         ),
-                      ),
-                      Positioned(
-                        right: -48,
-                        bottom: 88,
-                        child: IgnorePointer(
-                          child: Container(
-                            width: 170,
-                            height: 170,
-                            decoration: bottomGlowDecoration,
-                          ),
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: overlayGradient,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: IgnorePointer(
-                          child: RepaintBoundary(
-                            child: Container(
-                              height: 1.2,
-                              color: Colors.transparent,
+                        children: [
+                          const AppSectionHeader(
+                            label: 'Library',
+                            padding: EdgeInsets.fromLTRB(
+                              AppTokens.s3,
+                              AppTokens.s3,
+                              AppTokens.s3,
+                              AppTokens.s1,
                             ),
                           ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: IgnorePointer(
-                          child: RepaintBoundary(
-                            child: Container(
-                              width: 1.2,
-                              color: Colors.transparent,
+                          _buildNavItem(
+                            icon: Icons.favorite_rounded,
+                            label: 'Favorites',
+                            subtitle: 'Your liked tracks',
+                            color: AppTokens.danger,
+                            onTap: () async {
+                              final songs =
+                                  await ref.read(songsProvider.future);
+                              final userDataState = ref.read(userDataProvider);
+                              final favSongs = songs
+                                  .where((s) =>
+                                      userDataState.isFavorite(s.filename))
+                                  .toList();
+                              if (context.mounted) {
+                                _navigateTo(SongListScreen(
+                                  title: 'Favorites',
+                                  songs: favSongs,
+                                ));
+                              }
+                            },
+                          ),
+                          _buildNavItem(
+                            icon: Icons.queue_music_rounded,
+                            label: 'Playlists',
+                            subtitle: 'Curated sets',
+                            color: accent,
+                            onTap: () => _navigateTo(const PlaylistsScreen()),
+                          ),
+                          _buildNavItem(
+                            icon: Icons.album_rounded,
+                            label: 'Albums',
+                            subtitle: 'Browse releases',
+                            color: accent,
+                            onTap: () => _navigateTo(const AlbumsScreen()),
+                          ),
+                          _buildNavItem(
+                            icon: Icons.person_rounded,
+                            label: 'Artists',
+                            subtitle: 'Jump by artist',
+                            color: accent,
+                            onTap: () => _navigateTo(const ArtistsScreen()),
+                          ),
+                          const AppSectionHeader(
+                            label: 'History',
+                            padding: EdgeInsets.fromLTRB(
+                              AppTokens.s3,
+                              AppTokens.s5,
+                              AppTokens.s3,
+                              AppTokens.s1,
                             ),
                           ),
-                        ),
-                      ),
-                      SafeArea(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeader(context, colorScheme, songCount),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: ListView(
-                                padding:
-                                    const EdgeInsets.fromLTRB(14, 0, 14, 18),
-                                children: [
-                                  _buildSectionTitle(
-                                    context,
-                                    'Library',
-                                    'Pinned shortcuts',
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.favorite_rounded,
-                                    label: 'Favorites',
-                                    subtitle: 'Your liked tracks',
-                                    color: Colors.redAccent,
-                                    onTap: () async {
-                                      final songs =
-                                          await ref.read(songsProvider.future);
-                                      final userDataState =
-                                          ref.read(userDataProvider);
-                                      final favSongs = songs
-                                          .where((s) => userDataState
-                                              .isFavorite(s.filename))
-                                          .toList();
-                                      if (context.mounted) {
-                                        _navigateTo(SongListScreen(
-                                          title: 'Favorites',
-                                          songs: favSongs,
-                                        ));
-                                      }
-                                    },
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.queue_music_rounded,
-                                    label: 'Playlists',
-                                    subtitle: 'Curated sets',
-                                    color: colorScheme.primary,
-                                    onTap: () =>
-                                        _navigateTo(const PlaylistsScreen()),
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.album_rounded,
-                                    label: 'Albums',
-                                    subtitle: 'Browse releases',
-                                    color: Colors.orangeAccent,
-                                    onTap: () =>
-                                        _navigateTo(const AlbumsScreen()),
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.person_rounded,
-                                    label: 'Artists',
-                                    subtitle: 'Jump by artist',
-                                    color: Colors.greenAccent,
-                                    onTap: () =>
-                                        _navigateTo(const ArtistsScreen()),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  _buildSectionTitle(
-                                    context,
-                                    'History',
-                                    'Recent activity',
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.history_rounded,
-                                    label: 'Song History',
-                                    subtitle: 'What has been playing',
-                                    color: Colors.purpleAccent,
-                                    onTap: () =>
-                                        _navigateTo(const PlayHistoryScreen()),
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.queue_play_next,
-                                    label: 'Session History',
-                                    subtitle: 'Previous listening sessions',
-                                    color: Colors.tealAccent,
-                                    onTap: () => _navigateTo(
-                                        const SessionHistoryScreen()),
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.queue_music_rounded,
-                                    label: 'Queue History',
-                                    subtitle: 'Past queues and order',
-                                    color: Colors.amberAccent,
-                                    onTap: () =>
-                                        _navigateTo(const QueueHistoryScreen()),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  _buildSectionTitle(
-                                    context,
-                                    'Tools',
-                                    'Playback utility',
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.bedtime_rounded,
-                                    label: 'Sleep Timer',
-                                    subtitle: 'Stop playback gracefully',
-                                    color: Colors.indigoAccent,
-                                    onTap: () =>
-                                        _navigateTo(const SleepTimerScreen()),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  _buildSectionTitle(
-                                    context,
-                                    'App',
-                                    'Preferences and updates',
-                                  ),
-                                  _buildNavItem(
-                                    context,
-                                    icon: Icons.settings_rounded,
-                                    label: 'Settings',
-                                    subtitle: 'Tune the app',
-                                    color: colorScheme.primary,
-                                    onTap: () =>
-                                        _navigateTo(const SettingsScreen()),
-                                    showBadge: updateAvailable,
-                                  ),
-                                ],
-                              ),
+                          _buildNavItem(
+                            icon: Icons.history_rounded,
+                            label: 'Song History',
+                            subtitle: 'What has been playing',
+                            color: accent,
+                            onTap: () => _navigateTo(const PlayHistoryScreen()),
+                          ),
+                          _buildNavItem(
+                            icon: Icons.queue_play_next_rounded,
+                            label: 'Session History',
+                            subtitle: 'Previous listening sessions',
+                            color: accent,
+                            onTap: () =>
+                                _navigateTo(const SessionHistoryScreen()),
+                          ),
+                          _buildNavItem(
+                            icon: Icons.queue_music_rounded,
+                            label: 'Queue History',
+                            subtitle: 'Past queues and order',
+                            color: accent,
+                            onTap: _openQueueHistory,
+                          ),
+                          const AppSectionHeader(
+                            label: 'Tools',
+                            padding: EdgeInsets.fromLTRB(
+                              AppTokens.s3,
+                              AppTokens.s5,
+                              AppTokens.s3,
+                              AppTokens.s1,
                             ),
-                          ],
-                        ),
+                          ),
+                          _buildNavItem(
+                            icon: Icons.bedtime_rounded,
+                            label: 'Sleep Timer',
+                            subtitle: 'Stop playback gracefully',
+                            color: accent,
+                            onTap: () => _navigateTo(const SleepTimerScreen()),
+                          ),
+                          const AppSectionHeader(
+                            label: 'App',
+                            padding: EdgeInsets.fromLTRB(
+                              AppTokens.s3,
+                              AppTokens.s5,
+                              AppTokens.s3,
+                              AppTokens.s1,
+                            ),
+                          ),
+                          _buildNavItem(
+                            icon: Icons.settings_rounded,
+                            label: 'Settings',
+                            subtitle: 'Tune the app',
+                            color: accent,
+                            onTap: () => _navigateTo(const SettingsScreen()),
+                            showBadge: updateAvailable,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -415,127 +251,58 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     );
   }
 
-  Widget _buildHeader(
-      BuildContext context, ColorScheme colorScheme, int songCount) {
+  Widget _buildHeader(BuildContext context, Color accent, int songCount) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          gradient: _headerGradient,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: _iconBgGradient,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: SizedBox(
-                      width: 64,
-                      height: 64,
-                      child: Image.asset(
-                        'assets/app_icon.png',
-                        width: 64,
-                        height: 64,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          width: 64,
-                          height: 64,
-                          color: _primaryColor.withValues(alpha: 0.1),
-                          child: Icon(
-                            Icons.music_note,
-                            color: _primaryColor,
-                            size: 32,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.s5,
+        AppTokens.s5,
+        AppTokens.s3,
+        AppTokens.s3,
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: AppTokens.brSm,
+            child: SizedBox(
+              width: 52,
+              height: 52,
+              child: Image.asset(
+                'assets/app_icon.png',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: accent.withValues(alpha: AppTokens.accentWashAlpha),
+                  child:
+                      Icon(Icons.music_note_rounded, color: accent, size: 26),
                 ),
-                const Spacer(),
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    color: _surfaceContainerHighest,
-                  ),
-                  child: IconButton(
-                    onPressed: _closeDrawer,
-                    icon: const Icon(Icons.close),
-                    color: _onSurface,
-                  ),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppTokens.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Wispie', style: AppTokens.screenTitle(context)),
+                const SizedBox(height: 2),
+                Text(
+                  '$songCount songs',
+                  style: AppTokens.meta(context),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
-            Text(
-              'Wispie',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: _onSurface,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.8,
-                  ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Library: $songCount songs',
-              style: TextStyle(
-                color: _onSurface.withValues(alpha: 0.72),
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(
-    BuildContext context,
-    String title,
-    String subtitle,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: _primaryColor.withValues(alpha: 0.92),
-              fontWeight: FontWeight.w900,
-              fontSize: 12,
-              letterSpacing: 1.35,
-              textBaseline: TextBaseline.alphabetic,
-            ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: _onSurface.withValues(alpha: 0.56),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
+          IconButton(
+            onPressed: _closeDrawer,
+            tooltip: 'Close',
+            icon: const Icon(Icons.close_rounded),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildNavItem(
-    BuildContext context, {
+  Widget _buildNavItem({
     required IconData icon,
     required String label,
     required String subtitle,
@@ -543,102 +310,33 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     required VoidCallback? onTap,
     bool showBadge = false,
   }) {
-    final BoxDecoration navItemDecoration = BoxDecoration(
-      borderRadius: BorderRadius.circular(22),
-      gradient: _navItemGradient,
-    );
-
-    final LinearGradient iconGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        color.withValues(alpha: 0.34),
-        color.withValues(alpha: 0.14),
-      ],
-    );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(22),
-          onTap: onTap,
-          child: Ink(
-            decoration: navItemDecoration,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: iconGradient,
-                    ),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Center(
-                          child: Icon(icon, color: color, size: 22),
-                        ),
-                        if (showBadge)
-                          Positioned(
-                            right: 7,
-                            top: 7,
-                            child: Container(
-                              width: 9,
-                              height: 9,
-                              decoration: BoxDecoration(
-                                color: Colors.redAccent,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: _surfaceContainerHighest,
-                                  width: 1.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          label,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                            letterSpacing: -0.2,
-                            color: _onSurface.withValues(alpha: 0.94),
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: _onSurface.withValues(alpha: 0.58),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: _onSurfaceVariant,
-                  ),
-                ],
+    return AppListRow(
+      title: label,
+      subtitle: subtitle,
+      onTap: onTap,
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AppRowIcon(icon: icon, color: color),
+          if (showBadge)
+            Positioned(
+              right: 4,
+              top: 4,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppTokens.danger,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
-          ),
-        ),
+        ],
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        size: 20,
+        color: AppTokens.fgTertiary,
       ),
     );
   }
@@ -669,241 +367,190 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final accent = AppTokens.accentOf(context, ref);
     final audioManager = ref.watch(audioPlayerManagerProvider);
     final currentSong = audioManager.currentSongNotifier.value;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sleep Timer'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildModeSelector(colorScheme),
-            const SizedBox(height: 32),
-            if (_mode == SleepTimerMode.playForTime ||
-                _mode == SleepTimerMode.loopCurrent)
-              _buildTimeSelector(colorScheme),
-            if (_mode == SleepTimerMode.stopAfterTracks)
-              _buildTrackSelector(colorScheme),
-            if (_mode == SleepTimerMode.stopAfterCurrent)
-              _buildCurrentSongInfo(currentSong, colorScheme),
-            const SizedBox(height: 24),
-            if (_mode == SleepTimerMode.playForTime ||
-                _mode == SleepTimerMode.loopCurrent)
-              _buildFinishToggle(colorScheme),
-            const SizedBox(height: 32),
-            _buildActionButtons(colorScheme),
-            const SizedBox(height: 80),
-          ],
+      appBar: const AppTopBar(title: 'Sleep Timer'),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.s4,
+          0,
+          AppTokens.s4,
+          AppTokens.scrollBottomInset,
         ),
+        children: [
+          const AppSectionHeader(
+            label: 'Timer Mode',
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.s3,
+              AppTokens.s3,
+              AppTokens.s3,
+              AppTokens.s2,
+            ),
+          ),
+          _buildModeSelector(accent),
+          if (_mode == SleepTimerMode.playForTime ||
+              _mode == SleepTimerMode.loopCurrent) ...[
+            _buildStepperSection(
+              label: 'Duration',
+              valueLabel: '$_minutes min',
+              accent: accent,
+              options: _minuteOptions,
+              selected: _minutes,
+              suffix: 'min',
+              width: 62,
+              onSelected: (value) => setState(() => _minutes = value),
+            ),
+            const SizedBox(height: AppTokens.s4),
+            _buildFinishToggle(),
+          ],
+          if (_mode == SleepTimerMode.stopAfterTracks)
+            _buildStepperSection(
+              label: 'Number of Tracks',
+              valueLabel: '$_tracks tracks',
+              accent: accent,
+              options: _trackOptions,
+              selected: _tracks,
+              width: 54,
+              onSelected: (value) => setState(() => _tracks = value),
+            ),
+          if (_mode == SleepTimerMode.stopAfterCurrent)
+            _buildCurrentSongInfo(currentSong),
+          const SizedBox(height: AppTokens.s6),
+          _buildActionButtons(),
+        ],
       ),
     );
   }
 
-  Widget _buildModeSelector(ColorScheme colorScheme) {
-    final modes = [
+  Widget _buildModeSelector(Color accent) {
+    const modes = [
       (
         SleepTimerMode.loopCurrent,
-        Icons.repeat_one,
+        Icons.repeat_one_rounded,
         'Loop Current Song',
         'Repeat the current song for a set time'
       ),
       (
         SleepTimerMode.playForTime,
-        Icons.timer,
+        Icons.timer_rounded,
         'Play for Time',
         'Stop after a specified duration'
       ),
       (
         SleepTimerMode.stopAfterCurrent,
-        Icons.stop_circle,
+        Icons.stop_circle_rounded,
         'Stop After Current',
         'Stop when the current song ends'
       ),
       (
         SleepTimerMode.stopAfterTracks,
-        Icons.playlist_play,
+        Icons.playlist_play_rounded,
         'Stop After Tracks',
         'Stop after playing X more songs'
       ),
     ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return AppSurfaceGroup(
       children: [
-        Text(
-          'Timer Mode',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: colorScheme.primary,
+        for (final (modeValue, icon, title, subtitle) in modes)
+          AppListRow(
+            title: title,
+            subtitle: subtitle,
+            accent: accent,
+            isActive: _mode == modeValue,
+            leading: AppRowIcon(icon: icon, color: accent),
+            onTap: () => setState(() => _mode = modeValue),
+            trailing: _mode == modeValue
+                ? Icon(Icons.check_circle_rounded, color: accent, size: 20)
+                : null,
           ),
-        ),
-        const SizedBox(height: 12),
-        ...modes.map((mode) => _buildModeCard(mode, colorScheme)),
       ],
     );
   }
 
-  Widget _buildModeCard(
-    (SleepTimerMode, IconData, String, String) mode,
-    ColorScheme colorScheme,
-  ) {
-    final (modeValue, icon, title, subtitle) = mode;
-    final isSelected = _mode == modeValue;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: isSelected ? 2 : 0,
-      color: isSelected
-          ? colorScheme.primaryContainer
-          : colorScheme.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: isSelected
-            ? BorderSide(color: colorScheme.primary, width: 2)
-            : BorderSide.none,
-      ),
-      child: InkWell(
-        onTap: () => setState(() => _mode = modeValue),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isSelected ? colorScheme.primary : colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  color:
-                      isSelected ? colorScheme.onPrimary : colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isSelected
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSurface,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isSelected
-                            ? colorScheme.onPrimaryContainer
-                                .withValues(alpha: 0.7)
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isSelected)
-                Icon(
-                  Icons.check_circle,
-                  color: colorScheme.primary,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimeSelector(ColorScheme colorScheme) {
+  /// Horizontal picker of pill options. Used by both the minutes and the
+  /// tracks selector, which were previously two near-identical blocks.
+  Widget _buildStepperSection({
+    required String label,
+    required String valueLabel,
+    required Color accent,
+    required List<int> options,
+    required int selected,
+    required double width,
+    required ValueChanged<int> onSelected,
+    String? suffix,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Duration',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.primary,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '$_minutes min',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onPrimaryContainer,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppTokens.s3,
+            AppTokens.s5,
+            AppTokens.s3,
+            AppTokens.s3,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label.toUpperCase(),
+                  style: AppTokens.sectionLabel(context),
                 ),
               ),
-            ),
-          ],
+              Text(
+                valueLabel,
+                style: AppTokens.meta(context).copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
         SizedBox(
-          height: 80,
+          height: 64,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            itemCount: _minuteOptions.length,
+            itemCount: options.length,
             itemBuilder: (context, index) {
-              final minute = _minuteOptions[index];
-              final isSelected = _minutes == minute;
+              final option = options[index];
+              final isSelected = selected == option;
+
               return GestureDetector(
-                onTap: () => setState(() => _minutes = minute),
+                onTap: () => onSelected(option),
                 child: Container(
-                  width: 64,
-                  margin: const EdgeInsets.only(right: 8),
+                  width: width,
+                  margin: const EdgeInsets.only(right: AppTokens.s2),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16),
-                    border: isSelected
-                        ? Border.all(color: colorScheme.primary, width: 2)
-                        : null,
+                    color: isSelected ? accent : AppTokens.surface(1),
+                    borderRadius: AppTokens.brSm,
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        '$minute',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                        '$option',
+                        style: AppTokens.stat(context).copyWith(
+                          fontSize: 18,
                           color: isSelected
-                              ? colorScheme.onPrimary
-                              : colorScheme.onSurface,
+                              ? AppTokens.onAccent(accent)
+                              : Colors.white,
                         ),
                       ),
-                      Text(
-                        'min',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isSelected
-                              ? colorScheme.onPrimary.withValues(alpha: 0.7)
-                              : colorScheme.onSurfaceVariant,
+                      if (suffix != null)
+                        Text(
+                          suffix,
+                          style: AppTokens.meta(context).copyWith(
+                            color: isSelected
+                                ? AppTokens.onAccent(accent)
+                                    .withValues(alpha: 0.7)
+                                : AppTokens.fgTertiary,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -915,95 +562,20 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
     );
   }
 
-  Widget _buildTrackSelector(ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Number of Tracks',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.primary,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '$_tracks tracks',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onPrimaryContainer,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 80,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _trackOptions.length,
-            itemBuilder: (context, index) {
-              final track = _trackOptions[index];
-              final isSelected = _tracks == track;
-              return GestureDetector(
-                onTap: () => setState(() => _tracks = track),
-                child: Container(
-                  width: 56,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16),
-                    border: isSelected
-                        ? Border.all(color: colorScheme.primary, width: 2)
-                        : null,
-                  ),
-                  child: Center(
-                    child: Text(
-                      '$track',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: isSelected
-                            ? colorScheme.onPrimary
-                            : colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCurrentSongInfo(Song? song, ColorScheme colorScheme) {
+  Widget _buildCurrentSongInfo(Song? song) {
     if (song == null) {
-      return Card(
-        color: colorScheme.errorContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+      return Padding(
+        padding: const EdgeInsets.only(top: AppTokens.s5),
+        child: AppSurface(
           child: Row(
             children: [
-              Icon(Icons.error_outline, color: colorScheme.error),
-              const SizedBox(width: 12),
+              const Icon(Icons.error_outline_rounded,
+                  color: AppTokens.danger, size: 20),
+              const SizedBox(width: AppTokens.s3),
               Expanded(
                 child: Text(
                   'No song is currently playing',
-                  style: TextStyle(color: colorScheme.onErrorContainer),
+                  style: AppTokens.rowSubtitle(context),
                 ),
               ),
             ],
@@ -1012,37 +584,25 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
       );
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.only(top: AppTokens.s5),
+      child: AppSurface(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Current Song',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
+            Text('CURRENT SONG', style: AppTokens.sectionLabel(context)),
+            const SizedBox(height: AppTokens.s2),
             Text(
               song.title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: AppTokens.rowTitle(context),
             ),
             Text(
               song.artist,
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: AppTokens.rowSubtitle(context),
             ),
           ],
         ),
@@ -1050,71 +610,49 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
     );
   }
 
-  Widget _buildFinishToggle(ColorScheme colorScheme) {
-    return Card(
+  Widget _buildFinishToggle() {
+    return AppSurface(
+      padding: const EdgeInsets.symmetric(vertical: AppTokens.s1),
       child: SwitchListTile(
         title: const Text('Let current song finish'),
         subtitle: Text(
           _letCurrentFinish
               ? 'Wait for the current song to end before stopping'
               : 'Stop immediately when timer expires',
-          style: TextStyle(
-            fontSize: 12,
-            color: colorScheme.onSurfaceVariant,
-          ),
         ),
         value: _letCurrentFinish,
         onChanged: (value) => setState(() => _letCurrentFinish = value),
-        secondary: Icon(
-          _letCurrentFinish ? Icons.check_circle : Icons.stop,
-          color: colorScheme.primary,
-        ),
       ),
     );
   }
 
-  Widget _buildActionButtons(ColorScheme colorScheme) {
+  Widget _buildActionButtons() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: FilledButton.icon(
-            onPressed: _startTimer,
-            icon: const Icon(Icons.play_arrow),
-            label: const Text(
-              'Start Timer',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            style: FilledButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
+        FilledButton.icon(
+          onPressed: _startTimer,
+          icon: const Icon(Icons.play_arrow_rounded),
+          label: const Text('Start Timer'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
           ),
         ),
-        const SizedBox(height: 12),
-        if (SleepTimerService.instance.isActive)
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                SleepTimerService.instance.cancel();
-                setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Sleep timer cancelled')),
-                );
-              },
-              icon: const Icon(Icons.stop),
-              label: const Text('Cancel Active Timer'),
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+        if (SleepTimerService.instance.isActive) ...[
+          const SizedBox(height: AppTokens.s3),
+          OutlinedButton.icon(
+            onPressed: () {
+              SleepTimerService.instance.cancel();
+              setState(() {});
+              appSnack(context, 'Sleep timer cancelled');
+            },
+            icon: const Icon(Icons.stop_rounded),
+            label: const Text('Cancel Active Timer'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
             ),
           ),
+        ],
       ],
     );
   }
@@ -1130,20 +668,13 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
       audioManager: audioManager,
       onComplete: () {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sleep timer finished')),
-          );
+          appSnack(context, 'Sleep timer finished', tone: AppTone.success);
         }
       },
     );
 
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_getTimerConfirmationMessage()),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    appSnack(context, _getTimerConfirmationMessage(), tone: AppTone.success);
   }
 
   String _getTimerConfirmationMessage() {
@@ -1222,46 +753,56 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final songsAsync = ref.watch(songsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Song History'),
-        centerTitle: true,
+      appBar: AppTopBar(
+        title: 'Song History',
         actions: [
           IconButton(
             onPressed: _loadHistory,
-            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : _error != null
-              ? Center(child: Text('Error: $_error'))
-              : Column(
-                  children: [
-                    if (_events.isNotEmpty) _buildLegend(colorScheme),
-                    Expanded(
-                      child: _events.isEmpty
-                          ? _buildEmptyState(colorScheme)
-                          : _buildHistoryList(colorScheme, songsAsync),
+              ? AppEmptyState(
+                  icon: Icons.error_outline_rounded,
+                  title: 'Could not load history',
+                  message: _error,
+                  tone: AppTone.danger,
+                )
+              : _events.isEmpty
+                  ? const AppEmptyState(
+                      icon: Icons.history_rounded,
+                      title: 'No play history yet',
+                      message: 'Start listening to build your history.',
+                    )
+                  : Column(
+                      children: [
+                        _buildLegend(),
+                        Expanded(child: _buildHistoryList(songsAsync)),
+                      ],
                     ),
-                  ],
-                ),
     );
   }
 
-  Widget _buildLegend(ColorScheme colorScheme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+  Widget _buildLegend() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppTokens.s3,
+        horizontal: AppTokens.s5,
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildLegendItem(Icons.play_arrow, Colors.green, 'Listen'),
-          _buildLegendItem(Icons.skip_next, Colors.orange, 'Skip'),
+          _buildLegendItem(
+              Icons.play_arrow_rounded, AppTokens.success, 'Listen'),
+          const SizedBox(width: AppTokens.s5),
+          _buildLegendItem(Icons.skip_next_rounded, AppTokens.warning, 'Skip'),
         ],
       ),
     );
@@ -1271,55 +812,17 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: color, size: 16),
-        const SizedBox(width: 4),
+        Icon(icon, color: color, size: 15),
+        const SizedBox(width: AppTokens.s1),
         Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: color.withValues(alpha: 0.8),
-          ),
+          label.toUpperCase(),
+          style: AppTokens.sectionLabel(context).copyWith(color: color),
         ),
       ],
     );
   }
 
-  Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.history,
-            size: 80,
-            color: colorScheme.primary.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No play history yet',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Start listening to build your history',
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHistoryList(
-    ColorScheme colorScheme,
-    AsyncValue<List<Song>> songsAsync,
-  ) {
+  Widget _buildHistoryList(AsyncValue<List<Song>> songsAsync) {
     final songMap = songsAsync.when(
       data: (songs) => {for (var s in songs) s.filename: s},
       loading: () => <String, Song>{},
@@ -1344,12 +847,13 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
     return RefreshIndicator(
       onRefresh: _loadHistory,
       child: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.only(
+          bottom: AppTokens.scrollBottomInset,
+        ),
         itemCount: sortedDates.length,
         itemBuilder: (context, index) {
           final dateKey = sortedDates[index];
-          final dateEvents = groupedEvents[dateKey]!;
-          return _buildDateSection(dateKey, dateEvents, songMap, colorScheme);
+          return _buildDateSection(dateKey, groupedEvents[dateKey]!, songMap);
         },
       ),
     );
@@ -1359,7 +863,6 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
     String dateKey,
     List<Map<String, dynamic>> events,
     Map<String, Song> songMap,
-    ColorScheme colorScheme,
   ) {
     final parts = dateKey.split('-');
     final year = int.parse(parts[0]);
@@ -1396,40 +899,11 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                dateLabel,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${events.length} plays • $durationStr',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+        AppSectionHeader(
+          label: dateLabel,
+          actionLabel: '${events.length} plays · $durationStr',
         ),
-        ...events
-            .map((event) => _buildHistoryItem(event, songMap, colorScheme)),
+        ...events.map((event) => _buildHistoryItem(event, songMap)),
       ],
     );
   }
@@ -1437,7 +911,6 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
   Widget _buildHistoryItem(
     Map<String, dynamic> event,
     Map<String, Song> songMap,
-    ColorScheme colorScheme,
   ) {
     final filename = event['song_filename'] as String? ?? 'Unknown';
     final song = songMap[filename];
@@ -1452,58 +925,35 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
     final timeStr =
         '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
-    final statusColor = isSkip ? Colors.orange : Colors.green;
+    final statusColor = isSkip ? AppTokens.warning : AppTokens.success;
     final statusText = isSkip ? 'Skip' : 'Listen';
 
-    return ListTile(
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          width: 40,
-          height: 40,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppTokens.s3),
+      child: AppListRow(
+        leading: AppRowArt(
           child: AlbumArtImage(
             url: song?.coverUrl ?? '',
-            width: 40,
-            height: 40,
+            width: AppTokens.artSize,
+            height: AppTokens.artSize,
           ),
         ),
-      ),
-      title: Text(
-        song?.title ?? _getFileNameWithoutExt(filename),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        song?.artist ?? 'Unknown Artist',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 12,
-          color: colorScheme.onSurfaceVariant,
+        title: song?.title ?? _getFileNameWithoutExt(filename),
+        subtitle: song?.artist ?? 'Unknown Artist',
+        trailing: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(timeStr, style: AppTokens.meta(context)),
+            const SizedBox(height: 2),
+            Text(
+              statusText.toUpperCase(),
+              style: AppTokens.sectionLabel(context).copyWith(
+                color: statusColor,
+              ),
+            ),
+          ],
         ),
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            timeStr,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: colorScheme.primary,
-            ),
-          ),
-          Text(
-            statusText,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: statusColor,
-            ),
-          ),
-        ],
       ),
     );
   }

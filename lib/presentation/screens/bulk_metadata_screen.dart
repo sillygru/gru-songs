@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../services/bulk_metadata_service.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_screen_header.dart';
+import '../components/app_feedback.dart';
 
 class BulkMetadataScreen extends ConsumerStatefulWidget {
   final List<Song> songs;
@@ -63,9 +66,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
     final plan = _plan;
     if (plan.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Add at least one edit to continue.')),
-        );
+        appSnack(context, 'Add at least one edit to continue.');
       }
       return;
     }
@@ -89,8 +90,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
         ? 'Updated ${result.updated} songs'
         : 'Updated ${result.updated}, failed $failed';
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(summary)));
+    appSnack(context, summary);
 
     Navigator.pop(context, result);
   }
@@ -103,21 +103,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
     final preview = plan.buildPreview(widget.songs, limit: 3);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bulk Metadata'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                theme.colorScheme.primary.withValues(alpha: 0.35),
-                theme.colorScheme.surface,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-      ),
+      appBar: const AppTopBar(title: 'Bulk Metadata'),
       body: Stack(
         children: [
           ListView(
@@ -245,7 +231,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
                   backgroundColor: theme.colorScheme.primary,
                   foregroundColor: theme.colorScheme.onPrimary,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: AppTokens.brMd,
                   ),
                 ),
               ),
@@ -277,10 +263,7 @@ class _HeaderCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.3),
-        ),
+        borderRadius: AppTokens.brMd,
       ),
       child: Row(
         children: [
@@ -345,23 +328,16 @@ class _SectionCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(16),
+      // Enabled is an accent-washed fill; disabled is the plain surface.
       decoration: BoxDecoration(
-        color: theme.cardTheme.color,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: enabled
-              ? theme.colorScheme.primary.withValues(alpha: 0.5)
-              : Colors.white.withValues(alpha: 0.05),
-        ),
-        boxShadow: enabled
-            ? [
-                BoxShadow(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [],
+        color: enabled
+            ? Color.alphaBlend(
+                theme.colorScheme.primary
+                    .withValues(alpha: AppTokens.accentWashAlpha),
+                AppTokens.surface(1),
+              )
+            : AppTokens.surface(1),
+        borderRadius: AppTokens.brMd,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,7 +417,7 @@ class _LabeledField extends StatelessWidget {
             fillColor: theme.colorScheme.surfaceContainerHighest
                 .withValues(alpha: 0.4),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: AppTokens.brSm,
               borderSide: BorderSide.none,
             ),
           ),
@@ -520,11 +496,8 @@ class _PreviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-        ),
+        color: AppTokens.surface(1),
+        borderRadius: AppTokens.brMd,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/update_service.dart';
+import '../tokens/app_tokens.dart';
 
 Future<void> showUpdateAvailableDialog(
   BuildContext context, {
@@ -15,7 +16,7 @@ Future<void> showUpdateAvailableDialog(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: AppTokens.brLg),
       backgroundColor: colorScheme.surface,
       surfaceTintColor: colorScheme.primaryContainer,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
@@ -55,7 +56,7 @@ Future<void> showUpdateAvailableDialog(
               decoration: BoxDecoration(
                 color:
                     colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppTokens.brSm,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -110,7 +111,7 @@ Future<void> showUpdateAvailableDialog(
                         color: colorScheme.outlineVariant,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: AppTokens.brSm,
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
@@ -129,7 +130,7 @@ Future<void> showUpdateAvailableDialog(
                     },
                     style: FilledButton.styleFrom(
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: AppTokens.brSm,
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),

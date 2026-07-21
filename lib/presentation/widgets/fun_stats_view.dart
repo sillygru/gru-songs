@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../components/app_surface.dart';
 
 class FunStatsView extends ConsumerWidget {
   const FunStatsView({super.key});
@@ -39,15 +40,9 @@ class FunStatsView extends ConsumerWidget {
           itemCount: stats.length,
           itemBuilder: (context, index) {
             final stat = stats[index];
-            return Card(
+            return AppSurface(
+              padding: EdgeInsets.zero,
               margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              elevation: 0,
-              color: Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
-                  .withValues(alpha: 0.3),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(

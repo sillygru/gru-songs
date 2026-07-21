@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/indexer_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../widgets/indexer_choice_dialog.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
 
 class IndexerScreen extends ConsumerStatefulWidget {
   const IndexerScreen({super.key});
@@ -30,7 +32,6 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Indexer'),
-        centerTitle: true,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -168,13 +169,9 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
             ],
           ),
         ),
-        Card(
-          elevation: 0,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          color:
-              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-          clipBehavior: Clip.antiAlias,
+        AppSurface(
+          padding: EdgeInsets.zero,
+          clipContent: true,
           child: Column(
             children: childrenWithDividers,
           ),
@@ -226,7 +223,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     // Determine icon color
     Color iconColor;
     if (hasError) {
-      iconColor = Colors.red;
+      iconColor = AppTokens.danger;
     } else if (isCompleted) {
       iconColor = theme.colorScheme.primary;
     } else if (isFullyCached) {
@@ -254,7 +251,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
             style: TextStyle(
               fontSize: 12,
               color: hasError
-                  ? Colors.red.shade700
+                  ? AppTokens.danger
                   : isRunning
                       ? theme.colorScheme.primary
                       : theme.colorScheme.onSurfaceVariant
@@ -267,14 +264,14 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
             LinearProgressIndicator(
               value: operation.progress,
               backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: AppTokens.brPill,
             ),
           ],
         ],
       ),
       trailing: isRunning
           ? IconButton(
-              icon: const Icon(Icons.stop_rounded, color: Colors.red),
+              icon: const Icon(Icons.stop_rounded, color: AppTokens.danger),
               onPressed: () => _cancelOperation(),
             )
           : operation.failedCount > 0 && !isRunning
@@ -285,13 +282,13 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade100,
-                        borderRadius: BorderRadius.circular(12),
+                        color: AppTokens.danger,
+                        borderRadius: AppTokens.brSm,
                       ),
                       child: Text(
                         '${operation.failedCount}',
                         style: TextStyle(
-                          color: Colors.red.shade800,
+                          color: AppTokens.danger,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -394,18 +391,16 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
+                  // Warning reads as a tinted block, not an outlined one.
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.orange.withValues(alpha: 0.3),
-                    ),
+                    color: AppTokens.warning.withValues(alpha: 0.14),
+                    borderRadius: AppTokens.brSm,
                   ),
                   child: Row(
                     children: [
                       Icon(
                         Icons.warning_amber_rounded,
-                        color: Colors.orange.shade700,
+                        color: AppTokens.warning,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
@@ -413,7 +408,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                         child: Text(
                           warningMessage,
                           style: TextStyle(
-                            color: Colors.orange.shade900,
+                            color: AppTokens.warning,
                             fontSize: 13,
                           ),
                         ),
@@ -489,7 +484,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
-        backgroundColor: result.success ? null : Colors.red.shade700,
+        backgroundColor: result.success ? null : AppTokens.danger,
       ),
     );
   }
@@ -515,7 +510,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Please do not close the app',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: AppTokens.fgTertiary),
               ),
             ],
           ),
@@ -529,7 +524,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.restart_alt, color: Colors.blue, size: 48),
+        icon: const Icon(Icons.restart_alt, color: AppTokens.info, size: 48),
         title: const Text('Restart Required'),
         content: const Text(
           'The operation has been completed successfully.\n\n'
@@ -552,7 +547,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.error_outline, color: Colors.red, size: 48),
+        icon:
+            const Icon(Icons.error_outline, color: AppTokens.danger, size: 48),
         title: Text('${operation.failedCount} Failed Items'),
         content: SizedBox(
           width: double.maxFinite,
@@ -616,7 +612,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(result.message),
-        backgroundColor: result.success ? null : Colors.red.shade700,
+        backgroundColor: result.success ? null : AppTokens.danger,
       ),
     );
   }
@@ -627,7 +623,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded,
-            color: Colors.orange, size: 48),
+            color: AppTokens.warning, size: 48),
         title: Text('$operationName Warnings'),
         content: SizedBox(
           width: double.maxFinite,
@@ -669,7 +665,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                 Text(
                   '... and ${warnings.length - 10} more',
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: AppTokens.fgTertiary,
                     fontStyle: FontStyle.italic,
                   ),
                 ),

@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/storage_analysis_service.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/providers.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class StorageManagementScreen extends ConsumerStatefulWidget {
   const StorageManagementScreen({super.key});
@@ -160,7 +163,7 @@ class _StorageManagementScreenState
                 scaffoldMessenger.showSnackBar(
                   const SnackBar(
                     content: Text('Please type the confirmation text exactly.'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: AppTokens.danger,
                   ),
                 );
               }
@@ -188,7 +191,7 @@ class _StorageManagementScreenState
           '• App settings and preferences\n\n'
           'The app will reset. This action cannot be undone.',
       confirmText: 'Clear Database',
-      confirmColor: Colors.red,
+      confirmColor: AppTokens.danger,
       requireTextInput: true,
       textInputHint: 'DELETE',
     );
@@ -211,9 +214,7 @@ class _StorageManagementScreenState
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing database: $e')),
-        );
+        appSnack(context, 'Error clearing database: $e');
       }
     }
   }
@@ -224,7 +225,7 @@ class _StorageManagementScreenState
       content: 'This will delete all cached album artwork.\n\n'
           'The covers will be re-extracted from your music files the next time you browse your library.',
       confirmText: 'Clear Covers',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -238,16 +239,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cover cache cleared successfully')),
-        );
+        appSnack(context, 'Cover cache cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing covers: $e')),
-        );
+        appSnack(context, 'Error clearing covers: $e');
       }
     }
   }
@@ -258,7 +255,7 @@ class _StorageManagementScreenState
       content: 'This will delete all local backup files.\n\n'
           'Make sure you have exported any important backups before proceeding.',
       confirmText: 'Clear Backups',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -272,16 +269,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backups cleared successfully')),
-        );
+        appSnack(context, 'Backups cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing backups: $e')),
-        );
+        appSnack(context, 'Error clearing backups: $e');
       }
     }
   }
@@ -292,7 +285,7 @@ class _StorageManagementScreenState
       content: 'This will clear the library cache.\n\n'
           'Your music library will be rescanned the next time you open the app.',
       confirmText: 'Clear Cache',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -306,16 +299,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Library cache cleared successfully')),
-        );
+        appSnack(context, 'Library cache cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing library cache: $e')),
-        );
+        appSnack(context, 'Error clearing library cache: $e');
       }
     }
   }
@@ -326,7 +315,7 @@ class _StorageManagementScreenState
       content: 'This will delete the search index.\n\n'
           'The search index will be rebuilt automatically when you rescan your library.',
       confirmText: 'Clear Index',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -340,16 +329,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Search index cleared successfully')),
-        );
+        appSnack(context, 'Search index cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing search index: $e')),
-        );
+        appSnack(context, 'Error clearing search index: $e');
       }
     }
   }
@@ -360,7 +345,7 @@ class _StorageManagementScreenState
       content: 'This will delete all cached song waveforms.\n\n'
           'Waveforms will be regenerated the next time you view song details.',
       confirmText: 'Clear Cache',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -374,16 +359,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Waveform cache cleared successfully')),
-        );
+        appSnack(context, 'Waveform cache cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing waveform cache: $e')),
-        );
+        appSnack(context, 'Error clearing waveform cache: $e');
       }
     }
   }
@@ -394,7 +375,7 @@ class _StorageManagementScreenState
       content: 'This will delete all cached theme colors.\n\n'
           'Colors will be re-extracted from album art the next time songs are played.',
       confirmText: 'Clear Cache',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -408,16 +389,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Color cache cleared successfully')),
-        );
+        appSnack(context, 'Color cache cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing color cache: $e')),
-        );
+        appSnack(context, 'Error clearing color cache: $e');
       }
     }
   }
@@ -428,7 +405,7 @@ class _StorageManagementScreenState
       content: 'This will remove cached lyrics lookups.\n\n'
           'Lyrics will be re-read from song metadata when needed.',
       confirmText: 'Clear Cache',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -442,16 +419,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lyrics cache cleared successfully')),
-        );
+        appSnack(context, 'Lyrics cache cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing lyrics cache: $e')),
-        );
+        appSnack(context, 'Error clearing lyrics cache: $e');
       }
     }
   }
@@ -462,7 +435,7 @@ class _StorageManagementScreenState
       content: 'This will delete all pre-generated blurred backgrounds.\n\n'
           'They will be re-generated the next time you trigger a rebuild in the Indexer.',
       confirmText: 'Clear Cache',
-      confirmColor: Colors.orange,
+      confirmColor: AppTokens.warning,
     );
 
     if (!confirmed || !mounted) return;
@@ -476,17 +449,12 @@ class _StorageManagementScreenState
       await _loadSizes();
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Blurred background cache cleared successfully')),
-        );
+        appSnack(context, 'Blurred background cache cleared successfully');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing blurred cache: $e')),
-        );
+        appSnack(context, 'Error clearing blurred cache: $e');
       }
     }
   }
@@ -506,7 +474,7 @@ class _StorageManagementScreenState
           '• Lyrics cache\n\n'
           'The app will reset.',
       confirmText: 'Clear Everything',
-      confirmColor: Colors.red,
+      confirmColor: AppTokens.danger,
       requireTextInput: true,
       textInputHint: 'DELETE',
     );
@@ -529,9 +497,7 @@ class _StorageManagementScreenState
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing data: $e')),
-        );
+        appSnack(context, 'Error clearing data: $e');
       }
     }
   }
@@ -554,7 +520,7 @@ class _StorageManagementScreenState
                     subtitle: 'User data, statistics, and settings',
                     size: _databaseSize,
                     icon: Icons.storage_rounded,
-                    color: Colors.blue,
+                    color: AppTokens.info,
                     onClear: _databaseSize > 0 ? _handleClearDatabase : null,
                     isDestructive: true,
                   ),
@@ -563,7 +529,7 @@ class _StorageManagementScreenState
                     subtitle: 'Cached song album art',
                     size: _coversSize,
                     icon: Icons.image_rounded,
-                    color: Colors.purple,
+                    color: AppTokens.info,
                     onClear: _coversSize > 0 ? _handleClearCovers : null,
                   ),
                   _buildStorageCard(
@@ -571,7 +537,7 @@ class _StorageManagementScreenState
                     subtitle: 'Local backup files',
                     size: _backupsSize,
                     icon: Icons.backup_rounded,
-                    color: Colors.orange,
+                    color: AppTokens.warning,
                     onClear: _backupsSize > 0 ? _handleClearBackups : null,
                   ),
                   _buildStorageCard(
@@ -579,7 +545,7 @@ class _StorageManagementScreenState
                     subtitle: 'Cached song library data',
                     size: _libraryCacheSize,
                     icon: Icons.library_music_rounded,
-                    color: Colors.green,
+                    color: AppTokens.success,
                     onClear:
                         _libraryCacheSize > 0 ? _handleClearLibraryCache : null,
                   ),
@@ -588,7 +554,7 @@ class _StorageManagementScreenState
                     subtitle: 'Search index for fast queries',
                     size: _searchIndexSize,
                     icon: Icons.search_rounded,
-                    color: Colors.teal,
+                    color: AppTokens.success,
                     onClear:
                         _searchIndexSize > 0 ? _handleClearSearchIndex : null,
                   ),
@@ -597,7 +563,7 @@ class _StorageManagementScreenState
                     subtitle: 'Cached song waveforms for visualizers',
                     size: _waveformCacheSize,
                     icon: Icons.waves_rounded,
-                    color: Colors.cyan,
+                    color: AppTokens.info,
                     onClear: _waveformCacheSize > 0
                         ? _handleClearWaveformCache
                         : null,
@@ -607,7 +573,7 @@ class _StorageManagementScreenState
                     subtitle: 'Cached theme colors from album art',
                     size: _colorCacheSize,
                     icon: Icons.palette_rounded,
-                    color: Colors.pink,
+                    color: AppTokens.danger,
                     onClear:
                         _colorCacheSize > 0 ? _handleClearColorCache : null,
                   ),
@@ -616,7 +582,7 @@ class _StorageManagementScreenState
                     subtitle: 'Cached lyrics availability and text',
                     size: _lyricsCacheSize,
                     icon: Icons.lyrics_rounded,
-                    color: Colors.indigo,
+                    color: AppTokens.info,
                     onClear:
                         _lyricsCacheSize > 0 ? _handleClearLyricsCache : null,
                   ),
@@ -625,7 +591,7 @@ class _StorageManagementScreenState
                     subtitle: 'Pre-generated blurred backgrounds',
                     size: _blurredCacheSize,
                     icon: Icons.blur_on_rounded,
-                    color: Colors.deepPurple,
+                    color: AppTokens.info,
                     onClear:
                         _blurredCacheSize > 0 ? _handleClearBlurredCache : null,
                   ),
@@ -636,26 +602,26 @@ class _StorageManagementScreenState
                     title: const Text(
                       'Clear All User Data',
                       style: TextStyle(
-                        color: Colors.red,
+                        color: AppTokens.danger,
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                       ),
                     ),
                     subtitle: const Text(
                       'Permanently delete all data and reset app',
-                      style: TextStyle(color: Colors.red),
+                      style: TextStyle(color: AppTokens.danger),
                     ),
                     leading: const Icon(
                       Icons.delete_forever_rounded,
-                      color: Colors.red,
+                      color: AppTokens.danger,
                       size: 32,
                     ),
                     onTap: _handleDangerousClear,
-                    tileColor: Colors.red.withValues(alpha: 0.05),
+                    tileColor: AppTokens.danger.withValues(alpha: 0.05),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppTokens.brSm,
                       side: BorderSide(
-                        color: Colors.red.withValues(alpha: 0.2),
+                        color: AppTokens.danger.withValues(alpha: 0.2),
                       ),
                     ),
                   ),
@@ -675,7 +641,8 @@ class _StorageManagementScreenState
     VoidCallback? onClear,
     bool isDestructive = false,
   }) {
-    return Card(
+    return AppSurface(
+      padding: EdgeInsets.zero,
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -687,7 +654,7 @@ class _StorageManagementScreenState
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppTokens.brSm,
                   ),
                   child: Icon(icon, color: color, size: 28),
                 ),
@@ -734,16 +701,16 @@ class _StorageManagementScreenState
                   onPressed: onClear,
                   icon: Icon(
                     Icons.delete_outline,
-                    color: isDestructive ? Colors.red : null,
+                    color: isDestructive ? AppTokens.danger : null,
                   ),
                   label: Text(
                     'Clear',
                     style: TextStyle(
-                      color: isDestructive ? Colors.red : null,
+                      color: isDestructive ? AppTokens.danger : null,
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: isDestructive ? Colors.red : null,
+                    foregroundColor: isDestructive ? AppTokens.danger : null,
                   ),
                 ),
               ),

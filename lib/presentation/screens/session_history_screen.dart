@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/play_session.dart';
 import '../../providers/session_history_provider.dart';
 import 'session_detail_screen.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
 
 class SessionHistoryScreen extends ConsumerWidget {
   const SessionHistoryScreen({super.key});
@@ -15,7 +17,6 @@ class SessionHistoryScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Session History'),
-        centerTitle: true,
         actions: [
           IconButton(
             onPressed: () => ref.refresh(sessionHistoryProvider),
@@ -127,7 +128,7 @@ class SessionHistoryScreen extends ConsumerWidget {
                 height: 24,
                 decoration: BoxDecoration(
                   color: colorScheme.primary,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: AppTokens.brPill,
                 ),
               ),
               const SizedBox(width: 12),
@@ -145,7 +146,7 @@ class SessionHistoryScreen extends ConsumerWidget {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppTokens.brSm,
                 ),
                 child: Text(
                   '${group.sessions.length}',
@@ -174,15 +175,8 @@ class SessionHistoryScreen extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Card(
-        elevation: 0,
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.1),
-          ),
-        ),
+      child: AppSurface(
+        padding: EdgeInsets.zero,
         child: InkWell(
           onTap: () {
             Navigator.push(
@@ -192,7 +186,7 @@ class SessionHistoryScreen extends ConsumerWidget {
               ),
             );
           },
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppTokens.brMd,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -203,7 +197,7 @@ class SessionHistoryScreen extends ConsumerWidget {
                   height: 56,
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: AppTokens.brSm,
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,

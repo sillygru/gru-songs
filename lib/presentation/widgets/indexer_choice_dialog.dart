@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../tokens/app_tokens.dart';
 
 /// Dialog for choosing between "Just Missing" and "Force All" options
 class IndexerChoiceDialog extends StatelessWidget {
@@ -27,17 +28,14 @@ class IndexerChoiceDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.orange.withValues(alpha: 0.3),
-                ),
+                color: AppTokens.warning.withValues(alpha: 0.14),
+                borderRadius: AppTokens.brSm,
               ),
               child: Row(
                 children: [
                   Icon(
                     Icons.warning_amber_rounded,
-                    color: Colors.orange.shade700,
+                    color: AppTokens.warning,
                     size: 20,
                   ),
                   const SizedBox(width: 8),
@@ -45,7 +43,7 @@ class IndexerChoiceDialog extends StatelessWidget {
                     child: Text(
                       warningMessage!,
                       style: TextStyle(
-                        color: Colors.orange.shade900,
+                        color: AppTokens.warning,
                         fontSize: 13,
                       ),
                     ),

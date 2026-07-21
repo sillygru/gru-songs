@@ -5,7 +5,11 @@ import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
 import '../widgets/folder_grid_image.dart';
 import '../widgets/duration_display.dart';
+import '../components/app_feedback.dart';
+import '../components/app_media_card.dart';
+import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
+import '../components/app_sheet.dart';
 
 class AlbumsScreen extends ConsumerStatefulWidget {
   const AlbumsScreen({super.key});
@@ -44,7 +48,6 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
             : const Text('Albums'),
-        centerTitle: true,
         leading: _isSearching
             ? IconButton(
                 onPressed: () {
@@ -94,12 +97,17 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
           }
 
           return GridView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.s4,
+              AppTokens.s4,
+              AppTokens.s4,
+              AppTokens.scrollBottomInset,
+            ),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              childAspectRatio: 0.8,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
+              childAspectRatio: 0.78,
+              crossAxisSpacing: AppTokens.s4,
+              mainAxisSpacing: AppTokens.s4,
             ),
             itemCount: sortedAlbums.length,
             itemBuilder: (context, index) {
@@ -119,8 +127,13 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        loading: () => const AppLoading(),
+        error: (e, _) => AppEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Could not load albums',
+          message: '$e',
+          tone: AppTone.danger,
+        ),
       ),
     );
   }
@@ -132,67 +145,16 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
     required List<Song> songs,
     required ColorScheme colorScheme,
   }) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SongListScreen(
-              title: album,
-              songs: songs,
-            ),
-          ),
-        );
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: FolderGridImage(
-                songs: songs,
-                isGridItem: true,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              album,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            artist,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-          CollectionDurationDisplay(
-            songs: songs,
-            showSongCount: true,
-            compact: true,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                ),
-          ),
-        ],
+    return AppMediaCard(
+      expand: true,
+      title: album,
+      subtitle: '$artist · ${collectionSummary(songs)}',
+      artwork: FolderGridImage(songs: songs, isGridItem: true),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SongListScreen(title: album, songs: songs),
+        ),
       ),
     );
   }
@@ -258,41 +220,39 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
   }
 
   void _showSortOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.sort_by_alpha),
-              title: const Text('Name (A-Z)'),
-              trailing: _sortBy == 'name' ? const Icon(Icons.check) : null,
-              onTap: () {
-                setState(() => _sortBy = 'name');
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text('Artist'),
-              trailing: _sortBy == 'artist' ? const Icon(Icons.check) : null,
-              onTap: () {
-                setState(() => _sortBy = 'artist');
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.music_note),
-              title: const Text('Most Songs'),
-              trailing: _sortBy == 'songs' ? const Icon(Icons.check) : null,
-              onTap: () {
-                setState(() => _sortBy = 'songs');
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
+    showAppSheet(
+      context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.sort_by_alpha),
+            title: const Text('Name (A-Z)'),
+            trailing: _sortBy == 'name' ? const Icon(Icons.check) : null,
+            onTap: () {
+              setState(() => _sortBy = 'name');
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('Artist'),
+            trailing: _sortBy == 'artist' ? const Icon(Icons.check) : null,
+            onTap: () {
+              setState(() => _sortBy = 'artist');
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.music_note),
+            title: const Text('Most Songs'),
+            trailing: _sortBy == 'songs' ? const Icon(Icons.check) : null,
+            onTap: () {
+              setState(() => _sortBy = 'songs');
+              Navigator.pop(context);
+            },
+          ),
+        ],
       ),
     );
   }

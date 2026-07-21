@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/song.dart';
 import 'album_art_image.dart';
+import '../tokens/app_tokens.dart';
 
 class FolderGridImage extends StatelessWidget {
   final List<Song> songs;
@@ -33,16 +34,16 @@ class FolderGridImage extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(8),
+          color: AppTokens.warning.withValues(alpha: 0.2),
+          borderRadius: AppTokens.brSm,
         ),
-        child: Icon(Icons.folder, size: size * 0.6, color: Colors.amber),
+        child: Icon(Icons.folder, size: size * 0.6, color: AppTokens.warning),
       );
     }
 
     if (covers.length == 1) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppTokens.brSm,
         child: AlbumArtImage(
           url: covers[0],
           filename: covers[0],
@@ -60,7 +61,7 @@ class FolderGridImage extends StatelessWidget {
     final int displayCount = covers.length;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: AppTokens.brSm,
       child: SizedBox(
         width: size,
         height: size,

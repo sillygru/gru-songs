@@ -14,6 +14,8 @@ import '../../services/telemetry_service.dart';
 import '../widgets/bulk_selection_bar.dart';
 import '../widgets/immersive_background.dart';
 import '../widgets/auto_backup_indicator.dart';
+import '../components/app_feedback.dart';
+import '../tokens/app_tokens.dart';
 
 class SyncIndicator extends ConsumerWidget {
   const SyncIndicator({super.key});
@@ -27,72 +29,39 @@ class SyncIndicator extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    Color bgColor;
-    String text;
-    IconData icon;
-    bool showSpinner;
-
-    if (isScanning) {
-      showSpinner = true;
-      bgColor = Colors.blue.shade700;
-      text = "Scanning Library...";
-      icon = Icons.search;
-    } else if (metadataState.status == MetadataSaveStatus.saving) {
-      showSpinner = true;
-      bgColor = Colors.orange.shade800;
-      text = metadataState.message;
-      icon = Icons.edit;
-    } else if (metadataState.status == MetadataSaveStatus.success) {
-      showSpinner = false;
-      bgColor = Colors.green.shade700;
-      text = metadataState.message;
-      icon = Icons.check_circle;
-    } else {
-      showSpinner = false;
-      bgColor = Colors.red.shade700;
-      text = metadataState.message;
-      icon = Icons.error;
-    }
+    final (String text, AppTone tone, IconData icon, bool busy) = switch ((
+      isScanning,
+      metadataState.status,
+    )) {
+      (true, _) => ('Scanning library…', AppTone.info, Icons.search, true),
+      (_, MetadataSaveStatus.saving) => (
+          metadataState.message,
+          AppTone.warning,
+          Icons.edit_rounded,
+          true,
+        ),
+      (_, MetadataSaveStatus.success) => (
+          metadataState.message,
+          AppTone.success,
+          Icons.check_circle_rounded,
+          false,
+        ),
+      _ => (
+          metadataState.message,
+          AppTone.danger,
+          Icons.error_rounded,
+          false,
+        ),
+    };
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.only(top: 8.0),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Material(
-            elevation: 4,
-            borderRadius: BorderRadius.circular(20),
-            color: bgColor,
-            child: Container(
-              height: 32,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showSpinner)
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  else
-                    Icon(icon, size: 14, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        padding: const EdgeInsets.only(top: AppTokens.s2),
+        child: AppStatusBanner(
+          message: text,
+          tone: tone,
+          icon: icon,
+          busy: busy,
         ),
       ),
     );
@@ -203,7 +172,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(autoBackupProvider.notifier).checkAndRunAutoBackup();
     });
-
   }
 
   @override
@@ -229,7 +197,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
     final settings = ref.watch(settingsProvider);
     final topPadding = mediaQuery.padding.top;
@@ -418,14 +385,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 );
               },
               child: Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: AppTokens.s2),
+                // Colours, label behaviour and indicator shape all come from
+                // navigationBarTheme now — nothing to restyle here.
                 child: NavigationBar(
                   selectedIndex: _selectedIndex,
                   onDestinationSelected: _onTabSelected,
-                  labelBehavior:
-                      NavigationDestinationLabelBehavior.onlyShowSelected,
-                  indicatorColor:
-                      theme.colorScheme.primary.withValues(alpha: 0.1),
                   destinations: const [
                     NavigationDestination(
                       icon: Icon(Icons.home_outlined),

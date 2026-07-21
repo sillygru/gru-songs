@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../components/app_feedback.dart';
 
 class FolderManagementScreen extends ConsumerStatefulWidget {
   const FolderManagementScreen({super.key});
@@ -35,9 +36,7 @@ class _FolderManagementScreenState
     final selection = await storage.pickMusicFolder();
     if (selection == null || selection['path']!.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Unable to access selected folder")),
-        );
+        appSnack(context, "Unable to access selected folder");
       }
       return;
     }
@@ -52,9 +51,7 @@ class _FolderManagementScreenState
     ref.invalidate(songsProvider);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Music folder added")),
-      );
+      appSnack(context, "Music folder added");
     }
   }
 
@@ -69,9 +66,7 @@ class _FolderManagementScreenState
     ref.invalidate(songsProvider);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Music folder removed")),
-      );
+      appSnack(context, "Music folder removed");
     }
   }
 

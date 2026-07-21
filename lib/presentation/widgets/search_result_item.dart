@@ -8,6 +8,7 @@ import '../../providers/selection_provider.dart';
 import 'album_art_image.dart';
 import 'lyrics_match_widget.dart';
 import 'song_options_menu.dart';
+import '../tokens/app_tokens.dart';
 
 /// Widget for displaying a search result item
 class SearchResultItem extends ConsumerWidget {
@@ -47,19 +48,13 @@ class SearchResultItem extends ConsumerWidget {
                 .primaryContainer
                 .withValues(alpha: 0.3)
             : Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(12),
-        border: isSelected
-            ? Border.all(
-                color: Theme.of(context).colorScheme.primary,
-                width: 2,
-              )
-            : null,
+        borderRadius: AppTokens.brSm,
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppTokens.brSm,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppTokens.brSm,
           onTap: selectionState.isSelectionMode
               ? () {
                   if (!context.mounted) return;
@@ -100,7 +95,7 @@ class SearchResultItem extends ConsumerWidget {
                             duration: const Duration(milliseconds: 200),
                             scale: isSelected ? 0.8 : 1.0,
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: AppTokens.brSm,
                               child: AlbumArtImage(
                                 url: song.coverUrl ?? '',
                                 filename: song.filename,
@@ -120,7 +115,7 @@ class SearchResultItem extends ConsumerWidget {
                                       .colorScheme
                                       .primary
                                       .withValues(alpha: 0.6),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: AppTokens.brSm,
                                 ),
                                 child: const Icon(
                                   Icons.check,
@@ -155,7 +150,7 @@ class SearchResultItem extends ConsumerWidget {
                       Icon(
                         Icons.favorite,
                         size: 18,
-                        color: Colors.red.withValues(alpha: 0.7),
+                        color: AppTokens.danger.withValues(alpha: 0.7),
                       ),
                     ],
                   ],
@@ -288,13 +283,13 @@ class ArtistSearchResultItem extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: theme.cardTheme.color,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppTokens.brSm,
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppTokens.brSm,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppTokens.brSm,
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
@@ -303,7 +298,7 @@ class ArtistSearchResultItem extends StatelessWidget {
                 Hero(
                   tag: 'artist_$artistName',
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: AppTokens.brSm,
                     child: songs.isNotEmpty
                         ? AlbumArtImage(
                             url: songs.first.coverUrl ?? '',
@@ -319,7 +314,7 @@ class ArtistSearchResultItem extends StatelessWidget {
                             height: 56,
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: AppTokens.brSm,
                             ),
                             child: Icon(
                               Icons.person,
@@ -390,13 +385,13 @@ class AlbumSearchResultItem extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: theme.cardTheme.color,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppTokens.brSm,
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppTokens.brSm,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppTokens.brSm,
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
@@ -405,7 +400,7 @@ class AlbumSearchResultItem extends StatelessWidget {
                 Hero(
                   tag: 'album_${albumName}_$artistName',
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: AppTokens.brSm,
                     child: songs.isNotEmpty
                         ? AlbumArtImage(
                             url: songs.first.coverUrl ?? '',
@@ -421,7 +416,7 @@ class AlbumSearchResultItem extends StatelessWidget {
                             height: 56,
                             decoration: BoxDecoration(
                               color: theme.colorScheme.secondaryContainer,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: AppTokens.brSm,
                             ),
                             child: Icon(
                               Icons.album,

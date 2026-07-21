@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
 import 'folder_grid_image.dart';
+import '../components/app_feedback.dart';
 
 class FolderPicker extends ConsumerStatefulWidget {
   final String rootPath;
@@ -158,11 +159,8 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
                                 });
                               } catch (e) {
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content:
-                                            Text('Error creating folder: $e')),
-                                  );
+                                  appSnack(
+                                      context, 'Error creating folder: $e');
                                 }
                               }
                             }

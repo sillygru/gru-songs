@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../tokens/app_tokens.dart';
 
 class AutoBackupIndicator extends ConsumerStatefulWidget {
   const AutoBackupIndicator({super.key});
@@ -64,7 +65,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
         icon: Icons.backup_rounded,
         title: 'Backing Up',
         subtitle: 'Creating backup...',
-        iconColor: Colors.blue,
+        iconColor: AppTokens.info,
         showSpinner: true,
         onDismiss: () {
           ref.read(autoBackupProvider.notifier).clearLastError();
@@ -80,7 +81,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
         icon: Icons.check_circle_rounded,
         title: 'Auto-Backup Complete',
         subtitle: lastResult.backupFilename ?? 'Backup saved',
-        iconColor: Colors.green,
+        iconColor: AppTokens.success,
         showSpinner: false,
         onDismiss: () {
           ref.read(autoBackupProvider.notifier).clearLastError();
@@ -97,7 +98,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
       icon: Icons.error_rounded,
       title: 'Auto-Backup Failed',
       subtitle: lastResult.errorMessage ?? 'Unknown error',
-      iconColor: Colors.red,
+      iconColor: AppTokens.danger,
       showSpinner: false,
       onDismiss: () {
         ref.read(autoBackupProvider.notifier).clearLastError();
@@ -130,8 +131,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.only(right: 20),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade700,
-                  borderRadius: BorderRadius.circular(16),
+                  color: AppTokens.danger,
+                  borderRadius: AppTokens.brMd,
                 ),
                 child: const Icon(
                   Icons.delete_outline_rounded,
@@ -146,7 +147,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                 return false;
               },
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: AppTokens.brMd,
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
@@ -154,18 +155,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surface.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
+                      borderRadius: AppTokens.brMd,
                     ),
                     child: Row(
                       children: [
@@ -174,7 +164,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                           height: 44,
                           decoration: BoxDecoration(
                             color: iconColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppTokens.brSm,
                           ),
                           child: showSpinner
                               ? SizedBox(
@@ -220,7 +210,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                         if (onDismiss != null)
                           InkWell(
                             onTap: onDismiss,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: AppTokens.brSm,
                             child: Padding(
                               padding: const EdgeInsets.all(4),
                               child: Icon(
@@ -252,7 +242,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
         child: Align(
           alignment: Alignment.topCenter,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: AppTokens.brMd,
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
@@ -260,18 +250,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: theme.colorScheme.outline.withValues(alpha: 0.2),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+                  borderRadius: AppTokens.brMd,
                 ),
                 child: Row(
                   children: [
@@ -279,12 +258,12 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
+                        color: AppTokens.warning.withValues(alpha: 0.12),
+                        borderRadius: AppTokens.brSm,
                       ),
                       child: const Icon(
                         Icons.warning_rounded,
-                        color: Colors.orange,
+                        color: AppTokens.warning,
                         size: 24,
                       ),
                     ),
@@ -319,14 +298,14 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                             .requestPermission();
                       },
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.orange,
+                        backgroundColor: AppTokens.warning,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
                         ),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: AppTokens.brSm,
                         ),
                       ),
                       child: const Text(

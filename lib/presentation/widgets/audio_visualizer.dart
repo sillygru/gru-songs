@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../tokens/app_tokens.dart';
 
 class AudioVisualizer extends StatefulWidget {
   final Color color;
@@ -165,7 +166,7 @@ class _AudioVisualizerState extends State<AudioVisualizer>
                 height: widget.height * _bars.barHeights[index],
                 decoration: BoxDecoration(
                   color: widget.color,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: AppTokens.brPill,
                 ),
               );
             }),

@@ -6,6 +6,10 @@ import '../widgets/folder_grid_image.dart';
 import '../widgets/duration_display.dart';
 import 'song_list_screen.dart';
 import 'select_songs_screen.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_sheet.dart';
+import '../components/app_feedback.dart';
 
 class PlaylistsScreen extends ConsumerStatefulWidget {
   const PlaylistsScreen({super.key});
@@ -44,7 +48,6 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
             : const Text('Playlists'),
-        centerTitle: true,
         leading: _isSearching
             ? IconButton(
                 onPressed: () {
@@ -107,16 +110,13 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
             itemCount: playlists.length + 1,
             itemBuilder: (context, index) {
               if (index == 0) {
-                return Card(
+                return AppSurface(
+                  padding: EdgeInsets.zero,
                   margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
                   child: InkWell(
                     onTap: () =>
                         _showMoodMixGenerator(context, ref, songsAsync),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: AppTokens.brMd,
                     child: const Padding(
                       padding: EdgeInsets.all(14),
                       child: Row(
@@ -153,12 +153,9 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                       playlist.songs.any((ps) => ps.songFilename == s.filename))
                   .toList();
 
-              return Card(
+              return AppSurface(
+                padding: EdgeInsets.zero,
                 margin: const EdgeInsets.only(bottom: 12),
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
                 child: InkWell(
                   onTap: () {
                     Navigator.push(
@@ -172,23 +169,16 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                       ),
                     );
                   },
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppTokens.brMd,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: colorScheme.primary.withValues(alpha: 0.3),
-                              width: 2,
-                            ),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
+                        ClipRRect(
+                          borderRadius: AppTokens.brSm,
+                          child: SizedBox(
+                            width: 72,
+                            height: 72,
                             child: FolderGridImage(songs: playlistSongs),
                           ),
                         ),
@@ -342,10 +332,7 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
     final userData = ref.read(userDataProvider);
     if (userData.moodTags.isEmpty) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('No moods available. Tag some songs first.')),
-        );
+        appSnack(context, 'No moods available. Tag some songs first.');
       }
       return;
     }
@@ -354,9 +341,8 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
     double length = 25;
     double diversity = 0.65;
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
+    await showAppSheet<void>(
+      context,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, setModalState) {
@@ -434,11 +420,8 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                               Navigator.pop(sheetContext);
                               if (generated.isEmpty) {
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content:
-                                            Text('No songs match those moods')),
-                                  );
+                                  appSnack(
+                                      context, 'No songs match those moods');
                                 }
                                 return;
                               }
@@ -500,30 +483,29 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
     String playlistId,
     String playlistName,
   ) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Rename'),
-              onTap: () {
-                Navigator.pop(context);
-                _showRenameDialog(context, ref, playlistId, playlistName);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Delete', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pop(context);
-                ref.read(userDataProvider.notifier).deletePlaylist(playlistId);
-              },
-            ),
-          ],
-        ),
+    showAppSheet(
+      context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('Rename'),
+            onTap: () {
+              Navigator.pop(context);
+              _showRenameDialog(context, ref, playlistId, playlistName);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: AppTokens.danger),
+            title:
+                const Text('Delete', style: TextStyle(color: AppTokens.danger)),
+            onTap: () {
+              Navigator.pop(context);
+              ref.read(userDataProvider.notifier).deletePlaylist(playlistId);
+            },
+          ),
+        ],
       ),
     );
   }

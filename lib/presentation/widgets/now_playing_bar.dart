@@ -9,6 +9,7 @@ import 'album_art_image.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../routes/player_route.dart';
+import '../tokens/app_tokens.dart';
 import 'audio_visualizer.dart';
 
 class NowPlayingBar extends ConsumerStatefulWidget {
@@ -110,7 +111,7 @@ class _NowPlayingContent extends ConsumerWidget {
     final double imageSize = compact ? 40 : 44;
     final double titleSize = compact ? 14 : 15;
     final double artistSize = compact ? 11 : 12;
-    final BorderRadius borderRadius = BorderRadius.circular(compact ? 20 : 22);
+    final BorderRadius borderRadius = AppTokens.brMd;
 
     final Widget content = SizedBox(
       height: barHeight,
@@ -122,21 +123,11 @@ class _NowPlayingContent extends ConsumerWidget {
               children: [
                 Hero(
                   tag: 'now_playing_art_${metadata.id}',
-                  child: Container(
+                  child: SizedBox(
                     width: imageSize,
                     height: imageSize,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.22),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppTokens.brSm,
                       child: Stack(
                         children: [
                           AlbumArtImage(
@@ -191,29 +182,23 @@ class _NowPlayingContent extends ConsumerWidget {
                         metadata.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: titleSize,
-                          letterSpacing: -0.5,
-                        ),
+                        style: AppTokens.rowTitle(context)
+                            .copyWith(fontSize: titleSize),
                       ),
                       Text(
                         metadata.artist ?? 'Unknown Artist',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.64),
-                          fontWeight: FontWeight.w500,
-                          fontSize: artistSize,
-                        ),
+                        style: AppTokens.rowSubtitle(context)
+                            .copyWith(fontSize: artistSize),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
                 if (!compact && isDesktopOrTablet) ...[
-                  const Icon(Icons.volume_down,
-                      size: 18, color: Colors.white60),
+                  Icon(Icons.volume_down_rounded,
+                      size: 18, color: AppTokens.fgTertiary),
                   SizedBox(
                     width: 100,
                     child: StreamBuilder<double>(
@@ -227,7 +212,8 @@ class _NowPlayingContent extends ConsumerWidget {
                       },
                     ),
                   ),
-                  const Icon(Icons.volume_up, size: 18, color: Colors.white60),
+                  Icon(Icons.volume_up_rounded,
+                      size: 18, color: AppTokens.fgTertiary),
                   const SizedBox(width: 12),
                 ],
                 Row(
@@ -321,20 +307,13 @@ class _NowPlayingContent extends ConsumerWidget {
       );
     }
 
+    // The bar floats over scrolling content, so it keeps its blur — the one
+    // place outside the player that does. Depth comes from the blur and the
+    // fill; no drop shadow, no outline.
     Widget mainContainer = Container(
       decoration: BoxDecoration(
-        color: showBlur
-            ? Colors.black.withValues(alpha: 0.45)
-            : Colors.black.withValues(alpha: 0.75),
+        color: Colors.black.withValues(alpha: showBlur ? 0.45 : 0.75),
         borderRadius: borderRadius,
-        border: null,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: content,
     );

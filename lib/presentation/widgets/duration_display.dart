@@ -1,5 +1,19 @@
 import 'package:flutter/material.dart';
 import '../../models/song.dart';
+import '../tokens/app_tokens.dart';
+
+/// "12 tracks · 48:20" — the one-line summary shown under a collection card.
+/// Lives here next to [DurationFormatter] so artists, albums, folders and
+/// playlists all describe themselves the same way.
+String collectionSummary(List<Song> songs) {
+  final count = '${songs.length} ${songs.length == 1 ? 'track' : 'tracks'}';
+  final total = songs.fold<Duration>(
+    Duration.zero,
+    (sum, song) => sum + (song.duration ?? Duration.zero),
+  );
+  if (total == Duration.zero) return count;
+  return '$count · ${DurationFormatter.format(total)}';
+}
 
 /// Utility class for formatting durations
 class DurationFormatter {
@@ -182,17 +196,12 @@ class DurationBadge extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      // Subtle badges are set apart by a faint fill, not by a hairline outline.
       decoration: BoxDecoration(
         color: isSubtle
-            ? Colors.transparent
+            ? AppTokens.surface(2)
             : theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(4),
-        border: isSubtle
-            ? Border.all(
-                color:
-                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
-                width: 0.5)
-            : null,
+        borderRadius: AppTokens.brPill,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

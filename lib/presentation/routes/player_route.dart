@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
-import '../screens/player_screen.dart';
+import '../screens/unified_player_screen.dart';
 
 class PlayerPageRoute extends PageRoute<void> {
-  PlayerPageRoute({required this.songId});
+  PlayerPageRoute({
+    this.songId,
+    this.initialPane = PlayerPane.player,
+    this.queueShowsHistory = false,
+  });
 
-  final String songId;
+  /// Kept for callers that open the player for a specific track; the screen
+  /// itself always follows whatever the player is currently playing.
+  final String? songId;
+
+  final PlayerPane initialPane;
+
+  /// Opens the Queue pane on its History segment rather than Up Next.
+  final bool queueShowsHistory;
 
   @override
   bool get opaque => false;
@@ -33,7 +44,10 @@ class PlayerPageRoute extends PageRoute<void> {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
   ) {
-    return const PlayerScreen();
+    return UnifiedPlayerScreen(
+      initialPane: initialPane,
+      queueShowsHistory: queueShowsHistory,
+    );
   }
 
   @override

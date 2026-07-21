@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/quick_action_config.dart';
 import '../../providers/settings_provider.dart';
+import '../components/app_surface.dart';
+import '../components/app_feedback.dart';
 
 class QuickActionsSettingsScreen extends ConsumerStatefulWidget {
   const QuickActionsSettingsScreen({super.key});
@@ -106,9 +108,7 @@ class _QuickActionsSettingsScreenState
       _enabledActions = Set.from(QuickActionConfig.defaultEnabled);
     });
     _saveConfig();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Reset to defaults')),
-    );
+    appSnack(context, 'Reset to defaults');
   }
 
   @override
@@ -123,7 +123,6 @@ class _QuickActionsSettingsScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text("Quick Actions"),
-        centerTitle: true,
         actions: [
           TextButton(
             onPressed: _resetToDefaults,
@@ -242,14 +241,10 @@ class _QuickActionsSettingsScreenState
     required bool enabled,
     required int index,
   }) {
-    return Card(
+    return AppSurface(
+      padding: EdgeInsets.zero,
       key: key,
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0,
-      color: Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest
-          .withValues(alpha: 0.3),
       child: ListTile(
         leading: _getActionIcon(action, enabled),
         title: Text(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/theme_provider.dart';
+import '../tokens/app_tokens.dart';
 
 class ThemeSelectionScreen extends ConsumerStatefulWidget {
   const ThemeSelectionScreen({super.key});
@@ -63,7 +64,6 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Choose Theme'),
-        centerTitle: true,
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -91,38 +91,11 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                       child: AspectRatio(
                         aspectRatio: 9 / 18,
                         child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                              if (isApplied)
-                                BoxShadow(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.4),
-                                  blurRadius: 15,
-                                  spreadRadius: 2,
-                                ),
-                            ],
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: AppTokens.s2,
                           ),
-                          foregroundDecoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            border: isApplied
-                                ? Border.all(
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                    width: 3,
-                                  )
-                                : Border.all(
-                                    color: Colors.white.withValues(alpha: 0.05),
-                                    width: 1,
-                                  ),
+                          decoration: BoxDecoration(
+                            borderRadius: AppTokens.brMd,
                           ),
                           clipBehavior: Clip.antiAlias,
                           child: Stack(
@@ -154,16 +127,12 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                                       color:
                                           Theme.of(context).colorScheme.primary,
                                       shape: BoxShape.circle,
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: Colors.black26,
-                                          blurRadius: 4,
-                                        )
-                                      ],
                                     ),
-                                    child: const Icon(
-                                      Icons.check,
-                                      color: Colors.white,
+                                    child: Icon(
+                                      Icons.check_rounded,
+                                      color: AppTokens.onAccent(
+                                        Theme.of(context).colorScheme.primary,
+                                      ),
                                       size: 20,
                                     ),
                                   ),
@@ -200,7 +169,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
                               : _applyTheme,
                       style: FilledButton.styleFrom(
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: AppTokens.brMd,
                         ),
                       ),
                       child: Text(
@@ -297,12 +266,12 @@ class ThemePreviewWidget extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             physics: const NeverScrollableScrollPhysics(),
                             children: [
-                              _buildMockAlbumCard(context, Colors.purple,
+                              _buildMockAlbumCard(context, AppTokens.info,
                                   "Chill Mix", "Various Artists"),
-                              _buildMockAlbumCard(context, Colors.blue,
+                              _buildMockAlbumCard(context, AppTokens.info,
                                   "Top Hits", "Gru's Picks"),
-                              _buildMockAlbumCard(
-                                  context, Colors.orange, "Energy", "Workout"),
+                              _buildMockAlbumCard(context, AppTokens.warning,
+                                  "Energy", "Workout"),
                             ],
                           ),
                         ),
@@ -341,11 +310,7 @@ class ThemePreviewWidget extends StatelessWidget {
                   decoration: BoxDecoration(
                     color:
                         themeData.colorScheme.surface.withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      width: 0.5,
-                    ),
+                    borderRadius: AppTokens.brMd,
                   ),
                   child: Row(
                     children: [
@@ -354,11 +319,11 @@ class ThemePreviewWidget extends StatelessWidget {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: Colors.grey[800],
-                          borderRadius: BorderRadius.circular(8),
+                          color: AppTokens.fgTertiary,
+                          borderRadius: AppTokens.brSm,
                         ),
                         child: const Icon(Icons.music_note,
-                            color: Colors.white70, size: 20),
+                            color: AppTokens.fgSecondary, size: 20),
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
@@ -371,7 +336,7 @@ class ThemePreviewWidget extends StatelessWidget {
                                     fontWeight: FontWeight.bold, fontSize: 12)),
                             Text("Pharrell Williams",
                                 style: TextStyle(
-                                    color: Colors.grey, fontSize: 10)),
+                                    color: AppTokens.fgTertiary, fontSize: 10)),
                           ],
                         ),
                       ),
@@ -414,10 +379,11 @@ class ThemePreviewWidget extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 color: color,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppTokens.brSm,
               ),
               child: const Center(
-                  child: Icon(Icons.album, color: Colors.white54, size: 32)),
+                  child:
+                      Icon(Icons.album, color: AppTokens.fgTertiary, size: 32)),
             ),
           ),
           const SizedBox(height: 6),
@@ -429,7 +395,8 @@ class ThemePreviewWidget extends StatelessWidget {
           Text(subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.grey, fontSize: 10)),
+              style:
+                  const TextStyle(color: AppTokens.fgTertiary, fontSize: 10)),
         ],
       ),
     );
@@ -444,8 +411,8 @@ class ThemePreviewWidget extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: Colors.grey.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
+              color: AppTokens.fgTertiary.withValues(alpha: 0.1),
+              borderRadius: AppTokens.brPill,
             ),
             child: const Icon(Icons.music_note, size: 18),
           ),
@@ -461,11 +428,12 @@ class ThemePreviewWidget extends StatelessWidget {
                 Text(artist,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                    style: const TextStyle(
+                        color: AppTokens.fgTertiary, fontSize: 11)),
               ],
             ),
           ),
-          const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+          const Icon(Icons.more_vert, size: 18, color: AppTokens.fgTertiary),
         ],
       ),
     );

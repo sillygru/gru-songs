@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +15,12 @@ import '../widgets/folder_grid_image.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/sort_menu.dart';
 import '../widgets/duration_display.dart';
+import '../components/app_feedback.dart';
+import '../components/app_list_row.dart';
+import '../components/app_media_card.dart';
+import '../components/app_screen_header.dart';
+import '../components/app_sheet.dart';
+import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
 import 'merged_songs_screen.dart';
 import 'select_songs_screen.dart';
@@ -33,9 +38,16 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   static const double _bottomDockDragDistance = 88.0;
 
+  bool _isScrolled = false;
+
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) {
       return false;
+    }
+
+    final scrolled = notification.metrics.pixels > 0;
+    if (scrolled != _isScrolled) {
+      setState(() => _isScrolled = scrolled);
     }
 
     if (notification is ScrollUpdateNotification &&
@@ -76,12 +88,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           playCounts,
         ),
         loading: () => Scaffold(
-          appBar: AppBar(title: Text(widget.relativePath ?? 'Library')),
-          body: const Center(child: CircularProgressIndicator()),
+          appBar: AppTopBar(title: widget.relativePath ?? 'Library'),
+          body: const AppLoading(),
         ),
         error: (e, s) => Scaffold(
-          appBar: AppBar(title: Text(widget.relativePath ?? 'Library')),
-          body: Center(child: Text('Error: $e')),
+          appBar: AppTopBar(title: widget.relativePath ?? 'Library'),
+          body: AppEmptyState(
+            icon: Icons.error_outline_rounded,
+            title: 'Could not open folder',
+            message: '$e',
+            tone: AppTone.danger,
+          ),
         ),
       );
     }
@@ -94,29 +111,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           controller: widget.scrollController,
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
-              SliverAppBar(
+              AppSliverHeader(
+                title: 'Library',
+                isScrolled: innerBoxIsScrolled,
                 floating: true,
                 snap: true,
-                pinned: true,
-                backgroundColor: innerBoxIsScrolled
-                    ? (settings.showProgressiveBlurHeaders
-                        ? Colors.transparent
-                        : Theme.of(context)
-                            .scaffoldBackgroundColor
-                            .withValues(alpha: 0.95))
-                    : Colors.transparent,
-                flexibleSpace:
-                    settings.showProgressiveBlurHeaders && innerBoxIsScrolled
-                        ? RepaintBoundary(
-                            child: ClipRect(
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                                child: Container(color: Colors.transparent),
-                              ),
-                            ),
-                          )
-                        : null,
-                title: const Text('Library'),
                 actions: [
                   songsAsyncValue.when(
                     data: (songs) => Row(
@@ -125,13 +124,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         const SortMenu(),
                         IconButton(
                           icon: const Icon(Icons.shuffle_rounded),
+                          tooltip: 'Shuffle all',
                           onPressed: () {
                             if (songs.isNotEmpty) {
                               audioManager.shuffleAndPlay(songs,
                                   isRestricted: false);
                             }
                           },
-                          tooltip: 'Shuffle All',
                         ),
                       ],
                     ),
@@ -139,28 +138,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     error: (_, __) => const SizedBox.shrink(),
                   ),
                 ],
-                bottom: TabBar(
-                  dividerColor: Colors.transparent,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  indicatorWeight: 4,
-                  indicator: UnderlineTabIndicator(
-                    borderSide: BorderSide(
-                      width: 4,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  labelStyle: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                    letterSpacing: -0.5,
-                  ),
-                  unselectedLabelStyle: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                    letterSpacing: -0.5,
-                  ),
-                  tabs: const [
+                // Indicator, label weights and the absent divider all come
+                // from tabBarTheme now.
+                bottom: const TabBar(
+                  tabs: [
                     Tab(text: 'Folders'),
                     Tab(text: 'Artists'),
                     Tab(text: 'Albums'),
@@ -185,8 +166,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 _buildAlbumsView(context, allSongs),
               ],
             ),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, s) => Center(child: Text('Error: $e')),
+            loading: () => const AppLoading(),
+            error: (e, s) => AppEmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Could not load library',
+              message: '$e',
+              tone: AppTone.danger,
+            ),
           ),
         ),
       ),
@@ -241,19 +227,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   .where((s) => userData.isFavorite(s.filename))
                   .toList();
 
-              return ListTile(
-                leading: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.favorite, color: Colors.red),
+              return AppListRow(
+                leading: const AppRowIcon(
+                  icon: Icons.favorite_rounded,
+                  color: AppTokens.danger,
                 ),
-                title: const Text('Favorites',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: CollectionDurationDisplay(
+                title: 'Favorites',
+                subtitleWidget: CollectionDurationDisplay(
                   songs: favSongs,
                   showSongCount: true,
                   compact: true,
@@ -277,26 +257,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             if (index == 1) {
               final mergedCount = userData.mergedGroups.length;
 
-              return ListTile(
-                leading: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(Icons.merge_type,
-                      color: Theme.of(context).colorScheme.primary),
+              return AppListRow(
+                leading: AppRowIcon(
+                  icon: Icons.merge_type_rounded,
+                  color: AppTokens.accentOf(context, ref),
                 ),
-                title: const Text('Merged Songs',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle:
-                    Text('$mergedCount group${mergedCount != 1 ? 's' : ''}'),
+                title: 'Merged Songs',
+                subtitle: '$mergedCount group${mergedCount != 1 ? 's' : ''}',
                 trailing: IconButton(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_rounded),
                   tooltip: 'Create new merge group',
                   onPressed: () async {
                     final result = await Navigator.push<Map<String, dynamic>>(
@@ -318,17 +287,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               .createMergedGroup(selected,
                                   priorityFilename: priority);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content:
-                                      Text('Merged ${selected.length} songs')),
+                            appSnack(
+                              context,
+                              'Merged ${selected.length} songs',
+                              tone: AppTone.success,
                             );
                           }
                         } catch (e) {
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Error: $e')),
-                            );
+                            appSnack(context, '$e', tone: AppTone.danger);
                           }
                         }
                       }
@@ -355,55 +322,35 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       playlist.songs.any((ps) => ps.songFilename == s.filename))
                   .toList();
 
-              return ListTile(
-                leading: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.5),
-                        width: 2),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: FolderGridImage(songs: playlistSongs),
-                  ),
+              // The playlist used to be marked by a 2px accent ring; the
+              // collage now stands on its own.
+              return AppListRow(
+                leading: AppRowArt(
+                  child: FolderGridImage(songs: playlistSongs),
                 ),
-                title: Text(playlist.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: CollectionDurationDisplay(
+                title: playlist.name,
+                subtitleWidget: CollectionDurationDisplay(
                   songs: playlistSongs,
                   showSongCount: true,
                   compact: true,
                 ),
                 trailing: IconButton(
-                  icon: const Icon(Icons.more_vert),
+                  icon: const Icon(Icons.more_vert_rounded),
+                  tooltip: 'Playlist options',
                   onPressed: () {
-                    // Show playlist options (Delete)
-                    showModalBottomSheet(
-                      context: context,
-                      builder: (context) => SafeArea(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ListTile(
-                              leading: const Icon(Icons.delete_outline,
-                                  color: Colors.red),
-                              title: const Text('Delete Playlist',
-                                  style: TextStyle(color: Colors.red)),
-                              onTap: () {
-                                Navigator.pop(context);
-                                ref
-                                    .read(userDataProvider.notifier)
-                                    .deletePlaylist(playlist.id);
-                              },
-                            ),
-                          ],
-                        ),
+                    showAppSheet(
+                      context,
+                      title: playlist.name,
+                      builder: (sheetContext) => AppSheetAction(
+                        icon: Icons.delete_outline_rounded,
+                        label: 'Delete playlist',
+                        isDanger: true,
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          ref
+                              .read(userDataProvider.notifier)
+                              .deletePlaylist(playlist.id);
+                        },
                       ),
                     );
                   },
@@ -433,21 +380,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 : p.join(widget.relativePath!, folderName);
             final folderSongs = content.subFolderSongs[folderName] ?? [];
 
-            return ListTile(
-              leading: SizedBox(
-                width: 48,
-                height: 48,
-                child: FolderGridImage(songs: folderSongs),
-              ),
-              title: Text(folderName,
-                  style: const TextStyle(fontWeight: FontWeight.w500)),
-              subtitle: CollectionDurationDisplay(
+            return AppListRow(
+              leading: AppRowArt(child: FolderGridImage(songs: folderSongs)),
+              title: folderName,
+              subtitleWidget: CollectionDurationDisplay(
                 songs: folderSongs,
                 showSongCount: true,
                 compact: true,
               ),
               trailing: IconButton(
-                icon: const Icon(Icons.more_vert),
+                icon: const Icon(Icons.more_vert_rounded),
+                tooltip: 'Folder options',
                 onPressed: () {
                   showFolderOptionsMenu(
                       context, ref, folderName, folderRelativePath);
@@ -486,7 +429,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             onNotification: _handleScrollNotification,
             child: ListView.builder(
               itemCount: itemCount,
-              padding: const EdgeInsets.only(bottom: 100),
+              padding: const EdgeInsets.only(
+                bottom: AppTokens.scrollBottomInset,
+              ),
               itemBuilder: folderIndexBuilder,
             ),
           );
@@ -498,22 +443,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               child: CustomScrollView(
                 physics: const BouncingScrollPhysics(),
                 slivers: [
-                  SliverAppBar(
+                  AppSliverHeader(
+                    title: widget.relativePath ?? 'Library',
+                    isScrolled: _isScrolled,
+                    large: false,
                     floating: true,
                     snap: true,
-                    backgroundColor: Colors.transparent,
-                    title: Text(widget.relativePath ?? 'Library'),
+                    pinned: false,
                     actions: [
                       const SortMenu(),
                       if (content.allSongsInFolder.isNotEmpty)
                         IconButton(
                           icon: const Icon(Icons.shuffle_rounded),
-                          onPressed: () {
-                            audioManager.shuffleAndPlay(
-                                content.allSongsInFolder,
-                                isRestricted: true);
-                          },
-                          tooltip: 'Shuffle Folder',
+                          tooltip: 'Shuffle folder',
+                          onPressed: () => audioManager.shuffleAndPlay(
+                            content.allSongsInFolder,
+                            isRestricted: true,
+                          ),
                         ),
                     ],
                   ),
@@ -523,7 +469,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       childCount: itemCount,
                     ),
                   ),
-                  const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+                  const SliverPadding(
+                    padding:
+                        EdgeInsets.only(bottom: AppTokens.scrollBottomInset),
+                  ),
                 ],
               ),
             ),
@@ -539,77 +488,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return artistsAsync.when(
       data: (artists) {
         final artistMap = LibraryLogic.groupByArtist(allSongs);
-
-        return NotificationListener<ScrollNotification>(
-          onNotification: _handleScrollNotification,
-          child: GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.85,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-            ),
-            shrinkWrap: true,
-            itemCount: artists.length,
-            itemBuilder: (context, index) {
-              final artist = artists[index];
-              final artistSongs = artistMap[artist] ?? [];
-              if (artistSongs.isEmpty) return const SizedBox.shrink();
-
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SongListScreen(
-                        title: artist,
-                        songs: artistSongs,
-                      ),
-                    ),
-                  );
-                },
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        clipBehavior: Clip.antiAlias,
-                        child: FolderGridImage(
-                          songs: artistSongs,
-                          isGridItem: true,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      artist,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    CollectionDurationDisplay(
-                      songs: artistSongs,
-                      showSongCount: true,
-                      compact: true,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+        return _buildCollectionGrid(
+          keys: artists,
+          songsFor: (artist) => artistMap[artist] ?? const [],
+          subtitleFor: collectionSummary,
+          emptyTitle: 'No artists yet',
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, s) => Center(child: Text('Error: $e')),
+      loading: () => const AppLoading(),
+      error: (e, s) => AppEmptyState(
+        icon: Icons.error_outline_rounded,
+        title: 'Could not load artists',
+        message: '$e',
+        tone: AppTone.danger,
+      ),
     );
   }
 
@@ -619,92 +511,81 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return albumsAsync.when(
       data: (albums) {
         final albumMap = LibraryLogic.groupByAlbum(allSongs);
-
-        return NotificationListener<ScrollNotification>(
-          onNotification: _handleScrollNotification,
-          child: GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.85,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-            ),
-            shrinkWrap: true,
-            itemCount: albums.length,
-            itemBuilder: (context, index) {
-              final album = albums[index];
-              final albumSongs = albumMap[album] ?? [];
-              if (albumSongs.isEmpty) return const SizedBox.shrink();
-              final artist = albumSongs.isNotEmpty
-                  ? albumSongs[0].artist
-                  : 'Unknown Artist';
-
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SongListScreen(
-                        title: album,
-                        songs: albumSongs,
-                      ),
-                    ),
-                  );
-                },
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        clipBehavior: Clip.antiAlias,
-                        child: FolderGridImage(
-                          songs: albumSongs,
-                          isGridItem: true,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      album,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    CollectionDurationDisplay(
-                      songs: albumSongs,
-                      showSongCount: true,
-                      compact: true,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant
-                                .withValues(alpha: 0.7),
-                          ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+        return _buildCollectionGrid(
+          keys: albums,
+          songsFor: (album) => albumMap[album] ?? const [],
+          subtitleFor: (songs) =>
+              '${songs.first.artist} · ${collectionSummary(songs)}',
+          emptyTitle: 'No albums yet',
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, s) => Center(child: Text('Error: $e')),
+      loading: () => const AppLoading(),
+      error: (e, s) => AppEmptyState(
+        icon: Icons.error_outline_rounded,
+        title: 'Could not load albums',
+        message: '$e',
+        tone: AppTone.danger,
+      ),
+    );
+  }
+
+  /// Artists and Albums are the same grid of cover collages with different
+  /// labels underneath, so they are the same code.
+  Widget _buildCollectionGrid({
+    required List<String> keys,
+    required List<Song> Function(String) songsFor,
+    required String Function(List<Song>) subtitleFor,
+    required String emptyTitle,
+  }) {
+    final entries = keys
+        .map((key) => (key: key, songs: songsFor(key)))
+        .where((entry) => entry.songs.isNotEmpty)
+        .toList();
+
+    if (entries.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.library_music_rounded,
+        title: emptyTitle,
+        message: 'Scan a music folder to fill this out.',
+      );
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: _handleScrollNotification,
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.s4,
+          AppTokens.s4,
+          AppTokens.s4,
+          AppTokens.scrollBottomInset,
+        ),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.78,
+          crossAxisSpacing: AppTokens.s4,
+          mainAxisSpacing: AppTokens.s4,
+        ),
+        itemCount: entries.length,
+        itemBuilder: (context, index) {
+          final entry = entries[index];
+
+          return AppMediaCard(
+            expand: true,
+            title: entry.key,
+            subtitle: subtitleFor(entry.songs),
+            artwork: FolderGridImage(songs: entry.songs, isGridItem: true),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SongListScreen(
+                  title: entry.key,
+                  songs: entry.songs,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

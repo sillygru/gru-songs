@@ -11,6 +11,8 @@ import '../screens/bulk_metadata_screen.dart';
 import '../screens/edit_metadata_screen.dart';
 import 'playlist_selector_screen.dart';
 import 'folder_picker.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class BulkSelectionBar extends ConsumerWidget {
   const BulkSelectionBar({super.key});
@@ -90,15 +92,13 @@ class BulkSelectionBar extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHigh,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
+        color: Color.alphaBlend(
+          AppTokens.surface(2),
+          Theme.of(context).scaffoldBackgroundColor,
+        ),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppTokens.rLg),
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -155,7 +155,7 @@ class BulkSelectionBar extends ConsumerWidget {
     return _ActionButton(
       icon: allFavorited ? Icons.favorite : Icons.favorite_border,
       label: allFavorited ? 'Unfavorite' : 'Favorite',
-      color: allFavorited ? Colors.red : null,
+      color: allFavorited ? AppTokens.danger : null,
       onTap: () {
         if (!context.mounted) return;
         final filenames = songs.map((s) => s.filename).toList();
@@ -164,12 +164,11 @@ class BulkSelectionBar extends ConsumerWidget {
             .bulkToggleFavorite(filenames, !allFavorited);
         ref.read(selectionProvider.notifier).exitSelectionMode();
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(allFavorited
-                  ? 'Removed ${songs.length} songs from favorites'
-                  : 'Added ${songs.length} songs to favorites')),
-        );
+        appSnack(
+            context,
+            allFavorited
+                ? 'Removed ${songs.length} songs from favorites'
+                : 'Added ${songs.length} songs to favorites');
       },
     );
   }
@@ -301,7 +300,7 @@ class BulkSelectionBar extends ConsumerWidget {
     return _ActionButton(
       icon: Icons.delete_outline,
       label: 'Delete',
-      color: Colors.redAccent,
+      color: AppTokens.danger,
       onTap: () {
         showDialog(
           context: context,
@@ -309,7 +308,7 @@ class BulkSelectionBar extends ConsumerWidget {
             title: const Text('Delete Files'),
             content: Text(
               'Permanently delete ${songs.length} files from storage? This cannot be undone.',
-              style: const TextStyle(color: Colors.redAccent),
+              style: const TextStyle(color: AppTokens.danger),
             ),
             actions: [
               TextButton(
@@ -318,7 +317,7 @@ class BulkSelectionBar extends ConsumerWidget {
               ),
               FilledButton(
                 style:
-                    FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                    FilledButton.styleFrom(backgroundColor: AppTokens.danger),
                 onPressed: () {
                   if (!ctx.mounted) return;
                   ref.read(songsProvider.notifier).bulkDeleteSongs(songs);
@@ -353,9 +352,7 @@ class BulkSelectionBar extends ConsumerWidget {
 
         ref.read(selectionProvider.notifier).exitSelectionMode();
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added ${songs.length} songs to queue')),
-        );
+        appSnack(context, 'Added ${songs.length} songs to queue');
       },
     );
   }
@@ -398,20 +395,14 @@ class BulkSelectionBar extends ConsumerWidget {
               ref.read(selectionProvider.notifier).exitSelectionMode();
               if (!context.mounted) return;
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content:
-                          Text("Moved ${songs.length} songs to $targetPath")),
-                );
+                appSnack(context, "Moved ${songs.length} songs to $targetPath");
               }
             } catch (e) {
               if (kDebugMode) {
                 debugPrint("UI: ERROR during move: $e");
               }
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Error moving songs: $e")),
-                );
+                appSnack(context, "Error moving songs: $e");
               }
             }
           } else {
@@ -433,7 +424,7 @@ class BulkSelectionBar extends ConsumerWidget {
     return _ActionButton(
       icon: Icons.heart_broken,
       label: allSuggestLess ? 'Suggest More' : 'Suggest Less',
-      color: allSuggestLess ? Colors.grey : null,
+      color: allSuggestLess ? AppTokens.fgTertiary : null,
       onTap: () {
         if (!context.mounted) return;
         final filenames = songs.map((s) => s.filename).toList();
@@ -442,12 +433,11 @@ class BulkSelectionBar extends ConsumerWidget {
             .bulkToggleSuggestLess(filenames, !allSuggestLess);
         ref.read(selectionProvider.notifier).exitSelectionMode();
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(allSuggestLess
-                  ? 'Will suggest ${songs.length} songs more'
-                  : 'Will suggest ${songs.length} songs less')),
-        );
+        appSnack(
+            context,
+            allSuggestLess
+                ? 'Will suggest ${songs.length} songs more'
+                : 'Will suggest ${songs.length} songs less');
       },
     );
   }
@@ -490,9 +480,7 @@ class BulkSelectionBar extends ConsumerWidget {
                   if (!context.mounted) return;
                   ref.read(selectionProvider.notifier).exitSelectionMode();
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Created playlist "$value"')),
-                  );
+                  appSnack(context, 'Created playlist "$value"');
                 }
               },
             ),
@@ -524,9 +512,7 @@ class BulkSelectionBar extends ConsumerWidget {
                     if (!context.mounted) return;
                     ref.read(selectionProvider.notifier).exitSelectionMode();
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Created playlist "$name"')),
-                    );
+                    appSnack(context, 'Created playlist "$name"');
                   }
                 },
                 child: const Text('Create'),
@@ -560,7 +546,7 @@ class _ActionButton extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppTokens.brSm,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 void showPlaylistSelector(
     BuildContext context, WidgetRef ref, String songFilename) {
@@ -112,7 +114,7 @@ class _PlaylistSelectorDialogState
               const Divider(),
               CheckboxListTile(
                 title: const Text('Favorites'),
-                secondary: const Icon(Icons.favorite, color: Colors.red),
+                secondary: const Icon(Icons.favorite, color: AppTokens.danger),
                 tristate: true,
                 value: _isFavorite,
                 onChanged: (val) {
@@ -227,9 +229,7 @@ class _PlaylistSelectorDialogState
 
             if (context.mounted) {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Updated selections')),
-              );
+              appSnack(context, 'Updated selections');
             }
           },
           child: const Text('Done'),
@@ -298,9 +298,7 @@ class _PlaylistSelectorDialogState
       }
     }
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Created playlist "$name"')),
-      );
+      appSnack(context, 'Created playlist "$name"');
     }
   }
 }

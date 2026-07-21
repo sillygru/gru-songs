@@ -8,6 +8,9 @@ import '../../services/database_service.dart';
 import '../../services/import_options.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
 import '../../providers/providers.dart';
+import '../components/app_surface.dart';
+import '../tokens/app_tokens.dart';
+import '../components/app_feedback.dart';
 
 class BackupManagementScreen extends ConsumerStatefulWidget {
   const BackupManagementScreen({super.key});
@@ -45,9 +48,7 @@ class _BackupManagementScreenState
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading backups: $e')),
-        );
+        appSnack(context, 'Error loading backups: $e');
       }
     }
   }
@@ -68,15 +69,11 @@ class _BackupManagementScreenState
       await _loadBackups();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Backup created: $backupFilename')),
-        );
+        appSnack(context, 'Backup created: $backupFilename');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create backup: $e')),
-        );
+        appSnack(context, 'Failed to create backup: $e');
       }
     } finally {
       setState(() {
@@ -98,18 +95,14 @@ class _BackupManagementScreenState
       validation = await BackupService.instance.validateBackup();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to validate backup: $e')),
-        );
+        appSnack(context, 'Failed to validate backup: $e');
       }
       return;
     }
 
     if (validation == null || validation['valid'] != true) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid backup file')),
-        );
+        appSnack(context, 'Invalid backup file');
       }
       return;
     }
@@ -147,8 +140,8 @@ class _BackupManagementScreenState
               const SizedBox(height: 16),
               const Text(
                 'WARNING: This will COMPLETELY REPLACE all your current data:',
-                style:
-                    TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                style: TextStyle(
+                    fontWeight: FontWeight.bold, color: AppTokens.danger),
               ),
               const SizedBox(height: 8),
               const Text('• All your current statistics and play history'),
@@ -158,8 +151,8 @@ class _BackupManagementScreenState
               const SizedBox(height: 12),
               const Text(
                 'YOUR CURRENT DATA WILL BE PERMANENTLY LOST!',
-                style:
-                    TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                style: TextStyle(
+                    fontWeight: FontWeight.bold, color: AppTokens.danger),
               ),
               const SizedBox(height: 8),
               const Text('There is NO way to undo this action.'),
@@ -173,7 +166,7 @@ class _BackupManagementScreenState
             TextButton(
               onPressed: () => Navigator.pop(context, true),
               style: TextButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: AppTokens.danger,
                 foregroundColor: Colors.white,
               ),
               child: const Text('YES, REPLACE EVERYTHING'),
@@ -216,7 +209,7 @@ class _BackupManagementScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('All data replaced successfully!'),
-            backgroundColor: Colors.green,
+            backgroundColor: AppTokens.success,
           ),
         );
 
@@ -233,7 +226,7 @@ class _BackupManagementScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to restore backup: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppTokens.danger,
           ),
         );
       }
@@ -254,7 +247,8 @@ class _BackupManagementScreenState
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('DELETE', style: TextStyle(color: Colors.red)),
+            child:
+                const Text('DELETE', style: TextStyle(color: AppTokens.danger)),
           ),
         ],
       ),
@@ -267,15 +261,11 @@ class _BackupManagementScreenState
       await _loadBackups();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup deleted')),
-        );
+        appSnack(context, 'Backup deleted');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete backup: $e')),
-        );
+        appSnack(context, 'Failed to delete backup: $e');
       }
     }
   }
@@ -292,16 +282,12 @@ class _BackupManagementScreenState
 
       if (result != null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Backup exported to: $result')),
-          );
+          appSnack(context, 'Backup exported to: $result');
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to export backup: $e')),
-        );
+        appSnack(context, 'Failed to export backup: $e');
       }
     }
   }
@@ -312,9 +298,7 @@ class _BackupManagementScreenState
     final index = _backups.indexOf(backupInfo);
     if (index == -1 || index == _backups.length - 1) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No older backup to compare with.')),
-        );
+        appSnack(context, 'No older backup to compare with.');
       }
       return;
     }
@@ -365,7 +349,8 @@ class _BackupManagementScreenState
                     trailing: Text(
                       _formatBytes(diff.sizeBytesDiff),
                       style: const TextStyle(
-                          color: Colors.green, fontWeight: FontWeight.bold),
+                          color: AppTokens.success,
+                          fontWeight: FontWeight.bold),
                     ),
                   )
                 ]
@@ -383,9 +368,7 @@ class _BackupManagementScreenState
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Pop loading dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error comparing backups: $e')),
-        );
+        appSnack(context, 'Error comparing backups: $e');
       }
     }
   }
@@ -396,13 +379,13 @@ class _BackupManagementScreenState
 
     if (diff > 0) {
       diffText = '+${isBytes ? _formatBytes(diff) : diff}';
-      color = Colors.green;
+      color = AppTokens.success;
     } else if (diff < 0) {
       diffText = '${isBytes ? _formatBytes(diff) : diff}';
-      color = Colors.red;
+      color = AppTokens.danger;
     } else {
       diffText = 'No change';
-      color = Colors.grey;
+      color = AppTokens.fgTertiary;
     }
 
     return ListTile(
@@ -430,7 +413,6 @@ class _BackupManagementScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Backup Management'),
-        centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -516,7 +498,8 @@ class _BackupManagementScreenState
   }
 
   Widget _buildBackupCard(BackupInfo backup) {
-    return Card(
+    return AppSurface(
+      padding: EdgeInsets.zero,
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
@@ -583,9 +566,9 @@ class _BackupManagementScreenState
               value: 'delete',
               child: Row(
                 children: [
-                  Icon(Icons.delete_rounded, color: Colors.red),
+                  Icon(Icons.delete_rounded, color: AppTokens.danger),
                   SizedBox(width: 8),
-                  Text('Delete', style: TextStyle(color: Colors.red)),
+                  Text('Delete', style: TextStyle(color: AppTokens.danger)),
                 ],
               ),
             ),
@@ -600,7 +583,7 @@ class _BackupManagementScreenState
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.restart_alt, color: Colors.blue, size: 48),
+        icon: const Icon(Icons.restart_alt, color: AppTokens.info, size: 48),
         title: const Text('Restart Required'),
         content: const Text(
           'Backup restore has been completed successfully.\n\n'
@@ -742,7 +725,7 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
             height: 40,
             decoration: BoxDecoration(
               color: theme.colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppTokens.brSm,
             ),
             child: Icon(Icons.backup_rounded,
                 color: theme.colorScheme.primary, size: 22),
@@ -774,7 +757,7 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
         decoration: BoxDecoration(
           color:
               theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppTokens.brMd,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -784,7 +767,7 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
               color: Colors.transparent,
               child: InkWell(
                 onTap: () => _toggleType(type),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: AppTokens.brSm,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -800,7 +783,7 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
                               ? theme.colorScheme.primary
                                   .withValues(alpha: 0.12)
                               : theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: AppTokens.brSm,
                         ),
                         child: Icon(
                           _getContentTypeIcon(type),
@@ -867,7 +850,7 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: AppTokens.brSm,
                     ),
                     side: BorderSide(color: theme.colorScheme.outline),
                   ),
@@ -891,7 +874,7 @@ class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
                   icon: const Icon(Icons.backup_rounded, size: 18),
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: AppTokens.brSm,
                     ),
                   ),
                   label: const Text('Create'),
