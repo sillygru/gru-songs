@@ -11,6 +11,7 @@ import '../models/queue_item.dart';
 import '../models/queue_snapshot.dart';
 import '../models/shuffle_config.dart';
 import '../domain/services/shuffle_weight_service.dart';
+import '../domain/services/queue_ops.dart' as queue_ops;
 import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
@@ -117,6 +118,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final List<StreamSubscription<dynamic>> _trackedSubscriptions = [];
   SettingsState? _cachedSettings;
   Future<void> _queueMutationChain = Future<void>.value();
+
+  // Guards deliberate queue mutations from the sequence-sync listener. While
+  // this is > 0 the manager is itself rewriting the player's sources, so the
+  // listener must not rebuild _effectiveQueue from a transient half-mutated
+  // sequence. The sync exists only to catch changes made *outside* the app
+  // (notification / headset actions).
+  int _playerMutationDepth = 0;
 
   // Play/pause fade state (separate from track-transition fades)
   // ignore: unused_field
@@ -1521,10 +1529,26 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return true;
   }
 
+  /// Runs [body] with the sequence-sync listener suppressed, so our own
+  /// intermediate player states can never be mistaken for an outside edit.
+  Future<T> _guardPlayerMutation<T>(Future<T> Function() body) async {
+    _playerMutationDepth++;
+    try {
+      return await body();
+    } finally {
+      _playerMutationDepth--;
+      if (_playerMutationDepth == 0) {
+        // Publish the authoritative model once the whole mutation has landed.
+        _updateQueueNotifier();
+      }
+    }
+  }
+
   Future<T> _runSerializedQueueMutation<T>(
     Future<T> Function() mutation,
   ) {
-    final next = _queueMutationChain.then((_) => mutation());
+    final next =
+        _queueMutationChain.then((_) => _guardPlayerMutation(mutation));
     _queueMutationChain = next.then<void>(
       (_) {},
       onError: (e, _) {
@@ -1544,58 +1568,31 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _syncEffectiveQueueWithPlayerSequence(SequenceState state) {
+    // Our own mutations rewrite the player's sources step by step; adopting an
+    // intermediate sequence here would truncate the queue mid-edit.
+    if (_playerMutationDepth > 0) return;
+
     final sequence = state.sequence;
     if (sequence.isEmpty) return;
 
-    final byQueueId = <String, QueueItem>{
-      for (final item in _effectiveQueue) item.queueId: item,
-    };
-    final byFilename = <String, List<QueueItem>>{};
-    for (final item in _effectiveQueue) {
-      byFilename.putIfAbsent(item.song.filename, () => []).add(item);
-    }
-
-    final consumedQueueIds = <String>{};
-    final consumedFilenameCounts = <String, int>{};
-    final rebuilt = <QueueItem>[];
-
+    final entries = <queue_ops.SequenceEntry>[];
     for (final source in sequence) {
       final tag = source.tag;
       if (tag is! MediaItem) continue;
-
-      final extras = tag.extras;
-      final queueId = extras?['queueId'] as String?;
-      QueueItem? resolved;
-      if (queueId != null && !consumedQueueIds.contains(queueId)) {
-        resolved = byQueueId[queueId];
-      }
-
-      if (resolved == null) {
-        final candidates = byFilename[tag.id];
-        final usedCount = consumedFilenameCounts[tag.id] ?? 0;
-        if (candidates != null && usedCount < candidates.length) {
-          resolved = candidates[usedCount];
-          consumedFilenameCounts[tag.id] = usedCount + 1;
-        }
-      }
-
-      final resolvedSong = _songMap[tag.id];
-      if (resolved == null) {
-        if (resolvedSong == null) continue;
-        resolved = QueueItem(
-          song: resolvedSong,
-          queueId: queueId,
-        );
-      } else {
-        resolved = resolved.copyWith(
-          song: resolvedSong ?? resolved.song,
-          queueId: queueId ?? resolved.queueId,
-        );
-      }
-
-      consumedQueueIds.add(resolved.queueId);
-      rebuilt.add(resolved);
+      entries.add((
+        filename: tag.id,
+        queueId: tag.extras?['queueId'] as String?,
+      ));
     }
+
+    final rebuilt = queue_ops.reconcileWithSequence(
+      _effectiveQueue,
+      entries,
+      (filename) {
+        final song = _songMap[filename];
+        return song == null ? null : QueueItem(song: song);
+      },
+    );
 
     if (rebuilt.isEmpty || _sameQueueSnapshot(_effectiveQueue, rebuilt)) return;
     _effectiveQueue = rebuilt;
@@ -2232,6 +2229,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     int? initialIndex,
     bool startPlaying = true,
     Duration? initialPosition,
+  }) =>
+      _guardPlayerMutation(() => _rebuildQueueInner(
+            initialIndex: initialIndex,
+            startPlaying: startPlaying,
+            initialPosition: initialPosition,
+          ));
+
+  Future<void> _rebuildQueueInner({
+    int? initialIndex,
+    bool startPlaying = true,
+    Duration? initialPosition,
   }) async {
     if (_effectiveQueue.isEmpty) return;
 
@@ -2282,25 +2290,35 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<void> _mutateQueueAfterIndex(int currentIndex) async {
     if (currentIndex < 0) return;
 
-    final playerLen = _player.sequenceState.sequence.length;
-    for (int i = playerLen - 1; i > currentIndex; i--) {
-      try {
-        await _player.removeAudioSourceAt(i);
-      } catch (_) {
-        break;
-      }
-    }
+    // Snapshot the intended tail before touching the player. Mid-loop the
+    // player's sequence briefly shrinks to a single item; if anything else read
+    // _effectiveQueue off that transient state we would rebuild from garbage,
+    // so the loops are driven from this immutable copy instead.
+    final tail = _effectiveQueue.length > currentIndex + 1
+        ? List<QueueItem>.from(_effectiveQueue.sublist(currentIndex + 1))
+        : <QueueItem>[];
 
-    for (int i = currentIndex + 1; i < _effectiveQueue.length; i++) {
-      final source = await _createAudioSource(_effectiveQueue[i]);
+    await _guardPlayerMutation(() async {
       try {
-        await _player.insertAudioSource(i, source);
-      } catch (_) {
-        break;
-      }
-    }
+        final playerLen = _player.sequenceState.sequence.length;
+        for (int i = playerLen - 1; i > currentIndex; i--) {
+          await _player.removeAudioSourceAt(i);
+        }
 
-    _updateQueueNotifier();
+        for (int i = 0; i < tail.length; i++) {
+          final source = await _createAudioSource(tail[i]);
+          await _player.insertAudioSource(currentIndex + 1 + i, source);
+        }
+      } catch (e) {
+        // The player and the model must never diverge; on any failure fall back
+        // to a full, atomic rebuild from the authoritative _effectiveQueue.
+        debugPrint('Tail mutation failed, rebuilding queue: $e');
+        await _rebuildQueueInner(
+          initialIndex: currentIndex,
+          startPlaying: _player.playing,
+        );
+      }
+    });
   }
 
   Future<void> playNext(Song song, {bool allowDuplicate = false}) async {

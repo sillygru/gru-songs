@@ -1,3 +1,5 @@
+import 'backup_manifest.dart';
+
 enum ImportDataCategory {
   favorites,
   suggestless,
@@ -9,7 +11,6 @@ enum ImportDataCategory {
   userdata,
   playHistory,
   songs,
-  finalStats,
   queueHistory,
   shuffleState,
   playbackState,
@@ -18,12 +19,19 @@ enum ImportDataCategory {
   playbackSettings,
   uiSettings,
   backupSettings,
+  coverCache,
+  libraryCache,
+  searchIndex,
+  waveformCache,
+  colorCache,
+  lyricsCache,
 }
 
 enum ImportDataType {
   database,
   storage,
   settings,
+  cache,
 }
 
 extension ImportDataCategoryExtension on ImportDataCategory {
@@ -40,7 +48,6 @@ extension ImportDataCategoryExtension on ImportDataCategory {
       case ImportDataCategory.playHistory:
         return ImportDataType.database;
       case ImportDataCategory.songs:
-      case ImportDataCategory.finalStats:
       case ImportDataCategory.queueHistory:
       case ImportDataCategory.shuffleState:
       case ImportDataCategory.playbackState:
@@ -51,6 +58,33 @@ extension ImportDataCategoryExtension on ImportDataCategory {
       case ImportDataCategory.uiSettings:
       case ImportDataCategory.backupSettings:
         return ImportDataType.settings;
+      case ImportDataCategory.coverCache:
+      case ImportDataCategory.libraryCache:
+      case ImportDataCategory.searchIndex:
+      case ImportDataCategory.waveformCache:
+      case ImportDataCategory.colorCache:
+      case ImportDataCategory.lyricsCache:
+        return ImportDataType.cache;
+    }
+  }
+
+  /// The backup bucket this category restores, for cache categories only.
+  BackupContentType? get cacheContentType {
+    switch (this) {
+      case ImportDataCategory.coverCache:
+        return BackupContentType.coverCache;
+      case ImportDataCategory.libraryCache:
+        return BackupContentType.libraryCache;
+      case ImportDataCategory.searchIndex:
+        return BackupContentType.searchIndex;
+      case ImportDataCategory.waveformCache:
+        return BackupContentType.waveformCache;
+      case ImportDataCategory.colorCache:
+        return BackupContentType.colorCache;
+      case ImportDataCategory.lyricsCache:
+        return BackupContentType.lyricsCache;
+      default:
+        return null;
     }
   }
 
@@ -76,8 +110,6 @@ extension ImportDataCategoryExtension on ImportDataCategory {
         return 'Play History';
       case ImportDataCategory.songs:
         return 'Songs Library';
-      case ImportDataCategory.finalStats:
-        return 'Statistics';
       case ImportDataCategory.queueHistory:
         return 'Queue History';
       case ImportDataCategory.shuffleState:
@@ -94,6 +126,18 @@ extension ImportDataCategoryExtension on ImportDataCategory {
         return 'UI';
       case ImportDataCategory.backupSettings:
         return 'Backup';
+      case ImportDataCategory.coverCache:
+        return 'Cover Cache';
+      case ImportDataCategory.libraryCache:
+        return 'Library Cache';
+      case ImportDataCategory.searchIndex:
+        return 'Search Index';
+      case ImportDataCategory.waveformCache:
+        return 'Waveform Cache';
+      case ImportDataCategory.colorCache:
+        return 'Color Cache';
+      case ImportDataCategory.lyricsCache:
+        return 'Lyrics Cache';
     }
   }
 
@@ -119,8 +163,6 @@ extension ImportDataCategoryExtension on ImportDataCategory {
         return 'Play sessions and events';
       case ImportDataCategory.songs:
         return 'Song metadata library';
-      case ImportDataCategory.finalStats:
-        return 'Fun listening statistics';
       case ImportDataCategory.queueHistory:
         return 'Saved queue snapshots';
       case ImportDataCategory.shuffleState:
@@ -137,6 +179,18 @@ extension ImportDataCategoryExtension on ImportDataCategory {
         return 'Sort order, visualizer, waveform display';
       case ImportDataCategory.backupSettings:
         return 'Auto backup frequency';
+      case ImportDataCategory.coverCache:
+        return 'Cached album artwork';
+      case ImportDataCategory.libraryCache:
+        return 'Cached metadata';
+      case ImportDataCategory.searchIndex:
+        return 'Search database';
+      case ImportDataCategory.waveformCache:
+        return 'Waveform data';
+      case ImportDataCategory.colorCache:
+        return 'Color palettes';
+      case ImportDataCategory.lyricsCache:
+        return 'Cached lyrics';
     }
   }
 
@@ -204,6 +258,10 @@ class ImportOptions {
         (c) => c.type == ImportDataType.settings,
       );
 
+  bool get hasCacheCategories => categories.any(
+        (c) => c.type == ImportDataType.cache,
+      );
+
   static const ImportOptions defaultImport = ImportOptions(
     categories: {
       ImportDataCategory.favorites,
@@ -216,7 +274,6 @@ class ImportOptions {
       ImportDataCategory.userdata,
       ImportDataCategory.playHistory,
       ImportDataCategory.songs,
-      ImportDataCategory.finalStats,
       ImportDataCategory.queueHistory,
       ImportDataCategory.shuffleState,
       ImportDataCategory.playbackState,
@@ -225,6 +282,12 @@ class ImportOptions {
       ImportDataCategory.playbackSettings,
       ImportDataCategory.uiSettings,
       ImportDataCategory.backupSettings,
+      ImportDataCategory.coverCache,
+      ImportDataCategory.libraryCache,
+      ImportDataCategory.searchIndex,
+      ImportDataCategory.waveformCache,
+      ImportDataCategory.colorCache,
+      ImportDataCategory.lyricsCache,
     },
     additive: false,
     restoreDatabases: true,

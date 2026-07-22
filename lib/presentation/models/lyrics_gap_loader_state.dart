@@ -3,18 +3,49 @@ import '../../models/song.dart';
 class LyricsGapLoaderState {
   final bool shouldShow;
   final int insertBeforeLyricIndex;
-  final Duration remainingGap;
+
+  /// How far through the visible window we are, 0 at the moment the loader
+  /// appears and 1 when the next lyric lands. Drives the dot fill, so the
+  /// animation is a function of playback position rather than wall clock.
+  final double progress;
 
   const LyricsGapLoaderState({
     required this.shouldShow,
     required this.insertBeforeLyricIndex,
-    required this.remainingGap,
+    required this.progress,
   });
 
   static const hidden = LyricsGapLoaderState(
     shouldShow: false,
     insertBeforeLyricIndex: -1,
-    remainingGap: Duration.zero,
+    progress: 0,
+  );
+}
+
+/// Resolves the window `[windowStart, windowEnd]` into visibility and progress.
+///
+/// Visibility is decided by the window's *length*, not by how much of it is
+/// left: once the loader is on screen it stays until the lyric arrives, so its
+/// exit animation has room to play instead of popping out early.
+LyricsGapLoaderState _stateForWindow({
+  required Duration position,
+  required Duration windowStart,
+  required Duration windowEnd,
+  required Duration minimumWindow,
+  required int insertBeforeLyricIndex,
+}) {
+  final span = windowEnd.inMicroseconds - windowStart.inMicroseconds;
+  if (span < minimumWindow.inMicroseconds ||
+      position < windowStart ||
+      position >= windowEnd) {
+    return LyricsGapLoaderState.hidden;
+  }
+
+  final elapsed = position.inMicroseconds - windowStart.inMicroseconds;
+  return LyricsGapLoaderState(
+    shouldShow: true,
+    insertBeforeLyricIndex: insertBeforeLyricIndex,
+    progress: (elapsed / span).clamp(0.0, 1.0),
   );
 }
 
@@ -22,7 +53,7 @@ LyricsGapLoaderState computeLyricsGapLoaderState({
   required List<LyricLine> lyrics,
   required Duration position,
   required Duration delay,
-  required Duration minimumRemainingGap,
+  required Duration minimumWindow,
 }) {
   final syncedEntries = <(int, LyricLine)>[];
   for (var i = 0; i < lyrics.length; i++) {
@@ -45,19 +76,14 @@ LyricsGapLoaderState computeLyricsGapLoaderState({
     }
   }
 
+  // Intro gap: the silence starts at zero, so the window opens at [delay].
   if (activeSyncedEntry < 0) {
-    final firstLine = syncedEntries.first.$2;
-    final remainingGap = firstLine.time - position;
-    if (firstLine.time <= delay ||
-        position < delay ||
-        position >= firstLine.time ||
-        remainingGap < minimumRemainingGap) {
-      return LyricsGapLoaderState.hidden;
-    }
-    return LyricsGapLoaderState(
-      shouldShow: true,
+    return _stateForWindow(
+      position: position,
+      windowStart: delay,
+      windowEnd: syncedEntries.first.$2.time,
+      minimumWindow: minimumWindow,
       insertBeforeLyricIndex: syncedEntries.first.$1,
-      remainingGap: remainingGap,
     );
   }
 
@@ -66,20 +92,11 @@ LyricsGapLoaderState computeLyricsGapLoaderState({
     return LyricsGapLoaderState.hidden;
   }
 
-  final currentLine = syncedEntries[activeSyncedEntry].$2;
-  final nextLine = syncedEntries[nextEntryIndex].$2;
-  final gapElapsed = position - currentLine.time;
-  final remainingGap = nextLine.time - position;
-
-  if (gapElapsed < delay ||
-      position >= nextLine.time ||
-      remainingGap < minimumRemainingGap) {
-    return LyricsGapLoaderState.hidden;
-  }
-
-  return LyricsGapLoaderState(
-    shouldShow: true,
+  return _stateForWindow(
+    position: position,
+    windowStart: syncedEntries[activeSyncedEntry].$2.time + delay,
+    windowEnd: syncedEntries[nextEntryIndex].$2.time,
+    minimumWindow: minimumWindow,
     insertBeforeLyricIndex: syncedEntries[nextEntryIndex].$1,
-    remainingGap: remainingGap,
   );
 }

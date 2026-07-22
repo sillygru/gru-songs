@@ -7,23 +7,14 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'backup_manifest.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
 import 'import_options.dart';
 import '../models/song.dart';
 import '../data/repositories/search_index_repository.dart';
 
-enum BackupContentType {
-  userStats,
-  userData,
-  userSettings,
-  coverCache,
-  libraryCache,
-  searchIndex,
-  waveformCache,
-  colorCache,
-  lyricsCache,
-}
+export 'backup_manifest.dart' show BackupContentType;
 
 class BackupOptions {
   final Set<BackupContentType> contentTypes;
@@ -124,6 +115,8 @@ class BackupInfo {
 class BackupService {
   static const String _backupsDirName = 'backups';
   static const String _metadataFile = 'metadata.json';
+  static const String statsDbName = 'wispie_stats.db';
+  static const String dataDbName = 'wispie_data.db';
   static BackupService? _instance;
   static BackupService get instance => _instance ??= BackupService._();
   BackupService._();
@@ -201,8 +194,121 @@ class BackupService {
     return backups.first.number + 1;
   }
 
+  /// The content types used for automatic backups and pre-selected when
+  /// creating one manually.
+  Future<BackupOptions> defaultBackupOptions() async {
+    final types = await StorageService().loadBackupContentTypes();
+    return BackupOptions(contentTypes: types);
+  }
+
+  /// Writes every selected content type into [stagingDir].
+  ///
+  /// Shared by [createBackup] and [exportUserData] so both archives always
+  /// carry the same content for the same options.
+  Future<void> _stageBackup(BackupOptions options, Directory stagingDir) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final storage = StorageService();
+
+    if (options.includeUserStats) {
+      final statsDb = File(p.join(appDir.path, statsDbName));
+      if (await statsDb.exists()) {
+        await statsDb.copy(p.join(stagingDir.path, statsDbName));
+      }
+    }
+
+    if (options.includeUserData) {
+      final dataDb = File(p.join(appDir.path, dataDbName));
+      if (await dataDb.exists()) {
+        await dataDb.copy(p.join(stagingDir.path, dataDbName));
+      }
+    }
+
+    if (options.includeUserStats || options.includeUserData) {
+      final database = DatabaseService.instance;
+      await database.init();
+
+      if (options.includeUserStats) {
+        final songs = await database.getAllSongs();
+        final songsJson = songs.map((s) => s.toJson()).toList();
+        await File(p.join(stagingDir.path, 'songs.json'))
+            .writeAsString(encodeJson(songsJson));
+
+        final funStats = await database.getFunStats();
+        await File(p.join(stagingDir.path, 'final_stats.json'))
+            .writeAsString(encodeJson(funStats));
+
+        final mergedGroups = await database.getMergedSongGroups();
+        final mergedGroupsJson = mergedGroups.map((groupId, groupData) {
+          return MapEntry(groupId, {
+            'filenames': groupData.filenames,
+            'priorityFilename': groupData.priorityFilename,
+          });
+        });
+        await File(p.join(stagingDir.path, 'merged_groups.json'))
+            .writeAsString(encodeJson(mergedGroupsJson));
+
+        final queueHistory = await database.exportQueueHistory();
+        if (queueHistory.isNotEmpty) {
+          await File(p.join(stagingDir.path, 'queue_history.json'))
+              .writeAsString(encodeJson(queueHistory));
+        }
+      }
+
+      if (options.includeUserData) {
+        final userData = await storage.loadUserData();
+        final shuffleState = await storage.loadShuffleState();
+        final playbackState = await storage.loadPlaybackState();
+
+        if (userData != null) {
+          await File(p.join(stagingDir.path, 'user_data.json'))
+              .writeAsString(encodeJson(userData));
+        }
+
+        if (shuffleState != null) {
+          await File(p.join(stagingDir.path, 'shuffle_state.json'))
+              .writeAsString(encodeJson(shuffleState));
+        }
+
+        if (playbackState != null) {
+          await File(p.join(stagingDir.path, 'playback_state.json'))
+              .writeAsString(encodeJson(playbackState));
+        }
+      }
+    }
+
+    // Settings stand on their own: a settings-only backup must still contain
+    // app_settings.json.
+    if (options.includeUserSettings) {
+      final appSettings = await storage.exportAppSettings();
+      if (appSettings.isNotEmpty) {
+        await File(p.join(stagingDir.path, 'app_settings.json'))
+            .writeAsString(encodeJson(appSettings));
+      }
+    }
+
+    final artifacts = await cacheArtifacts();
+    for (final artifact in artifacts) {
+      if (!options.contentTypes.contains(artifact.type)) continue;
+      await stageArtifact(artifact, stagingDir.path);
+    }
+
+    await File(p.join(stagingDir.path, _metadataFile))
+        .writeAsString(jsonEncode(_buildMetadata(options)));
+  }
+
+  Map<String, dynamic> _buildMetadata(BackupOptions options) {
+    return {
+      'export_date': DateTime.now().toIso8601String(),
+      'version': '2.0',
+      'options': {
+        for (final type in BackupContentType.values)
+          type.name: options.contentTypes.contains(type),
+      },
+    };
+  }
+
   Future<String> createBackup([BackupOptions? options]) async {
-    options ??= BackupOptions();
+    options ??= await defaultBackupOptions();
 
     try {
       final backupsDir = await _backupsDir;
@@ -218,181 +324,22 @@ class BackupService {
       await dataDir.create(recursive: true);
 
       try {
-        final appDir = await getApplicationDocumentsDirectory();
+        await _stageBackup(options, dataDir);
 
-        if (options.includeUserStats) {
-          final statsDb = File(p.join(appDir.path, 'wispie_stats.db'));
-          if (await statsDb.exists()) {
-            await statsDb.copy(p.join(dataDir.path, 'wispie_stats.db'));
-          }
-        }
-
-        if (options.includeUserData) {
-          final dataDb = File(p.join(appDir.path, 'wispie_data.db'));
-          if (await dataDb.exists()) {
-            await dataDb.copy(p.join(dataDir.path, 'wispie_data.db'));
-          }
-        }
-
-        if (options.includeUserData || options.includeUserStats) {
-          final storage = StorageService();
-          final database = DatabaseService.instance;
-          await database.init();
-
-          if (options.includeUserStats) {
-            final songs = await database.getAllSongs();
-            final songsJson = songs.map((s) => s.toJson()).toList();
-            await File(p.join(dataDir.path, 'songs.json'))
-                .writeAsString(encodeJson(songsJson));
-
-            final funStats = await database.getFunStats();
-            await File(p.join(dataDir.path, 'final_stats.json'))
-                .writeAsString(encodeJson(funStats));
-
-            final mergedGroups = await database.getMergedSongGroups();
-            final mergedGroupsJson = mergedGroups.map((groupId, groupData) {
-              return MapEntry(groupId, {
-                'filenames': groupData.filenames,
-                'priorityFilename': groupData.priorityFilename,
-              });
-            });
-            await File(p.join(dataDir.path, 'merged_groups.json'))
-                .writeAsString(encodeJson(mergedGroupsJson));
-
-            final queueHistory = await database.exportQueueHistory();
-            if (queueHistory.isNotEmpty) {
-              await File(p.join(dataDir.path, 'queue_history.json'))
-                  .writeAsString(encodeJson(queueHistory));
-            }
-          }
-
-          if (options.includeUserData) {
-            final userData = await storage.loadUserData();
-            final shuffleState = await storage.loadShuffleState();
-
-            if (userData != null) {
-              await File(p.join(dataDir.path, 'user_data.json'))
-                  .writeAsString(encodeJson(userData));
-            }
-
-            if (shuffleState != null) {
-              await File(p.join(dataDir.path, 'shuffle_state.json'))
-                  .writeAsString(encodeJson(shuffleState));
-            }
-          }
-
-          if (options.includeUserSettings) {
-            final appSettings = await storage.exportAppSettings();
-            if (appSettings.isNotEmpty) {
-              await File(p.join(dataDir.path, 'app_settings.json'))
-                  .writeAsString(encodeJson(appSettings));
-            }
-          }
-
-          if (options.includeUserData || options.includeUserStats) {
-            final playbackState = await storage.loadPlaybackState();
-            if (playbackState != null) {
-              await File(p.join(dataDir.path, 'playback_state.json'))
-                  .writeAsString(encodeJson(playbackState));
-            }
-          }
-        }
-
-        if (options.includeCoverCache ||
-            options.includeLibraryCache ||
-            options.includeSearchIndex ||
-            options.includeWaveformCache ||
-            options.includeColorCache ||
-            options.includeLyricsCache) {
-          final supportDir = await getApplicationSupportDirectory();
-          final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
-
-          if (await cacheDir.exists()) {
-            final cacheDataDir = Directory(p.join(dataDir.path, 'cache'));
-            await cacheDataDir.create(recursive: true);
-
-            await for (final entity in cacheDir.list(recursive: true)) {
-              if (entity is File) {
-                final filename = p.basename(entity.path);
-                final parentDir = p.basename(p.dirname(entity.path));
-
-                bool include = false;
-
-                if (options.includeLyricsCache && parentDir == 'lyrics_cache') {
-                  include = true;
-                }
-
-                if (options.includeWaveformCache &&
-                    filename.contains('waveform')) {
-                  include = true;
-                }
-
-                if (options.includeColorCache && filename.contains('color')) {
-                  include = true;
-                }
-
-                if (options.includeLibraryCache &&
-                    filename == 'cached_songs.json') {
-                  include = true;
-                }
-
-                if (options.includeSearchIndex &&
-                    filename.contains('_search_index.db')) {
-                  include = true;
-                }
-
-                if (options.includeCoverCache &&
-                    (filename.endsWith('.jpg') || filename.endsWith('.png'))) {
-                  include = true;
-                }
-
-                if (include) {
-                  final relativePath =
-                      p.relative(entity.path, from: cacheDir.path);
-                  final targetDir =
-                      p.join(cacheDataDir.path, p.dirname(relativePath));
-                  await Directory(targetDir).create(recursive: true);
-                  await entity.copy(p.join(targetDir, filename));
-                }
-              }
-            }
-          }
-        }
-
-        final metadata = {
-          'export_date': DateTime.now().toIso8601String(),
-          'version': '1.0',
-          'options': {
-            'includeUserStats': options.includeUserStats,
-            'includeUserData': options.includeUserData,
-            'includeUserSettings': options.includeUserSettings,
-            'includeCoverCache': options.includeCoverCache,
-            'includeLibraryCache': options.includeLibraryCache,
-            'includeSearchIndex': options.includeSearchIndex,
-            'includeWaveformCache': options.includeWaveformCache,
-            'includeColorCache': options.includeColorCache,
-            'includeLyricsCache': options.includeLyricsCache,
-          },
-        };
-        await File(p.join(dataDir.path, _metadataFile))
-            .writeAsString(jsonEncode(metadata));
-
-        final zipFile = File(backupPath);
         final archive = Archive();
-
         await for (final entity in dataDir.list(recursive: true)) {
           if (entity is File) {
             final relativePath = p.relative(entity.path, from: dataDir.path);
             final bytes = await entity.readAsBytes();
-            final file = ArchiveFile(relativePath, bytes.length, bytes);
-            archive.addFile(file);
+            archive.addFile(ArchiveFile(relativePath, bytes.length, bytes));
           }
         }
 
         final zipBytes = ZipEncoder().encode(archive);
-        if (zipBytes != null) {
-          await zipFile.writeAsBytes(zipBytes);
+        if (zipBytes == null) {
+          throw Exception('Failed to encode backup archive');
         }
+        await File(backupPath).writeAsBytes(zipBytes);
 
         return backupFilename;
       } finally {
@@ -407,172 +354,15 @@ class BackupService {
   }
 
   Future<void> exportUserData({BackupOptions? options}) async {
-    options ??= BackupOptions();
+    options ??= await defaultBackupOptions();
 
-    final docDir = await getApplicationDocumentsDirectory();
     final tempDir = await getTemporaryDirectory();
     final exportDir = Directory(p.join(
         tempDir.path, 'export_${DateTime.now().millisecondsSinceEpoch}'));
     await exportDir.create(recursive: true);
 
     try {
-      final supportDir = await getApplicationSupportDirectory();
-
-      if (options.includeUserStats) {
-        final statsDbName = 'wispie_stats.db';
-        final statsDbPath = p.join(docDir.path, statsDbName);
-        if (await File(statsDbPath).exists()) {
-          await File(statsDbPath).copy(p.join(exportDir.path, statsDbName));
-        }
-      }
-
-      if (options.includeUserData) {
-        final dataDbName = 'wispie_data.db';
-        final dataDbPath = p.join(docDir.path, dataDbName);
-        if (await File(dataDbPath).exists()) {
-          await File(dataDbPath).copy(p.join(exportDir.path, dataDbName));
-        }
-      }
-
-      if (options.includeUserStats || options.includeUserData) {
-        final storage = StorageService();
-        final database = DatabaseService.instance;
-        await database.init();
-
-        if (options.includeUserStats) {
-          final songs = await database.getAllSongs();
-          final songsJson = songs.map((s) => s.toJson()).toList();
-          await File(p.join(exportDir.path, 'songs.json'))
-              .writeAsString(jsonEncode(songsJson));
-
-          final funStats = await database.getFunStats();
-          await File(p.join(exportDir.path, 'final_stats.json'))
-              .writeAsString(jsonEncode(funStats));
-
-          final mergedGroups = await database.getMergedSongGroups();
-          final mergedGroupsJson = mergedGroups.map((groupId, groupData) {
-            return MapEntry(groupId, {
-              'filenames': groupData.filenames,
-              'priorityFilename': groupData.priorityFilename,
-            });
-          });
-          await File(p.join(exportDir.path, 'merged_groups.json'))
-              .writeAsString(jsonEncode(mergedGroupsJson));
-
-          final queueHistory = await database.exportQueueHistory();
-          if (queueHistory.isNotEmpty) {
-            await File(p.join(exportDir.path, 'queue_history.json'))
-                .writeAsString(jsonEncode(queueHistory));
-          }
-        }
-
-        if (options.includeUserData) {
-          final userData = await storage.loadUserData();
-          final shuffleState = await storage.loadShuffleState();
-
-          if (userData != null) {
-            await File(p.join(exportDir.path, 'user_data.json'))
-                .writeAsString(jsonEncode(userData));
-          }
-
-          if (shuffleState != null) {
-            await File(p.join(exportDir.path, 'shuffle_state.json'))
-                .writeAsString(jsonEncode(shuffleState));
-          }
-        }
-
-        if (options.includeUserSettings) {
-          final appSettings = await storage.exportAppSettings();
-          if (appSettings.isNotEmpty) {
-            await File(p.join(exportDir.path, 'app_settings.json'))
-                .writeAsString(jsonEncode(appSettings));
-          }
-        }
-
-        final playbackState = await storage.loadPlaybackState();
-        if (playbackState != null) {
-          await File(p.join(exportDir.path, 'playback_state.json'))
-              .writeAsString(jsonEncode(playbackState));
-        }
-      }
-
-      if (options.includeCoverCache ||
-          options.includeLibraryCache ||
-          options.includeSearchIndex ||
-          options.includeWaveformCache ||
-          options.includeColorCache ||
-          options.includeLyricsCache) {
-        final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
-
-        if (await cacheDir.exists()) {
-          final cacheDataDir = Directory(p.join(exportDir.path, 'cache'));
-          await cacheDataDir.create(recursive: true);
-
-          await for (final entity in cacheDir.list(recursive: true)) {
-            if (entity is File) {
-              final filename = p.basename(entity.path);
-              final parentDir = p.basename(p.dirname(entity.path));
-
-              bool include = false;
-
-              if (options.includeLyricsCache && parentDir == 'lyrics_cache') {
-                include = true;
-              }
-
-              if (options.includeWaveformCache &&
-                  filename.contains('waveform')) {
-                include = true;
-              }
-
-              if (options.includeColorCache && filename.contains('color')) {
-                include = true;
-              }
-
-              if (options.includeLibraryCache &&
-                  filename == 'cached_songs.json') {
-                include = true;
-              }
-
-              if (options.includeSearchIndex &&
-                  filename.contains('_search_index.db')) {
-                include = true;
-              }
-
-              if (options.includeCoverCache &&
-                  (filename.endsWith('.jpg') || filename.endsWith('.png'))) {
-                include = true;
-              }
-
-              if (include) {
-                final relativePath =
-                    p.relative(entity.path, from: cacheDir.path);
-                final targetDir =
-                    p.join(cacheDataDir.path, p.dirname(relativePath));
-                await Directory(targetDir).create(recursive: true);
-                await entity.copy(p.join(targetDir, filename));
-              }
-            }
-          }
-        }
-      }
-
-      final metadata = {
-        'export_date': DateTime.now().toIso8601String(),
-        'version': '1.0',
-        'options': {
-          'includeUserStats': options.includeUserStats,
-          'includeUserData': options.includeUserData,
-          'includeUserSettings': options.includeUserSettings,
-          'includeCoverCache': options.includeCoverCache,
-          'includeLibraryCache': options.includeLibraryCache,
-          'includeSearchIndex': options.includeSearchIndex,
-          'includeWaveformCache': options.includeWaveformCache,
-          'includeColorCache': options.includeColorCache,
-          'includeLyricsCache': options.includeLyricsCache,
-        },
-      };
-      await File(p.join(exportDir.path, _metadataFile))
-          .writeAsString(jsonEncode(metadata));
+      await _stageBackup(options, exportDir);
 
       final encoder = ZipFileEncoder();
       final zipPath = p.join(tempDir.path, 'wispie_export.zip');
@@ -606,7 +396,45 @@ class BackupService {
     }
   }
 
-  Future<Map<String, dynamic>?> validateBackup() async {
+  /// Archives produced by `ZipFileEncoder.addDirectory` wrap their content in a
+  /// single top-level folder; descend into it, but only when it really is the
+  /// wrapper (a bucket folder such as `cache/` is not).
+  String _resolveContentRoot(Directory extractRoot) {
+    final entities = extractRoot.listSync();
+    if (entities.length != 1 || entities.first is! Directory) {
+      return extractRoot.path;
+    }
+
+    final inner = entities.first as Directory;
+    if (File(p.join(inner.path, _metadataFile)).existsSync() ||
+        File(p.join(inner.path, statsDbName)).existsSync() ||
+        File(p.join(inner.path, dataDbName)).existsSync() ||
+        File(p.join(inner.path, 'app_settings.json')).existsSync()) {
+      return inner.path;
+    }
+    return extractRoot.path;
+  }
+
+  /// Extracts [zipFile] into [target], skipping entries that would escape it.
+  Future<void> _extractArchive(File zipFile, Directory target) async {
+    final bytes = await zipFile.readAsBytes();
+    final archive = ZipDecoder().decodeBytes(bytes);
+
+    for (final entry in archive) {
+      if (!entry.isFile) continue;
+      final outputFile = safeArchiveTarget(target.path, entry.name);
+      if (outputFile == null) continue;
+      await outputFile.parent.create(recursive: true);
+      await outputFile.writeAsBytes(entry.content as List<int>);
+    }
+  }
+
+  /// Prompts for a backup archive and validates it.
+  ///
+  /// Returns null when the user cancels the picker. The caller owns the
+  /// extracted content afterwards and must pass the result to either
+  /// [performImport] or [discardValidation].
+  Future<Map<String, dynamic>?> pickAndValidateBackup() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['zip'],
@@ -614,111 +442,28 @@ class BackupService {
 
     if (result == null || result.files.isEmpty) return null;
 
-    final file = File(result.files.first.path!);
+    return validateBackupFile(File(result.files.first.path!));
+  }
+
+  /// Extracts [file] and reports what it actually contains.
+  ///
+  /// Detection is authoritative: `metadata.json` is only a hint, because it can
+  /// disagree with the archive (older versions, hand-edited archives).
+  Future<Map<String, dynamic>> validateBackupFile(File file) async {
     final tempDir = await getTemporaryDirectory();
     final decodeDir = Directory(p.join(
         tempDir.path, 'import_${DateTime.now().millisecondsSinceEpoch}'));
     await decodeDir.create(recursive: true);
 
     try {
-      final bytes = await file.readAsBytes();
-      final archive = ZipDecoder().decodeBytes(bytes);
+      await _extractArchive(file, decodeDir);
 
-      for (final file in archive) {
-        final filename = file.name;
-        if (file.isFile) {
-          final data = file.content as List<int>;
-          File(p.join(decodeDir.path, filename))
-            ..createSync(recursive: true)
-            ..writeAsBytesSync(data);
-        }
-      }
-
-      File? metadataFile;
-      String contentPath = decodeDir.path;
-
-      final entities = decodeDir.listSync();
-      if (entities.length == 1 && entities.first is Directory) {
-        contentPath = entities.first.path;
-      }
-
-      metadataFile = File(p.join(contentPath, _metadataFile));
-
-      if (!await metadataFile.exists()) {
-        final reconstructed = <String, dynamic>{
-          'export_date': DateTime.now().toIso8601String(),
-          'version': '1.0',
-          'options': {
-            'includeUserStats':
-                await File(p.join(contentPath, 'wispie_stats.db')).exists(),
-            'includeUserData':
-                await File(p.join(contentPath, 'wispie_data.db')).exists(),
-            'includeUserSettings':
-                await File(p.join(contentPath, 'app_settings.json')).exists(),
-            'includeCoverCache': false,
-            'includeLibraryCache': false,
-            'includeSearchIndex': false,
-            'includeWaveformCache': false,
-            'includeColorCache': false,
-            'includeLyricsCache': false,
-          },
-        };
-
-        final cacheDir = Directory(p.join(contentPath, 'cache'));
-        if (await cacheDir.exists()) {
-          await for (final entity in cacheDir.list(recursive: true)) {
-            if (entity is File) {
-              final name = p.basename(entity.path);
-              final parentDir = p.basename(p.dirname(entity.path));
-              if (name.endsWith('.jpg') || name.endsWith('.png')) {
-                reconstructed['options']['includeCoverCache'] = true;
-              }
-              if (name == 'cached_songs.json') {
-                reconstructed['options']['includeLibraryCache'] = true;
-              }
-              if (name.contains('_search_index.db')) {
-                reconstructed['options']['includeSearchIndex'] = true;
-              }
-              if (name.contains('waveform')) {
-                reconstructed['options']['includeWaveformCache'] = true;
-              }
-              if (name.contains('color')) {
-                reconstructed['options']['includeColorCache'] = true;
-              }
-              if (parentDir == 'lyrics_cache') {
-                reconstructed['options']['includeLyricsCache'] = true;
-              }
-            }
-          }
-        }
-
-        await metadataFile.writeAsString(jsonEncode(reconstructed));
-      }
+      // Archives produced by ZipFileEncoder.addDirectory are wrapped in a
+      // single top-level folder.
+      final contentPath = _resolveContentRoot(decodeDir);
 
       File? foundStats;
       File? foundData;
-
-      final statsDbName = 'wispie_stats.db';
-      final dataDbName = 'wispie_data.db';
-
-      await for (final entity in Directory(contentPath).list(recursive: true)) {
-        if (entity is File) {
-          final name = p.basename(entity.path);
-          if (name == statsDbName ||
-              (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
-            foundStats = entity;
-          }
-          if (name == dataDbName ||
-              (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
-            foundData = entity;
-          }
-        }
-      }
-
-      if (foundStats == null || foundData == null) {
-        throw Exception('Invalid backup: Database files missing');
-      }
-
       bool hasSongsJson = false;
       bool hasUserDataJson = false;
       bool hasShuffleStateJson = false;
@@ -728,79 +473,67 @@ class BackupService {
       bool hasAppSettingsJson = false;
 
       await for (final entity in Directory(contentPath).list(recursive: true)) {
-        if (entity is File) {
-          final name = p.basename(entity.path);
-          if (name == 'songs.json') {
-            hasSongsJson = true;
-          }
-          if (name == 'user_data.json' || name.startsWith('user_data_')) {
-            hasUserDataJson = true;
-          }
-          if (name == 'shuffle_state.json' ||
-              name.startsWith('shuffle_state_')) {
-            hasShuffleStateJson = true;
-          }
-          if (name == 'playback_state.json' ||
-              name.startsWith('playback_state_')) {
-            hasPlaybackStateJson = true;
-          }
-          if (name == 'merged_groups.json') {
-            hasMergedGroupsJson = true;
-          }
-          if (name == 'queue_history.json') {
-            hasQueueHistoryJson = true;
-          }
-          if (name == 'app_settings.json') {
-            hasAppSettingsJson = true;
-          }
+        if (entity is! File) continue;
+        final name = p.basename(entity.path);
+
+        if (name == statsDbName ||
+            (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
+          foundStats = entity;
         }
+        if (name == dataDbName ||
+            (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
+          foundData = entity;
+        }
+        if (name == 'songs.json') hasSongsJson = true;
+        if (name == 'user_data.json' || name.startsWith('user_data_')) {
+          hasUserDataJson = true;
+        }
+        if (name == 'shuffle_state.json' || name.startsWith('shuffle_state_')) {
+          hasShuffleStateJson = true;
+        }
+        if (name == 'playback_state.json' ||
+            name.startsWith('playback_state_')) {
+          hasPlaybackStateJson = true;
+        }
+        if (name == 'merged_groups.json') hasMergedGroupsJson = true;
+        if (name == 'queue_history.json') hasQueueHistoryJson = true;
+        if (name == 'app_settings.json') hasAppSettingsJson = true;
       }
 
-      final hasFavorites = await _checkTableExists(foundData.path, 'favorite');
-      final hasSuggestless =
+      final hasFavorites = foundData != null &&
+          await _checkTableExists(foundData.path, 'favorite');
+      final hasSuggestless = foundData != null &&
           await _checkTableExists(foundData.path, 'suggestless');
-      final hasHidden = await _checkTableExists(foundData.path, 'hidden');
-      final hasPlaylists = await _checkTableExists(foundData.path, 'playlist');
-      final hasMergedGroups =
+      final hasHidden = foundData != null &&
+          await _checkTableExists(foundData.path, 'hidden');
+      final hasPlaylists = foundData != null &&
+          await _checkTableExists(foundData.path, 'playlist');
+      final hasMergedGroups = foundData != null &&
           await _checkTableExists(foundData.path, 'merged_song_group');
-      final hasRecommendations =
+      final hasRecommendations = foundData != null &&
           await _checkTableExists(foundData.path, 'recommendation_preference');
-      final hasMoods = await _checkTableExists(foundData.path, 'mood_tag');
-      final hasUserdata = await _checkTableExists(foundData.path, 'userdata');
-      final hasPlayHistory =
+      final hasMoods = foundData != null &&
+          await _checkTableExists(foundData.path, 'mood_tag');
+      final hasUserdata = foundData != null &&
+          await _checkTableExists(foundData.path, 'userdata');
+      final hasPlayHistory = foundStats != null &&
           await _checkTableExists(foundStats.path, 'playsession');
 
-      final dbHasUserData = hasFavorites ||
-          hasSuggestless ||
-          hasHidden ||
-          hasPlaylists ||
-          hasMergedGroups ||
-          hasRecommendations ||
-          hasMoods ||
-          hasUserdata;
-      final metadataContent = await metadataFile.readAsString();
-      final metadata = jsonDecode(metadataContent) as Map<String, dynamic>;
-      final options = metadata['options'] as Map<String, dynamic>;
-
-      final actualUserStats = hasPlayHistory;
-      final actualUserData = dbHasUserData;
-      final actualUserSettings = hasAppSettingsJson;
-
-      if (options['includeUserStats'] != actualUserStats ||
-          options['includeUserData'] != actualUserData ||
-          options['includeUserSettings'] != actualUserSettings) {
-        options['includeUserStats'] = actualUserStats;
-        options['includeUserData'] = actualUserData;
-        options['includeUserSettings'] = actualUserSettings;
-        metadata['options'] = options;
-        await metadataFile.writeAsString(jsonEncode(metadata));
+      final artifacts = await cacheArtifacts();
+      final cacheFlags = <BackupContentType, bool>{};
+      for (final type in BackupContentType.values) {
+        cacheFlags[type] =
+            await archiveHasContent(artifacts, type, contentPath);
       }
 
-      return {
+      final validation = <String, dynamic>{
         'valid': true,
         'importPath': contentPath,
-        'statsDbPath': foundStats.path,
-        'dataDbPath': foundData.path,
+        'extractRoot': decodeDir.path,
+        'statsDbPath': foundStats?.path,
+        'dataDbPath': foundData?.path,
+        'hasStatsDb': foundStats != null,
+        'hasDataDb': foundData != null,
         'hasSongsJson': hasSongsJson,
         'hasUserDataJson': hasUserDataJson,
         'hasShuffleStateJson': hasShuffleStateJson,
@@ -817,10 +550,38 @@ class BackupService {
         'hasMoods': hasMoods,
         'hasUserdata': hasUserdata,
         'hasPlayHistory': hasPlayHistory,
+        'hasCoverCache': cacheFlags[BackupContentType.coverCache],
+        'hasLibraryCache': cacheFlags[BackupContentType.libraryCache],
+        'hasSearchIndex': cacheFlags[BackupContentType.searchIndex],
+        'hasWaveformCache': cacheFlags[BackupContentType.waveformCache],
+        'hasColorCache': cacheFlags[BackupContentType.colorCache],
+        'hasLyricsCache': cacheFlags[BackupContentType.lyricsCache],
       };
+
+      final hasAnything = validation.entries
+          .where((e) => e.key.startsWith('has'))
+          .any((e) => e.value == true);
+      if (!hasAnything) {
+        throw Exception('Invalid backup: no restorable content found');
+      }
+
+      return validation;
     } catch (e) {
       if (await decodeDir.exists()) await decodeDir.delete(recursive: true);
       rethrow;
+    }
+  }
+
+  /// Deletes the content extracted by [validateBackupFile] when the user backs
+  /// out of the import dialog.
+  Future<void> discardValidation(Map<String, dynamic>? validation) async {
+    final root = validation?['extractRoot'] as String?;
+    if (root == null) return;
+    try {
+      final dir = Directory(root);
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } catch (e) {
+      debugPrint('Error cleaning up import temp files: $e');
     }
   }
 
@@ -847,8 +608,9 @@ class BackupService {
       categories.add(ImportDataCategory.uiSettings);
       categories.add(ImportDataCategory.backupSettings);
     }
-    if (validation['hasMergedGroupsJson'] == true ||
-        validation['hasMergedGroups'] == true) {
+    // Merged groups are only restorable from the database table; the JSON copy
+    // is informational.
+    if (validation['hasMergedGroups'] == true) {
       categories.add(ImportDataCategory.mergedGroups);
     }
 
@@ -877,61 +639,101 @@ class BackupService {
       categories.add(ImportDataCategory.playHistory);
     }
 
+    if (validation['hasCoverCache'] == true) {
+      categories.add(ImportDataCategory.coverCache);
+    }
+    if (validation['hasLibraryCache'] == true) {
+      categories.add(ImportDataCategory.libraryCache);
+    }
+    if (validation['hasSearchIndex'] == true) {
+      categories.add(ImportDataCategory.searchIndex);
+    }
+    if (validation['hasWaveformCache'] == true) {
+      categories.add(ImportDataCategory.waveformCache);
+    }
+    if (validation['hasColorCache'] == true) {
+      categories.add(ImportDataCategory.colorCache);
+    }
+    if (validation['hasLyricsCache'] == true) {
+      categories.add(ImportDataCategory.lyricsCache);
+    }
+
     return categories;
   }
 
-  Future<void> performImport({
-    required String statsDbPath,
-    required String dataDbPath,
+  /// Applies every selected category from an extracted archive rooted at
+  /// [importPath].
+  ///
+  /// Used by both the "import a zip" and "restore a backup" flows so they can
+  /// never diverge in what they support.
+  Future<void> _applyImport({
+    required String importPath,
+    String? statsDbPath,
+    String? dataDbPath,
     required ImportOptions options,
   }) async {
-    final importPath = p.dirname(statsDbPath);
     final categories = options.categories;
     final storage = StorageService();
 
-    if (categories.contains(ImportDataCategory.playHistory) ||
-        categories.contains(ImportDataCategory.favorites) ||
-        categories.contains(ImportDataCategory.suggestless) ||
-        categories.contains(ImportDataCategory.hidden) ||
-        categories.contains(ImportDataCategory.playlists) ||
-        categories.contains(ImportDataCategory.mergedGroups) ||
-        categories.contains(ImportDataCategory.recommendations) ||
-        categories.contains(ImportDataCategory.moods) ||
-        categories.contains(ImportDataCategory.userdata)) {
-      await DatabaseService.instance.importWithOptions(
-        statsDbPath: statsDbPath,
-        dataDbPath: dataDbPath,
-        options: options,
-      );
+    if (options.hasDatabaseCategories) {
+      if (statsDbPath != null && dataDbPath != null) {
+        await DatabaseService.instance.importWithOptions(
+          statsDbPath: statsDbPath,
+          dataDbPath: dataDbPath,
+          options: options,
+        );
+      } else {
+        debugPrint(
+            'Skipping database categories: backup contains no database files');
+      }
+    }
+
+    if (categories.contains(ImportDataCategory.songs)) {
+      final songsFile = File(p.join(importPath, 'songs.json'));
+      if (await songsFile.exists()) {
+        final data = decodeJson(await songsFile.readAsString());
+        if (data is List) {
+          final songs = data.map((json) => Song.fromJson(json)).toList();
+          await DatabaseService.instance.insertSongsBatch(songs);
+        }
+      }
     }
 
     if (categories.contains(ImportDataCategory.shuffleState)) {
       final shuffleStateFile = File(p.join(importPath, 'shuffle_state.json'));
       if (await shuffleStateFile.exists()) {
-        final content = await shuffleStateFile.readAsString();
-        final data = jsonDecode(content);
-        await storage.saveShuffleState(data);
+        final data = decodeJson(await shuffleStateFile.readAsString());
+        if (data is Map) {
+          await storage.saveShuffleState(Map<String, dynamic>.from(data));
+        }
       }
     }
 
     if (categories.contains(ImportDataCategory.playbackState)) {
       final playbackStateFile = File(p.join(importPath, 'playback_state.json'));
       if (await playbackStateFile.exists()) {
-        final content = await playbackStateFile.readAsString();
-        final data = jsonDecode(content);
-        await storage.savePlaybackState(data);
+        final data = decodeJson(await playbackStateFile.readAsString());
+        if (data is Map) {
+          await storage.savePlaybackState(Map<String, dynamic>.from(data));
+        }
       }
     }
 
-    if (categories.contains(ImportDataCategory.themeSettings) ||
-        categories.contains(ImportDataCategory.scannerSettings) ||
-        categories.contains(ImportDataCategory.playbackSettings) ||
-        categories.contains(ImportDataCategory.uiSettings) ||
-        categories.contains(ImportDataCategory.backupSettings)) {
+    if (categories.contains(ImportDataCategory.queueHistory)) {
+      final queueHistoryFile = File(p.join(importPath, 'queue_history.json'));
+      if (await queueHistoryFile.exists()) {
+        final data = decodeJson(await queueHistoryFile.readAsString());
+        if (data is List) {
+          await DatabaseService.instance
+              .importQueueHistory(data.cast<Map<String, dynamic>>());
+        }
+      }
+    }
+
+    if (options.hasSettingsCategories) {
       final appSettingsFile = File(p.join(importPath, 'app_settings.json'));
       if (await appSettingsFile.exists()) {
-        final content = await appSettingsFile.readAsString();
-        final data = jsonDecode(content);
+        final data = decodeJson(await appSettingsFile.readAsString());
         if (data is Map) {
           await storage.importSettingsWithOptions(
             Map<String, dynamic>.from(data),
@@ -941,197 +743,128 @@ class BackupService {
       }
     }
 
-    if (categories.contains(ImportDataCategory.queueHistory)) {
-      final queueHistoryFile = File(p.join(importPath, 'queue_history.json'));
-      if (await queueHistoryFile.exists()) {
-        final content = await queueHistoryFile.readAsString();
-        final data = jsonDecode(content);
-        if (data is List) {
-          final queueHistoryData = data.cast<Map<String, dynamic>>();
-          await DatabaseService.instance.importQueueHistory(queueHistoryData);
-        }
+    if (options.hasCacheCategories) {
+      final artifacts = await cacheArtifacts();
+      final wantedTypes = categories
+          .map((c) => c.cacheContentType)
+          .whereType<BackupContentType>()
+          .toSet();
+
+      for (final artifact in artifacts) {
+        if (!wantedTypes.contains(artifact.type)) continue;
+        await restoreArtifact(artifact, importPath);
       }
     }
+  }
 
-    final importDir = Directory(p.dirname(statsDbPath));
-    Directory? toDelete = importDir;
-    while (toDelete != null && !p.basename(toDelete.path).contains('import_')) {
-      if (toDelete.path == toDelete.parent.path) break;
-      toDelete = toDelete.parent;
+  /// Imports a previously validated archive, then removes the extracted copy.
+  Future<void> performImport({
+    required Map<String, dynamic> validation,
+    required ImportOptions options,
+  }) async {
+    try {
+      await _applyImport(
+        importPath: validation['importPath'] as String,
+        statsDbPath: validation['statsDbPath'] as String?,
+        dataDbPath: validation['dataDbPath'] as String?,
+        options: options,
+      );
+      await _invalidateSearchIndexIfStale(options);
+    } finally {
+      await discardValidation(validation);
+    }
+  }
+
+  /// The search index is derived from the library, so a library-changing import
+  /// must drop it — unless the archive restored an index of its own.
+  Future<void> _invalidateSearchIndexIfStale(ImportOptions options) async {
+    final categories = options.categories;
+    if (categories.contains(ImportDataCategory.searchIndex)) return;
+    if (!categories.contains(ImportDataCategory.songs) &&
+        !categories.contains(ImportDataCategory.libraryCache)) {
+      return;
     }
 
-    if (toDelete != null && p.basename(toDelete.path).contains('import_')) {
-      await toDelete.delete(recursive: true);
+    try {
+      final searchIndexRepo = SearchIndexRepository();
+      await searchIndexRepo.close();
+      await searchIndexRepo.deleteDatabaseFile();
+    } catch (e) {
+      debugPrint('Note: Could not delete search index: $e');
     }
   }
 
   Future<void> restoreFromBackup(BackupInfo backupInfo,
       {ImportOptions? options}) async {
     final importOptions = options ?? ImportOptions.defaultImport;
-    final categories = importOptions.categories;
-    final restoreDatabases = importOptions.restoreDatabases;
 
     try {
-      final backupFile = backupInfo.file;
-
       final tempDir = await Directory.systemTemp.createTemp('gru_restore_');
 
       try {
-        final bytes = await backupFile.readAsBytes();
-        final archive = ZipDecoder().decodeBytes(bytes);
+        await _extractArchive(backupInfo.file, tempDir);
 
-        for (final file in archive) {
-          if (file.isFile) {
-            final filePath = p.join(tempDir.path, file.name);
-            final fileDir = Directory(p.dirname(filePath));
-            if (!await fileDir.exists()) {
-              await fileDir.create(recursive: true);
-            }
-            final outputFile = File(filePath);
-            await outputFile.writeAsBytes(file.content as List<int>);
-          }
-        }
+        final contentPath = _resolveContentRoot(tempDir);
 
         final appDir = await getApplicationDocumentsDirectory();
-        final storage = StorageService();
 
         File? foundStatsDb;
         File? foundDataDb;
-
         await for (final entity in tempDir.list(recursive: true)) {
-          if (entity is File) {
-            final name = p.basename(entity.path);
-            if (name == 'wispie_stats.db' ||
-                (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
-              foundStatsDb = entity;
-            }
-            if (name == 'wispie_data.db' ||
-                (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
-              foundDataDb = entity;
-            }
+          if (entity is! File) continue;
+          final name = p.basename(entity.path);
+          if (name == statsDbName ||
+              (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
+            foundStatsDb = entity;
+          }
+          if (name == dataDbName ||
+              (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
+            foundDataDb = entity;
           }
         }
 
-        String statsDbPath;
-        String dataDbPath;
+        String? statsDbPath = foundStatsDb?.path;
+        String? dataDbPath = foundDataDb?.path;
 
-        if (restoreDatabases) {
+        // Wholesale file replacement only makes sense when the archive
+        // actually carries databases; otherwise fall through and restore the
+        // JSON/settings/cache content as usual.
+        if (importOptions.restoreDatabases &&
+            (foundStatsDb != null || foundDataDb != null)) {
           await DatabaseService.instance.close();
-          final dbSuffixes = ['', '-journal', '-wal', '-shm'];
+          const dbSuffixes = ['', '-journal', '-wal', '-shm'];
           for (final suffix in dbSuffixes) {
-            final statsFile =
-                File(p.join(appDir.path, 'wispie_stats.db$suffix'));
-            final dataFile = File(p.join(appDir.path, 'wispie_data.db$suffix'));
-            if (await statsFile.exists()) {
-              await statsFile.delete();
+            if (foundStatsDb != null) {
+              final statsFile =
+                  File(p.join(appDir.path, '$statsDbName$suffix'));
+              if (await statsFile.exists()) await statsFile.delete();
             }
-            if (await dataFile.exists()) {
-              await dataFile.delete();
+            if (foundDataDb != null) {
+              final dataFile = File(p.join(appDir.path, '$dataDbName$suffix'));
+              if (await dataFile.exists()) await dataFile.delete();
             }
           }
 
           if (foundStatsDb != null) {
-            await foundStatsDb.copy(p.join(appDir.path, 'wispie_stats.db'));
+            await foundStatsDb.copy(p.join(appDir.path, statsDbName));
+            statsDbPath = p.join(appDir.path, statsDbName);
           }
           if (foundDataDb != null) {
-            await foundDataDb.copy(p.join(appDir.path, 'wispie_data.db'));
+            await foundDataDb.copy(p.join(appDir.path, dataDbName));
+            dataDbPath = p.join(appDir.path, dataDbName);
           }
 
           await DatabaseService.instance.init();
-          statsDbPath = p.join(appDir.path, 'wispie_stats.db');
-          dataDbPath = p.join(appDir.path, 'wispie_data.db');
-        } else {
-          if (foundStatsDb == null || foundDataDb == null) {
-            debugPrint(
-                'Warning: Backup DB files not found, skipping database imports');
-            return;
-          }
-          statsDbPath = foundStatsDb.path;
-          dataDbPath = foundDataDb.path;
         }
 
-        if (categories.contains(ImportDataCategory.playHistory) ||
-            categories.contains(ImportDataCategory.favorites) ||
-            categories.contains(ImportDataCategory.suggestless) ||
-            categories.contains(ImportDataCategory.hidden) ||
-            categories.contains(ImportDataCategory.playlists) ||
-            categories.contains(ImportDataCategory.mergedGroups) ||
-            categories.contains(ImportDataCategory.recommendations) ||
-            categories.contains(ImportDataCategory.moods) ||
-            categories.contains(ImportDataCategory.userdata)) {
-          await DatabaseService.instance.importWithOptions(
-            statsDbPath: statsDbPath,
-            dataDbPath: dataDbPath,
-            options: importOptions,
-          );
-        }
+        await _applyImport(
+          importPath: contentPath,
+          statsDbPath: statsDbPath,
+          dataDbPath: dataDbPath,
+          options: importOptions,
+        );
 
-        await for (final entity in tempDir.list(recursive: true)) {
-          if (entity is File) {
-            final name = p.basename(entity.path);
-
-            if (name == 'songs.json' &&
-                categories.contains(ImportDataCategory.songs)) {
-              final content = await entity.readAsString();
-              final data = decodeJson(content);
-              final songs =
-                  (data as List).map((json) => Song.fromJson(json)).toList();
-              await DatabaseService.instance.insertSongsBatch(songs);
-            }
-
-            if ((name == 'shuffle_state.json' ||
-                    name.startsWith('shuffle_state_')) &&
-                categories.contains(ImportDataCategory.shuffleState)) {
-              final content = await entity.readAsString();
-              final data = decodeJson(content);
-              await storage.saveShuffleState(data);
-            }
-
-            if ((name == 'playback_state.json' ||
-                    name.startsWith('playback_state_')) &&
-                categories.contains(ImportDataCategory.playbackState)) {
-              final content = await entity.readAsString();
-              final data = decodeJson(content);
-              await storage.savePlaybackState(data);
-            }
-
-            if (name == 'queue_history.json' &&
-                categories.contains(ImportDataCategory.queueHistory)) {
-              final content = await entity.readAsString();
-              final data = decodeJson(content);
-              if (data is List) {
-                final queueHistoryData = data.cast<Map<String, dynamic>>();
-                await DatabaseService.instance
-                    .importQueueHistory(queueHistoryData);
-              }
-            }
-
-            if (name == 'app_settings.json' &&
-                (categories.contains(ImportDataCategory.themeSettings) ||
-                    categories.contains(ImportDataCategory.scannerSettings) ||
-                    categories.contains(ImportDataCategory.playbackSettings) ||
-                    categories.contains(ImportDataCategory.uiSettings) ||
-                    categories.contains(ImportDataCategory.backupSettings))) {
-              final content = await entity.readAsString();
-              final data = decodeJson(content);
-              if (data is Map) {
-                await storage.importSettingsWithOptions(
-                  Map<String, dynamic>.from(data),
-                  importOptions,
-                );
-              }
-            }
-          }
-        }
-
-        if (categories.isNotEmpty) {
-          try {
-            final searchIndexRepo = SearchIndexRepository();
-            await searchIndexRepo.deleteDatabaseFile();
-          } catch (e) {
-            debugPrint('Note: Could not delete search index: $e');
-          }
-        }
+        await _invalidateSearchIndexIfStale(importOptions);
       } finally {
         if (await tempDir.exists()) {
           await tempDir.delete(recursive: true);
@@ -1174,7 +907,7 @@ class BackupService {
           if (name == 'songs.json') {
             songsFile = file;
           }
-          if (name == 'wispie_stats.db' ||
+          if (name == statsDbName ||
               (name.endsWith('_stats.db') && !name.startsWith('wispie_'))) {
             statsFile = file;
           }

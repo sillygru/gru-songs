@@ -24,7 +24,7 @@ class _FakeScannerService extends ScannerService {
   int calls = 0;
 
   @override
-  Future<List<Song>> scanDirectory(
+  Future<ScanResult> scanDirectory(
     String path, {
     List<Song>? existingSongs,
     String? lyricsPath,
@@ -36,7 +36,7 @@ class _FakeScannerService extends ScannerService {
     bool fastMode = false,
   }) async {
     calls += 1;
-    return [];
+    return const ScanResult.ok([]);
   }
 }
 

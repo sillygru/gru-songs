@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'android_storage_service.dart';
+import 'backup_manifest.dart';
 import 'cache_service.dart';
 import 'ios_folder_access_service.dart';
 import 'import_options.dart';
@@ -20,6 +21,40 @@ class StorageService {
   static const String _pullToRefreshEnabledKey = 'pull_to_refresh_enabled';
   static const String _telemetryEnabledKey = 'telemetry_enabled';
   static const String _telemetryIdKey = 'telemetry_id';
+
+  /// Content types (by [BackupContentType.name]) included in automatic and
+  /// newly created backups.
+  static const String autoBackupContentTypesKey = 'auto_backup_content_types';
+
+  static const List<BackupContentType> defaultBackupContentTypes = [
+    BackupContentType.userStats,
+    BackupContentType.userData,
+    BackupContentType.userSettings,
+  ];
+
+  Future<Set<BackupContentType>> loadBackupContentTypes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList(autoBackupContentTypesKey);
+    if (stored == null || stored.isEmpty) {
+      return defaultBackupContentTypes.toSet();
+    }
+
+    final types = <BackupContentType>{};
+    for (final name in stored) {
+      for (final type in BackupContentType.values) {
+        if (type.name == name) types.add(type);
+      }
+    }
+    return types.isEmpty ? defaultBackupContentTypes.toSet() : types;
+  }
+
+  Future<void> saveBackupContentTypes(Set<BackupContentType> types) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      autoBackupContentTypesKey,
+      types.map((t) => t.name).toList(),
+    );
+  }
 
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -470,15 +505,21 @@ class StorageService {
     'gap_song_id',
     'gap_resume_timestamp',
     'gap_is_active',
+    autoBackupContentTypesKey,
   ];
+
+  /// The curated set of preference keys a backup always captures.
+  static List<String> get settingsKeys => List.unmodifiable(_settingsKeys);
 
   Future<Map<String, dynamic>> exportAppSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final allKeys = prefs.getKeys();
     final result = <String, dynamic>{};
 
+    // Identity keys are skipped in both passes: nothing imports them, and
+    // carrying them in an archive only risks leaking the account they came from.
     for (final key in _settingsKeys) {
-      if (allKeys.contains(key)) {
+      if (allKeys.contains(key) && !identitySettingsKeys.contains(key)) {
         final value = prefs.get(key);
         if (value != null) {
           result[key] = value;
@@ -487,11 +528,12 @@ class StorageService {
     }
 
     for (final key in allKeys) {
-      if (!result.containsKey(key)) {
-        final value = prefs.get(key);
-        if (value != null) {
-          result[key] = value;
-        }
+      if (result.containsKey(key) || identitySettingsKeys.contains(key)) {
+        continue;
+      }
+      final value = prefs.get(key);
+      if (value != null) {
+        result[key] = value;
       }
     }
 
@@ -555,6 +597,9 @@ class StorageService {
     'minimum_file_size_bytes',
     'minimum_track_duration_ms',
     'include_videos',
+    'prevent_duplicate_tracks',
+    'prevent_merged_duplicates',
+    'extract_feat_artists',
   ];
 
   static const List<String> _playbackSettingsKeys = [
@@ -563,6 +608,12 @@ class StorageService {
     'gap_song_id',
     'gap_resume_timestamp',
     'gap_is_active',
+    'fade_in_duration',
+    'fade_out_duration',
+    'delay_duration',
+    'auto_pause_on_volume_zero',
+    'auto_resume_on_volume_restore',
+    'keep_screen_awake_on_lyrics',
   ];
 
   static const List<String> _uiSettingsKeys = [
@@ -582,12 +633,34 @@ class StorageService {
     'show_for_you',
     'sound_reactive_particles_enabled',
     'pull_to_refresh_enabled',
+    'telemetry_enabled',
   ];
 
   static const List<String> _backupSettingsKeys = [
     'auto_backup_frequency_hours',
     'auto_backup_delete_after_days',
+    autoBackupContentTypesKey,
   ];
+
+  /// Keys that identify this install/account. They are exported for
+  /// completeness but never applied by an import, so restoring a backup can't
+  /// take over the current user's identity or re-trigger setup.
+  static const List<String> identitySettingsKeys = [
+    'username',
+    'local_username',
+    'is_local_mode',
+    'is_setup_complete_v2',
+    'telemetry_id',
+  ];
+
+  /// Every settings key that a granular import can apply.
+  static List<String> get importableSettingsKeys => [
+        ..._themeSettingsKeys,
+        ..._scannerSettingsKeys,
+        ..._playbackSettingsKeys,
+        ..._uiSettingsKeys,
+        ..._backupSettingsKeys,
+      ];
 
   Future<void> importThemeSettings(Map<String, dynamic> settings) async {
     await _importSettingsSubset(settings, _themeSettingsKeys);

@@ -34,7 +34,12 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// Auto-scroll stays out of the way for this long after a manual scroll.
   static const Duration _manualScrollGrace = Duration(milliseconds: 2500);
 
-  static const Duration _minimumRemainingGap = Duration(seconds: 3);
+  /// The gap loader only earns its place once the silence is long enough to
+  /// read as a real instrumental break.
+  static const Duration _gapLoaderDelay = Duration(seconds: 5);
+
+  /// Below this the loader would barely finish appearing, so it stays away.
+  static const Duration _minimumGapLoaderWindow = Duration(seconds: 3);
 
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
@@ -135,11 +140,26 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       final ctx = _lineKeys[index]?.currentContext;
       if (ctx == null) return;
 
+      // Deliberately not Scrollable.ensureVisible: it walks *every* enclosing
+      // scrollable, so from inside the shell's PageView it would drag the user
+      // back to this pane whenever a line changed while they were on another.
+      // RenderAbstractViewport.maybeOf stops at our own ListView.
+      final box = ctx.findRenderObject() as RenderBox?;
+      final viewport = box == null ? null : RenderAbstractViewport.maybeOf(box);
+      if (box == null || viewport == null) return;
+
+      final position = _scrollController.position;
+      final target = viewport
+          .getOffsetToReveal(box, _activeLineAnchor)
+          .offset
+          .clamp(position.minScrollExtent, position.maxScrollExtent);
+
+      if ((target - position.pixels).abs() < 1) return;
+
       _autoScrolling = true;
       try {
-        await Scrollable.ensureVisible(
-          ctx,
-          alignment: _activeLineAnchor,
+        await _scrollController.animateTo(
+          target,
           duration: PlayerTokens.dSlow,
           curve: PlayerTokens.cStandard,
         );
@@ -187,8 +207,8 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
             ? computeLyricsGapLoaderState(
                 lyrics: lyrics,
                 position: position,
-                delay: const Duration(seconds: 2),
-                minimumRemainingGap: _minimumRemainingGap,
+                delay: _gapLoaderDelay,
+                minimumWindow: _minimumGapLoaderWindow,
               )
             : LyricsGapLoaderState.hidden;
 
@@ -232,7 +252,10 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
                       horizontal: PlayerTokens.s5,
                       vertical: PlayerTokens.s3,
                     ),
-                    child: LyricsGapLoader(animationDuration: gap.remainingGap),
+                    child: LyricsGapLoader(
+                      progress: gap.progress,
+                      accent: widget.accent,
+                    ),
                   ),
                   lyricWidget,
                 ],

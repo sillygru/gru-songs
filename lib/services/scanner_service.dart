@@ -15,6 +15,35 @@ import '../domain/services/search_service.dart';
 import 'storage_service.dart';
 import 'ffmpeg_service.dart';
 
+/// Why a scan produced the songs it did.
+///
+/// The distinction matters because an empty song list is ambiguous: it can mean
+/// "the folder really is empty" or "we could not look inside it". Only the
+/// former may replace an existing library — see [shouldReplaceLibrary].
+enum ScanStatus {
+  /// Every requested folder was listed successfully.
+  ok,
+
+  /// Storage permission was not granted, so nothing was listed.
+  noPermission,
+
+  /// A folder is missing, unmounted, or failed to list.
+  folderUnavailable,
+}
+
+class ScanResult {
+  final List<Song> songs;
+  final ScanStatus status;
+
+  const ScanResult(this.songs, this.status);
+
+  const ScanResult.ok(this.songs) : status = ScanStatus.ok;
+
+  const ScanResult.failed(this.status) : songs = const [];
+
+  bool get trusted => status == ScanStatus.ok;
+}
+
 class _ScanParams {
   final List<String> paths;
   final List<String> excludedFolders;
@@ -55,6 +84,15 @@ class _RebuildParams {
     required this.sendPort,
     this.force = false,
   });
+}
+
+/// Result of enriching one batch: every song in the batch (enriched or not),
+/// plus just the ones that actually changed and need a DB write.
+class _EnrichResult {
+  final List<Song> songs;
+  final List<Song> changed;
+
+  _EnrichResult(this.songs, this.changed);
 }
 
 class ScannerService {
@@ -221,7 +259,7 @@ class ScannerService {
   }
 
   /// Scans a specific directory for audio files (backward compatibility).
-  Future<List<Song>> scanDirectory(
+  Future<ScanResult> scanDirectory(
     String path, {
     List<Song>? existingSongs,
     String? lyricsPath,
@@ -243,13 +281,16 @@ class ScannerService {
 
         if (!statusStorage.isGranted && !statusAudio.isGranted) {
           debugPrint('Storage permissions not granted. Cannot scan directory.');
-          return [];
+          return const ScanResult.failed(ScanStatus.noPermission);
         }
       }
     }
 
     final dir = Directory(path);
-    if (!await dir.exists()) return [];
+    if (!await dir.exists()) {
+      debugPrint('Music folder unavailable: $path');
+      return const ScanResult.failed(ScanStatus.folderUnavailable);
+    }
 
     final storage = StorageService();
     final excludedFolders = await storage.getExcludedFolders();
@@ -282,8 +323,12 @@ class ScannerService {
 
     await Isolate.spawn(_isolateScan, params);
 
-    final completer = Completer<List<Song>>();
+    final completer = Completer<ScanResult>();
     final List<Song> allScannedSongs = [];
+    // Set if the isolate reports a folder it could not list. A single
+    // unreachable folder taints the whole scan so its empty result can never
+    // clobber an existing library.
+    bool folderUnavailable = false;
 
     receivePort.listen((message) async {
       if (message is double) {
@@ -292,7 +337,11 @@ class ScannerService {
         allScannedSongs.addAll(message);
         // Incremental DB insert to save memory and keep UI responsive
         await DatabaseService.instance.insertSongsBatch(message);
+      } else if (message is String && message.startsWith('unreachable:')) {
+        folderUnavailable = true;
       } else if (message == 'done') {
+        final status =
+            folderUnavailable ? ScanStatus.folderUnavailable : ScanStatus.ok;
         if (!fastMode) {
           try {
             final searchService = SearchService();
@@ -326,10 +375,10 @@ class ScannerService {
             finalSongs = allScannedSongs;
           }
           onComplete?.call(finalSongs);
-          completer.complete(finalSongs);
+          completer.complete(ScanResult(finalSongs, status));
         } else {
           onComplete?.call(allScannedSongs);
-          completer.complete(allScannedSongs);
+          completer.complete(ScanResult(allScannedSongs, status));
         }
         receivePort.close();
       } else if (message is String && message.startsWith('error:')) {
@@ -489,8 +538,11 @@ class ScannerService {
   }
 
   /// Enriches minimal song records with metadata (title, artist, album, duration).
-  /// Processes songs in throttled batches to keep CPU usage manageable.
-  /// Call after a fast-mode scan to fill in metadata lazily.
+  ///
+  /// [amr.readMetadata] is fully synchronous, so parsing runs in a background
+  /// isolate one batch at a time — on the main isolate it would block the UI
+  /// thread for the entire library. Only the DB write and progress callback
+  /// stay here, since sqflite is not usable from a spawned isolate.
   static Future<List<Song>> enrichAllMetadata(
     List<Song> songs, {
     void Function(double progress)? onProgress,
@@ -502,85 +554,97 @@ class ScannerService {
     for (int i = 0; i < total; i += batchSize) {
       final end = (i + batchSize).clamp(0, total);
       final batch = songs.sublist(i, end);
-      final batchChanges = <Song>[];
 
-      for (final song in batch) {
-        final file = File(song.url);
-        if (!await file.exists()) {
-          updated.add(song);
-          continue;
-        }
+      final result = await Isolate.run(() => _enrichBatch(batch));
 
-        // Only process files that still have default/empty metadata
-        if (song.title != p.basenameWithoutExtension(file.path) ||
-            song.artist == 'Unknown Artist' ||
-            song.album == 'Unknown Album') {
-          // Skip video files — audio_metadata_reader can crash on video
-          // containers like MKV, WebM, AVI. Video metadata (title from
-          // filename) is already populated by the fast scan.
-          if (_isVideoFile(file.path)) {
-            updated.add(song);
-            continue;
-          }
-          try {
-            final metadata = amr.readMetadata(file);
-            String title = song.title;
-            String artist = song.artist;
-            String album = song.album;
-            Duration? duration = song.duration;
-            bool hasLyrics = song.hasLyrics;
-            double? songDateEpochSec = song.songDateEpochSec;
+      updated.addAll(result.songs);
 
-            if (metadata.title?.isNotEmpty == true) title = metadata.title!;
-            if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
-            if (metadata.album?.isNotEmpty == true) album = metadata.album!;
-            if (metadata.year != null) {
-              songDateEpochSec =
-                  metadata.year!.millisecondsSinceEpoch.toDouble() / 1000.0;
-            }
-            duration = metadata.duration;
-            if (metadata.lyrics?.isNotEmpty == true) {
-              hasLyrics = true;
-            }
-
-            final enriched = Song(
-              title: title,
-              artist: artist,
-              album: album,
-              filename: song.filename,
-              url: song.url,
-              coverUrl: song.coverUrl,
-              hasLyrics: hasLyrics,
-              playCount: song.playCount,
-              duration: duration,
-              mtime: song.mtime,
-              createdEpochSec: song.createdEpochSec,
-              songDateEpochSec: songDateEpochSec,
-            );
-            batchChanges.add(enriched);
-            updated.add(enriched);
-          } catch (_) {
-            updated.add(song);
-          }
-        } else {
-          updated.add(song);
-        }
-      }
-
-      // Batch-insert all changes from this batch
-      if (batchChanges.isNotEmpty) {
-        await DatabaseService.instance.insertSongsBatch(batchChanges);
+      if (result.changed.isNotEmpty) {
+        await DatabaseService.instance.insertSongsBatch(result.changed);
       }
 
       onProgress?.call(end / total);
-
-      // Yield CPU between batches so the app stays responsive
-      if (i + batchSize < total) {
-        await Future.delayed(const Duration(milliseconds: 50));
-      }
     }
 
     return updated;
+  }
+
+  /// Parses one batch of songs. Runs inside a background isolate — must not
+  /// touch DatabaseService or any plugin.
+  static Future<_EnrichResult> _enrichBatch(List<Song> batch) async {
+    final songs = <Song>[];
+    final changed = <Song>[];
+
+    for (final song in batch) {
+      final file = File(song.url);
+      if (!await file.exists()) {
+        songs.add(song);
+        continue;
+      }
+
+      // Only process records the fast scan left untouched. Testing the fields
+      // with || instead re-parses every song whose file simply has no album
+      // tag, on every single scan.
+      final isUnenriched =
+          song.title == p.basenameWithoutExtension(file.path) &&
+              song.artist == 'Unknown Artist' &&
+              song.album == 'Unknown Album';
+      if (!isUnenriched) {
+        songs.add(song);
+        continue;
+      }
+
+      // Skip video files — audio_metadata_reader can crash on video
+      // containers like MKV, WebM, AVI. Video metadata (title from
+      // filename) is already populated by the fast scan.
+      if (_isVideoFile(file.path)) {
+        songs.add(song);
+        continue;
+      }
+
+      try {
+        final metadata = amr.readMetadata(file);
+        String title = song.title;
+        String artist = song.artist;
+        String album = song.album;
+        Duration? duration = song.duration;
+        bool hasLyrics = song.hasLyrics;
+        double? songDateEpochSec = song.songDateEpochSec;
+
+        if (metadata.title?.isNotEmpty == true) title = metadata.title!;
+        if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
+        if (metadata.album?.isNotEmpty == true) album = metadata.album!;
+        if (metadata.year != null) {
+          songDateEpochSec =
+              metadata.year!.millisecondsSinceEpoch.toDouble() / 1000.0;
+        }
+        duration = metadata.duration;
+        if (metadata.lyrics?.isNotEmpty == true) {
+          hasLyrics = true;
+        }
+
+        final enriched = Song(
+          title: title,
+          artist: artist,
+          album: album,
+          filename: song.filename,
+          url: song.url,
+          coverUrl: song.coverUrl,
+          hasLyrics: hasLyrics,
+          playCount: song.playCount,
+          duration: duration,
+          mtime: song.mtime,
+          createdEpochSec: song.createdEpochSec,
+          songDateEpochSec: songDateEpochSec,
+        );
+        changed.add(enriched);
+        songs.add(enriched);
+      } catch (_) {
+        songs.add(song);
+      }
+    }
+
+    return _EnrichResult(songs, changed);
   }
 
   /// Extracts cover art for a single song on demand.
@@ -605,9 +669,54 @@ class ScannerService {
     );
   }
 
+  /// The pure-Dart half of cover extraction: embedded picture → folder cover →
+  /// manual byte scan. Uses no platform channels, so it is safe to run inside
+  /// [Isolate.run] — the byte scan can read the whole audio file and must never
+  /// happen on the UI thread.
+  ///
+  /// Returns null when only the FFmpeg fallback could still succeed.
+  static Future<String?> extractCoverWithoutFFmpeg(
+    String filePath,
+    String coversDirPath,
+    String filename, {
+    bool skipFolderCover = false,
+  }) async {
+    final file = File(filePath);
+    if (_isVideoFile(filePath)) return null;
+    if (!await file.exists()) return null;
+
+    final coversDir = Directory(coversDirPath);
+    final hash = coverKeyForFilename(filename);
+
+    try {
+      // getImage: true is required — the parser skips picture frames
+      // otherwise, and this whole cheap path silently never fires.
+      final metadata = amr.readMetadata(file, getImage: true);
+      if (metadata.pictures.isNotEmpty) {
+        final picture = metadata.pictures.first;
+        final coverExt = _getExtFromMime(picture.mimetype);
+        final coverFile = File(p.join(coversDir.path, '$hash$coverExt'));
+        await coverFile.writeAsBytes(picture.bytes);
+        return coverFile.path;
+      }
+    } catch (e) {
+      debugPrint('extractCoverWithoutFFmpeg: metadata read failed: $e');
+    }
+
+    // Folder cover before the manual byte scan — a handful of exists()
+    // checks is far cheaper than reading the whole audio file.
+    if (!skipFolderCover) {
+      final folderCover = await _findCoverInFolder(p.dirname(filePath));
+      if (folderCover != null) return folderCover;
+    }
+
+    return await _tryManualCoverExtraction(file, coversDir, filename);
+  }
+
   /// Extracts cover art from a single song file using the same logic as the
-  /// scanner (metadata reader → manual byte extraction → folder cover).
-  /// Returns the path to the cached cover file, or null if no cover was found.
+  /// scanner (metadata reader → folder cover → manual byte extraction →
+  /// FFmpeg). Returns the path to the cached cover file, or null if no cover
+  /// was found.
   static Future<String?> extractCoverForFile(
     File file,
     Directory coversDir,
@@ -617,56 +726,64 @@ class ScannerService {
   }) async {
     if (!await file.exists()) return null;
     final isVideo = _isVideoFile(file.path);
-    final hash = coverKeyForFilename(filename);
 
-    if (!isVideo) {
-      try {
-        final metadata = amr.readMetadata(file);
-        if (metadata.pictures.isNotEmpty) {
-          final picture = metadata.pictures.first;
-          final coverExt = _getExtFromMime(picture.mimetype);
-          final coverFile = File(p.join(coversDir.path, '$hash$coverExt'));
-          await coverFile.writeAsBytes(picture.bytes);
-          return coverFile.path;
-        }
-      } catch (e) {
-        debugPrint('extractCoverForFile: metadata read failed: $e');
-      }
-
-      final manual = await _tryManualCoverExtraction(file, coversDir, filename);
-      if (manual != null) return manual;
-    }
+    final pureDart = await extractCoverWithoutFFmpeg(
+      file.path,
+      coversDir.path,
+      filename,
+      skipFolderCover: skipFolderCover,
+    );
+    if (pureDart != null) return pureDart;
 
     if (useFFmpegFallback || isVideo) {
-      try {
-        debugPrint(
-            'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
-        final coverFile = File(p.join(coversDir.path, '${hash}_ffmpeg.jpg'));
-
-        String? extracted;
-        if (_isVideoFile(file.path)) {
-          extracted = await _extractVideoThumbnailWithFallback(
-            inputPath: file.path,
-            outputPath: coverFile.path,
-          );
-        } else {
-          extracted = await FFmpegService().extractCover(
-            inputPath: file.path,
-            outputPath: coverFile.path,
-          );
-        }
-
-        if (extracted != null) {
-          debugPrint('Scanner: FFmpeg fallback success!');
-          return extracted;
-        }
-      } catch (e) {
-        debugPrint('Scanner: FFmpeg fallback failed: $e');
-      }
+      final viaFFmpeg = await extractCoverWithFFmpeg(file, coversDir, filename);
+      if (viaFFmpeg != null) return viaFFmpeg;
     }
 
-    if (skipFolderCover) return null;
-    return _findCoverInFolder(p.dirname(file.path));
+    // extractCoverWithoutFFmpeg bails out immediately on video files, so they
+    // still need a folder-cover fallback once FFmpeg has failed.
+    if (isVideo && !skipFolderCover) {
+      return _findCoverInFolder(p.dirname(file.path));
+    }
+
+    return null;
+  }
+
+  /// The FFmpeg half of cover extraction. Uses platform channels, so it must
+  /// run on the main isolate. Call only after [extractCoverWithoutFFmpeg] has
+  /// come up empty — an FFmpeg invocation per song is expensive.
+  static Future<String?> extractCoverWithFFmpeg(
+    File file,
+    Directory coversDir,
+    String filename,
+  ) async {
+    final hash = coverKeyForFilename(filename);
+    try {
+      debugPrint(
+          'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
+      final coverFile = File(p.join(coversDir.path, '${hash}_ffmpeg.jpg'));
+
+      String? extracted;
+      if (_isVideoFile(file.path)) {
+        extracted = await _extractVideoThumbnailWithFallback(
+          inputPath: file.path,
+          outputPath: coverFile.path,
+        );
+      } else {
+        extracted = await FFmpegService().extractCover(
+          inputPath: file.path,
+          outputPath: coverFile.path,
+        );
+      }
+
+      if (extracted != null) {
+        debugPrint('Scanner: FFmpeg fallback success!');
+        return extracted;
+      }
+    } catch (e) {
+      debugPrint('Scanner: FFmpeg fallback failed: $e');
+    }
+    return null;
   }
 
   Future<Map<String, String?>> rebuildCoverCache(
@@ -805,7 +922,7 @@ class ScannerService {
           if (resolvedCoverUrl == null || params.force) {
             if (!_isVideoFile(file.path)) {
               try {
-                final metadata = amr.readMetadata(file);
+                final metadata = amr.readMetadata(file, getImage: true);
                 if (metadata.pictures.isNotEmpty) {
                   final picture = metadata.pictures.first;
                   final coverExt = _getExtFromMime(picture.mimetype);
@@ -819,10 +936,8 @@ class ScannerService {
               }
             }
 
-            resolvedCoverUrl ??= await _tryManualCoverExtraction(
-                file, coversDir, p.basename(file.path));
-
-            // Try folder cover as last resort
+            // Folder cover before the manual byte scan — cheap exists()
+            // checks beat reading the whole audio file.
             if (resolvedCoverUrl == null) {
               final parentPath = p.dirname(file.path);
               if (!folderCoverCache.containsKey(parentPath)) {
@@ -831,6 +946,9 @@ class ScannerService {
               }
               resolvedCoverUrl = folderCoverCache[parentPath];
             }
+
+            resolvedCoverUrl ??= await _tryManualCoverExtraction(
+                file, coversDir, p.basename(file.path));
           }
         } catch (e) {
           debugPrint('Error rebuilding cover for ${song.title}: $e');
@@ -882,7 +1000,12 @@ class ScannerService {
       // Scan all provided paths
       for (final scanPath in params.paths) {
         final dir = Directory(scanPath);
-        if (!await dir.exists()) continue;
+        if (!await dir.exists()) {
+          // Report rather than silently yielding zero songs for this folder —
+          // the caller needs to tell "empty" apart from "couldn't look".
+          params.sendPort.send('unreachable:$scanPath');
+          continue;
+        }
 
         try {
           await for (final entity
@@ -918,6 +1041,8 @@ class ScannerService {
           }
         } catch (e) {
           debugPrint('Error scanning $scanPath: $e');
+          // A transient IO/permission error mid-listing is not "empty folder".
+          params.sendPort.send('unreachable:$scanPath');
         }
       }
 
@@ -1057,7 +1182,7 @@ class ScannerService {
       // Only use audio_metadata_reader for non-video files — it can crash or
       // hang on large video containers (MKV, WebM, AVI, etc.).
       try {
-        final metadata = amr.readMetadata(file);
+        final metadata = amr.readMetadata(file, getImage: coverUrl == null);
         if (metadata.title?.isNotEmpty == true) title = metadata.title!;
         if (metadata.artist?.isNotEmpty == true) artist = metadata.artist!;
         if (metadata.album?.isNotEmpty == true) album = metadata.album!;
@@ -1090,18 +1215,20 @@ class ScannerService {
       }
     }
 
-    // Manual byte-level extraction is only used for audio files.
-    // Video files are handled later by postProcessVideoThumbnails on the main
-    // thread via FFmpeg frame extraction to avoid false-positive embedded data.
-    if (!isVideo) {
-      coverUrl ??= await _tryManualCoverExtraction(file, coversDir, filename);
-    }
-
+    // Folder cover before the manual byte scan — cheap exists() checks beat
+    // reading the whole audio file.
     if (coverUrl == null) {
       if (!folderCoverCache.containsKey(parentPath)) {
         folderCoverCache[parentPath] = await _findCoverInFolder(parentPath);
       }
       coverUrl = folderCoverCache[parentPath];
+    }
+
+    // Manual byte-level extraction is only used for audio files.
+    // Video files are handled later by postProcessVideoThumbnails on the main
+    // thread via FFmpeg frame extraction to avoid false-positive embedded data.
+    if (!isVideo) {
+      coverUrl ??= await _tryManualCoverExtraction(file, coversDir, filename);
     }
 
     return Song(

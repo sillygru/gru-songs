@@ -54,7 +54,11 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
   }
 
   bool get _canAttemptLazyRefresh =>
-      widget.filename != null && _looksLikeSongFile(widget.filename!);
+      widget.filename != null &&
+      _looksLikeSongFile(widget.filename!) &&
+      // A recycled tile would otherwise re-enqueue a song we already know has
+      // no art, on every rebuild.
+      !CoverRefreshService.instance.isKnownMiss(widget.filename!);
 
   void _scheduleLazyRefresh() {
     if (_refreshFuture != null || !_canAttemptLazyRefresh) return;

@@ -228,9 +228,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   void onLibraryChanged(List<Song> library) {
     if (library.isEmpty) return;
-    DatabaseService.instance
-        .validateRecommendationPlaylists()
-        .then((dbValid) {
+    DatabaseService.instance.validateRecommendationPlaylists().then((dbValid) {
       if (!dbValid) {
         updateRecommendationPlaylists(force: true, allSongs: library);
         return;

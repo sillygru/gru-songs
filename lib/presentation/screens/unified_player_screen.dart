@@ -12,6 +12,7 @@ import '../../services/audio_player_manager.dart';
 import '../../services/screen_wake_lock_service.dart';
 import '../../theme/app_theme.dart';
 import '../components/player_segmented_pill.dart';
+import '../components/song_actions.dart';
 import '../tokens/player_tokens.dart';
 import '../widgets/basic_progress_bar.dart';
 import '../widgets/blurred_background.dart';
@@ -417,30 +418,67 @@ class _TransportDock extends ConsumerWidget {
     AudioPlayerManager audioManager,
     AudioPlayer player,
   ) {
+    // Both streams matter: the sequence drives hasPrevious/hasNext, and loop mode
+    // feeds into them too (repeat-all wraps around, so the ends stay enabled).
+    return StreamBuilder<LoopMode>(
+      stream: player.loopModeStream,
+      initialData: player.loopMode,
+      builder: (context, loopSnapshot) {
+        return StreamBuilder<SequenceState?>(
+          stream: player.sequenceStateStream,
+          builder: (context, _) => _buildControlRow(
+            context,
+            audioManager,
+            player,
+            loopSnapshot.data ?? LoopMode.off,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildControlRow(
+    BuildContext context,
+    AudioPlayerManager audioManager,
+    AudioPlayer player,
+    LoopMode loopMode,
+  ) {
+    final canSkipPrevious = player.hasPrevious;
+    final canSkipNext = player.hasNext;
+    final disabled = Colors.white.withValues(alpha: PlayerTokens.aTertiary);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        ValueListenableBuilder<bool>(
-          valueListenable: audioManager.shuffleNotifier,
-          builder: (context, shuffleOn, _) => IconButton(
-            tooltip: 'Shuffle',
-            icon: Icon(
-              Icons.shuffle_rounded,
-              color: shuffleOn
-                  ? accent
-                  : Colors.white.withValues(alpha: PlayerTokens.aTertiary),
-            ),
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              audioManager.toggleShuffle();
-            },
+        IconButton(
+          tooltip: switch (loopMode) {
+            LoopMode.off => 'Repeat off',
+            LoopMode.all => 'Repeat all',
+            LoopMode.one => 'Repeat one',
+          },
+          icon: Icon(
+            loopMode == LoopMode.one
+                ? Icons.repeat_one_rounded
+                : Icons.repeat_rounded,
+            color: loopMode == LoopMode.off ? disabled : accent,
           ),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            player.setLoopMode(switch (loopMode) {
+              LoopMode.off => LoopMode.all,
+              LoopMode.all => LoopMode.one,
+              LoopMode.one => LoopMode.off,
+            });
+          },
         ),
         IconButton(
           tooltip: 'Previous',
           iconSize: 34,
-          icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
-          onPressed: player.hasPrevious ? player.seekToPrevious : null,
+          icon: Icon(
+            Icons.skip_previous_rounded,
+            color: canSkipPrevious ? Colors.white : disabled,
+          ),
+          onPressed: canSkipPrevious ? player.seekToPrevious : null,
         ),
         StreamBuilder<PlayerState>(
           stream: player.playerStateStream,
@@ -492,37 +530,18 @@ class _TransportDock extends ConsumerWidget {
         IconButton(
           tooltip: 'Next',
           iconSize: 34,
-          icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
-          onPressed: player.hasNext ? player.seekToNext : null,
+          icon: Icon(
+            Icons.skip_next_rounded,
+            color: canSkipNext ? Colors.white : disabled,
+          ),
+          onPressed: canSkipNext ? player.seekToNext : null,
         ),
-        StreamBuilder<LoopMode>(
-          stream: player.loopModeStream,
-          initialData: player.loopMode,
-          builder: (context, snapshot) {
-            final mode = snapshot.data ?? LoopMode.off;
-            return IconButton(
-              tooltip: switch (mode) {
-                LoopMode.off => 'Repeat off',
-                LoopMode.all => 'Repeat all',
-                LoopMode.one => 'Repeat one',
-              },
-              icon: Icon(
-                mode == LoopMode.one
-                    ? Icons.repeat_one_rounded
-                    : Icons.repeat_rounded,
-                color: mode == LoopMode.off
-                    ? Colors.white.withValues(alpha: PlayerTokens.aTertiary)
-                    : accent,
-              ),
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                player.setLoopMode(switch (mode) {
-                  LoopMode.off => LoopMode.all,
-                  LoopMode.all => LoopMode.one,
-                  LoopMode.one => LoopMode.off,
-                });
-              },
-            );
+        IconButton(
+          tooltip: 'Share',
+          icon: Icon(Icons.ios_share_rounded, color: disabled),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            songActionShare(song);
           },
         ),
       ],

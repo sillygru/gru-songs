@@ -3,131 +3,128 @@ import 'package:wispie/models/song.dart';
 import 'package:wispie/presentation/models/lyrics_gap_loader_state.dart';
 
 void main() {
-  const delay = Duration(seconds: 4);
-  const minimumRemainingGap = Duration(milliseconds: 1200);
+  const delay = Duration(seconds: 5);
+  const minimumWindow = Duration(seconds: 3);
 
   List<LyricLine> buildLyrics() {
     return const [
       LyricLine(
-        time: Duration(seconds: 5),
+        time: Duration(seconds: 10),
         text: 'First',
         isSynced: true,
       ),
+      // 20s gap — window runs 15s..30s once the 5s delay elapses.
       LyricLine(
-        time: Duration(seconds: 12),
+        time: Duration(seconds: 30),
         text: 'Second',
         isSynced: true,
       ),
       LyricLine(
-        time: Duration(seconds: 20),
+        time: Duration(seconds: 34),
         text: 'Third',
         isSynced: true,
       ),
     ];
   }
 
-  test('stays hidden before delay during intro gap', () {
-    final state = computeLyricsGapLoaderState(
-      lyrics: buildLyrics(),
-      position: const Duration(seconds: 3),
+  LyricsGapLoaderState stateAt(Duration position, {List<LyricLine>? lyrics}) {
+    return computeLyricsGapLoaderState(
+      lyrics: lyrics ?? buildLyrics(),
+      position: position,
       delay: delay,
-      minimumRemainingGap: minimumRemainingGap,
+      minimumWindow: minimumWindow,
     );
+  }
 
-    expect(state.shouldShow, isFalse);
+  group('visibility', () {
+    test('stays hidden before the delay during the intro gap', () {
+      expect(stateAt(const Duration(seconds: 4)).shouldShow, isFalse);
+    });
+
+    test('appears after the delay before the first lyric', () {
+      final state = stateAt(const Duration(seconds: 6));
+
+      expect(state.shouldShow, isTrue);
+      expect(state.insertBeforeLyricIndex, 0);
+    });
+
+    test('stays hidden before the delay in a mid-song gap', () {
+      expect(stateAt(const Duration(seconds: 14)).shouldShow, isFalse);
+    });
+
+    test('appears after the delay and points at the next lyric', () {
+      final state = stateAt(const Duration(seconds: 16));
+
+      expect(state.shouldShow, isTrue);
+      expect(state.insertBeforeLyricIndex, 1);
+    });
+
+    test('stays hidden for gaps too short to fit the window', () {
+      // 4s gap: the window is only 30s..34s minus the 5s delay, i.e. negative.
+      expect(stateAt(const Duration(seconds: 32)).shouldShow, isFalse);
+    });
+
+    test('stays hidden after the final synced lyric', () {
+      expect(stateAt(const Duration(seconds: 40)).shouldShow, isFalse);
+    });
+
+    test('stays hidden for unsynced lyrics', () {
+      const lyrics = [
+        LyricLine(time: Duration.zero, text: 'Plain line'),
+        LyricLine(time: Duration.zero, text: 'Another line'),
+      ];
+
+      expect(stateAt(const Duration(seconds: 6), lyrics: lyrics).shouldShow,
+          isFalse);
+    });
+
+    test('remains visible right up to the next lyric', () {
+      // The exit animation needs the tail of the window, so the loader must not
+      // wink out early the way the old remaining-gap gate made it.
+      final state = stateAt(const Duration(seconds: 29, milliseconds: 900));
+
+      expect(state.shouldShow, isTrue);
+      expect(state.progress, greaterThan(0.98));
+    });
+
+    test('is gone once the next lyric lands', () {
+      expect(stateAt(const Duration(seconds: 30)).shouldShow, isFalse);
+    });
   });
 
-  test('appears after delay before first lyric', () {
-    const lyrics = [
-      LyricLine(
-        time: Duration(seconds: 7),
-        text: 'First',
-        isSynced: true,
-      ),
-    ];
+  group('progress', () {
+    test('starts at zero when the mid-song loader appears', () {
+      expect(stateAt(const Duration(seconds: 15)).progress, 0);
+    });
 
-    final state = computeLyricsGapLoaderState(
-      lyrics: lyrics,
-      position: const Duration(seconds: 4, milliseconds: 100),
-      delay: delay,
-      minimumRemainingGap: minimumRemainingGap,
-    );
+    test('is half way through the middle of the mid-song window', () {
+      // Window 15s..30s, so the midpoint is 22.5s.
+      expect(
+        stateAt(const Duration(seconds: 22, milliseconds: 500)).progress,
+        closeTo(0.5, 0.001),
+      );
+    });
 
-    expect(state.shouldShow, isTrue);
-    expect(state.insertBeforeLyricIndex, 0);
-  });
+    test('tracks the intro window from the delay to the first lyric', () {
+      // Window 5s..10s, so 7.5s is the midpoint.
+      expect(
+        stateAt(const Duration(seconds: 7, milliseconds: 500)).progress,
+        closeTo(0.5, 0.001),
+      );
+    });
 
-  test('appears after delay in mid-song gap and points at next lyric', () {
-    final state = computeLyricsGapLoaderState(
-      lyrics: buildLyrics(),
-      position: const Duration(seconds: 9, milliseconds: 200),
-      delay: delay,
-      minimumRemainingGap: minimumRemainingGap,
-    );
+    test('advances monotonically across the window', () {
+      var previous = -1.0;
+      for (var ms = 15000; ms < 30000; ms += 250) {
+        final state = stateAt(Duration(milliseconds: ms));
+        expect(state.shouldShow, isTrue, reason: 'hidden at ${ms}ms');
+        expect(state.progress, greaterThanOrEqualTo(previous));
+        previous = state.progress;
+      }
+    });
 
-    expect(state.shouldShow, isTrue);
-    expect(state.insertBeforeLyricIndex, 1);
-  });
-
-  test('stays hidden for short gaps', () {
-    final lyrics = const [
-      LyricLine(
-        time: Duration(seconds: 1),
-        text: 'One',
-        isSynced: true,
-      ),
-      LyricLine(
-        time: Duration(seconds: 4),
-        text: 'Two',
-        isSynced: true,
-      ),
-    ];
-
-    final state = computeLyricsGapLoaderState(
-      lyrics: lyrics,
-      position: const Duration(seconds: 3),
-      delay: delay,
-      minimumRemainingGap: minimumRemainingGap,
-    );
-
-    expect(state.shouldShow, isFalse);
-  });
-
-  test('does not appear after final synced lyric', () {
-    final state = computeLyricsGapLoaderState(
-      lyrics: buildLyrics(),
-      position: const Duration(seconds: 26),
-      delay: delay,
-      minimumRemainingGap: minimumRemainingGap,
-    );
-
-    expect(state.shouldShow, isFalse);
-  });
-
-  test('does not appear for unsynced lyrics', () {
-    final lyrics = const [
-      LyricLine(time: Duration.zero, text: 'Plain line'),
-      LyricLine(time: Duration.zero, text: 'Another line'),
-    ];
-
-    final state = computeLyricsGapLoaderState(
-      lyrics: lyrics,
-      position: const Duration(seconds: 6),
-      delay: delay,
-      minimumRemainingGap: minimumRemainingGap,
-    );
-
-    expect(state.shouldShow, isFalse);
-  });
-
-  test('stays hidden when remaining gap is too short after crossing delay', () {
-    final state = computeLyricsGapLoaderState(
-      lyrics: buildLyrics(),
-      position: const Duration(seconds: 11, milliseconds: 200),
-      delay: delay,
-      minimumRemainingGap: minimumRemainingGap,
-    );
-
-    expect(state.shouldShow, isFalse);
+    test('is zero when hidden', () {
+      expect(stateAt(const Duration(seconds: 4)).progress, 0);
+    });
   });
 }

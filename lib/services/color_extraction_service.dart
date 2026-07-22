@@ -139,10 +139,10 @@ class ExtractedPalette {
 
   static Color _delightnedColor(Color color) {
     final hslColor = HSLColor.fromColor(color);
-    final saturation =
-        hslColor.saturation >= _accentHueFloor && hslColor.saturation < _minAccentSaturation
-            ? _minAccentSaturation
-            : hslColor.saturation;
+    final saturation = hslColor.saturation >= _accentHueFloor &&
+            hslColor.saturation < _minAccentSaturation
+        ? _minAccentSaturation
+        : hslColor.saturation;
     return hslColor
         .withSaturation(saturation)
         .withLightness(_accentLightness)

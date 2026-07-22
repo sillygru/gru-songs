@@ -204,6 +204,11 @@ class DatabaseService {
         'CREATE TABLE IF NOT EXISTS suggestless (filename TEXT PRIMARY KEY, added_at REAL)');
     await db.execute(
         'CREATE TABLE IF NOT EXISTS hidden (filename TEXT PRIMARY KEY, hidden_at REAL)');
+    // Negative cache for cover art. Without it, a song that genuinely has no
+    // artwork is re-probed (whole-file byte scan + FFmpeg) every time a list
+    // tile for it is built.
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS cover_miss (filename TEXT PRIMARY KEY, file_mtime REAL, checked_at REAL)');
     await db.execute('''
         CREATE TABLE IF NOT EXISTS song (
           filename TEXT PRIMARY KEY,
@@ -806,6 +811,41 @@ class DatabaseService {
       }
       await batch.commit(noResult: true);
     });
+  }
+
+  /// Songs already probed for cover art and found to have none, keyed by
+  /// filename with the file mtime at the time of the probe. A changed mtime
+  /// means the file was edited and is worth probing again.
+  Future<Map<String, double>> getCoverMisses() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return {};
+    final results = await _userDataDatabase!
+        .query('cover_miss', columns: ['filename', 'file_mtime']);
+    return {
+      for (final row in results)
+        row['filename'] as String: (row['file_mtime'] as num?)?.toDouble() ?? 0,
+    };
+  }
+
+  Future<void> markCoverMiss(String filename, double fileMtime) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    await _userDataDatabase!.insert(
+      'cover_miss',
+      {
+        'filename': filename,
+        'file_mtime': fileMtime,
+        'checked_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> clearCoverMiss(String filename) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    await _userDataDatabase!
+        .delete('cover_miss', where: 'filename = ?', whereArgs: [filename]);
   }
 
   Future<List<Song>> getAllSongs() async {
@@ -2515,6 +2555,11 @@ class DatabaseService {
     'hidden': '''CREATE TABLE IF NOT EXISTS hidden (
       filename TEXT PRIMARY KEY,
       hidden_at REAL
+    )''',
+    'cover_miss': '''CREATE TABLE IF NOT EXISTS cover_miss (
+      filename TEXT PRIMARY KEY,
+      file_mtime REAL,
+      checked_at REAL
     )''',
     'song': '''CREATE TABLE IF NOT EXISTS song (
       filename TEXT PRIMARY KEY,

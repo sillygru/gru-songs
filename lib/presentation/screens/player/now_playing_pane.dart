@@ -12,7 +12,6 @@ import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/audio_player_manager.dart';
-import '../../components/quick_action_bar.dart';
 import '../../components/song_actions.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/album_art_image.dart';
@@ -69,8 +68,6 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
                 ),
                 const SizedBox(height: PlayerTokens.s5),
                 _buildTitleBlock(context),
-                const SizedBox(height: PlayerTokens.s4),
-                QuickActionBar(song: widget.song, accent: widget.accent),
                 const SizedBox(height: PlayerTokens.s4),
               ],
             ),

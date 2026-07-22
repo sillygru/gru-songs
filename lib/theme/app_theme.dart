@@ -105,7 +105,8 @@ class AppTheme {
       outlineVariant: Colors.transparent,
     );
 
-    final onSurfaceVariant = Colors.white.withValues(alpha: AppTokens.aSecondary);
+    final onSurfaceVariant =
+        Colors.white.withValues(alpha: AppTokens.aSecondary);
 
     return ThemeData(
       useMaterial3: true,

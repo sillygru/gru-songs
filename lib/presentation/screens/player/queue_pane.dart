@@ -16,6 +16,7 @@ import '../../components/player_glass_surface.dart';
 import '../../components/player_section_header.dart';
 import '../../components/player_segmented_pill.dart';
 import '../../components/player_track_row.dart';
+import '../../components/queue_cover_mosaic.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/duration_display.dart' show DurationFormatter;
 
@@ -251,16 +252,28 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
                     SliverToBoxAdapter(
                       child: _buildSummary(context, upcoming, audioManager),
                     ),
-                    if (played.isNotEmpty)
+                    if (played.isNotEmpty) ...[
+                      SliverToBoxAdapter(
+                        child: const PlayerSectionHeader(label: 'Played'),
+                      ),
                       SliverList.builder(
                         itemCount: played.length,
-                        itemBuilder: (context, index) => PlayerTrackRow(
-                          song: played[index].song,
-                          accent: widget.accent,
-                          isPlayed: true,
-                          onTap: () => _jumpTo(audioManager, played[index]),
+                        itemBuilder: (context, index) => Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: PlayerTokens.s3,
+                          ),
+                          child: PlayerTrackRow(
+                            song: played[index].song,
+                            accent: widget.accent,
+                            isPlayed: true,
+                            onTap: () => _jumpTo(audioManager, played[index]),
+                          ),
                         ),
                       ),
+                      SliverToBoxAdapter(
+                        child: const PlayerSectionHeader(label: 'Now playing'),
+                      ),
+                    ],
                     if (current != null)
                       SliverToBoxAdapter(
                         child: StreamBuilder<PlayerState>(
@@ -288,7 +301,10 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
                           },
                         ),
                       ),
-                    if (upcoming.isNotEmpty)
+                    if (upcoming.isNotEmpty) ...[
+                      SliverToBoxAdapter(
+                        child: const PlayerSectionHeader(label: 'Up next'),
+                      ),
                       SliverReorderableList(
                         itemCount: upcoming.length,
                         onReorderItem: (oldIndex, newIndex) => _reorder(
@@ -309,6 +325,7 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
                           );
                         },
                       ),
+                    ],
                     const SliverToBoxAdapter(
                       child: SizedBox(height: PlayerTokens.s6),
                     ),
@@ -343,10 +360,40 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
     return Dismissible(
       key: ValueKey('upnext_${item.queueId}'),
       direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: PlayerTokens.s5),
-        child: const Icon(Icons.delete_outline_rounded, color: Colors.white70),
+      background: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: PlayerTokens.s3,
+          vertical: 3,
+        ),
+        child: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: PlayerTokens.s4),
+          decoration: BoxDecoration(
+            borderRadius: PlayerTokens.brMd,
+            gradient: LinearGradient(
+              colors: [
+                Colors.redAccent.withValues(alpha: 0.0),
+                Colors.redAccent.withValues(alpha: 0.28),
+              ],
+            ),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.delete_outline_rounded, size: 20, color: Colors.white),
+              SizedBox(width: PlayerTokens.s1),
+              Text(
+                'Remove',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
       onDismissed: (_) {
         final absolute =
@@ -429,9 +476,7 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
       (total, item) => total + (item.song.duration?.inSeconds ?? 0),
     );
     final remaining = DurationFormatter.formatRemaining(seconds);
-    final label = remaining.isNotEmpty
-        ? '${upcoming.length} songs · $remaining'
-        : '${upcoming.length} songs remaining';
+    final count = upcoming.length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -442,7 +487,26 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
       ),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: PlayerTokens.meta(context))),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$count ${count == 1 ? 'song' : 'songs'}',
+                    style: PlayerTokens.trackSubtitle(context)
+                        .copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  if (remaining.isNotEmpty)
+                    TextSpan(
+                      text: '  ·  $remaining',
+                      style: PlayerTokens.meta(context),
+                    ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           IconButton(
             tooltip: 'Shuffle upcoming',
             visualDensity: VisualDensity.compact,
@@ -622,26 +686,63 @@ class _HistoryListState extends ConsumerState<_HistoryList> {
                 ),
                 const SizedBox(height: PlayerTokens.s3),
                 Text('No past queues', style: PlayerTokens.paneTitle(context)),
+                const SizedBox(height: PlayerTokens.s1),
+                Text(
+                  'Queues you play get saved here automatically.',
+                  style: PlayerTokens.meta(context),
+                ),
               ],
             ),
           );
         }
 
+        // Snapshots come back newest-first, so walking them in order and
+        // emitting a header whenever the day bucket changes is enough to group
+        // them — no sorting or second pass needed.
+        final rows = <Object>[
+          _HistoryHeader(
+            label: '${snapshots.length} saved queues',
+            onClearAll: _confirmClearAll,
+          ),
+        ];
+        String? bucket;
+        for (final snapshot in snapshots) {
+          final label = _dayBucket(snapshot.createdDateTime);
+          if (label != bucket) {
+            bucket = label;
+            rows.add(label);
+          }
+          rows.add(snapshot);
+        }
+
         return ListView.builder(
           physics: const ClampingScrollPhysics(),
           padding: const EdgeInsets.only(bottom: PlayerTokens.s6),
-          itemCount: snapshots.length + 1,
+          itemCount: rows.length,
           itemBuilder: (context, index) {
-            if (index == 0) {
+            final row = rows[index];
+
+            if (row is _HistoryHeader) {
               return PlayerSectionHeader(
-                label: '${snapshots.length} saved queues',
+                label: row.label,
                 trailingLabel: 'Clear all',
                 trailingIcon: Icons.delete_sweep_rounded,
-                onTrailingTap: _confirmClearAll,
+                onTrailingTap: row.onClearAll,
+              );
+            }
+            if (row is String) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  PlayerTokens.s5,
+                  PlayerTokens.s3,
+                  PlayerTokens.s5,
+                  PlayerTokens.s1,
+                ),
+                child: Text(row, style: PlayerTokens.sectionLabel(context)),
               );
             }
 
-            final snapshot = snapshots[index - 1];
+            final snapshot = row as QueueSnapshot;
             return _SnapshotCard(
               snapshot: snapshot,
               accent: widget.accent,
@@ -660,8 +761,31 @@ class _HistoryListState extends ConsumerState<_HistoryList> {
       },
     );
   }
+
+  static String _dayBucket(DateTime when) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(when.year, when.month, when.day);
+    final diff = today.difference(day).inDays;
+
+    if (diff <= 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return 'This week';
+    if (diff < 30) return 'This month';
+    return 'Earlier';
+  }
 }
 
+class _HistoryHeader {
+  final String label;
+  final VoidCallback onClearAll;
+
+  const _HistoryHeader({required this.label, required this.onClearAll});
+}
+
+/// One saved queue. The mosaic on the left is what makes a snapshot
+/// identifiable — the stored name is a timestamp, which reads as noise in a
+/// list, so covers, source and length do the recognising instead.
 class _SnapshotCard extends ConsumerWidget {
   final QueueSnapshot snapshot;
   final Color accent;
@@ -679,104 +803,273 @@ class _SnapshotCard extends ConsumerWidget {
     required this.onDelete,
   });
 
+  /// How many rows an expanded snapshot lists before it stops. A shuffle of the
+  /// whole library can be hundreds of tracks, and this card lives inside
+  /// another list, so it must not build all of them.
+  static const int _maxExpandedRows = 25;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Resolved straight from the loaded library rather than the database: the
+    // snapshot already carries its filenames, so a history list of twenty cards
+    // costs one shared map instead of twenty queries.
+    final byFilename = ref.watch(songsByFilenameProvider);
+    final tracks = snapshot.songFilenames
+        .map((filename) => byFilename[filename])
+        .whereType<Song>()
+        .toList();
+
+    final playlistName = ref.watch(
+      userDataProvider.select((state) {
+        for (final playlist in state.playlists) {
+          if (playlist.id == snapshot.source) return playlist.name;
+        }
+        return null;
+      }),
+    );
+
+    final missing = snapshot.songFilenames.length - tracks.length;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        PlayerTokens.s4,
+        PlayerTokens.s3,
         PlayerTokens.s1,
-        PlayerTokens.s4,
-        PlayerTokens.s2,
+        PlayerTokens.s3,
+        PlayerTokens.s1,
       ),
       // Flat row on the backdrop rather than a card — a list of stacked
-      // bordered boxes is exactly the look being avoided here.
-      child: Container(
+      // bordered boxes is exactly the look being avoided here. Expanding tints
+      // the whole block instead of outlining it.
+      child: AnimatedContainer(
+        duration: PlayerTokens.dFast,
+        curve: PlayerTokens.cStandard,
         decoration: BoxDecoration(
-          color: expanded ? accent.withValues(alpha: 0.10) : null,
+          color: expanded
+              ? accent.withValues(alpha: 0.10)
+              : Colors.white.withValues(alpha: 0.03),
           borderRadius: PlayerTokens.brMd,
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           children: [
-            ListTile(
-              onTap: onToggle,
-              title: Text(
-                snapshot.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PlayerTokens.trackTitle(context).copyWith(fontSize: 15),
-              ),
-              subtitle: Text(
-                '${snapshot.displayDate} · ${snapshot.songFilenames.length} tracks · ${snapshot.source}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PlayerTokens.meta(context),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Restore queue',
-                    icon: const Icon(Icons.play_circle_outline_rounded),
-                    color: accent,
-                    onPressed: onRestore,
-                  ),
-                  IconButton(
-                    tooltip: 'Delete snapshot',
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    color:
-                        Colors.white.withValues(alpha: PlayerTokens.aTertiary),
-                    onPressed: onDelete,
-                  ),
-                ],
-              ),
+            _buildHeader(context, tracks, playlistName),
+            AnimatedSize(
+              duration: PlayerTokens.dBase,
+              curve: PlayerTokens.cStandard,
+              alignment: Alignment.topCenter,
+              child: expanded
+                  ? _buildTracks(context, tracks, missing)
+                  : const SizedBox(width: double.infinity),
             ),
-            if (expanded) _buildTracks(context, ref),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTracks(BuildContext context, WidgetRef ref) {
-    final songs = ref.watch(queueSnapshotSongsProvider(snapshot.id));
+  Widget _buildHeader(
+    BuildContext context,
+    List<Song> tracks,
+    String? playlistName,
+  ) {
+    final fromShuffle = snapshot.source == 'shuffle';
+    final total = DurationFormatter.formatTotalCompact(tracks);
+    final count = snapshot.songFilenames.length;
+    final meta = [
+      '$count ${count == 1 ? 'track' : 'tracks'}',
+      if (total.isNotEmpty) total,
+    ].join(' · ');
 
-    return songs.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.all(PlayerTokens.s4),
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onToggle,
+        child: Padding(
+          padding: const EdgeInsets.all(PlayerTokens.s3),
+          child: Row(
+            children: [
+              QueueCoverMosaic(
+                songs: tracks,
+                accent: accent,
+                seed: snapshot.id,
+              ),
+              const SizedBox(width: PlayerTokens.s3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _title(playlistName),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PlayerTokens.trackTitle(context)
+                          .copyWith(fontSize: 15),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(
+                          fromShuffle
+                              ? Icons.shuffle_rounded
+                              : Icons.queue_music_rounded,
+                          size: 12,
+                          color: Colors.white
+                              .withValues(alpha: PlayerTokens.aTertiary),
+                        ),
+                        const SizedBox(width: PlayerTokens.s1),
+                        Flexible(
+                          child: Text(
+                            meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PlayerTokens.trackSubtitle(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      snapshot.displayDate,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PlayerTokens.meta(context),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: PlayerTokens.s2),
+              _PlayChip(accent: accent, onTap: onRestore),
+              AnimatedRotation(
+                turns: expanded ? 0.5 : 0,
+                duration: PlayerTokens.dFast,
+                curve: PlayerTokens.cStandard,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 20,
+                  color: Colors.white.withValues(alpha: PlayerTokens.aTertiary),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      error: (error, _) => Padding(
-        padding: const EdgeInsets.all(PlayerTokens.s4),
-        child: Text('Could not load tracks', style: PlayerTokens.meta(context)),
-      ),
-      data: (List<Song> tracks) {
-        if (tracks.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.all(PlayerTokens.s4),
-            child: Text(
-              'None of these tracks are still in your library.',
-              style: PlayerTokens.meta(context),
-            ),
-          );
-        }
+    );
+  }
 
-        return Column(
-          children: [
-            const Divider(height: 1),
-            for (var i = 0; i < tracks.length; i++)
-              PlayerTrackRow(
-                song: tracks[i],
-                accent: accent,
-                index: i,
-                onTap: onRestore,
+  /// Stored names are timestamps unless the user renamed the snapshot, so a
+  /// custom name wins, then the playlist it came from, then the source.
+  String _title(String? playlistName) {
+    final isDefaultName = snapshot.name ==
+        QueueSnapshot.defaultNameForTimestamp(snapshot.createdAt);
+    if (!isDefaultName && snapshot.name.trim().isNotEmpty) return snapshot.name;
+    if (playlistName != null && playlistName.trim().isNotEmpty) {
+      return playlistName;
+    }
+    return snapshot.source == 'shuffle' ? 'Shuffled queue' : 'Saved queue';
+  }
+
+  Widget _buildTracks(BuildContext context, List<Song> tracks, int missing) {
+    if (tracks.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          PlayerTokens.s4,
+          0,
+          PlayerTokens.s4,
+          PlayerTokens.s4,
+        ),
+        child: Text(
+          'None of these tracks are still in your library.',
+          style: PlayerTokens.meta(context),
+        ),
+      );
+    }
+
+    final shown = tracks.take(_maxExpandedRows).toList();
+    final hidden = tracks.length - shown.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Divider(
+          height: 1,
+          color: Colors.white.withValues(alpha: 0.08),
+        ),
+        for (var i = 0; i < shown.length; i++)
+          PlayerTrackRow(
+            song: shown[i],
+            accent: accent,
+            index: i,
+            onTap: onRestore,
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            PlayerTokens.s4,
+            PlayerTokens.s1,
+            PlayerTokens.s2,
+            PlayerTokens.s2,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  [
+                    if (hidden > 0) '+$hidden more',
+                    if (missing > 0) '$missing missing from library',
+                  ].join(' · '),
+                  style: PlayerTokens.meta(context),
+                ),
               ),
-          ],
-        );
-      },
+              TextButton.icon(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                label: const Text('Delete'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.redAccent.withValues(alpha: 0.9),
+                  textStyle: PlayerTokens.meta(context)
+                      .copyWith(fontWeight: FontWeight.w700),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: PlayerTokens.s3,
+                    vertical: PlayerTokens.s1,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Filled accent circle that restores a snapshot. Reads as the one primary
+/// action on the card, so the row doesn't need a second icon button competing
+/// with it.
+class _PlayChip extends StatelessWidget {
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _PlayChip({required this.accent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: accent.withValues(alpha: 0.18),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(Icons.play_arrow_rounded, size: 22, color: accent),
+        ),
+      ),
     );
   }
 }

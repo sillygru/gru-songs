@@ -265,10 +265,31 @@ class IsScanningNotifier extends Notifier<bool> {
   bool build() => false;
 }
 
+/// Surfaces the reason a scan could not trust its (usually empty) result, so
+/// the UI can explain "can't reach your music folder" instead of silently
+/// showing an empty library. `null` means the last scan was clean.
+class LibraryScanIssueNotifier extends Notifier<ScanStatus?> {
+  @override
+  ScanStatus? build() => null;
+
+  void set(ScanStatus? status) => state = status;
+}
+
 final scanProgressProvider =
     NotifierProvider<ScanProgressNotifier, double>(ScanProgressNotifier.new);
 final isScanningProvider =
     NotifierProvider<IsScanningNotifier, bool>(IsScanningNotifier.new);
+final libraryScanIssueProvider =
+    NotifierProvider<LibraryScanIssueNotifier, ScanStatus?>(
+        LibraryScanIssueNotifier.new);
+
+/// Music folders the user has configured. Used to tell "no folder set up yet"
+/// apart from "folder configured but currently unreachable" in the UI.
+final musicFoldersProvider =
+    FutureProvider<List<Map<String, String>>>((ref) async {
+  final storage = ref.watch(storageServiceProvider);
+  return storage.getMusicFolders();
+});
 
 // Services & Repositories
 final storageServiceProvider = Provider<StorageService>((ref) {
@@ -323,7 +344,12 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       _debounceTimer?.cancel();
     });
 
-    final userData = ref.watch(userDataProvider);
+    // Watch only the hidden list, not the whole user-data state. userData
+    // emits several times during startup (loading flag, initial load,
+    // recommendation rebuild) and each emission would otherwise re-run this
+    // build — meaning another full getAllSongs() on the UI thread.
+    ref.watch(userDataProvider.select((s) => s.hidden));
+    final userData = ref.read(userDataProvider);
 
     final cached = await DatabaseService.instance.getAllSongs();
     if (cached.isNotEmpty) {
@@ -409,7 +435,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         final path = folder['path'];
         if (path == null || path.isEmpty) continue;
 
-        final folderSongs = await scanner.scanDirectory(
+        final scanResult = await scanner.scanDirectory(
           path,
           existingSongs: existingSongs,
           lyricsPath: null,
@@ -423,7 +449,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           fastMode: fastMode,
         );
 
-        allSongs.addAll(folderSongs);
+        allSongs.addAll(scanResult.songs);
       }
 
       // De-duplicate by filename (base name) when enabled
@@ -573,21 +599,25 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             }
           }
           if (enrichmentChanged) {
-            ref.read(audioPlayerManagerProvider)
-                .refreshSongs(filteredEnriched);
+            ref.read(audioPlayerManagerProvider).refreshSongs(filteredEnriched);
             state = AsyncValue.data(filteredEnriched);
           }
         } catch (e) {
           debugPrint('Metadata enrichment failed: $e');
         }
 
-        // Rebuild search index after enrichment (not during fast pass)
+        // Rebuild search index after enrichment (not during fast pass).
+        // Yield first so the index transaction doesn't land in the same frame
+        // as the enrichment result publish above.
+        await Future.delayed(Duration.zero);
+        final searchService = SearchService();
         try {
-          final searchService = SearchService();
           await searchService.init();
           await searchService.rebuildIndex(fastSongs);
         } catch (e) {
           debugPrint('Search index rebuild failed: $e');
+        } finally {
+          await searchService.dispose();
         }
       }
 
@@ -1124,6 +1154,17 @@ Song _extractFeatFromSong(Song song) {
 
 final songsProvider =
     AsyncNotifierProvider<SongsNotifier, List<Song>>(SongsNotifier.new);
+
+/// Filename -> song lookup over the loaded library. Anything that resolves a
+/// stored filename list (queue snapshots, playlists, backups) should watch this
+/// rather than rebuilding its own map per widget.
+final songsByFilenameProvider = Provider<Map<String, Song>>((ref) {
+  final songsAsync = ref.watch(songsProvider);
+  if (songsAsync is AsyncData<List<Song>>) {
+    return {for (final song in songsAsync.value) song.filename: song};
+  }
+  return const {};
+});
 
 final recommendationsProvider = Provider<List<Song>>((ref) {
   final userData = ref.watch(userDataProvider);

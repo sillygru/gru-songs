@@ -400,35 +400,19 @@ class _DataManagementSettingsScreenState
 
     if (confirmed != true) return;
 
+    Map<String, dynamic>? validation;
     try {
-      final validation = await BackupService.instance.validateBackup();
+      validation = await BackupService.instance.pickAndValidateBackup();
 
       if (validation == null) return;
 
-      if (!validation['valid']) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text("Invalid Backup"),
-              content: Text(validation['error']),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("OK"),
-                ),
-              ],
-            ),
-          );
-        }
+      final availableCategories =
+          BackupService.instance.getAvailableCategories(validation);
+
+      if (!mounted) {
+        await BackupService.instance.discardValidation(validation);
         return;
       }
-
-      final availableCategories = BackupService.instance.getAvailableCategories(
-        validation.cast<String, dynamic>(),
-      );
-
-      if (!mounted) return;
 
       final importOptions = await showDialog<ImportOptions>(
         context: context,
@@ -439,7 +423,10 @@ class _DataManagementSettingsScreenState
         ),
       );
 
-      if (importOptions == null) return;
+      if (importOptions == null) {
+        await BackupService.instance.discardValidation(validation);
+        return;
+      }
 
       if (mounted) {
         showDialog(
@@ -451,8 +438,7 @@ class _DataManagementSettingsScreenState
       }
 
       await BackupService.instance.performImport(
-        statsDbPath: validation['statsDbPath'],
-        dataDbPath: validation['dataDbPath'],
+        validation: validation,
         options: importOptions,
       );
 
@@ -463,6 +449,7 @@ class _DataManagementSettingsScreenState
         ref.invalidate(songsProvider);
       }
     } catch (e) {
+      await BackupService.instance.discardValidation(validation);
       if (mounted) {
         if (Navigator.canPop(context)) Navigator.pop(context);
         appSnack(context, "Import failed: $e");

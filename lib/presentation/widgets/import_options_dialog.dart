@@ -74,7 +74,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
 
     final storageCategories = {
       ImportDataCategory.songs,
-      ImportDataCategory.finalStats,
       ImportDataCategory.queueHistory,
       ImportDataCategory.shuffleState,
       ImportDataCategory.playbackState,
@@ -95,6 +94,19 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
         settingsCategories.intersection(widget.availableCategories);
     final settingsCategoriesDisabled =
         settingsCategories.difference(widget.availableCategories);
+
+    final cacheCategories = {
+      ImportDataCategory.coverCache,
+      ImportDataCategory.libraryCache,
+      ImportDataCategory.searchIndex,
+      ImportDataCategory.waveformCache,
+      ImportDataCategory.colorCache,
+      ImportDataCategory.lyricsCache,
+    };
+    final cacheCategoriesAvailable =
+        cacheCategories.intersection(widget.availableCategories);
+    final cacheCategoriesDisabled =
+        cacheCategories.difference(widget.availableCategories);
 
     return AlertDialog(
       contentPadding: EdgeInsets.zero,
@@ -142,6 +154,15 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                   settingsCategoriesDisabled,
                   Icons.settings_outlined,
                   settingsCategories,
+                ),
+              if (cacheCategories.isNotEmpty)
+                _buildCategorySection(
+                  context,
+                  'Cache',
+                  cacheCategoriesAvailable,
+                  cacheCategoriesDisabled,
+                  Icons.folder_zip_outlined,
+                  cacheCategories,
                 ),
               const Divider(),
               Padding(

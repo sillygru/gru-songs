@@ -14,7 +14,6 @@ void main() {
       expect(ImportDataCategory.userdata.displayName, 'User Account');
       expect(ImportDataCategory.playHistory.displayName, 'Play History');
       expect(ImportDataCategory.songs.displayName, 'Songs Library');
-      expect(ImportDataCategory.finalStats.displayName, 'Statistics');
       expect(ImportDataCategory.queueHistory.displayName, 'Queue History');
       expect(ImportDataCategory.shuffleState.displayName, 'Shuffle State');
       expect(ImportDataCategory.playbackState.displayName, 'Playback State');
@@ -43,8 +42,6 @@ void main() {
       expect(ImportDataCategory.playHistory.description,
           'Play sessions and events');
       expect(ImportDataCategory.songs.description, 'Song metadata library');
-      expect(ImportDataCategory.finalStats.description,
-          'Fun listening statistics');
       expect(
           ImportDataCategory.queueHistory.description, 'Saved queue snapshots');
       expect(ImportDataCategory.shuffleState.description,
@@ -75,7 +72,6 @@ void main() {
       expect(ImportDataCategory.playHistory.type, ImportDataType.database);
 
       expect(ImportDataCategory.songs.type, ImportDataType.storage);
-      expect(ImportDataCategory.finalStats.type, ImportDataType.storage);
       expect(ImportDataCategory.queueHistory.type, ImportDataType.storage);
       expect(ImportDataCategory.shuffleState.type, ImportDataType.storage);
       expect(ImportDataCategory.playbackState.type, ImportDataType.storage);
@@ -102,7 +98,6 @@ void main() {
 
     test('non-database categories return empty table name', () {
       expect(ImportDataCategory.songs.dbTableName, '');
-      expect(ImportDataCategory.finalStats.dbTableName, '');
       expect(ImportDataCategory.queueHistory.dbTableName, '');
       expect(ImportDataCategory.shuffleState.dbTableName, '');
       expect(ImportDataCategory.playbackState.dbTableName, '');
@@ -116,7 +111,8 @@ void main() {
 
   group('ImportOptions', () {
     test('defaultImport includes all categories', () {
-      expect(ImportOptions.defaultImport.categories.length, 19);
+      expect(ImportOptions.defaultImport.categories.length,
+          ImportDataCategory.values.length);
       expect(
           ImportOptions.defaultImport.categories
               .contains(ImportDataCategory.favorites),
@@ -156,10 +152,6 @@ void main() {
       expect(
           ImportOptions.defaultImport.categories
               .contains(ImportDataCategory.songs),
-          true);
-      expect(
-          ImportOptions.defaultImport.categories
-              .contains(ImportDataCategory.finalStats),
           true);
       expect(
           ImportOptions.defaultImport.categories
@@ -325,10 +317,11 @@ void main() {
 
   group('ImportDataType', () {
     test('enum values exist', () {
-      expect(ImportDataType.values.length, 3);
+      expect(ImportDataType.values.length, 4);
       expect(ImportDataType.database, isNotNull);
       expect(ImportDataType.storage, isNotNull);
       expect(ImportDataType.settings, isNotNull);
+      expect(ImportDataType.cache, isNotNull);
     });
   });
 }

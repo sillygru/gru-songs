@@ -6,6 +6,7 @@ import 'dart:io';
 import '../../services/backup_service.dart';
 import '../../services/database_service.dart';
 import '../../services/import_options.dart';
+import '../../services/storage_service.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
 import '../../providers/providers.dart';
 import '../components/app_surface.dart';
@@ -83,16 +84,29 @@ class _BackupManagementScreenState
   }
 
   Future<BackupOptions?> _showBackupOptionsDialog() async {
-    return showDialog<BackupOptions>(
+    final storage = StorageService();
+    final initialTypes = await storage.loadBackupContentTypes();
+    if (!mounted) return null;
+
+    final options = await showDialog<BackupOptions>(
       context: context,
-      builder: (context) => _BackupOptionsDialog(),
+      builder: (context) => _BackupOptionsDialog(initialTypes: initialTypes),
     );
+
+    // Remember the selection so automatic backups capture the same content.
+    if (options != null) {
+      await storage.saveBackupContentTypes(options.contentTypes);
+    }
+    return options;
   }
 
   Future<void> _restoreBackup(BackupInfo backupInfo) async {
-    Map<String, dynamic>? validation;
+    // Inspect the backup being restored — not a file the user picks — so the
+    // offered categories always match what actually gets restored.
+    Map<String, dynamic> validation;
     try {
-      validation = await BackupService.instance.validateBackup();
+      validation =
+          await BackupService.instance.validateBackupFile(backupInfo.file);
     } catch (e) {
       if (mounted) {
         appSnack(context, 'Failed to validate backup: $e');
@@ -100,15 +114,9 @@ class _BackupManagementScreenState
       return;
     }
 
-    if (validation == null || validation['valid'] != true) {
-      if (mounted) {
-        appSnack(context, 'Invalid backup file');
-      }
-      return;
-    }
-
     final availableCategories =
         BackupService.instance.getAvailableCategories(validation);
+    await BackupService.instance.discardValidation(validation);
 
     if (!mounted) return;
 
@@ -621,17 +629,17 @@ class _BackupManagementScreenState
 }
 
 class _BackupOptionsDialog extends StatefulWidget {
-  const _BackupOptionsDialog();
+  final Set<BackupContentType> initialTypes;
+
+  const _BackupOptionsDialog({required this.initialTypes});
 
   @override
   State<_BackupOptionsDialog> createState() => _BackupOptionsDialogState();
 }
 
 class _BackupOptionsDialogState extends State<_BackupOptionsDialog> {
-  final Set<BackupContentType> _selectedTypes = {
-    BackupContentType.userStats,
-    BackupContentType.userData,
-  };
+  late final Set<BackupContentType> _selectedTypes =
+      Set.of(widget.initialTypes);
 
   String _getContentTypeName(BackupContentType type) {
     switch (type) {

@@ -91,12 +91,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // ------------------------------------------------------------------ tiles
 
-  Widget _buildQuickPickTile(Song song, AudioPlayerManager audioManager) {
+  Widget _buildQuickPickTile(
+    Song song,
+    AudioPlayerManager audioManager,
+    List<Song> contextQueue,
+  ) {
     return AppSurface(
       padding: EdgeInsets.zero,
       borderRadius: AppTokens.brSm,
       onTap: () => audioManager.playSong(
         song,
+        contextQueue: contextQueue,
         playlistId: audioManager.currentPlaylistId,
       ),
       child: Row(
@@ -591,6 +596,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           (context, index) => _buildQuickPickTile(
                             topRecommendations[index],
                             audioManager,
+                            sortedSongs,
                           ),
                           childCount: topRecommendations.length.clamp(0, 6),
                         ),
@@ -700,6 +706,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           heroTagPrefix: 'all_songs',
                           onTap: () => audioManager.playSong(
                             song,
+                            contextQueue: sortedSongs,
                             playlistId: audioManager.currentPlaylistId,
                           ),
                         );
