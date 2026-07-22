@@ -48,6 +48,7 @@ class _FolderManagementScreenState
     );
 
     await _loadFolders();
+    ref.invalidate(musicFoldersProvider);
     ref.invalidate(songsProvider);
 
     if (mounted) {
@@ -63,6 +64,7 @@ class _FolderManagementScreenState
     );
 
     await _loadFolders();
+    ref.invalidate(musicFoldersProvider);
     ref.invalidate(songsProvider);
 
     if (mounted) {

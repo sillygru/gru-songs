@@ -16,6 +16,7 @@ import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
 import '../services/notification_cover_warmer.dart';
 import '../services/update_service.dart';
+import '../services/library_logic.dart';
 import '../domain/services/search_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
@@ -1204,6 +1205,28 @@ final playCountsProvider = Provider<Map<String, int>>((ref) {
   }
 
   return const {};
+});
+
+/// Folder the library tree is rooted at, resolved from the configured music
+/// folders and the scanned songs (see [LibraryLogic.resolveLibraryRoot]).
+///
+/// This is a provider rather than a `FutureBuilder` inside the library screen on
+/// purpose: the screen rebuilds on every song, play-count and user-data change,
+/// and a per-build future reset the folder tab to its "no music folder" state
+/// for as long as the lookup was in flight — which is what made the library
+/// intermittently look empty while home still listed everything.
+final libraryRootPathProvider = Provider<AsyncValue<String?>>((ref) {
+  final foldersAsync = ref.watch(musicFoldersProvider);
+  final songs = ref.watch(songsProvider).value ?? const <Song>[];
+
+  return foldersAsync.whenData(
+    (folders) => LibraryLogic.resolveLibraryRoot(
+      allSongs: songs,
+      configuredFolders: [
+        for (final folder in folders) folder['path'] ?? '',
+      ],
+    ),
+  );
 });
 
 final artistListProvider = FutureProvider<List<String>>((ref) async {

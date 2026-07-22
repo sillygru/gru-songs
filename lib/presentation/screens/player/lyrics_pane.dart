@@ -215,8 +215,12 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         return ListView.builder(
           controller: _scrollController,
           physics: const ClampingScrollPhysics(),
-          padding: EdgeInsets.symmetric(
-            vertical: MediaQuery.of(context).size.height * 0.22,
+          // Top padding is deliberately small: the first lines belong at the
+          // top of the pane, not floating mid-screen. The tall bottom padding
+          // is what lets the last lines still scroll up to the anchor.
+          padding: EdgeInsets.only(
+            top: PlayerTokens.s5,
+            bottom: MediaQuery.of(context).size.height * 0.22,
           ),
           itemCount: lyrics.length,
           itemBuilder: (context, index) {

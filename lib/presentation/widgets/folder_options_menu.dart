@@ -7,8 +7,11 @@ import '../components/app_feedback.dart';
 import '../components/app_sheet.dart';
 import 'folder_picker.dart';
 
+/// [folderFullPath] is the absolute path of the folder the row stands for — the
+/// library tree is not always rooted at the first configured music folder, so a
+/// relative path cannot be resolved reliably here.
 void showFolderOptionsMenu(BuildContext context, WidgetRef ref,
-    String folderName, String folderRelativePath) {
+    String folderName, String folderFullPath) {
   showAppSheet(
     context,
     title: folderName,
@@ -26,11 +29,8 @@ void showFolderOptionsMenu(BuildContext context, WidgetRef ref,
               Navigator.pop(sheetContext); // Close bottom sheet
 
               final storage = ref.read(storageServiceProvider);
-              final rootPath = await storage.getMusicFolderPath();
-              if (rootPath == null) {
-                if (kDebugMode) debugPrint("UI: ERROR - rootPath is null");
-                return;
-              }
+              final rootPath = await storage.getMusicFolderPath() ??
+                  p.dirname(folderFullPath);
 
               if (context.mounted) {
                 if (kDebugMode) debugPrint("UI: Opening folder picker...");
@@ -42,14 +42,13 @@ void showFolderOptionsMenu(BuildContext context, WidgetRef ref,
                     debugPrint("UI: Selected target parent: $targetParentPath");
                   }
                   try {
-                    final oldFolderPath = p.join(rootPath, folderRelativePath);
                     if (kDebugMode) {
-                      debugPrint("UI: Old folder full path: $oldFolderPath");
+                      debugPrint("UI: Old folder full path: $folderFullPath");
                     }
 
                     await ref
                         .read(songsProvider.notifier)
-                        .moveFolder(oldFolderPath, targetParentPath);
+                        .moveFolder(folderFullPath, targetParentPath);
 
                     if (context.mounted) {
                       appSnack(

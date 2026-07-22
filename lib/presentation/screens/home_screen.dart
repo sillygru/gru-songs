@@ -86,6 +86,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       iosBookmarkId: selection['iosBookmarkId'],
       platform: selection['platform'],
     );
+    ref.invalidate(musicFoldersProvider);
     ref.invalidate(songsProvider);
   }
 

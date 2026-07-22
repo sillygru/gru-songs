@@ -374,7 +374,7 @@ class _TransportDock extends ConsumerWidget {
         PlayerTokens.s5,
         PlayerTokens.s2,
         PlayerTokens.s5,
-        PlayerTokens.s3,
+        PlayerTokens.s6,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

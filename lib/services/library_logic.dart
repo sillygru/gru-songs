@@ -19,6 +19,84 @@ class LibraryFolderContent {
 }
 
 class LibraryLogic {
+  /// Picks the folder the "Folders" tab should be rooted at.
+  ///
+  /// The library tree used to be rooted at the *first* configured music folder,
+  /// which made songs disappear from the tab whenever that folder was not the
+  /// one holding them — extra folders added later, or a root whose absolute
+  /// path drifted (iOS re-resolves its container path on reinstall, Android SAF
+  /// can hand back a different mount). Home kept showing those songs because it
+  /// never filters by path, so the library looked empty for no visible reason.
+  ///
+  /// The root is therefore derived from what is actually in the library:
+  /// configured folders that hold songs win, several of them collapse to their
+  /// common ancestor, and if none of them match the scanned paths we fall back
+  /// to the common ancestor of the songs themselves. Only sub-folders that
+  /// contain songs are ever listed, so a shallow root adds at most a level of
+  /// drill-down — it never exposes unrelated directories.
+  ///
+  /// Returns `null` only when there is nothing to show at all.
+  static String? resolveLibraryRoot({
+    required List<Song> allSongs,
+    required List<String> configuredFolders,
+  }) {
+    final roots = <String>[];
+    for (final folder in configuredFolders) {
+      final normalized = normalizePath(folder);
+      if (normalized.isEmpty || roots.contains(normalized)) continue;
+      roots.add(normalized);
+    }
+
+    final matching = roots
+        .where((root) => allSongs.any((song) => isUnder(root, song.url)))
+        .toList();
+
+    if (matching.length == 1) return matching.first;
+    if (matching.length > 1) return _commonAncestor(matching);
+
+    if (allSongs.isEmpty) return roots.isEmpty ? null : roots.first;
+
+    return _commonAncestor(allSongs.map((song) => p.dirname(song.url)));
+  }
+
+  static String normalizePath(String path) {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) return '';
+    return p.normalize(trimmed);
+  }
+
+  /// Whether [songUrl] is [root] itself or lives somewhere below it.
+  static bool isUnder(String root, String songUrl) {
+    if (root.isEmpty || songUrl.isEmpty) return false;
+    final normalized = normalizePath(songUrl);
+    return normalized == root || p.isWithin(root, normalized);
+  }
+
+  /// Deepest directory containing every path in [paths], or `null` if they
+  /// share nothing (different drives on Windows, empty input).
+  static String? _commonAncestor(Iterable<String> paths) {
+    List<String>? common;
+
+    for (final path in paths) {
+      final parts = p.split(normalizePath(path));
+      if (common == null) {
+        common = parts;
+        continue;
+      }
+
+      final limit = common.length < parts.length ? common.length : parts.length;
+      var shared = 0;
+      while (shared < limit && common[shared] == parts[shared]) {
+        shared++;
+      }
+      common = common.sublist(0, shared);
+      if (common.isEmpty) return null;
+    }
+
+    if (common == null || common.isEmpty) return null;
+    return p.joinAll(common);
+  }
+
   static List<Song> sortSongs(
     List<Song> songs,
     SongSortOrder sortOrder, {
@@ -166,10 +244,9 @@ class LibraryLogic {
   }) {
     // Filter songs in the current path (or subpaths)
 
-    final allSongsInFolder = allSongs
-        .where((s) =>
-            s.url == currentFullPath || p.isWithin(currentFullPath, s.url))
-        .toList();
+    final root = normalizePath(currentFullPath);
+    final allSongsInFolder =
+        allSongs.where((s) => isUnder(root, s.url)).toList();
 
     final Set<String> subFolders = {};
 
@@ -178,7 +255,7 @@ class LibraryLogic {
     final Map<String, List<Song>> subFolderSongsMap = {};
 
     for (var song in allSongsInFolder) {
-      final relativeToCurrent = p.relative(song.url, from: currentFullPath);
+      final relativeToCurrent = p.relative(normalizePath(song.url), from: root);
 
       final parts = p.split(relativeToCurrent);
 

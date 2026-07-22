@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../providers/providers.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/storage_service.dart';
@@ -423,6 +424,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       iosBookmarkId: selection['iosBookmarkId'],
       platform: selection['platform'],
     );
+
+    ref.invalidate(musicFoldersProvider);
 
     if (mounted) {
       setState(() => _folderSelected = true);

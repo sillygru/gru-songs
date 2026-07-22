@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -68,6 +66,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final songsAsyncValue = ref.watch(songsProvider);
+    final rootPathAsync = ref.watch(libraryRootPathProvider);
     final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);
     final settings = ref.watch(settingsProvider);
@@ -76,30 +75,60 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final playCounts = ref.watch(playCountsProvider);
     final isRoot = widget.relativePath == null;
 
-    if (!isRoot) {
+    // The folder tab needs both the library and the folder it is rooted at, so
+    // it stays on the loading state until both are known — never on an "empty"
+    // one that reads as "you have no music".
+    Widget buildFolderTab() {
       return songsAsyncValue.when(
-        data: (allSongs) => _buildFolderView(
-          context,
-          allSongs,
-          userData,
-          audioManager,
-          sortOrder,
-          shuffleConfig,
-          playCounts,
-        ),
-        loading: () => Scaffold(
-          appBar: AppTopBar(title: widget.relativePath ?? 'Library'),
-          body: const AppLoading(),
-        ),
-        error: (e, s) => Scaffold(
-          appBar: AppTopBar(title: widget.relativePath ?? 'Library'),
-          body: AppEmptyState(
+        data: (allSongs) => rootPathAsync.when(
+          data: (musicRoot) {
+            if (musicRoot == null) {
+              return const AppEmptyState(
+                icon: Icons.folder_off_rounded,
+                title: 'No music folder yet',
+                message: 'Select a music folder in Home to fill this out.',
+              );
+            }
+            return _buildFolderView(
+              context,
+              musicRoot,
+              allSongs,
+              userData,
+              audioManager,
+              sortOrder,
+              shuffleConfig,
+              playCounts,
+            );
+          },
+          loading: () => const AppLoading(),
+          error: (e, s) => AppEmptyState(
             icon: Icons.error_outline_rounded,
-            title: 'Could not open folder',
+            title: 'Could not find your music folder',
             message: '$e',
             tone: AppTone.danger,
           ),
         ),
+        loading: () => const AppLoading(),
+        error: (e, s) => AppEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: isRoot ? 'Could not load library' : 'Could not open folder',
+          message: '$e',
+          tone: AppTone.danger,
+        ),
+      );
+    }
+
+    if (!isRoot) {
+      // Sub-folder screens own their own scaffold once content is available;
+      // until then they still need chrome to hang the loading state on.
+      final hasContent = songsAsyncValue.hasValue &&
+          rootPathAsync.hasValue &&
+          rootPathAsync.value != null;
+      if (hasContent) return buildFolderTab();
+
+      return Scaffold(
+        appBar: AppTopBar(title: widget.relativePath ?? 'Library'),
+        body: buildFolderTab(),
       );
     }
 
@@ -153,15 +182,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           body: songsAsyncValue.when(
             data: (allSongs) => TabBarView(
               children: [
-                _buildFolderView(
-                  context,
-                  allSongs,
-                  userData,
-                  audioManager,
-                  sortOrder,
-                  shuffleConfig,
-                  playCounts,
-                ),
+                buildFolderTab(),
                 _buildArtistsView(context, allSongs),
                 _buildAlbumsView(context, allSongs),
               ],
@@ -181,6 +202,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Widget _buildFolderView(
     BuildContext context,
+    String musicRoot,
     List<Song> allSongs,
     UserDataState userData,
     AudioPlayerManager audioManager,
@@ -188,298 +210,285 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     ShuffleConfig shuffleConfig,
     Map<String, int> playCounts,
   ) {
-    return FutureBuilder<String?>(
-      future: ref.read(storageServiceProvider).getMusicFolderPath(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data == null) {
-          return const Center(
-              child: Text('Please select a music folder in Home first.'));
-        }
+    final currentFullPath = widget.relativePath == null
+        ? musicRoot
+        : p.join(musicRoot, widget.relativePath);
 
-        final musicRoot =
-            Platform.isIOS ? p.normalize(snapshot.data!) : snapshot.data!;
-        final currentFullPath = widget.relativePath == null
-            ? musicRoot
-            : p.join(musicRoot, widget.relativePath);
+    final content = LibraryLogic.getFolderContent(
+      allSongs: allSongs,
+      currentFullPath: currentFullPath,
+      sortOrder: sortOrder,
+      userData: userData,
+      shuffleConfig: shuffleConfig,
+      playCounts: playCounts,
+    );
 
-        final content = LibraryLogic.getFolderContent(
-          allSongs: allSongs,
-          currentFullPath: currentFullPath,
-          sortOrder: sortOrder,
-          userData: userData,
-          shuffleConfig: shuffleConfig,
-          playCounts: playCounts,
-        );
+    final sortedSubFolders = content.subFolders;
+    final immediateSongs = content.immediateSongs;
+    final isRoot = widget.relativePath == null;
+    final playlists =
+        userData.playlists.where((p) => !p.isRecommendation).toList();
 
-        final sortedSubFolders = content.subFolders;
-        final immediateSongs = content.immediateSongs;
-        final isRoot = widget.relativePath == null;
-        final playlists =
-            userData.playlists.where((p) => !p.isRecommendation).toList();
+    Widget folderIndexBuilder(BuildContext context, int index) {
+      int offset = 0;
 
-        Widget folderIndexBuilder(BuildContext context, int index) {
-          int offset = 0;
+      // 1. Favorites Folder (at root only)
+      if (isRoot) {
+        if (index == 0) {
+          final favSongs =
+              allSongs.where((s) => userData.isFavorite(s.filename)).toList();
 
-          // 1. Favorites Folder (at root only)
-          if (isRoot) {
-            if (index == 0) {
-              final favSongs = allSongs
-                  .where((s) => userData.isFavorite(s.filename))
-                  .toList();
-
-              return AppListRow(
-                leading: const AppRowIcon(
-                  icon: Icons.favorite_rounded,
-                  color: AppTokens.danger,
-                ),
-                title: 'Favorites',
-                subtitleWidget: CollectionDurationDisplay(
-                  songs: favSongs,
-                  showSongCount: true,
-                  compact: true,
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SongListScreen(
-                        title: 'Favorites',
-                        songs: favSongs,
-                      ),
-                    ),
-                  );
-                },
-              );
-            }
-            offset = 1;
-
-            // 2. Merged Songs Folder (at root only)
-            if (index == 1) {
-              final mergedCount = userData.mergedGroups.length;
-
-              return AppListRow(
-                leading: AppRowIcon(
-                  icon: Icons.merge_type_rounded,
-                  color: AppTokens.accentOf(context, ref),
-                ),
-                title: 'Merged Songs',
-                subtitle: '$mergedCount group${mergedCount != 1 ? 's' : ''}',
-                trailing: IconButton(
-                  icon: const Icon(Icons.add_rounded),
-                  tooltip: 'Create new merge group',
-                  onPressed: () async {
-                    final result = await Navigator.push<Map<String, dynamic>>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SelectSongsScreen(
-                          songs: allSongs,
-                          title: 'Select Songs to Merge',
-                        ),
-                      ),
-                    );
-                    if (result != null && context.mounted) {
-                      final selected = result['filenames'] as List<String>;
-                      final priority = result['priority'] as String?;
-                      if (selected.length >= 2) {
-                        try {
-                          await ref
-                              .read(userDataProvider.notifier)
-                              .createMergedGroup(selected,
-                                  priorityFilename: priority);
-                          if (context.mounted) {
-                            appSnack(
-                              context,
-                              'Merged ${selected.length} songs',
-                              tone: AppTone.success,
-                            );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            appSnack(context, '$e', tone: AppTone.danger);
-                          }
-                        }
-                      }
-                    }
-                  },
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const MergedSongsScreen(),
-                    ),
-                  );
-                },
-              );
-            }
-            offset = 2;
-
-            // 3. Playlists (at root only)
-            if (index - offset < playlists.length) {
-              final playlist = playlists[index - offset];
-              final playlistSongs = allSongs
-                  .where((s) =>
-                      playlist.songs.any((ps) => ps.songFilename == s.filename))
-                  .toList();
-
-              // The playlist used to be marked by a 2px accent ring; the
-              // collage now stands on its own.
-              return AppListRow(
-                leading: AppRowArt(
-                  child: FolderGridImage(songs: playlistSongs),
-                ),
-                title: playlist.name,
-                subtitleWidget: CollectionDurationDisplay(
-                  songs: playlistSongs,
-                  showSongCount: true,
-                  compact: true,
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.more_vert_rounded),
-                  tooltip: 'Playlist options',
-                  onPressed: () {
-                    showAppSheet(
-                      context,
-                      title: playlist.name,
-                      builder: (sheetContext) => AppSheetAction(
-                        icon: Icons.delete_outline_rounded,
-                        label: 'Delete playlist',
-                        isDanger: true,
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          ref
-                              .read(userDataProvider.notifier)
-                              .deletePlaylist(playlist.id);
-                        },
-                      ),
-                    );
-                  },
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SongListScreen(
-                        title: playlist.name,
-                        songs: playlistSongs,
-                        playlistId: playlist.id,
-                      ),
-                    ),
-                  );
-                },
-              );
-            }
-            offset += playlists.length;
-          }
-
-          final folderIndex = index - offset;
-          if (folderIndex < sortedSubFolders.length) {
-            final folderName = sortedSubFolders[folderIndex];
-            final folderRelativePath = widget.relativePath == null
-                ? folderName
-                : p.join(widget.relativePath!, folderName);
-            final folderSongs = content.subFolderSongs[folderName] ?? [];
-
-            return AppListRow(
-              leading: AppRowArt(child: FolderGridImage(songs: folderSongs)),
-              title: folderName,
-              subtitleWidget: CollectionDurationDisplay(
-                songs: folderSongs,
-                showSongCount: true,
-                compact: true,
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.more_vert_rounded),
-                tooltip: 'Folder options',
-                onPressed: () {
-                  showFolderOptionsMenu(
-                      context, ref, folderName, folderRelativePath);
-                },
-              ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        LibraryScreen(relativePath: folderRelativePath),
-                  ),
-                );
-              },
-            );
-          }
-
-          final songIndex = folderIndex - sortedSubFolders.length;
-          final song = immediateSongs[songIndex];
-
-          return SongListItem(
-            song: song,
-            heroTagPrefix: 'library_${widget.relativePath ?? 'root'}',
+          return AppListRow(
+            leading: const AppRowIcon(
+              icon: Icons.favorite_rounded,
+              color: AppTokens.danger,
+            ),
+            title: 'Favorites',
+            subtitleWidget: CollectionDurationDisplay(
+              songs: favSongs,
+              showSongCount: true,
+              compact: true,
+            ),
             onTap: () {
-              audioManager.playSong(song, contextQueue: immediateSongs);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SongListScreen(
+                    title: 'Favorites',
+                    songs: favSongs,
+                  ),
+                ),
+              );
             },
           );
         }
+        offset = 1;
 
-        final itemCount = (isRoot ? (2 + playlists.length) : 0) +
-            sortedSubFolders.length +
-            immediateSongs.length;
+        // 2. Merged Songs Folder (at root only)
+        if (index == 1) {
+          final mergedCount = userData.mergedGroups.length;
 
-        if (isRoot) {
-          return NotificationListener<ScrollNotification>(
-            onNotification: _handleScrollNotification,
-            child: ListView.builder(
-              itemCount: itemCount,
-              padding: const EdgeInsets.only(
-                bottom: AppTokens.scrollBottomInset,
-              ),
-              itemBuilder: folderIndexBuilder,
+          return AppListRow(
+            leading: AppRowIcon(
+              icon: Icons.merge_type_rounded,
+              color: AppTokens.accentOf(context, ref),
             ),
-          );
-        } else {
-          return Scaffold(
-            backgroundColor: Colors.transparent,
-            body: NotificationListener<ScrollNotification>(
-              onNotification: _handleScrollNotification,
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  AppSliverHeader(
-                    title: widget.relativePath ?? 'Library',
-                    isScrolled: _isScrolled,
-                    large: false,
-                    floating: true,
-                    snap: true,
-                    pinned: false,
-                    actions: [
-                      const SortMenu(),
-                      if (content.allSongsInFolder.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.shuffle_rounded),
-                          tooltip: 'Shuffle folder',
-                          onPressed: () => audioManager.shuffleAndPlay(
-                            content.allSongsInFolder,
-                            isRestricted: true,
-                          ),
-                        ),
-                    ],
-                  ),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      folderIndexBuilder,
-                      childCount: itemCount,
+            title: 'Merged Songs',
+            subtitle: '$mergedCount group${mergedCount != 1 ? 's' : ''}',
+            trailing: IconButton(
+              icon: const Icon(Icons.add_rounded),
+              tooltip: 'Create new merge group',
+              onPressed: () async {
+                final result = await Navigator.push<Map<String, dynamic>>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SelectSongsScreen(
+                      songs: allSongs,
+                      title: 'Select Songs to Merge',
                     ),
                   ),
-                  const SliverPadding(
-                    padding:
-                        EdgeInsets.only(bottom: AppTokens.scrollBottomInset),
-                  ),
-                ],
-              ),
+                );
+                if (result != null && context.mounted) {
+                  final selected = result['filenames'] as List<String>;
+                  final priority = result['priority'] as String?;
+                  if (selected.length >= 2) {
+                    try {
+                      await ref
+                          .read(userDataProvider.notifier)
+                          .createMergedGroup(selected,
+                              priorityFilename: priority);
+                      if (context.mounted) {
+                        appSnack(
+                          context,
+                          'Merged ${selected.length} songs',
+                          tone: AppTone.success,
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        appSnack(context, '$e', tone: AppTone.danger);
+                      }
+                    }
+                  }
+                }
+              },
             ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MergedSongsScreen(),
+                ),
+              );
+            },
           );
         }
-      },
-    );
+        offset = 2;
+
+        // 3. Playlists (at root only)
+        if (index - offset < playlists.length) {
+          final playlist = playlists[index - offset];
+          final playlistSongs = allSongs
+              .where((s) =>
+                  playlist.songs.any((ps) => ps.songFilename == s.filename))
+              .toList();
+
+          // The playlist used to be marked by a 2px accent ring; the
+          // collage now stands on its own.
+          return AppListRow(
+            leading: AppRowArt(
+              child: FolderGridImage(songs: playlistSongs),
+            ),
+            title: playlist.name,
+            subtitleWidget: CollectionDurationDisplay(
+              songs: playlistSongs,
+              showSongCount: true,
+              compact: true,
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.more_vert_rounded),
+              tooltip: 'Playlist options',
+              onPressed: () {
+                showAppSheet(
+                  context,
+                  title: playlist.name,
+                  builder: (sheetContext) => AppSheetAction(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Delete playlist',
+                    isDanger: true,
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      ref
+                          .read(userDataProvider.notifier)
+                          .deletePlaylist(playlist.id);
+                    },
+                  ),
+                );
+              },
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SongListScreen(
+                    title: playlist.name,
+                    songs: playlistSongs,
+                    playlistId: playlist.id,
+                  ),
+                ),
+              );
+            },
+          );
+        }
+        offset += playlists.length;
+      }
+
+      final folderIndex = index - offset;
+      if (folderIndex < sortedSubFolders.length) {
+        final folderName = sortedSubFolders[folderIndex];
+        final folderRelativePath = widget.relativePath == null
+            ? folderName
+            : p.join(widget.relativePath!, folderName);
+        final folderSongs = content.subFolderSongs[folderName] ?? [];
+
+        return AppListRow(
+          leading: AppRowArt(child: FolderGridImage(songs: folderSongs)),
+          title: folderName,
+          subtitleWidget: CollectionDurationDisplay(
+            songs: folderSongs,
+            showSongCount: true,
+            compact: true,
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.more_vert_rounded),
+            tooltip: 'Folder options',
+            onPressed: () {
+              // Absolute, because the tree root is not necessarily the
+              // first configured music folder any more.
+              showFolderOptionsMenu(context, ref, folderName,
+                  p.join(currentFullPath, folderName));
+            },
+          ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LibraryScreen(relativePath: folderRelativePath),
+              ),
+            );
+          },
+        );
+      }
+
+      final songIndex = folderIndex - sortedSubFolders.length;
+      final song = immediateSongs[songIndex];
+
+      return SongListItem(
+        song: song,
+        heroTagPrefix: 'library_${widget.relativePath ?? 'root'}',
+        onTap: () {
+          audioManager.playSong(song, contextQueue: immediateSongs);
+        },
+      );
+    }
+
+    final itemCount = (isRoot ? (2 + playlists.length) : 0) +
+        sortedSubFolders.length +
+        immediateSongs.length;
+
+    if (isRoot) {
+      return NotificationListener<ScrollNotification>(
+        onNotification: _handleScrollNotification,
+        child: ListView.builder(
+          itemCount: itemCount,
+          padding: const EdgeInsets.only(
+            bottom: AppTokens.scrollBottomInset,
+          ),
+          itemBuilder: folderIndexBuilder,
+        ),
+      );
+    } else {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: NotificationListener<ScrollNotification>(
+          onNotification: _handleScrollNotification,
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              AppSliverHeader(
+                title: widget.relativePath ?? 'Library',
+                isScrolled: _isScrolled,
+                large: false,
+                floating: true,
+                snap: true,
+                pinned: false,
+                actions: [
+                  const SortMenu(),
+                  if (content.allSongsInFolder.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.shuffle_rounded),
+                      tooltip: 'Shuffle folder',
+                      onPressed: () => audioManager.shuffleAndPlay(
+                        content.allSongsInFolder,
+                        isRestricted: true,
+                      ),
+                    ),
+                ],
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  folderIndexBuilder,
+                  childCount: itemCount,
+                ),
+              ),
+              const SliverPadding(
+                padding: EdgeInsets.only(bottom: AppTokens.scrollBottomInset),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildArtistsView(BuildContext context, List<Song> allSongs) {

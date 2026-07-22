@@ -81,7 +81,12 @@ class StorageService {
     return File('$path/playback_state.json');
   }
 
-  List<Map<String, String>>? _cachedMusicFolders;
+  /// Static because `StorageService` is constructed ad hoc all over the app
+  /// (screens, scanner, backup). A per-instance cache meant a folder added
+  /// through one instance stayed invisible to every other instance that had
+  /// already cached the old list — the library could then keep reporting "no
+  /// music folder" for the rest of the session.
+  static List<Map<String, String>>? _cachedMusicFolders;
 
   Map<String, String> _normalizeFolderRecord(Map<String, String> folder) {
     return {

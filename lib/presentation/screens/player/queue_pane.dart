@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
@@ -38,9 +39,15 @@ class QueuePane extends ConsumerStatefulWidget {
 }
 
 class _QueuePaneState extends ConsumerState<QueuePane>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
   late final ValueNotifier<double> _segment;
   late bool _showHistory;
+
+  /// 1 = chrome (segment pill + summary row) shown, 0 = collapsed. Driven by
+  /// scroll direction rather than offset, so a small scroll back up brings it
+  /// straight back instead of only at the very top of the list.
+  late final AnimationController _chrome;
+  late final Animation<double> _chromeCurve;
 
   @override
   bool get wantKeepAlive => true;
@@ -50,17 +57,45 @@ class _QueuePaneState extends ConsumerState<QueuePane>
     super.initState();
     _showHistory = widget.initialShowHistory;
     _segment = ValueNotifier(_showHistory ? 1 : 0);
+    _chrome = AnimationController(
+      vsync: this,
+      duration: PlayerTokens.dFast,
+      value: 1,
+    );
+    _chromeCurve = CurvedAnimation(
+      parent: _chrome,
+      curve: PlayerTokens.cStandard,
+    );
   }
 
   @override
   void dispose() {
     _segment.dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
   void _select(int index) {
     setState(() => _showHistory = index == 1);
     _segment.value = index.toDouble();
+    _chrome.forward();
+  }
+
+  /// Notifications bubble up from whichever list is currently showing, so one
+  /// listener here covers both segments.
+  bool _onUserScroll(UserScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    switch (notification.direction) {
+      case ScrollDirection.reverse:
+        // Nothing to hide for a list that doesn't actually scroll.
+        if (notification.metrics.maxScrollExtent > 0) _chrome.reverse();
+      case ScrollDirection.forward:
+        _chrome.forward();
+      case ScrollDirection.idle:
+        break;
+    }
+    return false;
   }
 
   @override
@@ -69,32 +104,59 @@ class _QueuePaneState extends ConsumerState<QueuePane>
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            PlayerTokens.s6,
-            PlayerTokens.s2,
-            PlayerTokens.s6,
-            PlayerTokens.s2,
-          ),
-          child: PlayerSegmentedPill(
-            labels: const ['Up Next', 'History'],
-            position: _segment,
-            onSelected: _select,
-            accent: widget.accent,
-            compact: true,
+        _CollapsibleChrome(
+          animation: _chromeCurve,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              PlayerTokens.s6,
+              PlayerTokens.s2,
+              PlayerTokens.s6,
+              PlayerTokens.s2,
+            ),
+            child: PlayerSegmentedPill(
+              labels: const ['Up Next', 'History'],
+              position: _segment,
+              onSelected: _select,
+              accent: widget.accent,
+              compact: true,
+            ),
           ),
         ),
         Expanded(
-          child: AnimatedSwitcher(
-            duration: PlayerTokens.dFast,
-            child: _showHistory
-                ? _HistoryList(
-                    key: const ValueKey('history'), accent: widget.accent)
-                : _UpNextList(
-                    key: const ValueKey('upnext'), accent: widget.accent),
+          child: NotificationListener<UserScrollNotification>(
+            onNotification: _onUserScroll,
+            child: AnimatedSwitcher(
+              duration: PlayerTokens.dFast,
+              child: _showHistory
+                  ? _HistoryList(
+                      key: const ValueKey('history'), accent: widget.accent)
+                  : _UpNextList(
+                      key: const ValueKey('upnext'),
+                      accent: widget.accent,
+                      chrome: _chromeCurve,
+                    ),
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Collapses its child upward — height and opacity together — so the queue
+/// chrome gets out of the way while scrolling without leaving a gap behind.
+class _CollapsibleChrome extends StatelessWidget {
+  final Animation<double> animation;
+  final Widget child;
+
+  const _CollapsibleChrome({required this.animation, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizeTransition(
+      sizeFactor: animation,
+      alignment: Alignment.topCenter,
+      child: FadeTransition(opacity: animation, child: child),
     );
   }
 }
@@ -106,14 +168,29 @@ class _QueuePaneState extends ConsumerState<QueuePane>
 class _UpNextList extends ConsumerStatefulWidget {
   final Color accent;
 
-  const _UpNextList({super.key, required this.accent});
+  /// The pane's collapse animation — the summary row rides it so it hides in
+  /// step with the segment pill.
+  final Animation<double> chrome;
+
+  const _UpNextList({
+    super.key,
+    required this.accent,
+    required this.chrome,
+  });
 
   @override
   ConsumerState<_UpNextList> createState() => _UpNextListState();
 }
 
 class _UpNextListState extends ConsumerState<_UpNextList> {
+  /// Rough height of the 'Played' section header, used only to get the current
+  /// row built before [_snapCurrentToTop] measures it exactly.
+  static const double _sectionHeaderHeight = 40;
+
   final ScrollController _scrollController = ScrollController();
+
+  /// Marks the current track's row so it can be measured rather than estimated.
+  final GlobalKey _currentRowKey = GlobalKey();
 
   /// Queue ids dismissed locally, so a swiped row disappears immediately
   /// instead of flickering until the manager's notifier catches up.
@@ -130,20 +207,45 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
     super.dispose();
   }
 
+  /// Opens the list on the current track, pinned to the top, so what's coming
+  /// up is what you see first — played rows stay one scroll up.
   void _autoScrollToCurrent(int currentIndex) {
     if (_didAutoScroll || currentIndex < 0) return;
     _didAutoScroll = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      // Leave a few played rows visible above the current track for context.
-      const rowsAbove = 3;
-      final target = ((currentIndex - rowsAbove).clamp(0, currentIndex)) *
-          PlayerTokens.rowHeight;
+
+      // Estimate first: rows below the fold are never built, so the current
+      // row has no context to measure until something near it is on screen.
+      final estimate = currentIndex == 0
+          ? 0.0
+          : _sectionHeaderHeight + currentIndex * PlayerTokens.rowHeight;
       _scrollController.jumpTo(
-        target.clamp(0.0, _scrollController.position.maxScrollExtent),
+        estimate.clamp(0.0, _scrollController.position.maxScrollExtent),
       );
+
+      WidgetsBinding.instance.addPostFrameCallback((_) => _snapCurrentToTop());
     });
+  }
+
+  /// Corrects the estimate once the row is real — row heights are uniform but
+  /// the section headers and paddings around them are not.
+  void _snapCurrentToTop() {
+    if (!mounted || !_scrollController.hasClients) return;
+
+    final box = _currentRowKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewport = box == null ? null : RenderAbstractViewport.maybeOf(box);
+    if (box == null || viewport == null) return;
+
+    final position = _scrollController.position;
+    final target = viewport
+        .getOffsetToReveal(box, 0)
+        .offset
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+
+    if ((target - position.pixels).abs() < 0.5) return;
+    _scrollController.jumpTo(target);
   }
 
   Future<void> _remove(
@@ -245,7 +347,10 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
 
             return Column(
               children: [
-                _buildSummary(context, upcoming, audioManager),
+                _CollapsibleChrome(
+                  animation: widget.chrome,
+                  child: _buildSummary(context, upcoming, audioManager),
+                ),
                 Expanded(
                   child: Stack(
                     children: [
@@ -286,6 +391,7 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
                                   final playing =
                                       stateSnapshot.data?.playing ?? false;
                                   return Padding(
+                                    key: _currentRowKey,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: PlayerTokens.s3,
                                       vertical: PlayerTokens.s1,

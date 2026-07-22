@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -46,32 +47,50 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
     final coverSizing =
         ref.watch(settingsProvider.select((s) => s.coverSizingMode));
 
+    // The cover is the flexible element: the title block is laid out in full
+    // first and the artwork takes whatever is left. Sizing the cover up front
+    // and scrolling the overflow is what used to clip the album line.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final coverSize = (constraints.maxWidth - PlayerTokens.s5 * 2)
-            .clamp(0.0, constraints.maxHeight * PlayerTokens.coverMaxFraction);
+        final coverCap = constraints.maxHeight * PlayerTokens.coverMaxFraction;
 
-        return SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(height: PlayerTokens.s4),
-                _CoverStage(
-                  song: widget.song,
-                  accent: widget.accent,
-                  size: coverSize,
-                  coverSizing: coverSizing,
-                  audioManager: audioManager,
+        return Column(
+          children: [
+            const SizedBox(height: PlayerTokens.s4),
+            Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: PlayerTokens.s5),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final side = math
+                        .min(box.maxWidth, box.maxHeight)
+                        .clamp(0.0, coverCap);
+
+                    return Center(
+                      child: _CoverStage(
+                        song: widget.song,
+                        accent: widget.accent,
+                        size: side,
+                        coverSizing: coverSizing,
+                        audioManager: audioManager,
+                      ),
+                    );
+                  },
                 ),
-                const SizedBox(height: PlayerTokens.s5),
-                _buildTitleBlock(context),
-                const SizedBox(height: PlayerTokens.s4),
-              ],
+              ),
             ),
-          ),
+            if (widget.song.hasVideo) ...[
+              const SizedBox(height: PlayerTokens.s3),
+              _VideoModeToggle(
+                accent: widget.accent,
+                audioManager: audioManager,
+              ),
+            ],
+            const SizedBox(height: PlayerTokens.s4),
+            _buildTitleBlock(context),
+            const SizedBox(height: PlayerTokens.s3),
+          ],
         );
       },
     );
@@ -90,7 +109,7 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
                   widget.song.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: PlayerTokens.paneTitle(context).copyWith(fontSize: 24),
+                  style: PlayerTokens.paneTitle(context).copyWith(fontSize: 22),
                 ),
                 const SizedBox(height: PlayerTokens.s1),
                 Text(
@@ -98,7 +117,7 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: PlayerTokens.trackSubtitle(context)
-                      .copyWith(fontSize: 15),
+                      .copyWith(fontSize: 14),
                 ),
                 if (widget.song.album.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -264,7 +283,8 @@ class _FavoriteButtonState extends ConsumerState<_FavoriteButton>
 }
 
 /// The artwork, or the video surface when the track has video and video mode is
-/// on. Also hosts the video toggle.
+/// on. Strictly square — the toggle lives outside it as [_VideoModeToggle], so
+/// the pane can hand this the whole leftover box and get a square back.
 class _CoverStage extends ConsumerWidget {
   final Song song;
   final Color accent;
@@ -287,29 +307,20 @@ class _CoverStage extends ConsumerWidget {
       builder: (context, mode, _) {
         final isVideo = mode == PlaybackMediaMode.video;
 
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: size,
-              height: size,
-              child: AnimatedSwitcher(
-                duration: PlayerTokens.dBase,
-                switchInCurve: PlayerTokens.cStandard,
-                child: isVideo
-                    ? _VideoSurface(
-                        key: ValueKey('video_${song.filename}'),
-                        song: song,
-                        audioManager: audioManager,
-                      )
-                    : _buildCover(context),
-              ),
-            ),
-            if (song.hasVideo) ...[
-              const SizedBox(height: PlayerTokens.s3),
-              _buildVideoToggle(context, isVideo),
-            ],
-          ],
+        return SizedBox(
+          width: size,
+          height: size,
+          child: AnimatedSwitcher(
+            duration: PlayerTokens.dBase,
+            switchInCurve: PlayerTokens.cStandard,
+            child: isVideo
+                ? _VideoSurface(
+                    key: ValueKey('video_${song.filename}'),
+                    song: song,
+                    audioManager: audioManager,
+                  )
+                : _buildCover(context),
+          ),
         );
       },
     );
@@ -348,27 +359,44 @@ class _CoverStage extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Widget _buildVideoToggle(BuildContext context, bool isVideo) {
-    return TextButton.icon(
-      onPressed: () {
-        HapticFeedback.selectionClick();
-        audioManager.setPreferredMediaMode(
-          isVideo ? PlaybackMediaMode.audio : PlaybackMediaMode.video,
+/// Switches the cover between artwork and video. Watches the media mode itself
+/// so it can sit beside [_CoverStage] rather than inside it.
+class _VideoModeToggle extends StatelessWidget {
+  final Color accent;
+  final AudioPlayerManager audioManager;
+
+  const _VideoModeToggle({required this.accent, required this.audioManager});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<PlaybackMediaMode>(
+      valueListenable: audioManager.effectiveMediaModeNotifier,
+      builder: (context, mode, _) {
+        final isVideo = mode == PlaybackMediaMode.video;
+
+        return TextButton.icon(
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            audioManager.setPreferredMediaMode(
+              isVideo ? PlaybackMediaMode.audio : PlaybackMediaMode.video,
+            );
+          },
+          icon: Icon(
+            isVideo ? Icons.album_rounded : Icons.movie_outlined,
+            size: 18,
+          ),
+          label: Text(isVideo ? 'Show artwork' : 'Show video'),
+          style: TextButton.styleFrom(
+            foregroundColor: isVideo ? accent : Colors.white70,
+            padding: const EdgeInsets.symmetric(
+              horizontal: PlayerTokens.s4,
+              vertical: PlayerTokens.s2,
+            ),
+          ),
         );
       },
-      icon: Icon(
-        isVideo ? Icons.album_rounded : Icons.movie_outlined,
-        size: 18,
-      ),
-      label: Text(isVideo ? 'Show artwork' : 'Show video'),
-      style: TextButton.styleFrom(
-        foregroundColor: isVideo ? accent : Colors.white70,
-        padding: const EdgeInsets.symmetric(
-          horizontal: PlayerTokens.s4,
-          vertical: PlayerTokens.s2,
-        ),
-      ),
     );
   }
 }
