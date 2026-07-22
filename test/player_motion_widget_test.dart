@@ -512,5 +512,234 @@ void main() {
       expect(moved.toSet().length, moved.length,
           reason: 'a field that moves in unison reads as one object');
     });
+
+    /// Runs [seconds] of playback at 60fps and reports, per particle, how far it
+    /// actually went.
+    ///
+    /// Motion is accumulated from per-frame deltas rather than measured between
+    /// start and end positions, so the toroidal wrap does not read as a jump
+    /// backwards — `net` is displacement in the unwrapped plane. Particles are
+    /// keyed by identity, so a mote that reaches the end of its life and is
+    /// recycled starts a fresh track instead of registering as a teleport.
+    ///
+    /// Only the first generation is reported, and [seconds] is kept under the
+    /// shortest possible lifetime, so every mote is measured over the whole
+    /// window.
+    ({double meanPath, double meanNet, double reversals}) travelOver(
+      double seconds, {
+      PlayerMotionIntensity intensity = PlayerMotionIntensity.bold,
+    }) {
+      final controller = PlayerMotionController.forTesting()
+        ..beatMap = gridMap(beats: 200);
+      addTearDown(controller.dispose);
+
+      final system = ParticleSystem();
+      final spec = MotionIntensitySpec.of(intensity);
+
+      final path = <Particle, double>{};
+      final netX = <Particle, double>{};
+      final netY = <Particle, double>{};
+      final previous = <Particle, Offset>{};
+      final previousStep = <Particle, Offset>{};
+      var reversals = 0;
+      var steps = 0;
+
+      for (var frame = 0; frame <= (seconds * 60).round(); frame++) {
+        final ms = frame * 1000 / 60;
+        system.update(
+          elapsedSeconds: ms / 1000,
+          frame: controller.computeFrame(ms),
+          spec: spec,
+        );
+
+        for (final particle in system.particles) {
+          final position = system.displacedPosition(particle);
+          final last = previous[particle];
+          if (last != null) {
+            final step = position - last;
+            // A wrap is the only way a mote covers half the screen in one
+            // frame; it breaks the track rather than contributing to it.
+            if (step.dx.abs() < 0.5 && step.dy.abs() < 0.5) {
+              path[particle] = (path[particle] ?? 0) + step.distance;
+              netX[particle] = (netX[particle] ?? 0) + step.dx;
+              netY[particle] = (netY[particle] ?? 0) + step.dy;
+
+              final lastStep = previousStep[particle];
+              if (lastStep != null) {
+                steps++;
+                if (step.dx * lastStep.dx + step.dy * lastStep.dy < 0) {
+                  reversals++;
+                }
+              }
+              previousStep[particle] = step;
+            } else {
+              previousStep.remove(particle);
+            }
+          }
+          previous[particle] = position;
+        }
+      }
+
+      final firstGeneration = path.keys.where((p) => p.bornAt == 0).toList();
+      var totalPath = 0.0;
+      var totalNet = 0.0;
+      for (final particle in firstGeneration) {
+        final nx = netX[particle] ?? 0;
+        final ny = netY[particle] ?? 0;
+        totalPath += path[particle]!;
+        totalNet += math.sqrt(nx * nx + ny * ny);
+      }
+
+      return (
+        meanPath: totalPath / firstGeneration.length,
+        meanNet: totalNet / firstGeneration.length,
+        reversals: reversals / steps,
+      );
+    }
+
+    test('motes travel instead of hovering around where they spawned', () {
+      // The bug this guards: driving position from a sinusoidal *velocity*
+      // integrates to an oscillation about two percent of the screen wide, so
+      // the field wobbled in place. Net displacement is what catches it —
+      // path length alone does not, because per-frame noise inflates it while
+      // going nowhere.
+      final travel = travelOver(12);
+
+      expect(travel.meanNet, greaterThan(0.25),
+          reason: 'over twelve seconds a mote should end up somewhere else, '
+              'not back where it started');
+      expect(travel.meanPath, greaterThan(0.5));
+    });
+
+    test('quieter intensities travel less, but still travel', () {
+      final subtle = travelOver(12, intensity: PlayerMotionIntensity.subtle);
+      final bold = travelOver(12, intensity: PlayerMotionIntensity.bold);
+
+      expect(subtle.meanNet, lessThan(bold.meanNet));
+      expect(subtle.meanNet, greaterThan(0.12));
+    });
+
+    test('the field flows rather than vibrating', () {
+      // Direction reversals are the signature of the per-frame white noise this
+      // replaced: uncorrelated jitter turns around on roughly half of all
+      // frames, while something genuinely travelling almost never does.
+      final travel = travelOver(12);
+
+      expect(travel.reversals, lessThan(0.05),
+          reason: 'motes should hold a heading between frames');
+    });
+
+    test('the beat stops turning the field once the music stops', () {
+      final controller = PlayerMotionController.forTesting()
+        ..beatMap = gridMap(beats: 200);
+      addTearDown(controller.dispose);
+
+      final system = ParticleSystem();
+      final spec = MotionIntensitySpec.of(PlayerMotionIntensity.bold);
+
+      var peak = 0.0;
+      for (var frame = 0; frame <= 1800; frame++) {
+        final ms = frame * 1000 / 60;
+        system.update(
+          elapsedSeconds: ms / 1000,
+          frame: controller.computeFrame(ms),
+          spec: spec,
+        );
+        for (final particle in system.particles) {
+          peak = math.max(peak, particle.swirlVelocity.abs());
+        }
+      }
+
+      // Beats visibly turn the field...
+      expect(peak, greaterThan(0.03));
+      // ...without ever winding a mote up into a spin.
+      expect(peak, lessThan(0.45));
+
+      for (var frame = 1801; frame <= 2100; frame++) {
+        final ms = frame * 1000 / 60;
+        system.update(
+          elapsedSeconds: ms / 1000,
+          frame: BeatFrame.idle,
+          spec: spec,
+        );
+      }
+      for (final particle in system.particles) {
+        expect(particle.swirlVelocity.abs(), lessThan(0.001));
+      }
+    });
+
+    test('travel never empties the screen', () {
+      final controller = PlayerMotionController.forTesting()
+        ..beatMap = gridMap(beats: 300);
+      addTearDown(controller.dispose);
+
+      final system = ParticleSystem();
+      final spec = MotionIntensitySpec.of(PlayerMotionIntensity.bold);
+      for (var frame = 0; frame <= 60 * 120; frame++) {
+        final ms = frame * 1000 / 60;
+        system.update(
+          elapsedSeconds: ms / 1000,
+          frame: controller.computeFrame(ms),
+          spec: spec,
+        );
+      }
+
+      final onScreen = system.particles
+          .where((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1)
+          .length;
+      expect(onScreen / system.particles.length, greaterThan(0.6),
+          reason: 'after two minutes of travel most of the field should still '
+              'be somewhere the listener can see it');
+    });
+
+    test('a quiet beat stirs only part of the field', () {
+      // Two-second beats, so one wavefront has finished crossing the field
+      // before the next one is spawned and the two cannot be confused.
+      final controller = PlayerMotionController.forTesting()
+        ..beatMap = gridMap(beats: 8, periodMs: 2000);
+      addTearDown(controller.dispose);
+
+      final system = ParticleSystem();
+      final spec = MotionIntensitySpec.of(PlayerMotionIntensity.bold);
+      final excited = <Particle>{};
+      final last = <Particle, double>{};
+
+      /// Counts the motes whose flare *rises* during the window. Testing for a
+      /// non-zero flare instead would count everything, since the previous
+      /// beat's flare is still decaying.
+      int recruitedBetween(double fromMs, double toMs) {
+        excited.clear();
+        for (var frame = (fromMs / 1000 * 60).round();
+            frame <= (toMs / 1000 * 60).round();
+            frame++) {
+          final ms = frame * 1000 / 60;
+          system.update(
+            elapsedSeconds: ms / 1000,
+            frame: controller.computeFrame(ms),
+            spec: spec,
+          );
+          for (final particle in system.particles) {
+            if (particle.excitation > (last[particle] ?? 0) + 1e-9) {
+              excited.add(particle);
+            }
+            last[particle] = particle.excitation;
+          }
+        }
+        return excited.length;
+      }
+
+      // gridMap makes every fourth beat a downbeat, so 0ms lands full strength
+      // and 2000ms lands at the offbeat level.
+      final byDownbeat = recruitedBetween(0, 1900);
+      final byOffbeat = recruitedBetween(1901, 3900);
+
+      expect(byDownbeat, system.particles.length,
+          reason: 'a full-strength beat should reach the whole field');
+      expect(byOffbeat, greaterThan(0));
+      expect(byOffbeat, lessThan(byDownbeat),
+          reason: 'a quieter beat should pass straight through the motes that '
+              'are not listening for it — a field where every mote answers '
+              'every beat reads as one object being triggered');
+    });
   });
 }

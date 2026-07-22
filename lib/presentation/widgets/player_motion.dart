@@ -44,6 +44,14 @@ class BeatFrame {
   final int beatIndex;
   final bool isDownbeat;
 
+  /// How hard the current beat lands, 0..1, normalised against the track's own
+  /// loudest beats and already carrying the bar accent.
+  ///
+  /// Distinct from [pulse], which is this strength shaped by the attack/decay
+  /// envelope and is therefore near zero at the instant a beat arrives — the
+  /// moment consumers that spawn something per beat actually need it.
+  final double strength;
+
   /// Whether this frame is driven by a real beat grid. False means the track is
   /// still being analysed, or has no detectable pulse (ambient, spoken word) —
   /// consumers fall back to [breath] alone.
@@ -60,6 +68,7 @@ class BeatFrame {
     this.breath = 0,
     this.beatIndex = -1,
     this.isDownbeat = false,
+    this.strength = 0,
     this.hasBeat = false,
   });
 
@@ -85,6 +94,7 @@ class BeatFrame {
       breath: breath,
       beatIndex: beatIndex,
       isDownbeat: isDownbeat,
+      strength: strength * factor,
       hasBeat: hasBeat,
     );
   }
@@ -111,6 +121,11 @@ class MotionIntensitySpec {
   final double particleImpulse;
   final double particleOpacity;
 
+  /// Multiplier on how fast the field travels. Scaled alongside the impulse so
+  /// a quieter setting means calmer motion overall, not just smaller beats on
+  /// motes that move at the same speed regardless.
+  final double particleDrift;
+
   const MotionIntensitySpec({
     required this.coverPunch,
     required this.coverBreath,
@@ -119,6 +134,7 @@ class MotionIntensitySpec {
     required this.particleCount,
     required this.particleImpulse,
     required this.particleOpacity,
+    required this.particleDrift,
   });
 
   static const _subtle = MotionIntensitySpec(
@@ -129,6 +145,7 @@ class MotionIntensitySpec {
     particleCount: 22,
     particleImpulse: 0.55,
     particleOpacity: 0.30,
+    particleDrift: 0.75,
   );
 
   static const _balanced = MotionIntensitySpec(
@@ -139,6 +156,7 @@ class MotionIntensitySpec {
     particleCount: 32,
     particleImpulse: 1.0,
     particleOpacity: 0.42,
+    particleDrift: 1.0,
   );
 
   static const _bold = MotionIntensitySpec(
@@ -149,6 +167,7 @@ class MotionIntensitySpec {
     particleCount: 44,
     particleImpulse: 1.7,
     particleOpacity: 0.55,
+    particleDrift: 1.35,
   );
 
   static MotionIntensitySpec of(PlayerMotionIntensity intensity) {
@@ -167,14 +186,29 @@ class MotionIntensitySpec {
 /// playback state elsewhere in the app: hot-path visual state is published
 /// through listenables, not Riverpod, so only the pieces that animate rebuild.
 class PlayerMotionController extends ChangeNotifier {
-  /// Attack and decay of the beat envelope. Fast up, slow down — the response
-  /// of something struck, rather than a symmetric fade that reads as a pulse
-  /// lamp.
+  /// Attack of the beat envelope. Fast up, slow down — the response of something
+  /// struck, rather than a symmetric fade that reads as a pulse lamp.
+  ///
+  /// Attack is absolute: it is the rise time of a physical strike and does not
+  /// get shorter because the music is faster. Decay does — see [_decayMsFor].
   static const double _attackMs = 18;
-  static const double _decayMs = 190;
 
-  /// How long before a beat the anticipatory dip starts.
+  /// Decay as a fraction of the beat, and the range it is held within.
+  ///
+  /// A fixed decay is what made fast tracks read as smoothed-out: at 175 BPM a
+  /// 190ms tail is still at ~23% of peak when the next beat lands, so successive
+  /// punches stacked onto a raised plateau instead of resolving into separate
+  /// hits. Tying it to the period keeps the *shape* of the gesture constant
+  /// across tempos — the pulse always has the same proportion of the beat to
+  /// fall away in. The fraction is set so 500ms (120 BPM) still yields 190ms.
+  static const double _decayPeriodFraction = 0.38;
+  static const double _minDecayMs = 80;
+  static const double _maxDecayMs = 220;
+
+  /// How long before a beat the anticipatory dip starts, capped so it never
+  /// eats more than this share of a fast beat.
   static const double _anticipationMs = 60;
+  static const double _anticipationPeriodFraction = 0.16;
   static const double _anticipationDepth = 0.22;
 
   /// Where the overshoot after the punch is deepest, and how deep it goes.
@@ -182,6 +216,12 @@ class PlayerMotionController extends ChangeNotifier {
   /// the next punch rather than colliding with it.
   static const double _reboundPeakMs = 210;
   static const double _reboundDepth = 0.16;
+
+  /// Share of the beat the settle is allowed to occupy, and its absolute
+  /// ceiling. Ending before the beat does rather than running right up to it is
+  /// what keeps the overshoot from bleeding into the next anticipation.
+  static const double _reboundWindowFraction = 0.7;
+  static const double _maxReboundWindowMs = 600;
 
   /// How long the motion takes to ease into a freshly arrived beat grid.
   static const double _gridBlendMs = 500;
@@ -194,7 +234,14 @@ class PlayerMotionController extends ChangeNotifier {
   /// beats, so most sit near 1.0; multiplying downbeats *up* from there just
   /// clamps, and the bar structure disappears on exactly the driving tracks
   /// where it matters most.
-  static const double _offbeatLevel = 0.62;
+  ///
+  /// Relaxed as the tempo rises: see [_offbeatLevelFor].
+  static const double _offbeatLevelSlow = 0.62;
+  static const double _offbeatLevelFast = 0.88;
+
+  /// Beat periods the offbeat ceiling is interpolated between — 120 and 160 BPM.
+  static const double _offbeatSlowPeriodMs = 500;
+  static const double _offbeatFastPeriodMs = 375;
 
   /// Beyond this the clock has been seeked or the track changed, so snap
   /// instead of easing.
@@ -235,7 +282,13 @@ class PlayerMotionController extends ChangeNotifier {
   int _anchorWallMs = 0;
 
   /// Normalisation so a full-strength beat peaks at exactly 1.0.
-  late final double _envelopeScale = _computeEnvelopeScale();
+  ///
+  /// Depends on the decay, which now moves with the tempo, so it cannot be a
+  /// constant. Memoised on the last decay rather than recomputed per frame: a
+  /// track holds one period for minutes at a time, so this is a handful of
+  /// transcendentals per tempo change instead of three per frame.
+  double _scaleForDecayMs = double.nan;
+  double _envelopeScale = 1;
 
   /// Follows [player]'s clock. The player itself is not retained — only its
   /// streams matter here, and they are cancelled on dispose.
@@ -445,12 +498,15 @@ class PlayerMotionController extends ChangeNotifier {
     var rebound = 0.0;
     var sway = 0.0;
     var isDownbeat = false;
+    var strength = 0.0;
     if (index >= 0) {
       final sinceBeat = positionMs - map.beatsMs[index];
       isDownbeat = map.downbeats[index] == 1;
-      final strength =
-          map.beatStrength[index] * (isDownbeat ? 1.0 : _offbeatLevel);
-      pulse = _envelope(sinceBeat) * strength;
+      strength = clamp01(
+        map.beatStrength[index] *
+            (isDownbeat ? 1.0 : _offbeatLevelFor(periodMs)),
+      );
+      pulse = _envelope(sinceBeat, periodMs) * strength;
       rebound = -_reboundBump(sinceBeat, periodMs) * _reboundDepth * strength;
       // Alternating lean, at a depth that varies beat to beat. Both come from
       // the beat index, so the same track leans the same way every play.
@@ -462,14 +518,18 @@ class PlayerMotionController extends ChangeNotifier {
     final nextIndex = index + 1;
     if (nextIndex < map.beatsMs.length) {
       final toNext = map.beatsMs[nextIndex] - positionMs;
-      if (toNext >= 0 && toNext < _anticipationMs) {
+      // The dip belongs to the beat it precedes, so it is sized by *that*
+      // beat's period rather than the one currently sounding.
+      final nextPeriodMs = map.beatPeriodMsAt(nextIndex);
+      final window = _anticipationWindowMs(nextPeriodMs);
+      if (toNext >= 0 && toNext < window) {
         final nextIsDownbeat = map.downbeats[nextIndex] == 1;
         final strength = map.beatStrength[nextIndex] *
-            (nextIsDownbeat ? 1.0 : _offbeatLevel);
+            (nextIsDownbeat ? 1.0 : _offbeatLevelFor(nextPeriodMs));
         // Deepens as the beat approaches, so the cover is at its smallest the
         // instant before it punches. Smoothstepped rather than linear: a linear
         // ramp enters the window at full speed, and that corner is visible.
-        final ramp = 1 - toNext / _anticipationMs;
+        final ramp = 1 - toNext / window;
         final eased = ramp * ramp * (3 - 2 * ramp);
         anticipation = -eased * _anticipationDepth * strength;
       }
@@ -495,19 +555,55 @@ class PlayerMotionController extends ChangeNotifier {
       breath: breath,
       beatIndex: index,
       isDownbeat: isDownbeat,
+      strength: strength,
       hasBeat: true,
     );
   }
 
-  /// `(1 - e^(-t/attack)) * e^(-t/decay)`, normalised to peak at 1.
-  double _envelope(double sinceBeatMs) {
+  /// `(1 - e^(-t/attack)) * e^(-t/decay)`, normalised to peak at 1, with the
+  /// decay scaled to the beat so the punch always has room to resolve before the
+  /// next one arrives.
+  double _envelope(double sinceBeatMs, double periodMs) {
     if (sinceBeatMs < 0) return 0;
+    final decayMs = _decayMsFor(periodMs);
     // Past a few decay constants the contribution is invisible; bail rather
     // than computing two exponentials for nothing.
-    if (sinceBeatMs > _decayMs * 5) return 0;
+    if (sinceBeatMs > decayMs * 5) return 0;
     final attack = 1 - math.exp(-sinceBeatMs / _attackMs);
-    final decay = math.exp(-sinceBeatMs / _decayMs);
-    return attack * decay * _envelopeScale;
+    final decay = math.exp(-sinceBeatMs / decayMs);
+    return attack * decay * _scaleFor(decayMs);
+  }
+
+  /// Decay constant for a beat of [periodMs]. See [_decayPeriodFraction].
+  static double _decayMsFor(double periodMs) =>
+      (periodMs * _decayPeriodFraction).clamp(_minDecayMs, _maxDecayMs);
+
+  /// Length of the anticipatory dip before a beat of [periodMs].
+  static double _anticipationWindowMs(double periodMs) => math.min(
+        _anticipationMs,
+        periodMs * _anticipationPeriodFraction,
+      );
+
+  /// Offbeat ceiling for a beat of [periodMs].
+  ///
+  /// At 120 BPM and below, holding offbeats down is what gives a bar its shape.
+  /// At 160+ every beat is usually a full kick, and suppressing three in four
+  /// there is most of why fast tracks read as one pulse per bar rather than the
+  /// rapid train of pulses the music actually has.
+  static double _offbeatLevelFor(double periodMs) {
+    final t = ((_offbeatSlowPeriodMs - periodMs) /
+            (_offbeatSlowPeriodMs - _offbeatFastPeriodMs))
+        .clamp(0.0, 1.0);
+    return _offbeatLevelSlow + (_offbeatLevelFast - _offbeatLevelSlow) * t;
+  }
+
+  /// [_envelopeScale] for [decayMs], recomputing only when the decay moves.
+  double _scaleFor(double decayMs) {
+    if (decayMs != _scaleForDecayMs) {
+      _scaleForDecayMs = decayMs;
+      _envelopeScale = _computeEnvelopeScale(decayMs);
+    }
+    return _envelopeScale;
   }
 
   /// `(t/τ)²·e^(2(1−t/τ))` — a bump that leaves rest slowly, peaks at exactly 1
@@ -520,7 +616,12 @@ class PlayerMotionController extends ChangeNotifier {
   /// between beats instead of settling.
   double _reboundBump(double sinceBeatMs, double periodMs) {
     if (sinceBeatMs <= 0) return 0;
-    final window = math.min(periodMs, 600.0);
+    // Ends short of the next beat rather than running right up to it, so the
+    // settle is finished before the following anticipation opens.
+    final window = math.min(
+      periodMs * _reboundWindowFraction,
+      _maxReboundWindowMs,
+    );
     if (sinceBeatMs >= window) return 0;
 
     final t = sinceBeatMs / math.min(_reboundPeakMs, periodMs * 0.4);
@@ -537,11 +638,11 @@ class PlayerMotionController extends ChangeNotifier {
     return (hash & 0xffff) / 0xffff;
   }
 
-  static double _computeEnvelopeScale() {
+  static double _computeEnvelopeScale(double decayMs) {
     // The peak of the attack/decay product, solved analytically.
-    final peakTime = _attackMs * math.log(1 + _decayMs / _attackMs);
+    final peakTime = _attackMs * math.log(1 + decayMs / _attackMs);
     final peak =
-        (1 - math.exp(-peakTime / _attackMs)) * math.exp(-peakTime / _decayMs);
+        (1 - math.exp(-peakTime / _attackMs)) * math.exp(-peakTime / decayMs);
     return peak <= 0 ? 1 : 1 / peak;
   }
 

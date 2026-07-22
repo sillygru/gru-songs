@@ -8,12 +8,17 @@
 ///
 ///   1. STFT → per-band log magnitude
 ///   2. half-wave-rectified spectral flux → onset strength envelope
-///   3. autocorrelation under a perceptual tempo prior → beat period
+///   3. harmonic-summed autocorrelation under a perceptual tempo prior, then a
+///      low-band check for a beat between the beats → beat period
 ///   4. dynamic programming → the beat sequence that best balances landing on
 ///      onsets against staying metrically regular (Ellis 2007)
 ///
 /// Step 4 is the one that matters. Thresholding step 2 directly — which is what
 /// this file replaces — can only ever chase transients.
+///
+/// The harmonic summation in step 3 is not decoration either: without it the
+/// autocorrelation of ordinary dance music peaks at *twice* the beat, and fast
+/// tracks get tracked at half speed.
 ///
 /// Everything here is pure and synchronous so it can run in an isolate and be
 /// tested directly against synthetic audio.
@@ -52,11 +57,36 @@ const List<double> _visualBandEdgesHz = [20, 150, 800, 4000, 11025];
 const double _minBpm = 40;
 const double _maxBpm = 240;
 
-/// Centre of the tempo prior. 120 BPM is where human tempo perception clusters,
-/// and this prior is the only thing stopping the autocorrelation from happily
-/// locking onto half- or double-time.
+/// Centre of the tempo prior. 120 BPM is where human tempo perception clusters.
+///
+/// The prior alone is *not* enough to stop the autocorrelation locking onto
+/// half-time — see [_estimateBeatPeriod]. Sigma is librosa's `std_bpm` default,
+/// deliberately wide so a genuine 170–180 BPM track is not penalised into its
+/// own half.
 const double _tempoPriorCentreSec = 0.5;
-const double _tempoPriorOctaveSigma = 0.9;
+const double _tempoPriorOctaveSigma = 1.0;
+
+/// Weights on the 2nd and 3rd harmonics when scoring a candidate beat period.
+/// See [_estimateBeatPeriod] for why summing harmonics is what picks the
+/// fundamental out of its multiples.
+const double _harmonic2Weight = 0.5;
+const double _harmonic3Weight = 0.25;
+
+/// Bounds on the half-time rescue in [_correctHalfTime].
+///
+/// Deliberately narrow. It only ever fires on estimates slow enough to be
+/// suspicious, and only when doubling lands somewhere a person would still call
+/// a tempo — so it cannot turn a genuine 110 BPM track into 220.
+const double _halfTimeSuspectBpm = 100;
+const double _halfTimeMaxBpm = 190;
+
+/// How strong the kicks *between* the detected beats must be, relative to the
+/// kicks on them, before the tempo is judged to be double what was estimated.
+const double _halfTimeMidRatio = 0.7;
+
+/// Upper edge of the low band used by [_correctHalfTime], in Hz. Kick territory:
+/// the whole point is to ask a question hi-hats cannot answer.
+const double _bassOnsetMaxHz = 160;
 
 /// How strongly the DP penalises deviation from the estimated beat period.
 /// Higher is more metronomic, lower follows onsets more loosely.
@@ -121,8 +151,9 @@ BeatMap analyzeBeats(Float32List samples,
   final normalized = _normalizeOnset(onset);
   if (normalized == null) return beatless();
 
-  final periodFrames = _estimateBeatPeriod(normalized);
-  if (periodFrames == null) return beatless();
+  final estimated = _estimateBeatPeriod(normalized);
+  if (estimated == null) return beatless();
+  final periodFrames = _correctHalfTime(spectra.bassOnset, estimated);
 
   final localScore = _smoothForDp(normalized, periodFrames);
   final beatFrames = _trackBeats(localScore, periodFrames);
@@ -161,6 +192,14 @@ bool _isPercussive(Float32List onset) {
   return p95 >= _minPercussiveFlux;
 }
 
+/// Diagnostic hook: the half-time rescue, which is a safety net under
+/// [_estimateBeatPeriod] and so is not reached by any input the estimator
+/// already gets right. Exposed so its fire and no-fire behaviour can be pinned
+/// directly rather than left to whichever synthetic happens to defeat the
+/// harmonic scoring.
+double debugCorrectHalfTime(Float32List bassOnset, double period) =>
+    _correctHalfTime(bassOnset, period);
+
 /// Diagnostic hook: percentiles of the raw (pre-normalisation) onset envelope.
 /// Used to calibrate [_minPercussiveFlux] against real and synthetic material.
 List<double> debugOnsetPercentiles(Float32List samples) {
@@ -175,9 +214,14 @@ List<double> debugOnsetPercentiles(Float32List samples) {
 
 class _Envelopes {
   final Float32List onset;
+
+  /// The same flux restricted to the low bands — kicks only. Used by
+  /// [_correctHalfTime], which needs to distinguish a kick from a hi-hat.
+  final Float32List bassOnset;
+
   final List<Float32List> bands;
 
-  _Envelopes(this.onset, this.bands);
+  _Envelopes(this.onset, this.bassOnset, this.bands);
 }
 
 /// One STFT pass producing both the onset envelope and the four visual band
@@ -199,7 +243,18 @@ _Envelopes _computeEnvelopes(Float32List samples, int frameCount) {
   );
   final visualEdges = _fixedBandEdges(_visualBandEdgesHz, binCount);
 
+  // How many of the log-spaced onset bands sit entirely below _bassOnsetMaxHz.
+  // Derived from the edges rather than hardcoded, so retuning the band layout
+  // cannot silently move the low-band cutoff somewhere else.
+  final binWidth = analysisSampleRate / analysisFftSize;
+  var bassBandCount = 0;
+  while (bassBandCount < _onsetBandCount &&
+      onsetEdges[bassBandCount + 1] * binWidth <= _bassOnsetMaxHz) {
+    bassBandCount++;
+  }
+
   final onset = Float32List(frameCount);
+  final bassOnset = Float32List(frameCount);
   final bands = List.generate(
     BeatBand.values.length,
     (_) => Float32List(frameCount),
@@ -238,13 +293,18 @@ _Envelopes _computeEnvelopes(Float32List samples, int frameCount) {
 
     if (frame > 0) {
       var flux = 0.0;
+      var bassFlux = 0.0;
       for (var b = 0; b < _onsetBandCount; b++) {
         final delta = curLog[b] - prevLog[b];
         // Half-wave rectified: only energy *appearing* is an onset. Energy
         // dying away is a note ending, which nobody taps to.
-        if (delta > 0) flux += delta;
+        if (delta > 0) {
+          flux += delta;
+          if (b < bassBandCount) bassFlux += delta;
+        }
       }
       onset[frame] = flux;
+      bassOnset[frame] = bassFlux;
     }
 
     for (var b = 0; b < BeatBand.values.length; b++) {
@@ -260,7 +320,7 @@ _Envelopes _computeEnvelopes(Float32List samples, int frameCount) {
     curLog = swap;
   }
 
-  return _Envelopes(onset, bands);
+  return _Envelopes(onset, bassOnset, bands);
 }
 
 double _meanBins(Float64List magnitude, int start, int end) {
@@ -333,6 +393,18 @@ class _RunningMean {
 
 /// Autocorrelates the onset envelope under a log-Gaussian tempo prior and
 /// returns the best beat period, in frames.
+///
+/// A candidate is scored on its own correlation *plus* a weighted share of its
+/// 2nd and 3rd harmonics, which is what picks the beat out of its own multiples.
+/// The raw autocorrelation of real dance music is routinely *strongest* at twice
+/// the beat — kick-clap-kick-clap repeats on a two-beat period, and the bar on
+/// four — so plain argmax under a 120 BPM prior collapses a 175 BPM track to 87.
+/// Summing harmonics inverts that: if `L` is the true period then `acf(2L)` and
+/// `acf(3L)` are strong too and all of it accrues to `L`, while the half-time
+/// candidate `2L` can only collect `acf(2L)` and `acf(4L)`. It does not
+/// over-correct downward either — with no eighth-note content `acf(L/2)` sits in
+/// the anti-correlation trough, so `L/2` never wins on the strength of `acf(L)`
+/// alone.
 double? _estimateBeatPeriod(Float32List onset) {
   final minLag = math.max(2, (analysisFps * 60 / _maxBpm).floor());
   final maxLag = math.min(
@@ -341,6 +413,18 @@ double? _estimateBeatPeriod(Float32List onset) {
   );
   if (maxLag <= minLag) return null;
 
+  // Harmonics reach past the tempo search range, so the correlation is computed
+  // out to 3x before any candidate is scored.
+  final acfMaxLag = math.min(onset.length - 1, maxLag * 3);
+  final acf = Float64List(acfMaxLag + 1);
+  for (var lag = minLag; lag <= acfMaxLag; lag++) {
+    var correlation = 0.0;
+    for (var i = lag; i < onset.length; i++) {
+      correlation += onset[i] * onset[i - lag];
+    }
+    acf[lag] = correlation / (onset.length - lag);
+  }
+
   final centreLag = _tempoPriorCentreSec * analysisFps;
   final invLn2 = 1 / math.ln2;
 
@@ -348,11 +432,11 @@ double? _estimateBeatPeriod(Float32List onset) {
   var bestScore = double.negativeInfinity;
 
   for (var lag = minLag; lag <= maxLag; lag++) {
-    var correlation = 0.0;
-    for (var i = lag; i < onset.length; i++) {
-      correlation += onset[i] * onset[i - lag];
-    }
-    correlation /= onset.length - lag;
+    var correlation = acf[lag];
+    final lag2 = lag * 2;
+    if (lag2 <= acfMaxLag) correlation += _harmonic2Weight * acf[lag2];
+    final lag3 = lag * 3;
+    if (lag3 <= acfMaxLag) correlation += _harmonic3Weight * acf[lag3];
 
     final octaves = math.log(lag / centreLag) * invLn2;
     final prior = math.exp(
@@ -368,6 +452,67 @@ double? _estimateBeatPeriod(Float32List onset) {
 
   if (bestLag < 0 || bestScore <= 0) return null;
   return bestLag.toDouble();
+}
+
+/// Halves [period] when the low end says there is a kick *between* every pair of
+/// detected beats.
+///
+/// A safety net under [_estimateBeatPeriod], not a replacement for it: harmonic
+/// summation is a strong bias toward the fundamental, not a guarantee, and a
+/// track that lands at half-time anyway pulses once every 0.6–0.8s instead of
+/// two or three times a second.
+///
+/// The test keys on low-band flux specifically. Asked of the full onset envelope
+/// it would be answered "yes" by any track with eighth-note hi-hats, and a
+/// leisurely 80 BPM song would be doubled into a twitchy 160. Asked of the kick
+/// band, the question is whether the listener is *feeling* a beat in between,
+/// which hats and vocal syllables cannot fake.
+double _correctHalfTime(Float32List bassOnset, double period) {
+  final bpm = 60 * analysisFps / period;
+  // Only ever fires where the reported failure lives: an implausibly slow
+  // estimate that would double into a real tempo.
+  if (bpm >= _halfTimeSuspectBpm) return period;
+  if (bpm * 2 > _halfTimeMaxBpm) return period;
+
+  final half = period / 2;
+  final step = period.round();
+  if (step < 2 || bassOnset.length < step * 4) return period;
+
+  // Phase of the strongest kick comb at the estimated period.
+  var bestPhase = 0;
+  var bestTotal = -1.0;
+  for (var phase = 0; phase < step; phase++) {
+    var total = 0.0;
+    for (var t = phase.toDouble(); t < bassOnset.length; t += period) {
+      total += bassOnset[t.round()];
+    }
+    if (total > bestTotal) {
+      bestTotal = total;
+      bestPhase = phase;
+    }
+  }
+  if (bestTotal <= 0) return period;
+
+  var onSum = 0.0;
+  var onCount = 0;
+  var midSum = 0.0;
+  var midCount = 0;
+  for (var t = bestPhase.toDouble(); t < bassOnset.length; t += period) {
+    onSum += bassOnset[t.round()];
+    onCount++;
+    final mid = t + half;
+    if (mid < bassOnset.length) {
+      midSum += bassOnset[mid.round()];
+      midCount++;
+    }
+  }
+  if (onCount == 0 || midCount == 0) return period;
+
+  final onEnergy = onSum / onCount;
+  final midEnergy = midSum / midCount;
+  if (onEnergy <= 0) return period;
+
+  return midEnergy >= _halfTimeMidRatio * onEnergy ? half : period;
 }
 
 /// Gaussian smoothing with a width tied to the beat period, so the DP scores a

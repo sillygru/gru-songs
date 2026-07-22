@@ -172,6 +172,67 @@ void main() {
     });
   });
 
+  // 340ms per beat is ~176 BPM: hardstyle and drum & bass territory. The
+  // envelope used to be fixed in milliseconds, so at this tempo the punch was
+  // still at ~23% of peak when the next beat landed and successive hits piled
+  // onto a raised plateau instead of resolving — the cover read as one slow
+  // swell rather than the fast train of pulses the music actually has.
+  group('fast tempo', () {
+    late PlayerMotionController controller;
+    const periodMs = 340;
+
+    setUp(() {
+      controller = PlayerMotionController.forTesting();
+      controller.beatMap = gridMap(beats: 32, periodMs: periodMs);
+    });
+
+    tearDown(() => controller.dispose());
+
+    test('the punch resolves before the next beat instead of smearing', () {
+      // Beat 8 is a downbeat at 2720ms; the next lands at 3060ms.
+      final peak = controller.computeFrame(2720 + 44).pulse;
+      final justBeforeNext = controller.computeFrame(3060 - 10).pulse;
+
+      expect(peak, closeTo(1.0, 0.03));
+      expect(
+        justBeforeNext,
+        lessThan(peak * 0.12),
+        reason: 'the pulse was still at '
+            '${(justBeforeNext / peak * 100).toStringAsFixed(0)}% of peak when '
+            'the next beat arrived, so hits stack instead of separating',
+      );
+    });
+
+    test('the settle finishes before the next anticipation opens', () {
+      // The dip belongs to the beat at 3060ms and opens 54ms out.
+      final rebound = controller.computeFrame(3060 - 60).rebound;
+
+      expect(rebound, 0);
+    });
+
+    test('offbeats keep up with downbeats at speed', () {
+      // Every beat is a full kick at this tempo; holding three in four down to
+      // 62% is what made fast tracks read as one pulse per bar.
+      final downbeat = controller.computeFrame(2720 + 44).pulse;
+      final offbeat = controller.computeFrame(3060 + 44).pulse;
+
+      expect(offbeat, greaterThan(downbeat * 0.8));
+      // ...but the bar still has some shape.
+      expect(offbeat, lessThan(downbeat));
+    });
+
+    test('a slow grid keeps its full bar accent', () {
+      // The flattening is tempo-driven, not a blanket loosening: at 120 BPM the
+      // accent is exactly what it was.
+      controller.beatMap = gridMap(periodMs: 500);
+
+      final downbeat = controller.computeFrame(2044).pulse;
+      final offbeat = controller.computeFrame(2544).pulse;
+
+      expect(offbeat / downbeat, closeTo(0.62, 0.01));
+    });
+  });
+
   group('without a beat grid', () {
     late PlayerMotionController controller;
 

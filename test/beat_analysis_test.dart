@@ -59,6 +59,71 @@ Float32List clickTrack({
   return samples;
 }
 
+/// Synthesises fast four-to-the-floor material: a kick on every beat, a clap on
+/// beats 2 and 4, and a bass note held for the first half of each bar.
+///
+/// The clap and the bar-length bass are the point. A bare [clickTrack] has no
+/// two-beat or bar-level structure, so its autocorrelation has nothing to prefer
+/// at twice the beat — which is why the 160 BPM click test passed while real
+/// hardstyle collapsed to half-time. Here the 2x and 4x lags carry genuine
+/// energy, exactly as they do in the music this feature kept getting wrong.
+Float32List hardstyleTrack({
+  required double bpm,
+  required double seconds,
+  int sampleRate = analysisSampleRate,
+  int seed = 11,
+}) {
+  final random = math.Random(seed);
+  final samples = Float32List((seconds * sampleRate).round());
+  final interval = 60.0 / bpm;
+
+  void addKick(double time, double amplitude) {
+    final start = (time * sampleRate).round();
+    final length = (0.12 * sampleRate).round();
+    for (var i = 0; i < length; i++) {
+      final position = start + i;
+      if (position >= samples.length) break;
+      final t = i / sampleRate;
+      // Pitch-swept kick, the way the genre actually builds one.
+      final hz = 150 * math.exp(-t * 40) + 48;
+      samples[position] +=
+          amplitude * math.sin(2 * math.pi * hz * t) * math.exp(-t * 22);
+    }
+  }
+
+  void addClap(double time) {
+    final start = (time * sampleRate).round();
+    final length = (0.08 * sampleRate).round();
+    for (var i = 0; i < length; i++) {
+      final position = start + i;
+      if (position >= samples.length) break;
+      final t = i / sampleRate;
+      samples[position] +=
+          0.3 * (random.nextDouble() * 2 - 1) * math.exp(-t * 45);
+    }
+  }
+
+  var beat = 0;
+  for (var time = 0.0; time < seconds; time += interval, beat++) {
+    addKick(time, 0.7);
+    if (beat % 4 == 1 || beat % 4 == 3) addClap(time);
+
+    // Bass riff across the first half of each bar: strong 4x-beat periodicity.
+    if (beat % 4 == 0) {
+      final start = (time * sampleRate).round();
+      final length = (interval * 2 * sampleRate).round();
+      for (var i = 0; i < length; i++) {
+        final position = start + i;
+        if (position >= samples.length) break;
+        final t = i / sampleRate;
+        samples[position] += 0.18 * math.sin(2 * math.pi * 82 * t);
+      }
+    }
+  }
+
+  return samples;
+}
+
 /// True click times in milliseconds, for the same parameters.
 List<int> expectedClicksMs({
   required double bpm,
@@ -101,6 +166,128 @@ void main() {
         expect(map.bpm, closeTo(bpm, 2.0));
       });
     }
+
+    // The failure this pipeline was originally shipped with: real dance music
+    // has a stronger raw autocorrelation at *twice* the beat, so a 150-175 BPM
+    // track was tracked at 75-87 BPM. Visually that is one pulse every 0.7s
+    // instead of two or three a second, which is precisely what "the cover feels
+    // too smoothed out on fast songs" was.
+    for (final bpm in [150.0, 174.0]) {
+      test('does not collapse $bpm BPM four-to-the-floor to half-time', () {
+        final map = analyzeBeats(hardstyleTrack(bpm: bpm, seconds: 24));
+
+        expect(map.hasBeats, isTrue);
+        expect(
+          map.bpm,
+          closeTo(bpm, 4.0),
+          reason: 'tracked at ${map.bpm.toStringAsFixed(1)} BPM, '
+              'which is ${(bpm / map.bpm).toStringAsFixed(2)}x out',
+        );
+      });
+    }
+
+    // The other side of the same coin. The half-time rescue keys on low-band
+    // flux precisely so that eighth-note hats cannot talk it into doubling a
+    // genuinely slow track — a listener does not tap a ballad at 156.
+    test('a slow track with eighth-note hats is not doubled', () {
+      const bpm = 78.0;
+      const seconds = 24.0;
+      final samples = clickTrack(bpm: bpm, seconds: seconds);
+
+      // Hats on every eighth: loud, broadband, and deliberately unmissable.
+      final random = math.Random(3);
+      final interval = 60.0 / bpm / 2;
+      for (var time = interval; time < seconds; time += interval * 2) {
+        final start = (time * analysisSampleRate).round();
+        final length = (0.04 * analysisSampleRate).round();
+        for (var i = 0; i < length; i++) {
+          final position = start + i;
+          if (position >= samples.length) break;
+          final t = i / analysisSampleRate;
+          samples[position] +=
+              0.35 * (random.nextDouble() * 2 - 1) * math.exp(-t * 90);
+        }
+      }
+
+      expect(analyzeBeats(samples).bpm, closeTo(bpm, 3.0));
+    });
+  });
+
+  // A safety net under the harmonic scoring, so by construction it is not
+  // reached by anything the estimator already gets right — which is exactly why
+  // it is pinned directly here rather than through analyzeBeats.
+  group('half-time rescue', () {
+    /// A low-band flux envelope with a kick every [kickEvery] frames, at
+    /// [midLevel] relative amplitude on the ones falling halfway between pairs.
+    Float32List kickEnvelope({
+      required int kickEvery,
+      required double midLevel,
+      int frames = 2000,
+    }) {
+      final envelope = Float32List(frames);
+      for (var i = 0; i < frames; i += kickEvery) {
+        envelope[i] = 1.0;
+        final mid = i + kickEvery ~/ 2;
+        if (mid < frames) envelope[mid] = midLevel;
+      }
+      return envelope;
+    }
+
+    // 86 BPM in frames. A kick of equal weight halfway between every pair means
+    // the listener is feeling twice the tempo that was estimated.
+    const halfTimePeriod = 30.0;
+
+    test('doubles the tempo when there is a full kick between the kicks', () {
+      final corrected = debugCorrectHalfTime(
+        kickEnvelope(kickEvery: halfTimePeriod.round(), midLevel: 1.0),
+        halfTimePeriod,
+      );
+
+      expect(corrected, closeTo(halfTimePeriod / 2, 0.01));
+    });
+
+    test('leaves the tempo alone when the gaps are empty', () {
+      final corrected = debugCorrectHalfTime(
+        kickEnvelope(kickEvery: halfTimePeriod.round(), midLevel: 0.0),
+        halfTimePeriod,
+      );
+
+      expect(corrected, halfTimePeriod);
+    });
+
+    test('leaves the tempo alone for a weak ghost note between beats', () {
+      // Half the weight of the real kicks: a syncopation, not the pulse.
+      final corrected = debugCorrectHalfTime(
+        kickEnvelope(kickEvery: halfTimePeriod.round(), midLevel: 0.5),
+        halfTimePeriod,
+      );
+
+      expect(corrected, halfTimePeriod);
+    });
+
+    test('never fires on a tempo that is already plausible', () {
+      // 120 BPM, with a kick on every eighth. Doubling here would be wrong even
+      // though the midpoints are as strong as the beats, because 240 BPM is not
+      // a tempo anyone taps — the bounds exist to make that unreachable.
+      const period = analysisFps / 2; // 500ms
+      final corrected = debugCorrectHalfTime(
+        kickEnvelope(kickEvery: period.round(), midLevel: 1.0),
+        period,
+      );
+
+      expect(corrected, period);
+    });
+
+    test('does not double past the tempo ceiling', () {
+      // 96 BPM doubles to 192, above the 190 BPM cap.
+      const period = analysisFps * 60 / 96;
+      final corrected = debugCorrectHalfTime(
+        kickEnvelope(kickEvery: period.round(), midLevel: 1.0),
+        period,
+      );
+
+      expect(corrected, period);
+    });
   });
 
   group('beat placement', () {
