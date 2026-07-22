@@ -4,16 +4,17 @@ import 'package:flutter/widgets.dart';
 
 import 'player_motion.dart';
 
-/// Floating particles that drift with the music and scatter on the beat.
+/// Floating particles that drift with the music and breathe on the beat.
 ///
 /// Lives in the player shell rather than any one pane, so the whole screen —
 /// lyrics, artwork and queue alike — shares the same field.
 ///
-/// The motion is built to avoid the two things that make particle effects look
-/// cheap: perfectly straight travel, and every particle doing the same thing at
-/// the same time. Each one wanders on its own pair of out-of-phase sine
-/// components, at its own depth, so the field reads as drifting dust rather
-/// than confetti on glass.
+/// The motion is built to avoid the three things that make particle effects look
+/// cheap: perfectly straight travel, every particle doing the same thing at the
+/// same time, and a field that quietly drains off screen. Each mote wanders on
+/// its own heading and its own pair of out-of-phase sine components, at its own
+/// depth, and answers the beat by its own amount — so the field reads as
+/// drifting dust rather than confetti on glass.
 class BeatParticleField extends StatefulWidget {
   final PlayerMotionController controller;
   final Color accent;
@@ -29,7 +30,7 @@ class BeatParticleField extends StatefulWidget {
 }
 
 class _BeatParticleFieldState extends State<BeatParticleField> {
-  late final _ParticleSystem _system = _ParticleSystem();
+  late final ParticleSystem _system = ParticleSystem();
 
   @override
   Widget build(BuildContext context) {
@@ -52,17 +53,34 @@ class _BeatParticleFieldState extends State<BeatParticleField> {
 
 /// One drifting mote. Positions are normalised 0..1 so the simulation is
 /// resolution independent and survives rotation without teleporting.
-class _Particle {
+@visibleForTesting
+class Particle {
   double x;
   double y;
 
-  /// Velocity from beat impulses, in normalised units per second. Decays.
-  double impulseX = 0;
-  double impulseY = 0;
+  /// Displacement along this particle's own radial direction, in normalised
+  /// units, and its rate of change.
+  ///
+  /// A beat pushes this outward and a spring pulls it back to zero. Modelling
+  /// the beat as a *displacement that returns* rather than as a velocity is what
+  /// keeps the field where it is: an impulse that is never undone gives every
+  /// particle a permanent outward drift, and the screen empties.
+  double push = 0;
+  double pushVelocity = 0;
 
   /// 0 = far away, 1 = close. Drives size, speed, brightness and how much a
-  /// shockwave moves it — near particles react hard, distant ones barely.
+  /// beat moves it — near particles react hard, distant ones barely.
   final double depth;
+
+  /// How strongly this particle answers a beat at all. Without the spread every
+  /// mote lunges by the same amount at the same instant, which is what made the
+  /// field read as one object rather than many.
+  final double response;
+
+  /// Constant heading, on top of the sine wander. Two particles side by side
+  /// travel different ways.
+  final double headingX;
+  final double headingY;
 
   final double baseRadius;
   final double driftPhaseX;
@@ -72,10 +90,18 @@ class _Particle {
   final double twinklePhase;
   final double twinkleRate;
 
-  _Particle({
+  /// Wall-clock seconds this particle appeared, and how long it takes to reach
+  /// full brightness — so the field materialises rather than popping on.
+  final double bornAt;
+  final double fadeInSeconds;
+
+  Particle({
     required this.x,
     required this.y,
     required this.depth,
+    required this.response,
+    required this.headingX,
+    required this.headingY,
     required this.baseRadius,
     required this.driftPhaseX,
     required this.driftPhaseY,
@@ -83,29 +109,51 @@ class _Particle {
     required this.driftFreqY,
     required this.twinklePhase,
     required this.twinkleRate,
+    required this.bornAt,
+    required this.fadeInSeconds,
   });
 }
 
-/// An expanding ring spawned on a beat. Particles it passes get a radial kick.
-class _Shockwave {
+/// An expanding wavefront spawned on a beat, staggering when each particle gets
+/// its kick by distance from the centre. Purely a force carrier — nothing draws
+/// it.
+class _BeatWave {
   double radius = 0;
   double strength;
 
-  _Shockwave(this.strength);
+  _BeatWave(this.strength);
 }
 
-class _ParticleSystem {
+@visibleForTesting
+class ParticleSystem {
   static const double _waveSpeed = 0.85;
   static const double _waveWidth = 0.13;
-  static const double _impulseDamping = 2.6;
   static const int _maxWaves = 4;
 
+  /// Where the field breathes from, in normalised coordinates: roughly where
+  /// the artwork sits.
+  static const double _centreX = 0.5;
+  static const double _centreY = 0.44;
+
+  /// Spring that returns [Particle.push] to rest. Slightly underdamped, so a
+  /// beat settles with one soft overshoot instead of creeping back.
+  static const double _pushOmega = 2 * math.pi * 2.2;
+  static const double _pushDamping = 0.55;
+  static const double _maxPush = 0.12;
+
+  /// Integration ceiling. The spring is integrated with semi-implicit Euler,
+  /// which needs `omega * dt` comfortably under 2 to stay stable; a hitch longer
+  /// than this is already visible, so slowing the simulation across it costs
+  /// nothing.
+  static const double _maxStepSeconds = 0.05;
+
   final math.Random _random = math.Random(20260722);
-  final List<_Particle> particles = [];
-  final List<_Shockwave> waves = [];
+  final List<Particle> particles = [];
+  final List<_BeatWave> _waves = [];
 
   int _lastBeatIndex = -1;
   double _lastElapsedSeconds = -1;
+  double _now = 0;
 
   void _resize(int count) {
     while (particles.length > count) {
@@ -116,14 +164,19 @@ class _ParticleSystem {
     }
   }
 
-  _Particle _spawn() {
+  Particle _spawn() {
     // Squared distribution biases toward the far field, so the screen has a lot
     // of quiet depth and only a few bright foreground motes.
     final depth = math.pow(_random.nextDouble(), 2).toDouble();
-    return _Particle(
+    final heading = _random.nextDouble() * math.pi * 2;
+    final headingSpeed = 0.002 + _random.nextDouble() * 0.005;
+    return Particle(
       x: _random.nextDouble(),
       y: _random.nextDouble(),
       depth: depth,
+      response: 0.4 + _random.nextDouble() * 0.8,
+      headingX: math.cos(heading) * headingSpeed,
+      headingY: math.sin(heading) * headingSpeed,
       baseRadius: 0.9 + _random.nextDouble() * 2.1,
       driftPhaseX: _random.nextDouble() * math.pi * 2,
       driftPhaseY: _random.nextDouble() * math.pi * 2,
@@ -133,6 +186,8 @@ class _ParticleSystem {
       driftFreqY: 0.04 + _random.nextDouble() * 0.09,
       twinklePhase: _random.nextDouble() * math.pi * 2,
       twinkleRate: 1.4 + _random.nextDouble() * 2.6,
+      bornAt: _now,
+      fadeInSeconds: 0.6 + _random.nextDouble() * 1.4,
     );
   }
 
@@ -142,36 +197,36 @@ class _ParticleSystem {
     required BeatFrame frame,
     required MotionIntensitySpec spec,
   }) {
+    _now = elapsedSeconds;
     _resize(spec.particleCount);
 
     var dt =
         _lastElapsedSeconds < 0 ? 0.0 : elapsedSeconds - _lastElapsedSeconds;
     _lastElapsedSeconds = elapsedSeconds;
-    // Clamp across pauses and dropped frames: integrating a one-second gap
-    // would fling every particle off screen at once.
-    if (dt <= 0 || dt > 0.1) dt = dt <= 0 ? 0 : 0.1;
-    if (dt == 0) return;
+    if (dt <= 0) return;
+    if (dt > _maxStepSeconds) dt = _maxStepSeconds;
 
     if (frame.hasBeat &&
         frame.beatIndex >= 0 &&
         frame.beatIndex != _lastBeatIndex) {
       _lastBeatIndex = frame.beatIndex;
-      if (waves.length >= _maxWaves) waves.removeAt(0);
-      waves.add(_Shockwave(frame.isDownbeat ? 1.0 : 0.62));
+      if (_waves.length >= _maxWaves) _waves.removeAt(0);
+      _waves.add(_BeatWave(frame.isDownbeat ? 1.0 : 0.62));
     } else if (!frame.hasBeat) {
       _lastBeatIndex = -1;
     }
 
-    for (var i = waves.length - 1; i >= 0; i--) {
-      final wave = waves[i];
+    for (var i = _waves.length - 1; i >= 0; i--) {
+      final wave = _waves[i];
       wave.radius += _waveSpeed * dt;
       wave.strength *= math.exp(-1.9 * dt);
-      if (wave.radius > 1.6 || wave.strength < 0.02) waves.removeAt(i);
+      if (wave.radius > 1.6 || wave.strength < 0.02) _waves.removeAt(i);
     }
 
     // Mid-range energy sets how briskly the field moves; a busy passage stirs
     // it up, a sparse one lets it settle.
-    final speed = 0.006 * (0.35 + 0.9 * frame.mid);
+    final energy = 0.35 + 0.9 * frame.mid;
+    final speed = 0.006 * energy;
 
     for (final particle in particles) {
       final driftX = math.sin(
@@ -194,8 +249,8 @@ class _ParticleSystem {
               );
 
       final scale = 0.4 + 0.6 * particle.depth;
-      particle.x += (driftX * speed * scale + particle.impulseX) * dt;
-      particle.y += (driftY * speed * scale + particle.impulseY) * dt;
+      particle.x += (driftX * speed + particle.headingX * energy) * scale * dt;
+      particle.y += (driftY * speed + particle.headingY * energy) * scale * dt;
 
       // High-frequency content gives everything a fine shimmer of jitter.
       if (frame.air > 0.01) {
@@ -203,10 +258,7 @@ class _ParticleSystem {
         particle.y += (_random.nextDouble() - 0.5) * 0.0016 * frame.air;
       }
 
-      particle.impulseX *= math.exp(-_impulseDamping * dt);
-      particle.impulseY *= math.exp(-_impulseDamping * dt);
-
-      _applyWaves(particle, spec, dt);
+      _stepPush(particle, spec, dt);
 
       // Toroidal wrap, so the field never thins out at the edges.
       if (particle.x < -0.05) particle.x += 1.1;
@@ -216,35 +268,70 @@ class _ParticleSystem {
     }
   }
 
-  void _applyWaves(_Particle particle, MotionIntensitySpec spec, double dt) {
-    if (waves.isEmpty) return;
+  /// Advances one particle's radial breath: whatever a passing wavefront adds,
+  /// the spring takes back.
+  void _stepPush(Particle particle, MotionIntensitySpec spec, double dt) {
+    // A small per-particle offset on where the front is felt, so neighbours are
+    // reached a moment apart rather than all on the same frame.
+    final distance =
+        _distanceFromCentre(particle) + (particle.response - 0.8) * 0.05;
 
-    final dx = particle.x - 0.5;
-    final dy = particle.y - 0.44;
-    final distance = math.sqrt(dx * dx + dy * dy);
-    if (distance < 1e-4) return;
-
-    for (final wave in waves) {
+    for (final wave in _waves) {
       final offset = (distance - wave.radius).abs();
       if (offset > _waveWidth) continue;
       // Falls off toward the edges of the wavefront, so particles are nudged as
       // it passes rather than snapping when it arrives.
       final falloff = 1 - offset / _waveWidth;
-      final push = wave.strength *
+      particle.pushVelocity += wave.strength *
           falloff *
           falloff *
           spec.particleImpulse *
+          particle.response *
           0.22 *
-          (0.35 + 0.65 * particle.depth);
-      particle.impulseX += dx / distance * push * dt * 60;
-      particle.impulseY += dy / distance * push * dt * 60;
+          (0.35 + 0.65 * particle.depth) *
+          dt *
+          60;
     }
+
+    // Semi-implicit Euler: velocity first, then position, which is what keeps a
+    // spring this stiff from winding itself up.
+    particle.pushVelocity -= (_pushOmega * _pushOmega * particle.push +
+            2 * _pushDamping * _pushOmega * particle.pushVelocity) *
+        dt;
+    particle.push =
+        (particle.push + particle.pushVelocity * dt).clamp(-_maxPush, _maxPush);
+  }
+
+  double _distanceFromCentre(Particle particle) {
+    final dx = particle.x - _centreX;
+    final dy = particle.y - _centreY;
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  /// Where a particle is actually drawn: its drifting position, displaced along
+  /// its own radius by the beat breath.
+  Offset displacedPosition(Particle particle) {
+    final dx = particle.x - _centreX;
+    final dy = particle.y - _centreY;
+    final distance = math.sqrt(dx * dx + dy * dy);
+    if (distance < 1e-4) return Offset(particle.x, particle.y);
+    return Offset(
+      particle.x + dx / distance * particle.push,
+      particle.y + dy / distance * particle.push,
+    );
+  }
+
+  /// 0..1 fade for a freshly spawned particle.
+  double fadeOf(Particle particle) {
+    final age = _now - particle.bornAt;
+    if (age >= particle.fadeInSeconds) return 1;
+    return (age / particle.fadeInSeconds).clamp(0.0, 1.0);
   }
 }
 
 class _ParticlePainter extends CustomPainter {
   final PlayerMotionController controller;
-  final _ParticleSystem system;
+  final ParticleSystem system;
   final Color accent;
 
   final Paint _corePaint = Paint()..blendMode = BlendMode.plus;
@@ -279,13 +366,16 @@ class _ParticlePainter extends CustomPainter {
       spec: spec,
     );
 
-    // Bass makes the whole field swell outward from the centre and back.
-    final swell = 1 + frame.bass * 0.05 + frame.pulse * 0.03;
-    final centre = Offset(size.width * 0.5, size.height * 0.44);
     final refraction = frame.pulse;
 
     for (final particle in system.particles) {
-      final base = Offset(particle.x * size.width, particle.y * size.height);
+      final normalised = system.displacedPosition(particle);
+      // A whisper of bass swell on top, weighted by depth so it is not one
+      // uniform zoom — the beat response itself lives in the particle.
+      final swell = 1 + frame.bass * 0.02 * (0.3 + 0.7 * particle.depth);
+      final centre = Offset(size.width * 0.5, size.height * 0.44);
+      final base =
+          Offset(normalised.dx * size.width, normalised.dy * size.height);
       final position = centre + (base - centre) * swell;
 
       final twinkle = 0.62 +
@@ -302,9 +392,11 @@ class _ParticlePainter extends CustomPainter {
           (0.45 + 0.55 * particle.depth) *
           (1 + frame.bass * 0.35 + frame.pulse * 0.25);
 
-      final alpha =
-          (spec.particleOpacity * (0.3 + 0.7 * particle.depth) * twinkle)
-              .clamp(0.0, 1.0);
+      final alpha = (spec.particleOpacity *
+              (0.3 + 0.7 * particle.depth) *
+              twinkle *
+              system.fadeOf(particle))
+          .clamp(0.0, 1.0);
       if (alpha < 0.01) continue;
 
       _haloPaint.color = accent.withValues(alpha: alpha * 0.16);
@@ -324,32 +416,6 @@ class _ParticlePainter extends CustomPainter {
 
       _corePaint.color = accent.withValues(alpha: alpha);
       canvas.drawCircle(position, radius, _corePaint);
-    }
-
-    _paintShockwaves(canvas, size, centre, spec);
-  }
-
-  void _paintShockwaves(
-    Canvas canvas,
-    Size size,
-    Offset centre,
-    MotionIntensitySpec spec,
-  ) {
-    if (system.waves.isEmpty) return;
-
-    final scale = math.max(size.width, size.height);
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..blendMode = BlendMode.plus;
-
-    for (final wave in system.waves) {
-      final alpha =
-          (wave.strength * spec.particleOpacity * 0.22).clamp(0.0, 1.0);
-      if (alpha < 0.01) continue;
-      paint
-        ..color = accent.withValues(alpha: alpha)
-        ..strokeWidth = 1 + 2.5 * wave.strength;
-      canvas.drawCircle(centre, wave.radius * scale, paint);
     }
   }
 

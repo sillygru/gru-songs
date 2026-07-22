@@ -29,11 +29,16 @@ class NowPlayingPane extends ConsumerStatefulWidget {
   /// Owned by the shell — the cover shares it with the particle field.
   final PlayerMotionController motion;
 
+  /// Marks the artwork box so the shell's glow layer can find it. The glow is
+  /// painted up there rather than here so it can spill past this pane.
+  final GlobalKey coverKey;
+
   const NowPlayingPane({
     super.key,
     required this.song,
     required this.accent,
     required this.motion,
+    required this.coverKey,
   });
 
   @override
@@ -81,6 +86,7 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
                         coverSizing: coverSizing,
                         audioManager: audioManager,
                         motion: widget.motion,
+                        coverKey: widget.coverKey,
                       ),
                     );
                   },
@@ -299,6 +305,7 @@ class _CoverStage extends ConsumerWidget {
   final PlayerCoverSizingMode coverSizing;
   final AudioPlayerManager audioManager;
   final PlayerMotionController motion;
+  final GlobalKey coverKey;
 
   const _CoverStage({
     required this.song,
@@ -307,6 +314,7 @@ class _CoverStage extends ConsumerWidget {
     required this.coverSizing,
     required this.audioManager,
     required this.motion,
+    required this.coverKey,
   });
 
   @override
@@ -349,10 +357,12 @@ class _CoverStage extends ConsumerWidget {
       tag: PlayerTokens.coverHeroTag(song.filename),
       child: BeatReactiveCover(
         controller: motion,
-        accent: accent,
         enabled: beatReactive,
         child: Container(
-          key: ValueKey('cover_${song.filename}'),
+          // The shell's glow layer reads this box's on-screen rect every frame.
+          // It sits inside the beat transform on purpose, so the glow tracks the
+          // pulse — and the page swipe — without being told about either.
+          key: coverKey,
           decoration: BoxDecoration(
             borderRadius: PlayerTokens.brLg,
             boxShadow: [

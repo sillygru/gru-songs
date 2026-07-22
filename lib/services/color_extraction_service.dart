@@ -9,15 +9,33 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:image/image.dart' as img;
 
+import '../domain/services/cover_palette.dart';
+
 class ExtractedPalette {
   final Color? used;
+
+  /// The cover's accent, already corrected for legibility by
+  /// [selectAccent]. Consumers use it as-is — no second lightening,
+  /// saturating or blending pass.
+  final Color accent;
+
+  /// The cover has no usable chroma, so the theme falls back to its OLED
+  /// variant instead of showing an invented hue.
+  final bool isNeutral;
+
+  /// Flat average of the swatches. Only meaningful for backdrops and scrims,
+  /// where a muddy blend of everything is exactly what is wanted — never as an
+  /// accent.
   final Color mixedColor;
+
   final List<Color> palette;
 
-  Color get color => used ?? mixedColor;
+  Color get color => used ?? accent;
 
   const ExtractedPalette({
     this.used,
+    required this.accent,
+    required this.isNeutral,
     required this.mixedColor,
     required this.palette,
   });
@@ -27,6 +45,8 @@ class ExtractedPalette {
     if (identical(this, other)) return true;
     if (other is! ExtractedPalette) return false;
     if (used != other.used) return false;
+    if (accent != other.accent) return false;
+    if (isNeutral != other.isNeutral) return false;
     if (mixedColor != other.mixedColor) return false;
     if (palette.length != other.palette.length) return false;
     for (int i = 0; i < palette.length; i++) {
@@ -37,7 +57,7 @@ class ExtractedPalette {
 
   @override
   int get hashCode {
-    int hash = Object.hash(used, mixedColor, palette.length);
+    int hash = Object.hash(used, accent, isNeutral, mixedColor, palette.length);
     for (final color in palette) {
       hash = Object.hash(hash, color);
     }
@@ -46,18 +66,24 @@ class ExtractedPalette {
 
   ExtractedPalette.single(Color color)
       : used = null,
+        accent = color,
+        isNeutral = false,
         mixedColor = color,
         palette = [color];
 
   factory ExtractedPalette.create({
     Color? used,
-    required List<Color> palette,
+    required List<Swatch> swatches,
   }) {
-    final mixed = ExtractedPalette.mixColors(palette.take(10).toList());
+    final selected = selectAccent(swatches);
+    final mixed =
+        ExtractedPalette.mixColors(selected.swatches.take(10).toList());
     return ExtractedPalette(
       used: used,
+      accent: selected.accent,
+      isNeutral: selected.isNeutral,
       mixedColor: mixed,
-      palette: palette,
+      palette: selected.swatches,
     );
   }
 
@@ -89,6 +115,10 @@ class ExtractedPalette {
         : ExtractedPalette.mixColors(paletteList.take(10).toList());
     return ExtractedPalette(
       used: json['used'] != null ? Color(json['used'] as int) : null,
+      accent: json['accent'] is int
+          ? Color(json['accent'] as int)
+          : normalizeAccent(mixedColor),
+      isNeutral: json['isNeutral'] as bool? ?? false,
       mixedColor: mixedColor,
       palette: paletteList,
     );
@@ -97,85 +127,61 @@ class ExtractedPalette {
   Map<String, dynamic> toJson() {
     return {
       'used': used?.toARGB32(),
+      'accent': accent.toARGB32(),
+      'isNeutral': isNeutral,
       'mixedColor': mixedColor.toARGB32(),
       'palette': palette.map((e) => e.toARGB32()).toList(),
     };
   }
+}
 
-  ExtractedPalette withDelightned() {
-    if (palette.isEmpty) return this;
-    final delightnedColors = palette.map((c) => _delightnedColor(c)).toList();
-    final delightnedMix =
-        ExtractedPalette.mixColors(delightnedColors.take(10).toList());
-    return ExtractedPalette(
-      used: used != null ? _delightnedColor(used!) : null,
-      mixedColor: delightnedMix,
-      palette: delightnedColors,
-    );
-  }
+/// A cached palette plus the identity of the cover file it came from, so an
+/// entry can be invalidated when the artwork behind the path is rewritten
+/// (cover refresh, metadata edits, standardisation).
+class _CacheEntry {
+  final ExtractedPalette palette;
+  final int size;
+  final int mtimeMs;
 
-  ExtractedPalette withAlpha(int alpha) {
-    return ExtractedPalette(
-      used: used?.withAlpha(alpha),
-      mixedColor: mixedColor.withAlpha(alpha),
-      palette: palette,
-    );
-  }
+  const _CacheEntry({
+    required this.palette,
+    required this.size,
+    required this.mtimeMs,
+  });
 
-  ExtractedPalette withDelightnedAndAlpha(int alpha) {
-    final delightned = withDelightned();
-    return delightned.withAlpha(alpha);
-  }
+  bool matches(FileStat stat) =>
+      stat.size == size && stat.modified.millisecondsSinceEpoch == mtimeMs;
 
-  /// Target lightness for an accent taken from cover art. It is deliberately
-  /// high: the seed is alpha-blended over the near-black app surface before it
-  /// reaches the theme, which knocks roughly a fifth off the lightness again.
-  static const double _accentLightness = 0.72;
+  Map<String, dynamic> toJson() => {
+        'palette': palette.toJson(),
+        'size': size,
+        'mtimeMs': mtimeMs,
+      };
 
-  /// Below this the colour is effectively grey, and pushing saturation into it
-  /// would invent a hue the cover doesn't have.
-  static const double _accentHueFloor = 0.1;
-  static const double _minAccentSaturation = 0.35;
-
-  static Color _delightnedColor(Color color) {
-    final hslColor = HSLColor.fromColor(color);
-    final saturation = hslColor.saturation >= _accentHueFloor &&
-            hslColor.saturation < _minAccentSaturation
-        ? _minAccentSaturation
-        : hslColor.saturation;
-    return hslColor
-        .withSaturation(saturation)
-        .withLightness(_accentLightness)
-        .toColor();
-  }
-
-  static Color _lighterColor(Color color) {
-    final luminance = color.computeLuminance();
-    if (luminance <= 0.1 || luminance >= 0.9) return color;
-    final hslColor = HSLColor.fromColor(color);
-    return hslColor.withLightness(0.64).toColor();
-  }
-
-  ExtractedPalette withLighter() {
-    if (palette.isEmpty) return this;
-    final lighterColors = palette.map((c) => _lighterColor(c)).toList();
-    final lighterMix =
-        ExtractedPalette.mixColors(lighterColors.take(10).toList());
-    return ExtractedPalette(
-      used: used != null ? _lighterColor(used!) : null,
-      mixedColor: lighterMix,
-      palette: lighterColors,
+  static _CacheEntry? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    final palette = json['palette'];
+    if (palette is! Map<String, dynamic>) return null;
+    return _CacheEntry(
+      palette: ExtractedPalette.fromJson(palette),
+      size: json['size'] as int? ?? -1,
+      mtimeMs: json['mtimeMs'] as int? ?? -1,
     );
   }
 }
 
 class ColorExtractionService {
+  /// Bumped whenever the extraction algorithm changes. The persisted cache is
+  /// discarded wholesale on a mismatch — without this, every already-scanned
+  /// library keeps serving colours computed by the old algorithm forever, and
+  /// no fix here would ever reach an existing install.
+  static const int _cacheVersion = 2;
+
   // Insertion-ordered map: most recently accessed keys sit at the end. On
   // each cache hit we re-insert to mark it as fresh, so the head of the
   // map is always the least-recently-used entry we can evict when the cap
   // is hit.
-  static LinkedHashMap<String, ExtractedPalette> _paletteCache =
-      LinkedHashMap();
+  static LinkedHashMap<String, _CacheEntry> _paletteCache = LinkedHashMap();
   static final Map<String, Future<ExtractedPalette?>> _pendingPalettes = {};
   static File? _cacheFile;
   static Directory? _paletteDir;
@@ -209,14 +215,23 @@ class ColorExtractionService {
       if (await _cacheFile!.exists()) {
         final Map<String, dynamic> json =
             await compute(_loadPaletteCacheSnapshot, _cacheFile!.path);
-        final loaded = <String, ExtractedPalette>{};
-        json.forEach((key, value) {
-          loaded[key] =
-              ExtractedPalette.fromJson(value as Map<String, dynamic>);
-        });
-        _paletteCache = LinkedHashMap.from(loaded);
-        debugPrint(
-            'ColorExtractionService: Loaded ${_paletteCache.length} cached palettes');
+        if (json['version'] != _cacheVersion) {
+          debugPrint('ColorExtractionService: Discarding stale palette cache '
+              '(v${json['version']} != v$_cacheVersion)');
+          await _cacheFile!.delete();
+        } else {
+          final entries = json['entries'];
+          final loaded = <String, _CacheEntry>{};
+          if (entries is Map<String, dynamic>) {
+            entries.forEach((key, value) {
+              final entry = _CacheEntry.fromJson(value);
+              if (entry != null) loaded[key] = entry;
+            });
+          }
+          _paletteCache = LinkedHashMap.from(loaded);
+          debugPrint(
+              'ColorExtractionService: Loaded ${_paletteCache.length} cached palettes');
+        }
       }
     } catch (e) {
       debugPrint('ColorExtractionService init error: $e');
@@ -236,10 +251,13 @@ class ColorExtractionService {
 
     final cached = _paletteCache[imagePath];
     if (cached != null) {
-      // Re-insert to mark as recently used for the LRU eviction policy.
+      if (await _isEntryFresh(imagePath, cached)) {
+        // Re-insert to mark as recently used for the LRU eviction policy.
+        _paletteCache.remove(imagePath);
+        _paletteCache[imagePath] = cached;
+        return cached.palette;
+      }
       _paletteCache.remove(imagePath);
-      _paletteCache[imagePath] = cached;
-      return cached;
     }
 
     final pending = _pendingPalettes[imagePath];
@@ -264,6 +282,21 @@ class ColorExtractionService {
     }
   }
 
+  /// An entry survives only while the file behind the path is byte-identical to
+  /// the one it was computed from. Covers are rewritten in place by metadata
+  /// edits and cover refresh, and a path-only key would keep serving the old
+  /// artwork's colour.
+  static Future<bool> _isEntryFresh(String imagePath, _CacheEntry entry) async {
+    if (entry.size < 0) return true;
+    try {
+      final stat = await File(imagePath).stat();
+      if (stat.type == FileSystemEntityType.notFound) return true;
+      return entry.matches(stat);
+    } catch (_) {
+      return true;
+    }
+  }
+
   static Future<ExtractedPalette?> _extractAndCachePalette(
     String imagePath, {
     required bool useIsolate,
@@ -271,14 +304,17 @@ class ColorExtractionService {
     final file = File(imagePath);
     if (!await file.exists()) return null;
 
-    final palette = await _extractPalette(file, useIsolate: useIsolate);
-    if (palette == null) return null;
+    final swatches = await _extractSwatches(file, useIsolate: useIsolate);
+    if (swatches == null || swatches.isEmpty) return null;
 
-    final extractedPalette = ExtractedPalette.create(
-      palette: palette,
+    final extractedPalette = ExtractedPalette.create(swatches: swatches);
+
+    final stat = await file.stat();
+    _paletteCache[imagePath] = _CacheEntry(
+      palette: extractedPalette,
+      size: stat.size,
+      mtimeMs: stat.modified.millisecondsSinceEpoch,
     );
-
-    _paletteCache[imagePath] = extractedPalette;
     // Cap the in-memory cache to avoid unbounded growth in long sessions.
     // Persisted cache on disk keeps the full set so future restarts reload
     // what was previously extracted.
@@ -294,23 +330,23 @@ class ColorExtractionService {
     }
   }
 
-  static Future<List<Color>?> _extractPalette(
+  static Future<List<Swatch>?> _extractSwatches(
     File imageFile, {
     bool useIsolate = false,
   }) async {
     try {
       final bytes = await imageFile.readAsBytes();
       if (useIsolate) {
-        return await compute(_extractKMeansPalette, bytes);
+        return await compute(_extractKMeansSwatches, bytes);
       } else {
-        return _extractKMeansPalette(bytes);
+        return _extractKMeansSwatches(bytes);
       }
     } catch (_) {
       return null;
     }
   }
 
-  static List<Color> _extractKMeansPalette(Uint8List bytes) {
+  static List<Swatch> _extractKMeansSwatches(Uint8List bytes) {
     var image = img.decodeImage(bytes);
     if (image == null) return [];
 
@@ -325,8 +361,11 @@ class ColorExtractionService {
     clusters.sort((a, b) => b.population.compareTo(a.population));
 
     return clusters
-        .map((c) =>
-            Color.fromARGB(255, c.centroid.r, c.centroid.g, c.centroid.b))
+        .map((c) => Swatch(
+              color:
+                  Color.fromARGB(255, c.centroid.r, c.centroid.g, c.centroid.b),
+              population: c.population,
+            ))
         .toList();
   }
 
@@ -345,6 +384,23 @@ class ColorExtractionService {
     return pixels;
   }
 
+  /// Seeds the clustering from the pixels themselves, so the same cover always
+  /// produces the same palette — across runs, and between the main-thread and
+  /// `compute()` paths. An unseeded `Random()` let one cover resolve to
+  /// different accents on different launches, and whichever result happened to
+  /// land in the cache was then frozen there.
+  static int _pixelSeed(List<_Pixel> pixels) {
+    var hash = pixels.length;
+    // Sampling ~256 pixels is plenty to fingerprint the image and keeps this
+    // off the hot path for large covers.
+    final step = max(1, pixels.length ~/ 256);
+    for (var i = 0; i < pixels.length; i += step) {
+      final p = pixels[i];
+      hash = 0x1fffffff & (hash * 31 + ((p.r << 16) | (p.g << 8) | p.b));
+    }
+    return hash;
+  }
+
   static List<_Cluster> _kMeansClustering(
     List<_Pixel> pixels, {
     required int k,
@@ -353,12 +409,39 @@ class ColorExtractionService {
     if (pixels.isEmpty || k <= 0) return [];
     if (k > pixels.length) k = pixels.length;
 
-    final random = Random();
+    final random = Random(_pixelSeed(pixels));
     final clusters = <_Cluster>[];
 
-    for (var i = 0; i < k; i++) {
-      final pixel = pixels[random.nextInt(pixels.length)];
-      clusters.add(_Cluster(centroid: pixel));
+    // k-means++ seeding: the first centroid is random, each subsequent one is
+    // drawn with probability proportional to its squared distance from the
+    // nearest centroid already chosen. Spreading the seeds out this way stops
+    // several of them landing inside one large flat region — the failure mode
+    // that leaves a cover's only saturated area unrepresented.
+    clusters.add(_Cluster(centroid: pixels[random.nextInt(pixels.length)]));
+
+    final nearest = List<double>.filled(pixels.length, double.infinity);
+    while (clusters.length < k) {
+      var total = 0.0;
+      final last = clusters.last.centroid;
+      for (var i = 0; i < pixels.length; i++) {
+        final d = _colorDistance(pixels[i], last);
+        final dSquared = d * d;
+        if (dSquared < nearest[i]) nearest[i] = dSquared;
+        total += nearest[i];
+      }
+
+      if (total <= 0) break;
+
+      var target = random.nextDouble() * total;
+      var chosen = pixels.length - 1;
+      for (var i = 0; i < pixels.length; i++) {
+        target -= nearest[i];
+        if (target <= 0) {
+          chosen = i;
+          break;
+        }
+      }
+      clusters.add(_Cluster(centroid: pixels[chosen]));
     }
 
     for (var iteration = 0; iteration < maxIterations; iteration++) {
@@ -458,8 +541,12 @@ class ColorExtractionService {
     if (_cacheFile == null) return;
     try {
       final snapshot = _paletteCache;
-      final json = snapshot.map((key, value) => MapEntry(key, value.toJson()));
-      await _cacheFile!.writeAsString(jsonEncode(json));
+      final entries =
+          snapshot.map((key, value) => MapEntry(key, value.toJson()));
+      await _cacheFile!.writeAsString(jsonEncode({
+        'version': _cacheVersion,
+        'entries': entries,
+      }));
     } catch (e) {
       debugPrint('Error saving palette cache: $e');
     }

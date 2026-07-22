@@ -60,29 +60,19 @@ class PlayerTokens {
   ///
   /// [AudioPlayerManager] already pushes extracted palettes into [themeProvider]
   /// as tracks change, so this stays in sync on its own.
+  ///
+  /// Used exactly as extracted. `selectAccent` has already lifted it
+  /// into a legible band; correcting it a second time here is what pushed the
+  /// player and the rest of the app onto two different colours.
   static Color accentOf(BuildContext context, WidgetRef ref) {
     final extracted = ref.watch(themeProvider).extractedColor;
-    return vibrant(extracted ?? Theme.of(context).colorScheme.primary);
+    return extracted ?? Theme.of(context).colorScheme.primary;
   }
 
   /// Non-watching variant for callbacks and one-shot reads.
   static Color readAccent(BuildContext context, WidgetRef ref) {
-    return vibrant(
-      ref.read(themeProvider).extractedColor ??
-          Theme.of(context).colorScheme.primary,
-    );
-  }
-
-  /// Cover palettes are frequently near-black or washed out, which leaves
-  /// filled controls unreadable against the dark backdrop. This lifts them into
-  /// a band that stays legible without losing the cover's hue.
-  static Color vibrant(Color color) {
-    final hsl = HSLColor.fromColor(color);
-    final lightness = hsl.lightness < 0.58
-        ? 0.64
-        : (hsl.lightness > 0.82 ? 0.82 : hsl.lightness);
-    final saturation = hsl.saturation < 0.22 ? 0.22 : hsl.saturation;
-    return hsl.withLightness(lightness).withSaturation(saturation).toColor();
+    return ref.read(themeProvider).extractedColor ??
+        Theme.of(context).colorScheme.primary;
   }
 
   /// Foreground that reads on top of [background] — used for the icon inside

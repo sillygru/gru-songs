@@ -116,6 +116,53 @@ void main() {
       expect(controller.computeFrame(-100).pulse, 0);
     });
 
+    test('settles past rest after the punch instead of easing straight back',
+        () {
+      // Nothing physical returns to where it started in a straight line. The
+      // overshoot is what sells the cover as struck rather than faded.
+      final atPeak = controller.computeFrame(2044);
+      final settling = controller.computeFrame(2210);
+
+      expect(atPeak.rebound, lessThan(0));
+      expect(settling.rebound, lessThan(atPeak.rebound));
+      // ...and it is back near rest before the next beat arrives.
+      expect(controller.computeFrame(2480).rebound, greaterThan(-0.05));
+    });
+
+    test('the rebound is a settle, not a second punch', () {
+      for (var ms = 0; ms < 8000; ms += 7) {
+        final frame = controller.computeFrame(ms.toDouble());
+        expect(frame.rebound, inInclusiveRange(-0.2, 0.0));
+      }
+    });
+
+    test('the lean alternates side to side between beats', () {
+      // A gesture that repeats identically is a metronome. Consecutive beats
+      // have to fall the other way.
+      final first = controller.computeFrame(2044).sway;
+      final second = controller.computeFrame(2544).sway;
+      final third = controller.computeFrame(3044).sway;
+
+      expect(first * second, lessThan(0));
+      expect(second * third, lessThan(0));
+    });
+
+    test('the lean varies in depth rather than repeating exactly', () {
+      // Same beat position in three different bars: same direction, different
+      // amounts.
+      final depths = [2044, 4044, 6044]
+          .map((ms) => controller.computeFrame(ms.toDouble()).sway.abs())
+          .toList();
+
+      expect(depths.toSet().length, 3);
+    });
+
+    test('the same beat always leans the same way', () {
+      // Deterministic, so a track does not shuffle its gestures between plays.
+      expect(controller.computeFrame(2044).sway,
+          controller.computeFrame(2044).sway);
+    });
+
     test('pulse never exceeds 1', () {
       controller.beatMap = gridMap(strength: 1.0);
       for (var ms = 0; ms < 8000; ms += 7) {

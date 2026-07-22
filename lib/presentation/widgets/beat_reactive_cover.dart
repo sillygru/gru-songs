@@ -1,32 +1,37 @@
 import 'package:flutter/widgets.dart';
 
-import '../tokens/player_tokens.dart';
 import 'player_motion.dart';
 
-/// Scales the album artwork with the beat.
+/// Moves the album artwork with the beat.
 ///
-/// Three things combine, in decreasing size:
+/// Four things combine, in decreasing size:
 ///
 ///  * a continuous breath on the beat period, so the cover is never still;
-///  * a punch on each beat, harder on downbeats;
-///  * a small contraction in the ~60 ms *before* each beat.
+///  * a punch on each beat, harder on downbeats and weighted by how much low end
+///    that moment actually has — a kick moves the artwork, a hi-hat barely does;
+///  * a small contraction in the ~60 ms *before* each beat;
+///  * an overshoot past rest afterwards, and a lean that alternates side to side
+///    at a slightly different depth every beat.
 ///
-/// That last one is the difference between "reacting to audio" and "moving with
-/// the music" — it is the anticipation a person shows nodding along, and it is
-/// only possible because the beat grid was computed ahead of time.
+/// The anticipation is the difference between "reacting to audio" and "moving
+/// with the music" — it is what a person does nodding along, and it is only
+/// possible because the beat grid was computed ahead of time. The rest exists
+/// because nothing physical returns to rest in a straight line, and nothing
+/// human repeats a gesture identically.
 ///
 /// The base scale is 1.0. Anything less permanently shrinks the artwork, which
 /// is what the first version of this feature did.
+///
+/// The glow is *not* here: it lives in the player shell as `BeatCoverGlow`, so
+/// it can spill past this pane instead of being clipped at its edge.
 class BeatReactiveCover extends StatelessWidget {
   final PlayerMotionController controller;
-  final Color accent;
   final bool enabled;
   final Widget child;
 
   const BeatReactiveCover({
     super.key,
     required this.controller,
-    required this.accent,
     required this.enabled,
     required this.child,
   });
@@ -44,38 +49,24 @@ class BeatReactiveCover extends StatelessWidget {
         final frame = controller.frame;
         final spec = controller.spec;
 
+        // One matrix rather than nested Transforms: three stacked transforms
+        // would mean three layers for what is one gesture.
+        final displacement = frame.displacement * (0.85 + 0.3 * frame.bass);
         final scale = 1.0 +
             frame.breath * spec.coverBreath +
-            frame.displacement * spec.coverPunch;
+            displacement * spec.coverPunch;
 
-        // Glow tracks the punch only. Tying it to the breath as well would
-        // leave a permanent halo, which reads as a bug rather than an accent.
-        final glow = frame.pulse;
+        final matrix = Matrix4.identity()
+          // Negative Y is up: the cover rides up on the punch and sinks into
+          // the anticipation.
+          ..translateByDouble(0, -displacement * spec.coverLift, 0, 1)
+          ..rotateZ(frame.sway * spec.coverSway)
+          ..scaleByDouble(scale, scale, 1, 1);
 
-        return Transform.scale(
-          scale: scale,
-          child: Stack(
-            children: [
-              if (glow > 0.01)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: PlayerTokens.brLg,
-                        boxShadow: [
-                          BoxShadow(
-                            color: accent.withValues(alpha: 0.34 * glow),
-                            blurRadius: 18 + 42 * glow,
-                            spreadRadius: 6 * glow,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              child!,
-            ],
-          ),
+        return Transform(
+          transform: matrix,
+          alignment: Alignment.center,
+          child: child,
         );
       },
     );

@@ -563,14 +563,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
               song.coverUrl,
               useIsolate: true,
             ).then((palette) {
-              if (palette != null &&
-                  _currentSongFilename == filenameAtExtraction) {
-                final processedPalette =
-                    palette.withDelightned().withAlpha(200);
-                _ref!
-                    .read(themeProvider.notifier)
-                    .updateExtractedPalette(processedPalette);
-              }
+              // Extraction is async; drop results for a track the user has
+              // already skipped past.
+              if (_currentSongFilename != filenameAtExtraction) return;
+              // Pushed through unchanged — the extraction service already
+              // corrected the accent for legibility, and a second pass here is
+              // what let the player and the rest of the app drift onto two
+              // different colours. A null result is forwarded too, so a song
+              // whose cover failed to decode clears the previous track's accent
+              // instead of silently keeping it.
+              _ref!.read(themeProvider.notifier).updateExtractedPalette(
+                    palette,
+                    forFilename: filenameAtExtraction,
+                  );
             });
             _preExtractNextColor();
           }

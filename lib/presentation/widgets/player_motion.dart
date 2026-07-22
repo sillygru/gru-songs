@@ -23,6 +23,16 @@ class BeatFrame {
   /// mechanical.
   final double anticipation;
 
+  /// The settle *after* the punch: a shallow negative overshoot that peaks
+  /// around 200ms in and eases back to rest. Something struck does not glide
+  /// back to where it started — it passes rest and returns.
+  final double rebound;
+
+  /// Signed lateral lean, alternating direction beat to beat and varying in
+  /// depth. A person nodding along never repeats the same gesture twice, and a
+  /// pulse that does is exactly what reads as a metronome.
+  final double sway;
+
   final double bass;
   final double mid;
   final double air;
@@ -42,6 +52,8 @@ class BeatFrame {
   const BeatFrame({
     this.pulse = 0,
     this.anticipation = 0,
+    this.rebound = 0,
+    this.sway = 0,
     this.bass = 0,
     this.mid = 0,
     this.air = 0,
@@ -53,9 +65,29 @@ class BeatFrame {
 
   static const idle = BeatFrame();
 
-  /// Pulse plus anticipation — the combined signed displacement most callers
-  /// actually want.
-  double get displacement => pulse + anticipation;
+  /// The whole beat gesture as one signed number: dip in, punch, overshoot,
+  /// settle. Most callers want this rather than the individual terms.
+  double get displacement => pulse + anticipation + rebound;
+
+  /// Scales every beat-driven term while leaving the free-running [breath] and
+  /// the band energies alone, so a track easing into its grid does not also
+  /// stop breathing.
+  BeatFrame scaleBeat(double factor) {
+    if (factor >= 1) return this;
+    return BeatFrame(
+      pulse: pulse * factor,
+      anticipation: anticipation * factor,
+      rebound: rebound * factor,
+      sway: sway * factor,
+      bass: bass,
+      mid: mid,
+      air: air,
+      breath: breath,
+      beatIndex: beatIndex,
+      isDownbeat: isDownbeat,
+      hasBeat: hasBeat,
+    );
+  }
 }
 
 /// Per-intensity scaling. The three settings differ only by these numbers, so
@@ -67,6 +99,14 @@ class MotionIntensitySpec {
   /// Fractional scale from continuous breathing.
   final double coverBreath;
 
+  /// Peak vertical travel in logical pixels — the cover rides up on the punch
+  /// and sinks on the anticipation. Kept tiny: this is a weight shift, not a
+  /// bounce.
+  final double coverLift;
+
+  /// Peak lean in radians.
+  final double coverSway;
+
   final int particleCount;
   final double particleImpulse;
   final double particleOpacity;
@@ -74,6 +114,8 @@ class MotionIntensitySpec {
   const MotionIntensitySpec({
     required this.coverPunch,
     required this.coverBreath,
+    required this.coverLift,
+    required this.coverSway,
     required this.particleCount,
     required this.particleImpulse,
     required this.particleOpacity,
@@ -82,6 +124,8 @@ class MotionIntensitySpec {
   static const _subtle = MotionIntensitySpec(
     coverPunch: 0.035,
     coverBreath: 0.010,
+    coverLift: 2.0,
+    coverSway: 0.0035,
     particleCount: 22,
     particleImpulse: 0.55,
     particleOpacity: 0.30,
@@ -90,6 +134,8 @@ class MotionIntensitySpec {
   static const _balanced = MotionIntensitySpec(
     coverPunch: 0.065,
     coverBreath: 0.016,
+    coverLift: 3.6,
+    coverSway: 0.0062,
     particleCount: 32,
     particleImpulse: 1.0,
     particleOpacity: 0.42,
@@ -98,6 +144,8 @@ class MotionIntensitySpec {
   static const _bold = MotionIntensitySpec(
     coverPunch: 0.105,
     coverBreath: 0.024,
+    coverLift: 6.0,
+    coverSway: 0.0105,
     particleCount: 44,
     particleImpulse: 1.7,
     particleOpacity: 0.55,
@@ -128,6 +176,15 @@ class PlayerMotionController extends ChangeNotifier {
   /// How long before a beat the anticipatory dip starts.
   static const double _anticipationMs = 60;
   static const double _anticipationDepth = 0.22;
+
+  /// Where the overshoot after the punch is deepest, and how deep it goes.
+  /// Comfortably inside a beat at any sane tempo, so the settle finishes before
+  /// the next punch rather than colliding with it.
+  static const double _reboundPeakMs = 210;
+  static const double _reboundDepth = 0.16;
+
+  /// How long the motion takes to ease into a freshly arrived beat grid.
+  static const double _gridBlendMs = 500;
 
   /// Downbeats hit full strength and everything else sits below them — that
   /// relative difference is what gives a bar its shape.
@@ -162,6 +219,15 @@ class PlayerMotionController extends ChangeNotifier {
   bool _appActive = true;
   int _latencyMs = 0;
 
+  /// How much of the beat-driven motion is faded in, 0..1.
+  ///
+  /// Analysis lands asynchronously, so without this the cover jumps from a free
+  /// swell to a locked pulse mid-track. Applied in [_onTick] only — never in
+  /// [computeFrame], which stays a pure function of the playhead — and only ever
+  /// reset while a real ticker is running, so a detached controller (tests,
+  /// anything driving frames by hand) always sees the grid at full strength.
+  double _gridBlend = 1;
+
   /// Anchor for the playhead clock, kept because `player.position` jitters
   /// enough between platform updates to make a beat-locked animation visibly
   /// stutter.
@@ -191,10 +257,15 @@ class PlayerMotionController extends ChangeNotifier {
   MotionIntensitySpec get spec => _spec;
   bool get hasBeatMap => _beatMap?.hasBeats ?? false;
 
-  /// Ticker elapsed time. The particle simulation integrates against this, so
-  /// it advances by real elapsed seconds rather than assuming a frame rate.
+  /// Monotonic animation clock. The particle simulation integrates against this,
+  /// so it advances by real elapsed seconds rather than assuming a frame rate.
+  ///
+  /// Deliberately not the raw ticker elapsed: [Ticker.start] restarts from zero,
+  /// so every pause/resume would rewind the clock and re-phase every particle at
+  /// the same instant. [_elapsedBase] carries the total across stops.
   Duration get elapsed => _elapsed;
   Duration _elapsed = Duration.zero;
+  Duration _elapsedBase = Duration.zero;
 
   /// Must be called once with a vsync provider before the controller animates.
   void attach(TickerProvider vsync) {
@@ -202,7 +273,15 @@ class PlayerMotionController extends ChangeNotifier {
     _syncTicker();
   }
 
-  set beatMap(BeatMap? map) => _beatMap = map;
+  set beatMap(BeatMap? map) {
+    final hadBeats = _beatMap?.hasBeats ?? false;
+    _beatMap = map;
+    // Only fade in when a grid actually appears mid-playback. Guarding on the
+    // ticker keeps hand-driven controllers deterministic.
+    if (!hadBeats && (map?.hasBeats ?? false) && (_ticker?.isActive ?? false)) {
+      _gridBlend = 0;
+    }
+  }
 
   set intensity(PlayerMotionIntensity value) {
     final next = MotionIntensitySpec.of(value);
@@ -282,6 +361,8 @@ class PlayerMotionController extends ChangeNotifier {
       ticker.start();
     } else if (!shouldRun && ticker.isActive) {
       ticker.stop();
+      // Bank the clock before it restarts from zero on the next start().
+      _elapsedBase = _elapsed;
       // Settle to rest rather than freezing mid-punch.
       _frame = BeatFrame.idle;
       notifyListeners();
@@ -289,8 +370,15 @@ class PlayerMotionController extends ChangeNotifier {
   }
 
   void _onTick(Duration elapsed) {
-    _elapsed = elapsed;
-    _frame = computeFrame(_visualPositionMs());
+    final previous = _elapsed;
+    _elapsed = _elapsedBase + elapsed;
+
+    if (_gridBlend < 1) {
+      final deltaMs = (_elapsed - previous).inMicroseconds / 1000;
+      _gridBlend = (_gridBlend + deltaMs / _gridBlendMs).clamp(0.0, 1.0);
+    }
+
+    _frame = computeFrame(_visualPositionMs()).scaleBeat(_gridBlend);
     notifyListeners();
   }
 
@@ -298,6 +386,7 @@ class PlayerMotionController extends ChangeNotifier {
   /// step through beats deterministically.
   @visibleForTesting
   void debugTick(Duration elapsed, double positionMs) {
+    _elapsedBase = Duration.zero;
     _elapsed = elapsed;
     _frame = computeFrame(positionMs);
     notifyListeners();
@@ -312,6 +401,12 @@ class PlayerMotionController extends ChangeNotifier {
 
   @visibleForTesting
   void debugOnPosition(Duration position) => _onPosition(position);
+
+  /// Stands in for the player's state stream, so the ticker can be started and
+  /// stopped without a platform audio session.
+  @visibleForTesting
+  void debugSetPlaying(bool playing) =>
+      _onPlayerState(PlayerState(playing, ProcessingState.ready));
 
   @visibleForTesting
   int debugPredictedMs() => _predictedPosition().inMilliseconds;
@@ -347,6 +442,8 @@ class PlayerMotionController extends ChangeNotifier {
     final periodMs = map.beatPeriodMsAt(index < 0 ? 0 : index);
 
     var pulse = 0.0;
+    var rebound = 0.0;
+    var sway = 0.0;
     var isDownbeat = false;
     if (index >= 0) {
       final sinceBeat = positionMs - map.beatsMs[index];
@@ -354,6 +451,11 @@ class PlayerMotionController extends ChangeNotifier {
       final strength =
           map.beatStrength[index] * (isDownbeat ? 1.0 : _offbeatLevel);
       pulse = _envelope(sinceBeat) * strength;
+      rebound = -_reboundBump(sinceBeat, periodMs) * _reboundDepth * strength;
+      // Alternating lean, at a depth that varies beat to beat. Both come from
+      // the beat index, so the same track leans the same way every play.
+      final direction = index.isEven ? 1.0 : -1.0;
+      sway = pulse * direction * (0.6 + 0.4 * _beatVariation(index));
     }
 
     var anticipation = 0.0;
@@ -365,9 +467,11 @@ class PlayerMotionController extends ChangeNotifier {
         final strength = map.beatStrength[nextIndex] *
             (nextIsDownbeat ? 1.0 : _offbeatLevel);
         // Deepens as the beat approaches, so the cover is at its smallest the
-        // instant before it punches.
+        // instant before it punches. Smoothstepped rather than linear: a linear
+        // ramp enters the window at full speed, and that corner is visible.
         final ramp = 1 - toNext / _anticipationMs;
-        anticipation = -ramp * _anticipationDepth * strength;
+        final eased = ramp * ramp * (3 - 2 * ramp);
+        anticipation = -eased * _anticipationDepth * strength;
       }
     }
 
@@ -383,6 +487,8 @@ class PlayerMotionController extends ChangeNotifier {
     return BeatFrame(
       pulse: clamp01(pulse),
       anticipation: anticipation,
+      rebound: rebound,
+      sway: sway,
       bass: bass,
       mid: mid,
       air: air,
@@ -404,6 +510,33 @@ class PlayerMotionController extends ChangeNotifier {
     return attack * decay * _envelopeScale;
   }
 
+  /// `(t/τ)²·e^(2(1−t/τ))` — a bump that leaves rest slowly, peaks at exactly 1
+  /// when `t == τ`, and falls away. Used negated, so the punch is followed by a
+  /// shallow pass below rest instead of a monotonic decay back to it.
+  ///
+  /// Tapered to zero across the beat, and with the peak pulled in on fast
+  /// tempos: an exponential tail alone still has two thirds of its depth left
+  /// half a second later, which would leave the cover permanently sitting small
+  /// between beats instead of settling.
+  double _reboundBump(double sinceBeatMs, double periodMs) {
+    if (sinceBeatMs <= 0) return 0;
+    final window = math.min(periodMs, 600.0);
+    if (sinceBeatMs >= window) return 0;
+
+    final t = sinceBeatMs / math.min(_reboundPeakMs, periodMs * 0.4);
+    return t * t * math.exp(2 * (1 - t)) * (1 - sinceBeatMs / window);
+  }
+
+  /// A stable 0..1 pseudo-random for a beat index. Cheap integer hash rather
+  /// than a Random, so any frame can be recomputed without carrying state.
+  static double _beatVariation(int index) {
+    var hash = index * 0x27d4eb2d;
+    hash ^= hash >> 15;
+    hash *= 0x85ebca6b;
+    hash ^= hash >> 13;
+    return (hash & 0xffff) / 0xffff;
+  }
+
   static double _computeEnvelopeScale() {
     // The peak of the attack/decay product, solved analytically.
     final peakTime = _attackMs * math.log(1 + _decayMs / _attackMs);
@@ -416,6 +549,9 @@ class PlayerMotionController extends ChangeNotifier {
   void dispose() {
     _positionSub?.cancel();
     _stateSub?.cancel();
+    // Ticker.dispose asserts it is not still running, which is exactly the case
+    // when the player screen is closed mid-playback.
+    _ticker?.stop();
     _ticker?.dispose();
     _ticker = null;
     super.dispose();

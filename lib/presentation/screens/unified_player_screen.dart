@@ -14,6 +14,7 @@ import '../components/player_segmented_pill.dart';
 import '../components/song_actions.dart';
 import '../tokens/player_tokens.dart';
 import '../widgets/basic_progress_bar.dart';
+import '../widgets/beat_cover_glow.dart';
 import '../widgets/beat_particle_field.dart';
 import '../widgets/blurred_background.dart';
 import '../widgets/player_motion.dart';
@@ -63,6 +64,12 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   /// Continuous page position, so the pill thumb tracks the swipe rather than
   /// snapping once the page settles.
   final ValueNotifier<double> _pagePosition = ValueNotifier(0);
+
+  /// Let the glow layer locate the artwork inside the pane, and convert it into
+  /// the shell's coordinates. The glow is painted up here so it can spill past
+  /// the pane, which clips.
+  final GlobalKey _coverKey = GlobalKey(debugLabel: 'player cover');
+  final GlobalKey _shellKey = GlobalKey(debugLabel: 'player shell');
 
   late int _pane;
   bool _wakeLockHeld = false;
@@ -218,9 +225,8 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     final themeState = ref.watch(themeProvider);
     // Lifted once here and passed down, so every pane shares one legible accent
     // rather than each deciding how to cope with a near-black cover palette.
-    final accent = PlayerTokens.vibrant(
-      themeState.extractedColor ?? Theme.of(context).colorScheme.primary,
-    );
+    final accent =
+        themeState.extractedColor ?? Theme.of(context).colorScheme.primary;
 
     ref.listen(
       settingsProvider.select((s) => s.keepScreenAwakeOnLyrics),
@@ -280,13 +286,28 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   Widget _buildBody(BuildContext context, Song song, Color accent) {
     final showParticles = ref
         .watch(settingsProvider.select((s) => s.beatReactiveParticlesEnabled));
+    final showGlow =
+        ref.watch(settingsProvider.select((s) => s.beatReactiveCoverEnabled));
 
     return Stack(
+      key: _shellKey,
       children: [
         // Backdrop — built outside the PageView so swiping never re-blurs it.
         Positioned.fill(
           child: _PlayerBackdrop(song: song, accent: accent),
         ),
+        // Above the backdrop but below the content column, so the glow bleeds
+        // across the whole screen while the pill, title and dock stay crisp on
+        // top of it.
+        if (showGlow)
+          Positioned.fill(
+            child: BeatCoverGlow(
+              controller: _motion,
+              coverKey: _coverKey,
+              shellKey: _shellKey,
+              accent: accent,
+            ),
+          ),
         // Chrome, so the field carries across all three panes rather than
         // living inside one of them.
         if (showParticles)
@@ -319,6 +340,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
                       song: song,
                       accent: accent,
                       motion: _motion,
+                      coverKey: _coverKey,
                     ),
                     QueuePane(
                       accent: accent,

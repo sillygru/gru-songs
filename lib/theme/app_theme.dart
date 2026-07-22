@@ -27,12 +27,11 @@ class AppTheme {
     final effectiveCoverColor = coverColor ?? state.extractedColor;
 
     if (state.mode == AppThemeMode.matchCover && effectiveCoverColor != null) {
-      final seed = _blendWithSurface(effectiveCoverColor, _surfaceDark);
-      return _buildTheme(
-        seed: seed,
-        background: _surfaceDark,
-        container: Color.alphaBlend(seed.withAlpha(20), _containerDark),
-      );
+      // Black-and-white artwork has no hue to match, so match its *absence* of
+      // colour instead of amplifying sensor noise into one: that is exactly the
+      // OLED theme.
+      if (state.isNeutralCover) return _oledTheme();
+      return _coverTheme(effectiveCoverColor);
     }
 
     final Color? overlayColor =
@@ -65,14 +64,33 @@ class AppTheme {
     final effectiveCoverColor = coverColor ?? state.extractedColor;
     if ((state.mode == AppThemeMode.matchCover || state.useCoverColor) &&
         effectiveCoverColor != null) {
-      final seed = _blendWithSurface(effectiveCoverColor, _surfaceDark);
-      return _buildTheme(
-        seed: seed,
-        background: _surfaceDark,
-        container: Color.alphaBlend(seed.withAlpha(20), _containerDark),
-      );
+      if (state.isNeutralCover) return _oledTheme();
+      return _coverTheme(effectiveCoverColor);
     }
     return getTheme(state, coverColor: effectiveCoverColor);
+  }
+
+  /// The one place a cover accent becomes a theme. Both the app and the player
+  /// route through it, which is what keeps them on the same colour — they used
+  /// to apply their own separate corrections and end up two shades apart.
+  ///
+  /// The accent arrives already corrected for legibility from
+  /// `selectAccent`, so it is used as the seed directly rather than being
+  /// dimmed into the surface again.
+  static ThemeData _coverTheme(Color accent) {
+    return _buildTheme(
+      seed: accent,
+      background: _surfaceDark,
+      container: Color.alphaBlend(accent.withAlpha(20), _containerDark),
+    );
+  }
+
+  static ThemeData _oledTheme() {
+    return _buildTheme(
+      seed: Colors.white,
+      background: _surfaceOled,
+      container: _containerOled,
+    );
   }
 
   static Color _blendWithSurface(Color color, Color surface) {

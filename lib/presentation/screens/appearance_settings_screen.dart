@@ -136,7 +136,7 @@ class _AppearanceSettingsScreenState
               AppSettingsSwitch(
                 icon: Icons.auto_awesome_outlined,
                 title: 'Beat-reactive particles',
-                subtitle: 'Floating particles that drift and scatter with the '
+                subtitle: 'Floating particles that drift and breathe with the '
                     'music',
                 value: settings.beatReactiveParticlesEnabled,
                 onChanged: notifier.setBeatReactiveParticlesEnabled,

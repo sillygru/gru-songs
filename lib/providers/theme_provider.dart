@@ -10,14 +10,24 @@ class ThemeState {
   final bool applyCoverColorToAll;
   final ExtractedPalette? extractedPalette;
 
+  /// The song [extractedPalette] belongs to. Extraction is asynchronous, so
+  /// results can land after the user has skipped on; this is what lets a stale
+  /// one be discarded instead of tinting the app with a previous track's cover.
+  final String? paletteFilename;
+
   ThemeState({
     required this.mode,
     this.useCoverColor = false,
     this.applyCoverColorToAll = false,
     this.extractedPalette,
+    this.paletteFilename,
   });
 
   Color? get extractedColor => extractedPalette?.color;
+
+  /// The cover has no usable chroma, so the theme uses its OLED variant rather
+  /// than inventing a hue.
+  bool get isNeutralCover => extractedPalette?.isNeutral ?? false;
 
   List<Color> get palette => extractedPalette?.palette ?? [];
 
@@ -26,12 +36,26 @@ class ThemeState {
     bool? useCoverColor,
     bool? applyCoverColorToAll,
     ExtractedPalette? extractedPalette,
+    String? paletteFilename,
   }) {
     return ThemeState(
       mode: mode ?? this.mode,
       useCoverColor: useCoverColor ?? this.useCoverColor,
       applyCoverColorToAll: applyCoverColorToAll ?? this.applyCoverColorToAll,
       extractedPalette: extractedPalette ?? this.extractedPalette,
+      paletteFilename: paletteFilename ?? this.paletteFilename,
+    );
+  }
+
+  /// `copyWith` cannot express "clear the palette", since a null argument means
+  /// "keep the current value" there.
+  ThemeState withPalette(ExtractedPalette? palette, String? filename) {
+    return ThemeState(
+      mode: mode,
+      useCoverColor: useCoverColor,
+      applyCoverColorToAll: applyCoverColorToAll,
+      extractedPalette: palette,
+      paletteFilename: filename,
     );
   }
 }
@@ -84,16 +108,26 @@ class ThemeNotifier extends Notifier<ThemeState> {
     await prefs.setBool('apply_cover_color_to_all', applyAll);
   }
 
-  void updateExtractedPalette(ExtractedPalette? palette) {
-    if (state.extractedPalette != palette) {
-      state = state.copyWith(extractedPalette: palette);
+  /// Applies the palette extracted for [forFilename].
+  ///
+  /// A null [palette] clears the accent rather than leaving the previous song's
+  /// colour in place — a cover that fails to decode should fall back to the
+  /// default theme, not borrow another album's hue.
+  void updateExtractedPalette(
+    ExtractedPalette? palette, {
+    required String forFilename,
+  }) {
+    if (state.extractedPalette == palette &&
+        state.paletteFilename == forFilename) {
+      return;
     }
+    state = state.withPalette(palette, forFilename);
   }
 
   void updateExtractedColor(Color? color) {
     if (state.extractedColor != color) {
       final palette = color != null ? ExtractedPalette.single(color) : null;
-      state = state.copyWith(extractedPalette: palette);
+      state = state.withPalette(palette, state.paletteFilename);
     }
   }
 }
