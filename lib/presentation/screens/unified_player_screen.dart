@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../models/song.dart';
-import '../../providers/audio_energy_provider.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/theme_provider.dart';
@@ -61,9 +60,6 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
   bool _wakeLockHeld = false;
   double _dismissDrag = 0;
 
-  /// Captured up front: dispose() runs after ref access is no longer allowed.
-  PlayerScreenActiveNotifier? _activeNotifier;
-
   @override
   void initState() {
     super.initState();
@@ -74,8 +70,6 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _activeNotifier = ref.read(playerScreenActiveProvider.notifier);
-      _activeNotifier!.setActive(true);
       _syncWakeLock();
     });
   }
@@ -86,7 +80,6 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
     _pageController.dispose();
     _pagePosition.dispose();
     _releaseWakeLock();
-    _activeNotifier?.setActive(false);
     super.dispose();
   }
 

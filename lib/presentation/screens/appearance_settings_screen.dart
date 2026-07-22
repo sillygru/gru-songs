@@ -84,14 +84,7 @@ class _AppearanceSettingsScreenState
                 value: settings.lyricsBlurOverlayEnabled,
                 onChanged: notifier.setLyricsBlurOverlayEnabled,
               ),
-              AppSettingsSwitch(
-                icon: Icons.album_outlined,
-                title: 'Beat-reactive cover',
-                subtitle: 'Work in progress. Pulses album art with the beat.',
-                value: settings.beatReactiveCoverEnabled,
-                onChanged: notifier.setBeatReactiveCoverEnabled,
-              ),
-              AppSettingsSwitch(
+AppSettingsSwitch(
                 icon: Icons.blur_linear_rounded,
                 title: 'Progressive blur on list headers',
                 subtitle: 'Blur behind scrolling headers (performance heavy)',

@@ -31,7 +31,6 @@ class SettingsState {
   final bool keepScreenAwakeOnLyrics;
   final PlayerCoverSizingMode coverSizingMode;
   final bool lyricsBlurOverlayEnabled;
-  final bool beatReactiveCoverEnabled;
   final bool showProgressiveBlurHeaders;
   final bool showQuickPicks;
   final bool showRecentQueues;
@@ -64,7 +63,6 @@ class SettingsState {
     this.keepScreenAwakeOnLyrics = true,
     this.coverSizingMode = PlayerCoverSizingMode.autoFit,
     this.lyricsBlurOverlayEnabled = true,
-    this.beatReactiveCoverEnabled = false,
     this.showProgressiveBlurHeaders = false,
     this.showQuickPicks = true,
     this.showRecentQueues = true,
@@ -98,7 +96,6 @@ class SettingsState {
     bool? keepScreenAwakeOnLyrics,
     PlayerCoverSizingMode? coverSizingMode,
     bool? lyricsBlurOverlayEnabled,
-    bool? beatReactiveCoverEnabled,
     bool? showProgressiveBlurHeaders,
     bool? showQuickPicks,
     bool? showRecentQueues,
@@ -142,8 +139,6 @@ class SettingsState {
       coverSizingMode: coverSizingMode ?? this.coverSizingMode,
       lyricsBlurOverlayEnabled:
           lyricsBlurOverlayEnabled ?? this.lyricsBlurOverlayEnabled,
-      beatReactiveCoverEnabled:
-          beatReactiveCoverEnabled ?? this.beatReactiveCoverEnabled,
       showProgressiveBlurHeaders:
           showProgressiveBlurHeaders ?? this.showProgressiveBlurHeaders,
       showQuickPicks: showQuickPicks ?? this.showQuickPicks,
@@ -180,7 +175,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyKeepScreenAwakeOnLyrics = 'keep_screen_awake_on_lyrics';
   static const _keyCoverSizingMode = 'cover_sizing_mode';
   static const _keyLyricsBlurOverlayEnabled = 'lyrics_blur_overlay_enabled';
-  static const _keyBeatReactiveCoverEnabled = 'beat_reactive_cover_enabled';
   static const _keyProgressiveBlurHeaders = 'progressive_blur_headers';
   static const _keyShowQuickPicks = 'show_quick_picks';
   static const _keyShowRecentQueues = 'show_recent_queues';
@@ -238,8 +232,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
           : PlayerCoverSizingMode.autoFit,
       lyricsBlurOverlayEnabled:
           prefs.getBool(_keyLyricsBlurOverlayEnabled) ?? true,
-      beatReactiveCoverEnabled:
-          prefs.getBool(_keyBeatReactiveCoverEnabled) ?? false,
       showProgressiveBlurHeaders:
           prefs.getBool(_keyProgressiveBlurHeaders) ?? false,
       showQuickPicks: prefs.getBool(_keyShowQuickPicks) ?? true,
@@ -426,12 +418,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(lyricsBlurOverlayEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyLyricsBlurOverlayEnabled, enabled);
-  }
-
-  Future<void> setBeatReactiveCoverEnabled(bool enabled) async {
-    state = state.copyWith(beatReactiveCoverEnabled: enabled);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyBeatReactiveCoverEnabled, enabled);
   }
 
   Future<void> setProgressiveBlurHeaders(bool enabled) async {
