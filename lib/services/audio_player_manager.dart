@@ -547,6 +547,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           final song = _songMap[newFilename];
           currentSongNotifier.value = song;
           _updateEffectivePlaybackMode(song);
+          _warmBeatAnalysis(song);
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
 
@@ -1156,6 +1157,40 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         useIsolate: true,
       );
     }
+  }
+
+  /// Kicks off beat analysis for the track that just started and the one after
+  /// it.
+  ///
+  /// Lives here rather than in the player screen so a song is analysed the
+  /// first time it is *played*, not the first time its artwork happens to be on
+  /// screen. Analysing the next track too means skipping forward finds a beat
+  /// map already waiting instead of a few seconds of idle motion.
+  ///
+  /// Everything downstream is cached and de-duplicated, so calling this on
+  /// every track change is cheap after the first pass through a library.
+  void _warmBeatAnalysis(Song? current) {
+    if (_ref == null) return;
+
+    final settings = _ref!.read(settingsProvider);
+    if (!settings.beatReactiveCoverEnabled &&
+        !settings.beatReactiveParticlesEnabled) {
+      return;
+    }
+
+    final service = _ref!.read(beatAnalysisServiceProvider);
+
+    if (current != null) {
+      service.prefetch(current.filename, current.url);
+    }
+
+    final currentIndex = _player.currentIndex;
+    if (currentIndex == null || _effectiveQueue.isEmpty) return;
+    final nextIndex = currentIndex + 1;
+    if (nextIndex >= _effectiveQueue.length) return;
+
+    final next = _effectiveQueue[nextIndex].song;
+    service.prefetch(next.filename, next.url);
   }
 
   void _warmThemePalette(String? coverUrl) {

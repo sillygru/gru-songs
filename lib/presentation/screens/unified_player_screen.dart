@@ -14,7 +14,9 @@ import '../components/player_segmented_pill.dart';
 import '../components/song_actions.dart';
 import '../tokens/player_tokens.dart';
 import '../widgets/basic_progress_bar.dart';
+import '../widgets/beat_particle_field.dart';
 import '../widgets/blurred_background.dart';
+import '../widgets/player_motion.dart';
 import '../widgets/smooth_color_builder.dart';
 import '../widgets/song_options_menu.dart';
 import '../widgets/waveform_progress_bar.dart';
@@ -47,10 +49,16 @@ class UnifiedPlayerScreen extends ConsumerStatefulWidget {
       _UnifiedPlayerScreenState();
 }
 
-class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
+class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const String _wakeLockReason = 'unified_player_lyrics';
 
   late final PageController _pageController;
+
+  /// Drives every beat-reactive element on this screen. Owned by the shell so
+  /// the cover and the particle field share one ticker and one playhead clock
+  /// rather than each running their own.
+  late final PlayerMotionController _motion;
 
   /// Continuous page position, so the pill thumb tracks the swipe rather than
   /// snapping once the page settles.
@@ -60,6 +68,10 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
   bool _wakeLockHeld = false;
   double _dismissDrag = 0;
 
+  /// Guards against a slow analysis landing after the user has skipped on.
+  String? _beatMapFilename;
+  int _beatMapToken = 0;
+
   @override
   void initState() {
     super.initState();
@@ -68,19 +80,81 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
     _pageController = PageController(initialPage: _pane);
     _pageController.addListener(_onPageScroll);
 
+    WidgetsBinding.instance.addObserver(this);
+
+    final manager = ref.read(audioPlayerManagerProvider);
+    _motion = PlayerMotionController(player: manager.player)..attach(this);
+    manager.currentSongNotifier.addListener(_onSongChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _syncWakeLock();
+      _syncMotionSettings();
+      _onSongChanged();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ref
+        .read(audioPlayerManagerProvider)
+        .currentSongNotifier
+        .removeListener(_onSongChanged);
+    _motion.dispose();
     _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
     _pagePosition.dispose();
     _releaseWakeLock();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Backgrounded means nobody is watching: stop the ticker rather than
+    // animating a screen that isn't on.
+    _motion.appActive = state == AppLifecycleState.resumed;
+  }
+
+  /// Loads the beat map for whatever is now playing.
+  ///
+  /// Reads the cache first so an already-analysed track locks on instantly;
+  /// only falls through to analysis when there is nothing cached, during which
+  /// the motion layer breathes rather than sitting still.
+  Future<void> _onSongChanged() async {
+    final song = ref.read(audioPlayerManagerProvider).currentSongNotifier.value;
+    if (song == null) {
+      _beatMapFilename = null;
+      _motion.beatMap = null;
+      return;
+    }
+    if (song.filename == _beatMapFilename) return;
+
+    _beatMapFilename = song.filename;
+    final token = ++_beatMapToken;
+    _motion.beatMap = null;
+
+    final service = ref.read(beatAnalysisServiceProvider);
+    final cached = await service.readCached(song.filename);
+    if (!mounted || token != _beatMapToken) return;
+    if (cached != null) {
+      _motion.beatMap = cached;
+      return;
+    }
+
+    final analyzed = await service.analyze(song.filename, song.url);
+    if (!mounted || token != _beatMapToken) return;
+    _motion.beatMap = analyzed;
+  }
+
+  void _syncMotionSettings() {
+    final settings = ref.read(settingsProvider);
+    _motion
+      ..enabled = settings.beatReactiveCoverEnabled ||
+          settings.beatReactiveParticlesEnabled
+      ..intensity = settings.playerMotionIntensity
+      ..latencyMs = settings.playerMotionLatencyMs;
   }
 
   void _onPageScroll() {
@@ -153,6 +227,18 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
       (_, __) => _syncWakeLock(),
     );
 
+    ref.listen(
+      settingsProvider.select(
+        (s) => (
+          s.beatReactiveCoverEnabled,
+          s.beatReactiveParticlesEnabled,
+          s.playerMotionIntensity,
+          s.playerMotionLatencyMs,
+        ),
+      ),
+      (_, __) => _syncMotionSettings(),
+    );
+
     return Theme(
       data: AppTheme.getPlayerTheme(themeState, accent),
       child: Builder(
@@ -192,12 +278,21 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
   }
 
   Widget _buildBody(BuildContext context, Song song, Color accent) {
+    final showParticles = ref
+        .watch(settingsProvider.select((s) => s.beatReactiveParticlesEnabled));
+
     return Stack(
       children: [
         // Backdrop — built outside the PageView so swiping never re-blurs it.
         Positioned.fill(
           child: _PlayerBackdrop(song: song, accent: accent),
         ),
+        // Chrome, so the field carries across all three panes rather than
+        // living inside one of them.
+        if (showParticles)
+          Positioned.fill(
+            child: BeatParticleField(controller: _motion, accent: accent),
+          ),
         SafeArea(
           child: Column(
             children: [
@@ -220,7 +315,11 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen> {
                   physics: const ClampingScrollPhysics(),
                   children: [
                     LyricsPane(song: song, accent: accent),
-                    NowPlayingPane(song: song, accent: accent),
+                    NowPlayingPane(
+                      song: song,
+                      accent: accent,
+                      motion: _motion,
+                    ),
                     QueuePane(
                       accent: accent,
                       initialShowHistory: widget.queueShowsHistory,

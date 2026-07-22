@@ -24,6 +24,7 @@ class _StorageManagementScreenState
   int _libraryCacheSize = 0;
   int _searchIndexSize = 0;
   int _waveformCacheSize = 0;
+  int _beatMapCacheSize = 0;
   int _colorCacheSize = 0;
   int _lyricsCacheSize = 0;
   int _blurredCacheSize = 0;
@@ -51,6 +52,8 @@ class _StorageManagementScreenState
           await StorageAnalysisService.instance.getSearchIndexSize();
       final waveformSize =
           await StorageAnalysisService.instance.getWaveformCacheSize();
+      final beatMapSize =
+          await StorageAnalysisService.instance.getBeatMapCacheSize();
       final colorSize =
           await StorageAnalysisService.instance.getColorCacheSize();
       final lyricsSize =
@@ -66,6 +69,7 @@ class _StorageManagementScreenState
           _libraryCacheSize = libSize;
           _searchIndexSize = searchSize;
           _waveformCacheSize = waveformSize;
+          _beatMapCacheSize = beatMapSize;
           _colorCacheSize = colorSize;
           _lyricsCacheSize = lyricsSize;
           _blurredCacheSize = blurredSize;
@@ -369,6 +373,37 @@ class _StorageManagementScreenState
     }
   }
 
+  Future<void> _handleClearBeatMapCache() async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Clear Beat Analysis?',
+      content: 'This will delete the cached beat maps used by the '
+          'beat-reactive player.\n\n'
+          'They are rebuilt automatically the next time each song plays.',
+      confirmText: 'Clear Cache',
+      confirmColor: AppTokens.warning,
+    );
+
+    if (!confirmed || !mounted) return;
+
+    if (mounted) {
+      setState(() => _isClearing = true);
+    }
+
+    try {
+      await StorageAnalysisService.instance.clearBeatMapCache();
+      await _loadSizes();
+      if (mounted) {
+        setState(() => _isClearing = false);
+        appSnack(context, 'Beat analysis cache cleared successfully');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isClearing = false);
+        appSnack(context, 'Error clearing beat analysis cache: $e');
+      }
+    }
+  }
+
   Future<void> _handleClearColorCache() async {
     final confirmed = await _showConfirmationDialog(
       title: 'Clear Color Cache?',
@@ -567,6 +602,15 @@ class _StorageManagementScreenState
                     onClear: _waveformCacheSize > 0
                         ? _handleClearWaveformCache
                         : null,
+                  ),
+                  _buildStorageCard(
+                    title: 'Beat Analysis',
+                    subtitle: 'Cached beat maps for the reactive player',
+                    size: _beatMapCacheSize,
+                    icon: Icons.graphic_eq_rounded,
+                    color: AppTokens.success,
+                    onClear:
+                        _beatMapCacheSize > 0 ? _handleClearBeatMapCache : null,
                   ),
                   _buildStorageCard(
                     title: 'Color Cache',

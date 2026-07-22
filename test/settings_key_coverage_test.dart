@@ -85,6 +85,8 @@ Object _sampleValue(String key) {
     case 'gap_resume_timestamp':
     case 'auto_backup_frequency_hours':
     case 'auto_backup_delete_after_days':
+    case 'player_motion_intensity':
+    case 'player_motion_latency_ms':
       return 1;
     default:
       return 'sample';

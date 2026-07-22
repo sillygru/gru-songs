@@ -15,6 +15,16 @@ enum PlayerCoverSizingMode {
   sourceAspect,
 }
 
+/// How strongly the player screen reacts to the beat. Scales cover pulse
+/// amplitude, particle count and shockwave strength from one place.
+///
+/// Persisted by index, so only ever append to this list.
+enum PlayerMotionIntensity {
+  subtle,
+  balanced,
+  bold,
+}
+
 class Song extends Equatable {
   static const Set<String> videoExtensions = {
     '.mp4',

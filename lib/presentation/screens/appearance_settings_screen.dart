@@ -84,7 +84,7 @@ class _AppearanceSettingsScreenState
                 value: settings.lyricsBlurOverlayEnabled,
                 onChanged: notifier.setLyricsBlurOverlayEnabled,
               ),
-AppSettingsSwitch(
+              AppSettingsSwitch(
                 icon: Icons.blur_linear_rounded,
                 title: 'Progressive blur on list headers',
                 subtitle: 'Blur behind scrolling headers (performance heavy)',
@@ -118,6 +118,90 @@ AppSettingsSwitch(
                       child: Text('Source Size'),
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+          AppSettingsGroup(
+            label: 'Player motion',
+            icon: Icons.graphic_eq_rounded,
+            children: [
+              AppSettingsSwitch(
+                icon: Icons.album_outlined,
+                title: 'Beat-reactive cover',
+                subtitle: 'Album art pulses with the beat',
+                value: settings.beatReactiveCoverEnabled,
+                onChanged: notifier.setBeatReactiveCoverEnabled,
+              ),
+              AppSettingsSwitch(
+                icon: Icons.auto_awesome_outlined,
+                title: 'Beat-reactive particles',
+                subtitle: 'Floating particles that drift and scatter with the '
+                    'music',
+                value: settings.beatReactiveParticlesEnabled,
+                onChanged: notifier.setBeatReactiveParticlesEnabled,
+              ),
+              AppListRow(
+                dense: true,
+                leading: AppRowIcon(
+                  icon: Icons.tune_rounded,
+                  color: accent,
+                  size: 40,
+                ),
+                title: 'Motion intensity',
+                subtitle: 'How strongly the player reacts',
+                trailing: DropdownButton<PlayerMotionIntensity>(
+                  value: settings.playerMotionIntensity,
+                  underline: const SizedBox.shrink(),
+                  borderRadius: AppTokens.brMd,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    notifier.setPlayerMotionIntensity(value);
+                  },
+                  items: const [
+                    DropdownMenuItem(
+                      value: PlayerMotionIntensity.subtle,
+                      child: Text('Subtle'),
+                    ),
+                    DropdownMenuItem(
+                      value: PlayerMotionIntensity.balanced,
+                      child: Text('Balanced'),
+                    ),
+                    DropdownMenuItem(
+                      value: PlayerMotionIntensity.bold,
+                      child: Text('Bold'),
+                    ),
+                  ],
+                ),
+              ),
+              // Output latency is a property of the listener's hardware, not the
+              // app: Bluetooth typically runs 150-250ms behind wired. Without
+              // this the pulse is permanently early on BT with no recourse.
+              AppListRow(
+                dense: true,
+                leading: AppRowIcon(
+                  icon: Icons.sync_alt_rounded,
+                  color: accent,
+                  size: 40,
+                ),
+                title: 'Beat sync offset',
+                subtitle: settings.playerMotionLatencyMs == 0
+                    ? 'No offset — raise it if the pulse feels early'
+                    : '${settings.playerMotionLatencyMs} ms '
+                        '(raise for Bluetooth)',
+                trailing: SizedBox(
+                  width: 160,
+                  child: Slider(
+                    value: settings.playerMotionLatencyMs.toDouble(),
+                    min: SettingsNotifier.minMotionLatencyMs.toDouble(),
+                    max: SettingsNotifier.maxMotionLatencyMs.toDouble(),
+                    divisions: (SettingsNotifier.maxMotionLatencyMs -
+                            SettingsNotifier.minMotionLatencyMs) ~/
+                        10,
+                    label: '${settings.playerMotionLatencyMs} ms',
+                    onChanged: (value) =>
+                        notifier.setPlayerMotionLatencyMs(value.round()),
+                  ),
                 ),
               ),
             ],

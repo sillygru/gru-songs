@@ -277,6 +277,11 @@ class CacheService {
         p.join(_v3Dir.path, 'waveform_${_cacheKey(songFilename)}.json'));
   }
 
+  Future<File> getBeatMapCacheFile(String songFilename) async {
+    await init();
+    return File(p.join(_v3Dir.path, 'beatmap_${_cacheKey(songFilename)}.json'));
+  }
+
   Future<File> getBlurredCacheFile(String songFilename) async {
     await init();
     final blurredDir = Directory(p.join(_v3Dir.path, 'blurred_cache'));
@@ -367,6 +372,10 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
         p.normalize(p.join(
             v3Dir.path, 'waveform_${CacheService._cacheKey(filename)}.json')),
       );
+      currentWaveformPaths.add(
+        p.normalize(p.join(
+            v3Dir.path, 'beatmap_${CacheService._cacheKey(filename)}.json')),
+      );
     }
 
     final url = (song['url'] as String?) ?? '';
@@ -430,6 +439,8 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
   await pruneDirectory(blurredDir, currentBlurredPaths);
   await pruneDirectory(notificationDir, currentNotificationPaths);
   await pruneDirectory(lyricsDir, currentLyricsPaths);
+  // Waveforms and beat maps share this sweep: both are per-song analysis files
+  // living flat in the v3 root and keyed off the same filename hash.
   await pruneDirectory(
     v3Dir,
     currentWaveformPaths,
@@ -437,7 +448,9 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
       final name = p.basename(file.path);
       final relativePath = p.relative(file.path, from: v3Dir.path);
       return name.startsWith('waveform_') ||
-          relativePath.startsWith('waveform_');
+          name.startsWith('beatmap_') ||
+          relativePath.startsWith('waveform_') ||
+          relativePath.startsWith('beatmap_');
     },
   );
   await pruneEmptyDirectories(extractedCoversDir);

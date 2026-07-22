@@ -16,7 +16,9 @@ import '../../../services/audio_player_manager.dart';
 import '../../components/song_actions.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/album_art_image.dart';
+import '../../widgets/beat_reactive_cover.dart';
 import '../../widgets/heart_context_menu.dart';
+import '../../widgets/player_motion.dart';
 
 /// Center pane. Content only — the shell owns the backdrop, header, pill and
 /// transport dock. Do not add a Scaffold, AppBar or background here.
@@ -24,10 +26,14 @@ class NowPlayingPane extends ConsumerStatefulWidget {
   final Song song;
   final Color accent;
 
+  /// Owned by the shell — the cover shares it with the particle field.
+  final PlayerMotionController motion;
+
   const NowPlayingPane({
     super.key,
     required this.song,
     required this.accent,
+    required this.motion,
   });
 
   @override
@@ -74,6 +80,7 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
                         size: side,
                         coverSizing: coverSizing,
                         audioManager: audioManager,
+                        motion: widget.motion,
                       ),
                     );
                   },
@@ -291,6 +298,7 @@ class _CoverStage extends ConsumerWidget {
   final double size;
   final PlayerCoverSizingMode coverSizing;
   final AudioPlayerManager audioManager;
+  final PlayerMotionController motion;
 
   const _CoverStage({
     required this.song,
@@ -298,10 +306,14 @@ class _CoverStage extends ConsumerWidget {
     required this.size,
     required this.coverSizing,
     required this.audioManager,
+    required this.motion,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final beatReactive =
+        ref.watch(settingsProvider.select((s) => s.beatReactiveCoverEnabled));
+
     return ValueListenableBuilder<PlaybackMediaMode>(
       valueListenable: audioManager.effectiveMediaModeNotifier,
       builder: (context, mode, _) {
@@ -319,41 +331,50 @@ class _CoverStage extends ConsumerWidget {
                     song: song,
                     audioManager: audioManager,
                   )
-                : _buildCover(context),
+                : _buildCover(context, beatReactive),
           ),
         );
       },
     );
   }
 
-  Widget _buildCover(BuildContext context) {
+  Widget _buildCover(BuildContext context, bool beatReactive) {
     // Tag must match NowPlayingBar's so the artwork flies between the mini bar
     // and this pane.
+    //
+    // The pulse wraps the artwork *inside* the Hero, never the Hero itself:
+    // transforming the Hero would fight the flight animation between the mini
+    // bar and this pane.
     return Hero(
       tag: PlayerTokens.coverHeroTag(song.filename),
-      child: Container(
-        key: ValueKey('cover_${song.filename}'),
-        decoration: BoxDecoration(
-          borderRadius: PlayerTokens.brLg,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
-              blurRadius: 34,
-              offset: const Offset(0, 14),
+      child: BeatReactiveCover(
+        controller: motion,
+        accent: accent,
+        enabled: beatReactive,
+        child: Container(
+          key: ValueKey('cover_${song.filename}'),
+          decoration: BoxDecoration(
+            borderRadius: PlayerTokens.brLg,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 34,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: PlayerTokens.brLg,
+            child: AlbumArtImage(
+              url: song.coverUrl ?? '',
+              filename: song.filename,
+              width: size,
+              height: size,
+              // autoFit crops to a square; sourceAspect keeps the original ratio.
+              fit: coverSizing == PlayerCoverSizingMode.autoFit
+                  ? BoxFit.cover
+                  : BoxFit.contain,
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: PlayerTokens.brLg,
-          child: AlbumArtImage(
-            url: song.coverUrl ?? '',
-            filename: song.filename,
-            width: size,
-            height: size,
-            // autoFit crops to a square; sourceAspect keeps the original ratio.
-            fit: coverSizing == PlayerCoverSizingMode.autoFit
-                ? BoxFit.cover
-                : BoxFit.contain,
           ),
         ),
       ),

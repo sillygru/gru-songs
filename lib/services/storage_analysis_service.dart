@@ -110,6 +110,29 @@ class StorageAnalysisService {
     return 0;
   }
 
+  Future<int> getBeatMapCacheSize() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
+      if (await cacheDir.exists()) {
+        int total = 0;
+        await for (var entity
+            in cacheDir.list(recursive: true, followLinks: false)) {
+          if (entity is File) {
+            final name = p.basename(entity.path);
+            if (name.startsWith('beatmap_') && name.endsWith('.json')) {
+              total += await entity.length();
+            }
+          }
+        }
+        return total;
+      }
+    } catch (e) {
+      debugPrint('Error calculating beat map cache size: $e');
+    }
+    return 0;
+  }
+
   Future<int> getWaveformCacheSize() async {
     try {
       final supportDir = await getApplicationSupportDirectory();
@@ -273,6 +296,28 @@ class StorageAnalysisService {
       if (await searchIndex.exists()) await searchIndex.delete();
     } catch (e) {
       debugPrint('Error clearing search index: $e');
+      rethrow;
+    }
+  }
+
+  /// Clears only the cached beat maps. They are rebuilt on next play.
+  Future<void> clearBeatMapCache() async {
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final cacheDir = Directory(p.join(supportDir.path, 'gru_cache_v3'));
+      if (await cacheDir.exists()) {
+        await for (var entity
+            in cacheDir.list(recursive: true, followLinks: false)) {
+          if (entity is File) {
+            final name = p.basename(entity.path);
+            if (name.startsWith('beatmap_') && name.endsWith('.json')) {
+              await entity.delete();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing beat map cache: $e');
       rethrow;
     }
   }

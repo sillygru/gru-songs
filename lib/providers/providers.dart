@@ -12,6 +12,7 @@ import '../services/scanner_service.dart';
 import '../services/database_service.dart';
 import '../services/bulk_metadata_service.dart';
 import '../services/file_manager_service.dart';
+import '../services/beat_analysis_service.dart';
 import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
 import '../services/notification_cover_warmer.dart';
@@ -312,6 +313,12 @@ final fileManagerServiceProvider = Provider<FileManagerService>((ref) {
 
 final waveformServiceProvider = Provider<WaveformService>((ref) {
   final service = WaveformService(CacheService.instance);
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
+final beatAnalysisServiceProvider = Provider<BeatAnalysisService>((ref) {
+  final service = BeatAnalysisService(CacheService.instance);
   ref.onDispose(() => service.dispose());
   return service;
 });
