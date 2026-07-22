@@ -243,105 +243,112 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
 
             if (queue.isEmpty) return _buildEmptyState(context);
 
-            return Stack(
+            return Column(
               children: [
-                CustomScrollView(
-                  controller: _scrollController,
-                  physics: const ClampingScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: _buildSummary(context, upcoming, audioManager),
-                    ),
-                    if (played.isNotEmpty) ...[
-                      SliverToBoxAdapter(
-                        child: const PlayerSectionHeader(label: 'Played'),
-                      ),
-                      SliverList.builder(
-                        itemCount: played.length,
-                        itemBuilder: (context, index) => Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: PlayerTokens.s3,
-                          ),
-                          child: PlayerTrackRow(
-                            song: played[index].song,
-                            accent: widget.accent,
-                            isPlayed: true,
-                            onTap: () => _jumpTo(audioManager, played[index]),
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: const PlayerSectionHeader(label: 'Now playing'),
-                      ),
-                    ],
-                    if (current != null)
-                      SliverToBoxAdapter(
-                        child: StreamBuilder<PlayerState>(
-                          stream: audioManager.player.playerStateStream,
-                          initialData: audioManager.player.playerState,
-                          builder: (context, stateSnapshot) {
-                            final playing =
-                                stateSnapshot.data?.playing ?? false;
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: PlayerTokens.s3,
-                                vertical: PlayerTokens.s1,
+                _buildSummary(context, upcoming, audioManager),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      CustomScrollView(
+                        controller: _scrollController,
+                        physics: const ClampingScrollPhysics(),
+                        slivers: [
+                          if (played.isNotEmpty) ...[
+                            SliverToBoxAdapter(
+                              child: const PlayerSectionHeader(label: 'Played'),
+                            ),
+                            SliverList.builder(
+                              itemCount: played.length,
+                              itemBuilder: (context, index) => Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: PlayerTokens.s3,
+                                ),
+                                child: PlayerTrackRow(
+                                  song: played[index].song,
+                                  accent: widget.accent,
+                                  isPlayed: true,
+                                  onTap: () =>
+                                      _jumpTo(audioManager, played[index]),
+                                ),
                               ),
-                              child: PlayerTrackRow(
-                                song: current.song,
-                                accent: widget.accent,
-                                isCurrent: true,
-                                showAnimatedWave: animatedWave && playing,
-                                onIndicatorTap: () {
-                                  HapticFeedback.selectionClick();
-                                  audioManager.togglePlayPause();
+                            ),
+                            SliverToBoxAdapter(
+                              child: const PlayerSectionHeader(
+                                  label: 'Now playing'),
+                            ),
+                          ],
+                          if (current != null)
+                            SliverToBoxAdapter(
+                              child: StreamBuilder<PlayerState>(
+                                stream: audioManager.player.playerStateStream,
+                                initialData: audioManager.player.playerState,
+                                builder: (context, stateSnapshot) {
+                                  final playing =
+                                      stateSnapshot.data?.playing ?? false;
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: PlayerTokens.s3,
+                                      vertical: PlayerTokens.s1,
+                                    ),
+                                    child: PlayerTrackRow(
+                                      song: current.song,
+                                      accent: widget.accent,
+                                      isCurrent: true,
+                                      showAnimatedWave: animatedWave && playing,
+                                      onIndicatorTap: () {
+                                        HapticFeedback.selectionClick();
+                                        audioManager.togglePlayPause();
+                                      },
+                                    ),
+                                  );
                                 },
                               ),
-                            );
-                          },
+                            ),
+                          if (upcoming.isNotEmpty) ...[
+                            SliverToBoxAdapter(
+                              child:
+                                  const PlayerSectionHeader(label: 'Up next'),
+                            ),
+                            SliverReorderableList(
+                              itemCount: upcoming.length,
+                              onReorderItem: (oldIndex, newIndex) => _reorder(
+                                audioManager,
+                                queue,
+                                upcoming,
+                                oldIndex,
+                                newIndex,
+                              ),
+                              itemBuilder: (context, index) {
+                                final item = upcoming[index];
+                                return _buildUpcomingRow(
+                                  context,
+                                  audioManager,
+                                  queue,
+                                  item,
+                                  index,
+                                );
+                              },
+                            ),
+                          ],
+                          const SliverToBoxAdapter(
+                            child: SizedBox(height: PlayerTokens.s6),
+                          ),
+                        ],
+                      ),
+                      if (_pendingRemoval != null)
+                        Positioned(
+                          left: PlayerTokens.s4,
+                          right: PlayerTokens.s4,
+                          bottom: PlayerTokens.s4,
+                          child: _UndoBar(
+                            title: _pendingRemoval!.item.song.title,
+                            accent: widget.accent,
+                            onUndo: () => _undo(audioManager),
+                          ),
                         ),
-                      ),
-                    if (upcoming.isNotEmpty) ...[
-                      SliverToBoxAdapter(
-                        child: const PlayerSectionHeader(label: 'Up next'),
-                      ),
-                      SliverReorderableList(
-                        itemCount: upcoming.length,
-                        onReorderItem: (oldIndex, newIndex) => _reorder(
-                          audioManager,
-                          queue,
-                          upcoming,
-                          oldIndex,
-                          newIndex,
-                        ),
-                        itemBuilder: (context, index) {
-                          final item = upcoming[index];
-                          return _buildUpcomingRow(
-                            context,
-                            audioManager,
-                            queue,
-                            item,
-                            index,
-                          );
-                        },
-                      ),
                     ],
-                    const SliverToBoxAdapter(
-                      child: SizedBox(height: PlayerTokens.s6),
-                    ),
-                  ],
-                ),
-                if (_pendingRemoval != null)
-                  Positioned(
-                    left: PlayerTokens.s4,
-                    right: PlayerTokens.s4,
-                    bottom: PlayerTokens.s4,
-                    child: _UndoBar(
-                      title: _pendingRemoval!.item.song.title,
-                      accent: widget.accent,
-                      onUndo: () => _undo(audioManager),
-                    ),
                   ),
+                ),
               ],
             );
           },

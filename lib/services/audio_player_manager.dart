@@ -4,6 +4,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:async'; // For Timer
 import '../models/song.dart';
@@ -16,6 +17,8 @@ import 'stats_service.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
 import 'ffmpeg_service.dart';
+import 'file_manager_service.dart';
+import 'notification_cover_warmer.dart';
 import 'volume_monitor_service.dart';
 import 'color_extraction_service.dart';
 import '../providers/theme_provider.dart';
@@ -118,6 +121,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   final List<StreamSubscription<dynamic>> _trackedSubscriptions = [];
   SettingsState? _cachedSettings;
   Future<void> _queueMutationChain = Future<void>.value();
+  Timer? _playbackStateSaveTimer;
+  static const Duration _playbackStateSaveInterval =
+      Duration(milliseconds: 750);
 
   // Guards deliberate queue mutations from the sequence-sync listener. While
   // this is > 0 the manager is itself rewriting the player's sources, so the
@@ -176,7 +182,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<void> setPreferredMediaMode(PlaybackMediaMode mode) async {
     preferredMediaModeNotifier.value = mode;
     _updateEffectivePlaybackMode();
-    await _savePlaybackState();
+    await savePlaybackState();
   }
 
   PlaybackMediaMode _resolveEffectiveMode(Song? song) {
@@ -405,19 +411,22 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _originalQueue.insert(origTarget, QueueItem(song: song));
 
     _updateQueueNotifier();
+    final insertWatch = Stopwatch()..start();
     try {
-      final source = await _createAudioSource(duplicate);
+      final source = await _createAudioSource(duplicate, awaitCover: true);
       await _player.insertAudioSource(targetIndex, source);
     } catch (e) {
       _effectiveQueue.removeAt(targetIndex);
       rethrow;
     }
+    _logSlow('playSong: insert source', insertWatch);
 
     if (startPlaying) {
       await _player.seek(Duration.zero, index: targetIndex);
       await _player.play();
     }
 
+    _syncCoverWarmer(targetIndex);
     await _updateCurrentSnapshotSongs();
     _savePlaybackState();
   }
@@ -543,6 +552,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
           if (state.currentIndex != null) {
             _warmThemePalettesAroundIndex(state.currentIndex!);
+            _syncCoverWarmer(state.currentIndex!);
           }
 
           // Extract color from cover
@@ -1106,10 +1116,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
 
     final isBackground = state != AppLifecycleState.resumed;
+    NotificationCoverWarmer.instance.setForeground(!isBackground);
 
     if (isBackground) {
       _flushStats(isTerminal: true);
-      _savePlaybackState();
+      savePlaybackState();
       _setCacheLimits(isBackground: true);
       _statsService.flush();
     } else {
@@ -1175,7 +1186,19 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _storageService.saveShuffleState(_shuffleState.toJson());
   }
 
-  Future<void> _savePlaybackState() async {
+  /// Queues a playback-state write, coalescing bursts.
+  ///
+  /// The state embeds both full queues, so encoding it is proportional to the
+  /// library size — and startup alone triggers it from a dozen call sites.
+  /// Callers that need the write to have landed use [savePlaybackState].
+  void _savePlaybackState() {
+    if (_playbackStateSaveTimer?.isActive ?? false) return;
+    _playbackStateSaveTimer = Timer(_playbackStateSaveInterval, () {
+      unawaited(_writePlaybackState());
+    });
+  }
+
+  Future<void> _writePlaybackState() async {
     final currentIndex = _player.currentIndex;
     final currentSong =
         (currentIndex != null && currentIndex < _effectiveQueue.length)
@@ -1196,8 +1219,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     await _storageService.savePlaybackState(state);
   }
 
+  /// Writes the playback state immediately, cancelling any coalesced write.
   Future<void> savePlaybackState() async {
-    await _savePlaybackState();
+    _playbackStateSaveTimer?.cancel();
+    await _writePlaybackState();
   }
 
   void _updateDurations() {
@@ -1256,6 +1281,36 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // ==================== INIT & QUEUE ====================
 
+  static List<QueueItem> _parseQueueItems(List<dynamic> json) {
+    final items = <QueueItem>[];
+    for (final entry in json) {
+      try {
+        items.add(QueueItem.fromJson(entry));
+      } catch (_) {
+        // A single unreadable entry must not cost us the whole saved queue.
+      }
+    }
+    return items;
+  }
+
+  /// The subset of [paths] that no longer exist on disk, resolved off the UI
+  /// thread.
+  static Future<Set<String>> _findMissingSongPaths(Set<String> paths) async {
+    final candidates = paths.where((path) => path.isNotEmpty).toList();
+    if (candidates.isEmpty) return const <String>{};
+    try {
+      return await Isolate.run(() => {
+            for (final path in candidates)
+              if (!File(path).existsSync()) path,
+          });
+    } catch (e) {
+      // If the isolate cannot run, keep every entry rather than wrongly
+      // dropping the user's whole queue.
+      debugPrint('AudioPlayerManager: queue existence check failed: $e');
+      return const <String>{};
+    }
+  }
+
   Future<void> init(List<Song> songs, {bool autoSelect = false}) async {
     _allSongs = songs;
     _songMap = {for (var s in songs) s.filename: s};
@@ -1277,35 +1332,23 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         final List<dynamic> effJson = savedState['last_effective_queue'] ?? [];
         final List<dynamic> origJson = savedState['last_original_queue'] ?? [];
 
-        _effectiveQueue = effJson.expand((j) {
-          try {
-            final queueItem = QueueItem.fromJson(j);
-            if (queueItem.song.url.isNotEmpty) {
-              final file = File(queueItem.song.url);
-              if (file.existsSync()) {
-                return [queueItem];
-              }
-            }
-            return <QueueItem>[];
-          } catch (e) {
-            return <QueueItem>[];
-          }
-        }).toList();
+        final restoreWatch = Stopwatch()..start();
+        final effItems = _parseQueueItems(effJson);
+        final origItems = _parseQueueItems(origJson);
 
-        _originalQueue = origJson.expand((j) {
-          try {
-            final queueItem = QueueItem.fromJson(j);
-            if (queueItem.song.url.isNotEmpty) {
-              final file = File(queueItem.song.url);
-              if (file.existsSync()) {
-                return [queueItem];
-              }
-            }
-            return <QueueItem>[];
-          } catch (e) {
-            return <QueueItem>[];
-          }
-        }).toList();
+        // Both queues are the whole library on a cold start, so checking each
+        // file inline would be hundreds of blocking stat calls on the UI
+        // thread. One isolate covers both lists at once.
+        final missing = await _findMissingSongPaths({
+          for (final item in effItems) item.song.url,
+          for (final item in origItems) item.song.url,
+        });
+        bool exists(QueueItem item) =>
+            item.song.url.isNotEmpty && !missing.contains(item.song.url);
+
+        _effectiveQueue = effItems.where(exists).toList();
+        _originalQueue = origItems.where(exists).toList();
+        _logSlow('init: restored saved queue', restoreWatch);
 
         if (_effectiveQueue.isNotEmpty || _originalQueue.isNotEmpty) {
           _isRestrictedToOriginal =
@@ -1413,7 +1456,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
-  Future<AudioSource> _createAudioSource(QueueItem item) async {
+  /// Builds the player entry for [item].
+  ///
+  /// [awaitCover] is for the one song the user is starting: it blocks on
+  /// producing the square notification cover so the notification is right
+  /// immediately. Every other entry takes the synchronous path — an already
+  /// cached cover if there is one, otherwise the raw art, with the square
+  /// version left to [NotificationCoverWarmer]. Awaiting it for a whole queue
+  /// is what used to stall a cold start for the best part of a minute.
+  Future<AudioSource> _createAudioSource(
+    QueueItem item, {
+    bool awaitCover = false,
+  }) async {
     final song = item.song;
     final mediaPaths = await _resolvePlayableMediaPaths(song);
     final Uri audioUri = Uri.file(mediaPaths.audioPath);
@@ -1422,13 +1476,22 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final coverSizingMode = _ref?.read(settingsProvider).coverSizingMode ??
           PlayerCoverSizingMode.sourceAspect;
-      final fileManager = _ref?.read(fileManagerServiceProvider);
-      if (fileManager != null) {
-        final processedCoverUrl = await fileManager
-            .getOrCreateNotificationCover(song, coverSizingMode);
-        if (processedCoverUrl != null) {
-          artUri = Uri.file(processedCoverUrl);
-        }
+      String? coverPath;
+      if (awaitCover) {
+        final fileManager = _ref?.read(fileManagerServiceProvider);
+        coverPath = fileManager == null
+            ? song.coverUrl
+            : await fileManager.getOrCreateNotificationCover(
+                song,
+                coverSizingMode,
+              );
+      } else {
+        coverPath =
+            FileManagerService.peekNotificationCover(song, coverSizingMode) ??
+                song.coverUrl;
+      }
+      if (coverPath != null) {
+        artUri = Uri.file(coverPath);
       }
     }
 
@@ -1743,12 +1806,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       {String? playlistId}) async {
     if (songs.isEmpty) return;
 
+    final watch = Stopwatch()..start();
     final songFilenames = songs.map((s) => s.filename).toList();
     final source = playlistId ?? 'shuffle';
     final existing = await _findExistingQueueSnapshot(source, songFilenames);
+    _logSlow('saveQueueSnapshot: dedupe scan', watch);
     if (existing != null) {
       _currentQueueSnapshotId = existing.id;
-      await _savePlaybackState();
+      _savePlaybackState();
       return;
     }
 
@@ -1769,7 +1834,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       // sessions. Runs only on fresh insertions.
       unawaited(DatabaseService.instance.pruneQueueSnapshots());
       _notifyQueueHistoryChanged();
-      await _savePlaybackState();
+      _savePlaybackState();
     } catch (e) {
       debugPrint('Failed to save queue snapshot: $e');
     }
@@ -2273,18 +2338,52 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    final sources = await Future.wait(
-      _effectiveQueue.map((item) => _createAudioSource(item)),
-    );
+    // One directory listing up front so every entry below can resolve its
+    // cover art synchronously instead of stat-ing the cache per song.
+    await FileManagerService.primeNotificationCoverIndex();
+
+    final buildWatch = Stopwatch()..start();
+    final sources = await Future.wait([
+      for (int i = 0; i < _effectiveQueue.length; i++)
+        _createAudioSource(_effectiveQueue[i], awaitCover: i == targetIndex),
+    ]);
+    _logSlow('rebuild: built ${sources.length} sources', buildWatch);
+
+    final setWatch = Stopwatch()..start();
     await _player.setAudioSources(
       sources,
       initialIndex: targetIndex,
       initialPosition: position,
     );
+    _logSlow('rebuild: setAudioSources(${sources.length})', setWatch);
     _updateEffectivePlaybackMode(currentItem?.song);
 
     if (startPlaying) await _player.play();
     _updateQueueNotifier();
+    _syncCoverWarmer(targetIndex);
+  }
+
+  /// Hands the warmer the current queue so it works on whatever plays next
+  /// first. Cheap enough to call after any queue mutation.
+  void _syncCoverWarmer([int? currentIndex]) {
+    final mode = _ref?.read(settingsProvider).coverSizingMode;
+    if (mode == null) return;
+    NotificationCoverWarmer.instance.setQueue(
+      _effectiveQueue.map((item) => item.song).toList(),
+      currentIndex ?? _player.currentIndex ?? 0,
+      mode,
+    );
+  }
+
+  /// Reports a step that took long enough for a user to feel it. Deliberately
+  /// not gated on [kDebugMode] — the startup stalls this exists to catch only
+  /// reproduce on real devices running release builds.
+  void _logSlow(String label, Stopwatch watch) {
+    watch.stop();
+    if (watch.elapsedMilliseconds < 250) return;
+    debugPrint(
+      'AudioPlayerManager: $label took ${watch.elapsedMilliseconds}ms',
+    );
   }
 
   Future<void> _mutateQueueAfterIndex(int currentIndex) async {
@@ -2309,6 +2408,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           final source = await _createAudioSource(tail[i]);
           await _player.insertAudioSource(currentIndex + 1 + i, source);
         }
+        _syncCoverWarmer(currentIndex);
       } catch (e) {
         // The player and the model must never diverge; on any failure fall back
         // to a full, atomic rebuild from the authoritative _effectiveQueue.
@@ -2518,6 +2618,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _fadeTimer?.cancel();
     _gapTimer?.cancel();
     _clearGapState();
+    // Flush before the player goes away: the state is read from it, and a
+    // coalesced write may still be pending.
+    unawaited(savePlaybackState());
     _player.dispose();
     shuffleNotifier.dispose();
     preferredMediaModeNotifier.dispose();

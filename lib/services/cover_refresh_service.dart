@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../domain/services/embedded_cover_bytes.dart';
 import '../models/song.dart';
 import 'database_service.dart';
 import 'scanner_service.dart';
@@ -41,6 +42,11 @@ class CoverRefreshService {
   bool isKnownMiss(String songFilename) =>
       _misses?.containsKey(songFilename) ?? false;
 
+  /// Whether extraction is running right now. Other passive background work
+  /// uses this to stay out of the way of covers the user is actually looking
+  /// at.
+  bool get isBusy => _active > 0 || _inFlight.isNotEmpty;
+
   Future<Map<String, double>> _loadMisses() {
     _missesLoad ??= DatabaseService.instance.getCoverMisses().then((value) {
       _misses = value;
@@ -50,6 +56,27 @@ class CoverRefreshService {
       return <String, double>{};
     });
     return _missesLoad!;
+  }
+
+  /// Whether [file] holds something an image decoder will actually accept.
+  ///
+  /// A plain exists/non-empty check is not enough: covers cached by older
+  /// builds can be a full-size image with the tail of its picture frame's
+  /// description glued to the front, which is a file of healthy length that
+  /// nothing can decode. Those need re-extracting, so they must not pass.
+  Future<bool> _isDecodableCover(File file) async {
+    RandomAccessFile? handle;
+    try {
+      if (!await file.exists()) return false;
+      if (await file.length() <= 0) return false;
+      handle = await file.open();
+      final head = await handle.read(imageSignatureProbeLength);
+      return hasImageSignature(head);
+    } catch (_) {
+      return false;
+    } finally {
+      await handle?.close();
+    }
   }
 
   Future<void> _acquireSlot() async {
@@ -81,8 +108,7 @@ class CoverRefreshService {
     if (song == null) return null;
 
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
-      final existing = File(song.coverUrl!);
-      if (await existing.exists() && await existing.length() > 0) {
+      if (await _isDecodableCover(File(song.coverUrl!))) {
         return song.coverUrl;
       }
     }

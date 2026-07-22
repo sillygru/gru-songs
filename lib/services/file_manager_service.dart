@@ -797,6 +797,73 @@ class FileManagerService {
     }
   }
 
+  /// Cache key for [song]'s square notification cover. Both the peek and the
+  /// create path go through here so they can never disagree about the name.
+  static String? notificationCoverKey(Song song) {
+    final coverUrl = song.coverUrl;
+    if (coverUrl == null || coverUrl.isEmpty) return null;
+    return p.basename(coverUrl).replaceAll(RegExp(r'[^\w\-]'), '_');
+  }
+
+  /// Keys currently present in the notification-cover cache directory, plus the
+  /// [CacheService.notificationCoverGeneration] the listing was taken at.
+  static Set<String>? _notifCoverIndex;
+  static int _notifCoverIndexGeneration = -1;
+  static Future<void>? _notifCoverIndexLoad;
+
+  static bool get _notifCoverIndexIsFresh =>
+      _notifCoverIndex != null &&
+      _notifCoverIndexGeneration ==
+          CacheService.instance.notificationCoverGeneration;
+
+  /// Lists the notification-cover cache once so [peekNotificationCover] can
+  /// answer without touching the filesystem. A queue rebuild asks about every
+  /// song in the library, and one listing is cheaper than a `File.exists` each.
+  static Future<void> primeNotificationCoverIndex() {
+    if (_notifCoverIndexIsFresh) return Future<void>.value();
+    return _notifCoverIndexLoad ??= _loadNotificationCoverIndex().whenComplete(
+      () => _notifCoverIndexLoad = null,
+    );
+  }
+
+  static Future<void> _loadNotificationCoverIndex() async {
+    // Read the generation before listing: anything invalidated mid-listing then
+    // leaves the index stale rather than falsely fresh.
+    final generation = CacheService.instance.notificationCoverGeneration;
+    final keys = <String>{};
+    try {
+      final dir = await CacheService.instance.notificationCoverCacheDir();
+      await for (final entity in dir.list()) {
+        if (entity is! File) continue;
+        final name = p.basename(entity.path);
+        if (!name.endsWith('.jpg')) continue;
+        keys.add(name.substring(0, name.length - 4));
+      }
+    } catch (e) {
+      debugPrint('Failed to index notification covers: $e');
+    }
+    _notifCoverIndex = keys;
+    _notifCoverIndexGeneration = generation;
+  }
+
+  /// The already-cached square cover for [song], or null when one still has to
+  /// be produced. Synchronous and I/O-free — safe to call per queue entry.
+  ///
+  /// Callers that get null should fall back to the raw `song.coverUrl` and let
+  /// the passive warmer produce the square version for a later session.
+  static String? peekNotificationCover(Song song, PlayerCoverSizingMode mode) {
+    if (song.coverUrl == null || song.coverUrl!.isEmpty) return null;
+    if (mode != PlayerCoverSizingMode.autoFit) return song.coverUrl;
+
+    if (!_notifCoverIndexIsFresh) return null;
+    final key = notificationCoverKey(song);
+    if (key == null || !_notifCoverIndex!.contains(key)) return null;
+
+    final dir = CacheService.instance.notificationCoverCacheDirSync();
+    if (dir == null) return null;
+    return p.join(dir.path, '$key.jpg');
+  }
+
   Future<String?> getOrCreateNotificationCover(
     Song song,
     PlayerCoverSizingMode mode,
@@ -809,12 +876,12 @@ class FileManagerService {
       return song.coverUrl;
     }
 
-    final songFilename =
-        p.basename(song.coverUrl!).replaceAll(RegExp(r'[^\w\-]'), '_');
+    final songFilename = notificationCoverKey(song)!;
     final cachedFile =
         await CacheService.instance.getNotificationCoverCacheFile(songFilename);
 
     if (await cachedFile.exists()) {
+      _notifCoverIndex?.add(songFilename);
       return cachedFile.path;
     }
 
@@ -831,12 +898,17 @@ class FileManagerService {
       );
 
       await cachedFile.writeAsBytes(processed);
+      _notifCoverIndex?.add(songFilename);
       return cachedFile.path;
     } catch (e) {
       debugPrint('Failed to create notification cover: $e');
       return song.coverUrl;
     }
   }
+
+  /// Notification and lock-screen art is displayed small; anything larger than
+  /// this only costs encode time and cache space.
+  static const int _notificationCoverMaxSize = 640;
 
   static Uint8List _processNotificationCover(Uint8List bytes) {
     final image = img.decodeImage(bytes);
@@ -848,13 +920,22 @@ class FileManagerService {
     final x = (image.width - size) ~/ 2;
     final y = (image.height - size) ~/ 2;
 
-    final cropped = img.copyCrop(
+    var cropped = img.copyCrop(
       image,
       x: x,
       y: y,
       width: size,
       height: size,
     );
+
+    if (size > _notificationCoverMaxSize) {
+      cropped = img.copyResize(
+        cropped,
+        width: _notificationCoverMaxSize,
+        height: _notificationCoverMaxSize,
+        interpolation: img.Interpolation.average,
+      );
+    }
 
     return Uint8List.fromList(img.encodeJpg(cropped, quality: 90));
   }

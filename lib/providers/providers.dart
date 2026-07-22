@@ -14,6 +14,7 @@ import '../services/bulk_metadata_service.dart';
 import '../services/file_manager_service.dart';
 import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
+import '../services/notification_cover_warmer.dart';
 import '../services/update_service.dart';
 import '../domain/services/search_service.dart';
 import '../data/repositories/song_repository.dart';
@@ -424,6 +425,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       ref.read(isScanningProvider.notifier).state = true;
     }
     ref.read(scanProgressProvider.notifier).state = 0.0;
+    NotificationCoverWarmer.instance.pushPause();
 
     try {
       final settings = ref.read(settingsProvider);
@@ -522,6 +524,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         ref.read(isScanningProvider.notifier).state = false;
       }
       ref.read(scanProgressProvider.notifier).state = 0.0;
+      NotificationCoverWarmer.instance.popPause();
     }
   }
 
@@ -529,6 +532,9 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       {bool showIndicator = false}) async {
     if (_isRefreshing) return;
 
+    // Scanning saturates the device with isolate work; passive cover warming
+    // stays out of its way until it finishes.
+    NotificationCoverWarmer.instance.pushPause();
     try {
       _isRefreshing = true;
       final userData = ref.read(userDataProvider);
@@ -628,6 +634,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       _isRefreshing = false;
       ref.read(isScanningProvider.notifier).state = false;
       ref.read(scanProgressProvider.notifier).state = 0.0;
+      NotificationCoverWarmer.instance.popPause();
     }
   }
 

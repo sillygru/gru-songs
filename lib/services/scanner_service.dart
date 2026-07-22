@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
 import 'database_service.dart';
+import '../domain/services/embedded_cover_bytes.dart';
 import '../domain/services/search_service.dart';
 import 'storage_service.dart';
 import 'ffmpeg_service.dart';
@@ -124,9 +125,17 @@ class ScannerService {
     File file, {
     bool requireDecodable = false,
   }) async {
+    RandomAccessFile? handle;
     try {
       if (!await file.exists()) return false;
       if (await file.length() <= 0) return false;
+
+      // Cheapest useful check, and the one that catches covers cached by older
+      // builds: those hold a real image preceded by the tail of its picture
+      // frame's description, so they are the right size but decode as nothing.
+      handle = await file.open();
+      final head = await handle.read(imageSignatureProbeLength);
+      if (!hasImageSignature(head)) return false;
       if (!requireDecodable) return true;
 
       final bytes = await file.readAsBytes();
@@ -135,6 +144,8 @@ class ScannerService {
       return decoded != null && decoded.width > 0 && decoded.height > 0;
     } catch (_) {
       return false;
+    } finally {
+      await handle?.close();
     }
   }
 
@@ -693,11 +704,13 @@ class ScannerService {
       // otherwise, and this whole cheap path silently never fires.
       final metadata = amr.readMetadata(file, getImage: true);
       if (metadata.pictures.isNotEmpty) {
-        final picture = metadata.pictures.first;
-        final coverExt = _getExtFromMime(picture.mimetype);
-        final coverFile = File(p.join(coversDir.path, '$hash$coverExt'));
-        await coverFile.writeAsBytes(picture.bytes);
-        return coverFile.path;
+        final cover = recoverEmbeddedCover(metadata.pictures.first.bytes);
+        if (cover != null) {
+          final coverFile =
+              File(p.join(coversDir.path, '$hash${cover.extension}'));
+          await coverFile.writeAsBytes(cover.bytes);
+          return coverFile.path;
+        }
       }
     } catch (e) {
       debugPrint('extractCoverWithoutFFmpeg: metadata read failed: $e');
@@ -924,12 +937,14 @@ class ScannerService {
               try {
                 final metadata = amr.readMetadata(file, getImage: true);
                 if (metadata.pictures.isNotEmpty) {
-                  final picture = metadata.pictures.first;
-                  final coverExt = _getExtFromMime(picture.mimetype);
-                  final coverFile =
-                      File(p.join(coversDir.path, '$hash$coverExt'));
-                  await coverFile.writeAsBytes(picture.bytes);
-                  resolvedCoverUrl = coverFile.path;
+                  final cover =
+                      recoverEmbeddedCover(metadata.pictures.first.bytes);
+                  if (cover != null) {
+                    final coverFile =
+                        File(p.join(coversDir.path, '$hash${cover.extension}'));
+                    await coverFile.writeAsBytes(cover.bytes);
+                    resolvedCoverUrl = coverFile.path;
+                  }
                 }
               } catch (e) {
                 debugPrint('No embedded cover found for ${song.title}: $e');
@@ -1201,14 +1216,16 @@ class ScannerService {
         }
 
         if (coverUrl == null && metadata.pictures.isNotEmpty) {
-          final picture = metadata.pictures.first;
-          final coverExt = _getExtFromMime(picture.mimetype);
-          final coverFile = File(p.join(coversDir.path, '$hash$coverExt'));
+          final cover = recoverEmbeddedCover(metadata.pictures.first.bytes);
+          if (cover != null) {
+            final coverFile =
+                File(p.join(coversDir.path, '$hash${cover.extension}'));
 
-          if (!await coverFile.exists()) {
-            await coverFile.writeAsBytes(picture.bytes);
+            if (!await coverFile.exists()) {
+              await coverFile.writeAsBytes(cover.bytes);
+            }
+            coverUrl = coverFile.path;
           }
-          coverUrl = coverFile.path;
         }
       } catch (e) {
         // Silently fail primary and move to manual
@@ -1440,17 +1457,6 @@ class ScannerService {
       return coverFile.path;
     }
     return null;
-  }
-
-  static String _getExtFromMime(String? mimeType) {
-    if (mimeType == null) return '.jpg';
-    final mime = mimeType.toLowerCase();
-    if (mime.contains('png')) return '.png';
-    if (mime.contains('webp')) return '.webp';
-    if (mime.contains('webp')) return '.webp';
-    if (mime.contains('gif')) return '.gif';
-    if (mime.contains('bmp')) return '.bmp';
-    return '.jpg';
   }
 
   static String coverKeyForFilename(String filename) {

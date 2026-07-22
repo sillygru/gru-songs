@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:wispie/models/song.dart';
 import 'package:wispie/services/cache_service.dart';
 import 'package:wispie/services/color_extraction_service.dart';
+import 'package:wispie/services/file_manager_service.dart';
 import 'package:wispie/services/scanner_service.dart';
 
 import '../test_helpers.dart';
@@ -335,6 +336,115 @@ void main() {
 
       expect(await oldFile.exists(), isTrue);
       expect(await newFile.exists(), isTrue);
+    });
+  });
+
+  group('notification cover index', () {
+    Song songWithCover(String coverPath) => Song(
+          title: 'Title',
+          artist: 'Artist',
+          album: 'Album',
+          filename: p.basename(coverPath),
+          url: '/music/${p.basename(coverPath)}',
+          coverUrl: coverPath,
+        );
+
+    test('peek resolves cached covers and misses uncached ones', () async {
+      final cachedSong = songWithCover(
+        p.join(testEnv.tempPath, 'extracted_covers', 'indexed-cover.jpg'),
+      );
+      final uncachedSong = songWithCover(
+        p.join(testEnv.tempPath, 'extracted_covers', 'absent-cover.jpg'),
+      );
+
+      final key = FileManagerService.notificationCoverKey(cachedSong)!;
+      final cacheFile = await cacheService.getNotificationCoverCacheFile(key);
+      await cacheFile.writeAsString('square cover');
+
+      await FileManagerService.primeNotificationCoverIndex();
+
+      expect(
+        FileManagerService.peekNotificationCover(
+          cachedSong,
+          PlayerCoverSizingMode.autoFit,
+        ),
+        cacheFile.path,
+      );
+      expect(
+        FileManagerService.peekNotificationCover(
+          uncachedSong,
+          PlayerCoverSizingMode.autoFit,
+        ),
+        isNull,
+      );
+    });
+
+    test('peek passes the raw cover through outside autoFit', () async {
+      final song = songWithCover('/covers/raw.jpg');
+      await FileManagerService.primeNotificationCoverIndex();
+
+      expect(
+        FileManagerService.peekNotificationCover(
+          song,
+          PlayerCoverSizingMode.sourceAspect,
+        ),
+        '/covers/raw.jpg',
+      );
+    });
+
+    test('peek misses again once the cache generation is bumped', () async {
+      final song = songWithCover(
+        p.join(testEnv.tempPath, 'extracted_covers', 'generation-cover.jpg'),
+      );
+      final key = FileManagerService.notificationCoverKey(song)!;
+      final cacheFile = await cacheService.getNotificationCoverCacheFile(key);
+      await cacheFile.writeAsString('square cover');
+
+      // Pruning with the song still referenced keeps its cover and bumps the
+      // generation, so the index below is rebuilt rather than reused.
+      await cacheService.pruneStaleSongCaches([song]);
+      await FileManagerService.primeNotificationCoverIndex();
+      expect(
+        FileManagerService.peekNotificationCover(
+          song,
+          PlayerCoverSizingMode.autoFit,
+        ),
+        isNotNull,
+      );
+
+      // A later prune that no longer references the song deletes its cover
+      // file behind the index's back.
+      await cacheService.pruneStaleSongCaches([
+        songWithCover(
+          p.join(testEnv.tempPath, 'extracted_covers', 'other-cover.jpg'),
+        ),
+      ]);
+
+      expect(
+        FileManagerService.peekNotificationCover(
+          song,
+          PlayerCoverSizingMode.autoFit,
+        ),
+        isNull,
+      );
+    });
+
+    test('key is null for a song with no cover', () {
+      const song = Song(
+        title: 'Title',
+        artist: 'Artist',
+        album: 'Album',
+        filename: 'no-cover.mp3',
+        url: '/music/no-cover.mp3',
+      );
+      expect(FileManagerService.notificationCoverKey(song), isNull);
+      expect(
+        FileManagerService.peekNotificationCover(
+          song,
+          PlayerCoverSizingMode.autoFit,
+        ),
+        isNull,
+      );
     });
   });
 

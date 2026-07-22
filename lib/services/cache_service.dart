@@ -32,6 +32,14 @@ class CacheService {
   // V3 specific: we keep a directory for sync-related cache (e.g. temporary sync files)
   late Directory _v3Dir;
 
+  Directory? _notifCoverDir;
+  int _notifCoverGeneration = 0;
+
+  /// Bumped whenever notification-cover files are deleted behind a caller's
+  /// back. Anything caching a view of that directory compares this against the
+  /// value it read at build time and rebuilds when they differ.
+  int get notificationCoverGeneration => _notifCoverGeneration;
+
   Future<void> init() async {
     if (_initialized) return;
     try {
@@ -140,6 +148,7 @@ class CacheService {
           'supportDir': supportDir,
           'songs': songPayload,
         }));
+    _notifCoverGeneration++;
     await ColorExtractionService.pruneCacheToImagePaths(
       songs
           .map((song) => song.coverUrl)
@@ -180,6 +189,7 @@ class CacheService {
         deleted++;
       } catch (_) {}
     }
+    if (deleted > 0) _notifCoverGeneration++;
     debugPrint('CacheService: evicted $deleted files to stay under limit');
   }
 
@@ -191,6 +201,9 @@ class CacheService {
         await e.delete(recursive: true);
       }
     }
+    // The memoized handle and anything indexed off it are gone with the dir.
+    _notifCoverDir = null;
+    _notifCoverGeneration++;
   }
 
   Future<int> getCacheSize() async {
@@ -285,12 +298,31 @@ class CacheService {
     return count;
   }
 
-  Future<File> getNotificationCoverCacheFile(String songFilename) async {
+  /// The notification-cover cache directory, created on first use.
+  ///
+  /// Memoized: this is consulted once per queue entry, so re-running the
+  /// exists/create pair every time turns a queue rebuild into hundreds of
+  /// filesystem round-trips.
+  Future<Directory> notificationCoverCacheDir() async {
+    final cached = _notifCoverDir;
+    if (cached != null) return cached;
+
     await init();
     final notifDir = Directory(p.join(_v3Dir.path, 'notification_cover_cache'));
     if (!await notifDir.exists()) {
       await notifDir.create(recursive: true);
     }
+    _notifCoverDir = notifDir;
+    return notifDir;
+  }
+
+  /// The notification-cover cache directory if [notificationCoverCacheDir] has
+  /// already created it, otherwise null. For synchronous callers that have a
+  /// fallback and must not await.
+  Directory? notificationCoverCacheDirSync() => _notifCoverDir;
+
+  Future<File> getNotificationCoverCacheFile(String songFilename) async {
+    final notifDir = await notificationCoverCacheDir();
     return File(p.join(notifDir.path, '$songFilename.jpg'));
   }
 
