@@ -149,7 +149,7 @@ class _DataManagementSettingsScreenState
                   ),
                   _buildExportCheckbox(
                     title: 'User Data',
-                    subtitle: 'Favorites, hidden, playlists, moods',
+                    subtitle: 'Favorites, hidden, playlists',
                     value: selectedTypes.contains(BackupContentType.userData),
                     onChanged: (value) {
                       setState(() {

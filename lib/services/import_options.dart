@@ -7,7 +7,6 @@ enum ImportDataCategory {
   playlists,
   mergedGroups,
   recommendations,
-  moods,
   userdata,
   playHistory,
   songs,
@@ -43,7 +42,6 @@ extension ImportDataCategoryExtension on ImportDataCategory {
       case ImportDataCategory.playlists:
       case ImportDataCategory.mergedGroups:
       case ImportDataCategory.recommendations:
-      case ImportDataCategory.moods:
       case ImportDataCategory.userdata:
       case ImportDataCategory.playHistory:
         return ImportDataType.database;
@@ -102,8 +100,6 @@ extension ImportDataCategoryExtension on ImportDataCategory {
         return 'Merged Groups';
       case ImportDataCategory.recommendations:
         return 'Recommendations';
-      case ImportDataCategory.moods:
-        return 'Moods';
       case ImportDataCategory.userdata:
         return 'User Account';
       case ImportDataCategory.playHistory:
@@ -155,8 +151,6 @@ extension ImportDataCategoryExtension on ImportDataCategory {
         return 'Merged duplicate songs';
       case ImportDataCategory.recommendations:
         return 'Recommendation preferences and removals';
-      case ImportDataCategory.moods:
-        return 'Mood tags and song associations';
       case ImportDataCategory.userdata:
         return 'User authentication data';
       case ImportDataCategory.playHistory:
@@ -208,8 +202,6 @@ extension ImportDataCategoryExtension on ImportDataCategory {
         return 'merged_song_group';
       case ImportDataCategory.recommendations:
         return 'recommendation_preference';
-      case ImportDataCategory.moods:
-        return 'mood_tag';
       case ImportDataCategory.userdata:
         return 'userdata';
       case ImportDataCategory.playHistory:
@@ -270,7 +262,6 @@ class ImportOptions {
       ImportDataCategory.playlists,
       ImportDataCategory.mergedGroups,
       ImportDataCategory.recommendations,
-      ImportDataCategory.moods,
       ImportDataCategory.userdata,
       ImportDataCategory.playHistory,
       ImportDataCategory.songs,

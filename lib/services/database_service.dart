@@ -8,7 +8,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/playlist.dart';
-import '../models/mood_tag.dart';
 import '../models/queue_snapshot.dart';
 import '../models/song.dart';
 import 'import_options.dart';
@@ -274,25 +273,6 @@ class DatabaseService {
         )
     ''');
     await db.execute('''
-        CREATE TABLE IF NOT EXISTS mood_tag (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          normalized_name TEXT UNIQUE NOT NULL,
-          is_preset INTEGER DEFAULT 0,
-          created_at REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS song_mood (
-          song_filename TEXT NOT NULL,
-          mood_id TEXT NOT NULL,
-          added_at REAL,
-          source TEXT DEFAULT 'manual',
-          PRIMARY KEY (song_filename, mood_id),
-          FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
-        )
-    ''');
-    await db.execute('''
         CREATE TABLE IF NOT EXISTS queue_snapshot (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
@@ -331,12 +311,6 @@ class DatabaseService {
         'CREATE INDEX IF NOT EXISTS idx_song_created_epoch_sec ON song(created_epoch_sec)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_song_date_epoch_sec ON song(song_date_epoch_sec)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_song_mood_song_filename ON song_mood(song_filename)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_song_mood_mood_id ON song_mood(mood_id)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_mood_tag_normalized_name ON mood_tag(normalized_name)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_queue_snapshot_created_at ON queue_snapshot(created_at)');
     await db.execute(
@@ -1361,9 +1335,6 @@ class DatabaseService {
       // Update Merged Songs - if old filename is in a merge group, update it
       await txn.update('merged_song', {'filename': newFilename},
           where: 'filename = ?', whereArgs: [oldFilename]);
-      await txn.update('song_mood', {'song_filename': newFilename},
-          where: 'song_filename = ?', whereArgs: [oldFilename]);
-
       // Update merged_song_group priority_filename if it matches old filename
       await txn.update('merged_song_group', {'priority_filename': newFilename},
           where: 'priority_filename = ?', whereArgs: [oldFilename]);
@@ -1437,8 +1408,6 @@ class DatabaseService {
       // Remove from all playlists
       await txn.delete('playlist_song',
           where: 'song_filename = ?', whereArgs: [filename]);
-      await txn.delete('song_mood',
-          where: 'song_filename = ?', whereArgs: [filename]);
     });
 
     // Note: We DO NOT delete play events to preserve statistics
@@ -1459,107 +1428,6 @@ class DatabaseService {
             {
               'filename': filename,
               'added_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-    });
-  }
-
-  // ==========================================================================
-  // MOODS QUERIES
-  // ==========================================================================
-
-  Future<List<MoodTag>> getMoodTags() async {
-    await _ensureInitialized();
-    if (_userDataDatabase == null) return [];
-
-    try {
-      final rows = await _userDataDatabase!.query(
-        'mood_tag',
-        orderBy: 'is_preset DESC, name COLLATE NOCASE ASC',
-      );
-      return rows.map((row) => MoodTag.fromJson(row)).toList();
-    } catch (e) {
-      debugPrint('Error getting mood tags: $e');
-      return [];
-    }
-  }
-
-  Future<void> saveMoodTag(MoodTag tag) async {
-    await _ensureInitialized();
-    if (_userDataDatabase == null) return;
-
-    await _userDataDatabase!.insert(
-      'mood_tag',
-      tag.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<void> renameMoodTag(String moodId, String newName) async {
-    await _ensureInitialized();
-    if (_userDataDatabase == null) return;
-
-    await _userDataDatabase!.update(
-      'mood_tag',
-      {
-        'name': newName.trim(),
-        'normalized_name': newName.trim().toLowerCase(),
-      },
-      where: 'id = ?',
-      whereArgs: [moodId],
-    );
-  }
-
-  Future<void> deleteMoodTag(String moodId) async {
-    await _ensureInitialized();
-    if (_userDataDatabase == null) return;
-
-    await _userDataDatabase!.transaction((txn) async {
-      await txn.delete('song_mood', where: 'mood_id = ?', whereArgs: [moodId]);
-      await txn.delete('mood_tag', where: 'id = ?', whereArgs: [moodId]);
-    });
-  }
-
-  Future<Map<String, List<String>>> getSongMoodMap() async {
-    await _ensureInitialized();
-    if (_userDataDatabase == null) return {};
-
-    try {
-      final rows = await _userDataDatabase!.query(
-        'song_mood',
-        orderBy: 'added_at ASC',
-      );
-
-      final map = <String, List<String>>{};
-      for (final row in rows) {
-        final filename = row['song_filename'] as String;
-        final moodId = row['mood_id'] as String;
-        map.putIfAbsent(filename, () => <String>[]).add(moodId);
-      }
-      return map;
-    } catch (e) {
-      debugPrint('Error getting song moods: $e');
-      return {};
-    }
-  }
-
-  Future<void> setSongMoods(String songFilename, List<String> moodIds) async {
-    await _ensureInitialized();
-    if (_userDataDatabase == null) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
-    await _userDataDatabase!.transaction((txn) async {
-      await txn.delete('song_mood',
-          where: 'song_filename = ?', whereArgs: [songFilename]);
-      for (final moodId in moodIds.toSet()) {
-        await txn.insert(
-            'song_mood',
-            {
-              'song_filename': songFilename,
-              'mood_id': moodId,
-              'added_at': now,
-              'source': 'manual',
             },
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
@@ -2519,21 +2387,6 @@ class DatabaseService {
       added_at REAL,
       FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
     );
-    CREATE TABLE IF NOT EXISTS mood_tag (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      normalized_name TEXT UNIQUE NOT NULL,
-      is_preset INTEGER DEFAULT 0,
-      created_at REAL
-    );
-    CREATE TABLE IF NOT EXISTS song_mood (
-      song_filename TEXT NOT NULL,
-      mood_id TEXT NOT NULL,
-      added_at REAL,
-      source TEXT DEFAULT 'manual',
-      PRIMARY KEY (song_filename, mood_id),
-      FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
-    );
   ''';
 
   /// Canonical CREATE TABLE statements for wispie_data.db, keyed by table name.
@@ -2613,21 +2466,6 @@ class DatabaseService {
       id TEXT PRIMARY KEY,
       removed_at REAL
     )''',
-    'mood_tag': '''CREATE TABLE IF NOT EXISTS mood_tag (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      normalized_name TEXT UNIQUE NOT NULL,
-      is_preset INTEGER DEFAULT 0,
-      created_at REAL
-    )''',
-    'song_mood': '''CREATE TABLE IF NOT EXISTS song_mood (
-      song_filename TEXT NOT NULL,
-      mood_id TEXT NOT NULL,
-      added_at REAL,
-      source TEXT DEFAULT 'manual',
-      PRIMARY KEY (song_filename, mood_id),
-      FOREIGN KEY (mood_id) REFERENCES mood_tag (id) ON DELETE CASCADE
-    )''',
   };
 
   /// Expected columns per table for ALTER TABLE ADD COLUMN operations.
@@ -2698,19 +2536,6 @@ class DatabaseService {
       'id': 'TEXT',
       'removed_at': 'REAL',
     },
-    'mood_tag': {
-      'id': 'TEXT',
-      'name': 'TEXT',
-      'normalized_name': 'TEXT',
-      'is_preset': 'INTEGER DEFAULT 0',
-      'created_at': 'REAL',
-    },
-    'song_mood': {
-      'song_filename': 'TEXT',
-      'mood_id': 'TEXT',
-      'added_at': 'REAL',
-      'source': "TEXT DEFAULT 'manual'",
-    },
   };
 
   /// Expected performance indexes for wispie_data.db, keyed by index name.
@@ -2725,12 +2550,6 @@ class DatabaseService {
         'CREATE INDEX IF NOT EXISTS idx_song_created_epoch_sec ON song(created_epoch_sec)',
     'idx_song_date_epoch_sec':
         'CREATE INDEX IF NOT EXISTS idx_song_date_epoch_sec ON song(song_date_epoch_sec)',
-    'idx_song_mood_song_filename':
-        'CREATE INDEX IF NOT EXISTS idx_song_mood_song_filename ON song_mood(song_filename)',
-    'idx_song_mood_mood_id':
-        'CREATE INDEX IF NOT EXISTS idx_song_mood_mood_id ON song_mood(mood_id)',
-    'idx_mood_tag_normalized_name':
-        'CREATE INDEX IF NOT EXISTS idx_mood_tag_normalized_name ON mood_tag(normalized_name)',
     'idx_merged_song_group_id':
         'CREATE INDEX IF NOT EXISTS idx_merged_song_group_id ON merged_song(group_id)',
     'idx_playlist_song_playlist_id':
@@ -2790,8 +2609,6 @@ class DatabaseService {
           await txn.delete('suggestless');
           await txn.delete('hidden');
           await txn.delete('userdata');
-          await txn.delete('song_mood');
-          await txn.delete('mood_tag');
           await txn.delete('recommendation_preference');
           await txn.delete('recommendation_removal');
           await txn.delete('playlist_song');
@@ -2827,26 +2644,6 @@ class DatabaseService {
           for (final ud in userdata) {
             await txn.insert('userdata', ud,
                 conflictAlgorithm: ConflictAlgorithm.replace);
-          }
-        }
-
-        final hasMoodTag = await importedDataDb.rawQuery(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='mood_tag'");
-        if (hasMoodTag.isNotEmpty) {
-          final moodTags = await importedDataDb.query('mood_tag');
-          for (final mood in moodTags) {
-            await txn.insert('mood_tag', mood,
-                conflictAlgorithm: ConflictAlgorithm.ignore);
-          }
-        }
-
-        final hasSongMood = await importedDataDb.rawQuery(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='song_mood'");
-        if (hasSongMood.isNotEmpty) {
-          final songMoods = await importedDataDb.query('song_mood');
-          for (final sm in songMoods) {
-            await txn.insert('song_mood', sm,
-                conflictAlgorithm: ConflictAlgorithm.ignore);
           }
         }
 
@@ -2999,9 +2796,6 @@ class DatabaseService {
     if (categories.contains(ImportDataCategory.userdata)) {
       await _importUserdata(importedDataDb, additive);
     }
-    if (categories.contains(ImportDataCategory.moods)) {
-      await _importMoods(importedDataDb, additive);
-    }
     if (categories.contains(ImportDataCategory.recommendations)) {
       await _importRecommendations(importedDataDb, additive);
     }
@@ -3104,35 +2898,6 @@ class DatabaseService {
         for (final ud in userdata) {
           await txn.insert('userdata', ud,
               conflictAlgorithm: ConflictAlgorithm.replace);
-        }
-      }
-    });
-  }
-
-  Future<void> _importMoods(Database importedDb, bool additive) async {
-    await _userDataDatabase!.transaction((txn) async {
-      if (!additive) {
-        await txn.delete('mood_tag');
-        await txn.delete('song_mood');
-      }
-
-      final hasMoodTag = await importedDb.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='mood_tag'");
-      if (hasMoodTag.isNotEmpty) {
-        final moodTags = await importedDb.query('mood_tag');
-        for (final mood in moodTags) {
-          await txn.insert('mood_tag', mood,
-              conflictAlgorithm: ConflictAlgorithm.ignore);
-        }
-      }
-
-      final hasSongMood = await importedDb.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='song_mood'");
-      if (hasSongMood.isNotEmpty) {
-        final songMoods = await importedDb.query('song_mood');
-        for (final sm in songMoods) {
-          await txn.insert('song_mood', sm,
-              conflictAlgorithm: ConflictAlgorithm.ignore);
         }
       }
     });

@@ -63,7 +63,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
       ImportDataCategory.playlists,
       ImportDataCategory.mergedGroups,
       ImportDataCategory.recommendations,
-      ImportDataCategory.moods,
       ImportDataCategory.userdata,
       ImportDataCategory.playHistory,
     };

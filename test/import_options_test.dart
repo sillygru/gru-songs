@@ -10,7 +10,6 @@ void main() {
       expect(ImportDataCategory.playlists.displayName, 'Playlists');
       expect(ImportDataCategory.mergedGroups.displayName, 'Merged Groups');
       expect(ImportDataCategory.recommendations.displayName, 'Recommendations');
-      expect(ImportDataCategory.moods.displayName, 'Moods');
       expect(ImportDataCategory.userdata.displayName, 'User Account');
       expect(ImportDataCategory.playHistory.displayName, 'Play History');
       expect(ImportDataCategory.songs.displayName, 'Songs Library');
@@ -35,8 +34,6 @@ void main() {
           'Merged duplicate songs');
       expect(ImportDataCategory.recommendations.description,
           'Recommendation preferences and removals');
-      expect(ImportDataCategory.moods.description,
-          'Mood tags and song associations');
       expect(
           ImportDataCategory.userdata.description, 'User authentication data');
       expect(ImportDataCategory.playHistory.description,
@@ -67,7 +64,6 @@ void main() {
       expect(ImportDataCategory.playlists.type, ImportDataType.database);
       expect(ImportDataCategory.mergedGroups.type, ImportDataType.database);
       expect(ImportDataCategory.recommendations.type, ImportDataType.database);
-      expect(ImportDataCategory.moods.type, ImportDataType.database);
       expect(ImportDataCategory.userdata.type, ImportDataType.database);
       expect(ImportDataCategory.playHistory.type, ImportDataType.database);
 
@@ -91,7 +87,6 @@ void main() {
       expect(ImportDataCategory.mergedGroups.dbTableName, 'merged_song_group');
       expect(ImportDataCategory.recommendations.dbTableName,
           'recommendation_preference');
-      expect(ImportDataCategory.moods.dbTableName, 'mood_tag');
       expect(ImportDataCategory.userdata.dbTableName, 'userdata');
       expect(ImportDataCategory.playHistory.dbTableName, 'playevent');
     });
@@ -136,10 +131,6 @@ void main() {
       expect(
           ImportOptions.defaultImport.categories
               .contains(ImportDataCategory.recommendations),
-          true);
-      expect(
-          ImportOptions.defaultImport.categories
-              .contains(ImportDataCategory.moods),
           true);
       expect(
           ImportOptions.defaultImport.categories

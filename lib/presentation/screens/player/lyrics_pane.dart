@@ -138,7 +138,19 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       // Only lines currently built have a live context; ones far off-screen
       // will be scrolled to as they come into range.
       final ctx = _lineKeys[index]?.currentContext;
-      if (ctx == null) return;
+      if (ctx == null) {
+        // Item not rendered yet (lazy builder). Jump to approximate offset
+        // so the next frame's precise scroll can find it.
+        const double estimatedHeight = 56;
+        final pos = _scrollController.position;
+        final roughTarget = (PlayerTokens.s5 +
+                index * estimatedHeight -
+                pos.viewportDimension * _activeLineAnchor)
+            .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+        pos.jumpTo(roughTarget);
+        _maybeAutoScroll(index);
+        return;
+      }
 
       // Deliberately not Scrollable.ensureVisible: it walks *every* enclosing
       // scrollable, so from inside the shell's PageView it would drag the user

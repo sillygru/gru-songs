@@ -42,19 +42,6 @@ class SearchFilterNotifier extends Notifier<SearchFilterState> {
     state = const SearchFilterState(all: true);
   }
 
-  void toggleMood(String moodId) {
-    final selected = state.selectedMoodIds.toSet();
-    if (selected.contains(moodId)) {
-      selected.remove(moodId);
-    } else {
-      selected.add(moodId);
-    }
-    state = state.withMoodIds(selected);
-  }
-
-  void clearMoods() {
-    state = state.withMoodIds(const <String>[]);
-  }
 }
 
 /// Provider for search results
@@ -63,7 +50,6 @@ final searchResultsProvider =
   final filterState = ref.watch(searchFilterProvider);
 
   final songsAsync = ref.watch(songsProvider);
-  final userData = ref.watch(userDataProvider);
   final searchService = ref.read(searchServiceProvider);
 
   if (query.isEmpty) {
@@ -77,11 +63,7 @@ final searchResultsProvider =
         filterState: filterState,
         allSongs: songs,
       );
-      if (filterState.selectedMoodIds.isEmpty) return results;
-      return results
-          .where((r) => userData.songHasAnyMood(
-              r.song.filename, filterState.selectedMoodIds.toSet()))
-          .toList();
+      return results;
     },
     loading: () => [],
     error: (_, __) => [],

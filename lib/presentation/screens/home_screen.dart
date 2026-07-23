@@ -11,7 +11,6 @@ import '../../models/queue_snapshot.dart';
 import '../../services/audio_player_manager.dart';
 import '../../providers/queue_history_provider.dart';
 import '../../providers/mixed_playlists_provider.dart';
-import '../../providers/auto_mood_mix_provider.dart';
 import '../../models/playlist.dart';
 import 'song_list_screen.dart';
 import '../widgets/folder_grid_image.dart';
@@ -206,53 +205,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           playlistSongs,
           isPinned,
         ),
-      ),
-    );
-  }
-
-  Widget _buildAutoMoodMixCard(AutoMoodMixState moodMixState) {
-    if (!moodMixState.hasEnoughData || moodMixState.selectedMood == null) {
-      return const SizedBox.shrink();
-    }
-
-    final accent = AppTokens.accentOf(context, ref);
-
-    return Padding(
-      padding: const EdgeInsets.only(right: AppTokens.s4),
-      child: AppMediaCard(
-        size: _cardSize,
-        title: moodMixState.displayName,
-        subtitle: moodMixState.description,
-        artwork: Container(
-          color: Color.alphaBlend(
-            accent.withValues(alpha: 0.30),
-            Theme.of(context).scaffoldBackgroundColor,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.auto_awesome_rounded, size: 38, color: accent),
-              const SizedBox(height: AppTokens.s2),
-              Text(
-                moodMixState.selectedMood!.name,
-                style: AppTokens.cardTitle(context).copyWith(fontSize: 17),
-              ),
-            ],
-          ),
-        ),
-        onTap: () {
-          if (moodMixState.songs.isNotEmpty) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SongListScreen(
-                  title: moodMixState.displayName,
-                  songs: moodMixState.songs,
-                ),
-              ),
-            );
-          }
-        },
       ),
     );
   }
@@ -540,7 +492,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ref.read(songsProvider.notifier).refresh(),
                 ref.read(userDataProvider.notifier).refresh(force: true),
               ]);
-              ref.invalidate(autoMoodMixProvider);
             },
             child: NotificationListener<ScrollNotification>(
               onNotification: _handleScrollNotification,
@@ -654,17 +605,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           padding: const EdgeInsets.symmetric(
                             horizontal: AppTokens.s5,
                           ),
-                          itemCount: mixedPlaylists.length + 1,
+                          itemCount: mixedPlaylists.length,
                           itemBuilder: (context, index) {
-                            final autoMoodMix = ref.watch(autoMoodMixProvider);
-                            if (index == 0 && autoMoodMix.hasEnoughData) {
-                              return _buildAutoMoodMixCard(autoMoodMix);
-                            }
-                            final playlistIndex =
-                                autoMoodMix.hasEnoughData ? index - 1 : index;
-                            if (playlistIndex < mixedPlaylists.length) {
+                            if (index < mixedPlaylists.length) {
                               return _buildAutoPlaylistCard(
-                                mixedPlaylists[playlistIndex],
+                                mixedPlaylists[index],
                                 audioManager,
                                 ref,
                               );

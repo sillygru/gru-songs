@@ -512,8 +512,6 @@ class BackupService {
           await _checkTableExists(foundData.path, 'merged_song_group');
       final hasRecommendations = foundData != null &&
           await _checkTableExists(foundData.path, 'recommendation_preference');
-      final hasMoods = foundData != null &&
-          await _checkTableExists(foundData.path, 'mood_tag');
       final hasUserdata = foundData != null &&
           await _checkTableExists(foundData.path, 'userdata');
       final hasPlayHistory = foundStats != null &&
@@ -547,7 +545,6 @@ class BackupService {
         'hasPlaylists': hasPlaylists,
         'hasMergedGroups': hasMergedGroups,
         'hasRecommendations': hasRecommendations,
-        'hasMoods': hasMoods,
         'hasUserdata': hasUserdata,
         'hasPlayHistory': hasPlayHistory,
         'hasCoverCache': cacheFlags[BackupContentType.coverCache],
@@ -628,9 +625,6 @@ class BackupService {
     }
     if (validation['hasRecommendations'] == true) {
       categories.add(ImportDataCategory.recommendations);
-    }
-    if (validation['hasMoods'] == true) {
-      categories.add(ImportDataCategory.moods);
     }
     if (validation['hasUserdata'] == true) {
       categories.add(ImportDataCategory.userdata);
