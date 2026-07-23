@@ -211,14 +211,17 @@ class _MainScreenState extends ConsumerState<MainScreen>
         : androidSystemBottomInset;
     final bottomDockHeight = _bottomDockBaseHeight + bottomInsetReduced;
 
-    // The now-playing bar floats at the very bottom of the body. When the nav
-    // dock is visible it owns the system inset, so the bar only needs a small
-    // resting gap above it. When the dock is collapsed (auto-hide on scroll)
-    // the bar must clear the system inset itself.
-    final bool dockCollapsed =
-        settings.autoHideBottomBarOnScroll && isBottomDockHidden;
-    final double nowPlayingBottomPadding =
-        dockCollapsed ? AppTokens.s3 + bottomInsetReduced : AppTokens.s3;
+    final nowPlayingBottomPadding = settings.autoHideBottomBarOnScroll &&
+            isBottomDockHidden &&
+            androidSystemBottomInset > 0
+        ? Platform.isIOS
+            ? 12.0
+            : 8.0 + androidSystemBottomInset
+        : settings.autoHideBottomBarOnScroll && isBottomDockHidden
+            ? Platform.isIOS
+                ? 16.0
+                : 20.0
+            : 12.0;
 
     final isSelectionMode =
         ref.watch(selectionProvider.select((s) => s.isSelectionMode));

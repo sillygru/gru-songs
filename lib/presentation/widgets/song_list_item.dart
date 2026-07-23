@@ -275,8 +275,6 @@ class _Actions extends ConsumerWidget {
               color: AppTokens.fgSecondary,
             ),
             onPressed: () {
-              final box = btnContext.findRenderObject() as RenderBox?;
-              final anchor = box?.localToGlobal(box.size.center(Offset.zero));
               showSongOptionsMenu(
                 context,
                 ref,
@@ -284,7 +282,6 @@ class _Actions extends ConsumerWidget {
                 song.title,
                 song: song,
                 playlistId: playlistId,
-                anchor: anchor,
               );
             },
           ),

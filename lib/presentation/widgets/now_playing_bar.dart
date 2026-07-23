@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -104,7 +105,6 @@ class _NowPlayingContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final accent = AppTokens.accentOf(context, ref);
     final double barHeight =
         compact ? (isDesktopOrTablet ? 72 : 60) : (isDesktopOrTablet ? 78 : 64);
     final double imageSize = compact ? 40 : 44;
@@ -304,24 +304,36 @@ class _NowPlayingContent extends ConsumerWidget {
       );
     }
 
-    // The bar floats over scrolling content. Instead of glass, it sits on a
-    // near-black fill tinted by the current cover colour — so it reads as part
-    // of the same immersive surface as everything behind it. No blur, no
-    // border, no shadow.
-    final Color fill = Color.alphaBlend(
-      accent.withValues(alpha: 0.20),
-      Colors.black.withValues(alpha: 0.86),
+    final settings = ref.watch(settingsProvider);
+    final showBlur = settings.showProgressiveBlurHeaders;
+
+    // The bar floats over scrolling content. Depth comes from the fill (and
+    // optionally blur) — no drop shadow, no outline, no border.
+    final Color fill = Colors.black.withValues(alpha: 0.85);
+
+    Widget bar = DecoratedBox(
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: borderRadius,
+      ),
+      child: content,
     );
 
-    return ClipRRect(
-      borderRadius: borderRadius,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: borderRadius,
+    if (showBlur) {
+      bar = ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: bar,
         ),
-        child: content,
-      ),
-    );
+      );
+    } else {
+      bar = ClipRRect(
+        borderRadius: borderRadius,
+        child: bar,
+      );
+    }
+
+    return bar;
   }
 }
