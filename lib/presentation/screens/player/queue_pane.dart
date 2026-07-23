@@ -763,6 +763,9 @@ class _HistoryListState extends ConsumerState<_HistoryList> {
     await ref.read(audioPlayerManagerProvider).replaceQueue(
           songs,
           playlistId: snapshot.id,
+          forceLinear: true,
+          clearCurrentSong: true,
+          saveSnapshot: false,
         );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
