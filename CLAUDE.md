@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Wispie is a local (offline-only) music player written in Flutter, targeting Android and iOS. There is no backend — every feature reads from the device filesystem and two local SQLite databases.
+Wispie is a local-library music player written in Flutter, targeting Android and iOS. There is no backend and no account — the library itself is entirely local, and every feature reads from the device filesystem and two local SQLite databases.
+
+"Local" describes the library, not the process: a few features do reach the network, each of them optional and none of them required for playback. Today those are the GitHub release check (`update_service.dart`), telemetry (`telemetry_service.dart`, inert without a compiled-in secret) and online lyrics lookup against LRCLIB (`lrclib_service.dart`). All three use `dart:io HttpClient` directly rather than adding an HTTP package. Nothing about the library — songs, covers, stats, playlists — is ever uploaded.
 
 ## Boundaries
 

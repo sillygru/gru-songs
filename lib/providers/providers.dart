@@ -15,14 +15,17 @@ import '../services/file_manager_service.dart';
 import '../services/beat_analysis_service.dart';
 import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
+import '../services/color_extraction_service.dart';
 import '../services/notification_cover_warmer.dart';
 import '../services/update_service.dart';
 import '../services/library_logic.dart';
+import '../services/lrclib_service.dart';
 import '../domain/services/search_service.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import 'user_data_provider.dart';
 import 'settings_provider.dart';
+import 'theme_provider.dart';
 
 export 'auto_backup_provider.dart';
 
@@ -197,6 +200,21 @@ final metadataSaveProvider =
     NotifierProvider<MetadataSaveNotifier, MetadataSaveState>(
         MetadataSaveNotifier.new);
 
+/// Bumped whenever lyrics are written to a file.
+///
+/// Lyrics live in the audio file rather than in provider state, so there is
+/// nothing for a lyrics view to watch. Views listen to this counter and reload
+/// from the repository, which by then has had its cache invalidated.
+class LyricsRevisionNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state = state + 1;
+}
+
+final lyricsRevisionProvider =
+    NotifierProvider<LyricsRevisionNotifier, int>(LyricsRevisionNotifier.new);
+
 final updateCheckProvider =
     NotifierProvider<UpdateCheckNotifier, UpdateCheckState>(
         UpdateCheckNotifier.new);
@@ -325,6 +343,10 @@ final beatAnalysisServiceProvider = Provider<BeatAnalysisService>((ref) {
 
 final songRepositoryProvider = Provider<SongRepository>((ref) {
   return SongRepository();
+});
+
+final lrclibServiceProvider = Provider<LrclibService>((ref) {
+  return LrclibService();
 });
 
 final audioPlayerManagerProvider = Provider<AudioPlayerManager>((ref) {
@@ -864,12 +886,99 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }
   }
 
-  Future<void> renameSong(Song song, String newFilename) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
+  /// Publishes an edited song everywhere it is cached, without rescanning.
+  ///
+  /// A metadata edit touches one file, so the old behaviour — flip the provider
+  /// to `AsyncLoading` and re-scan the entire library — was both a visible
+  /// freeze and far more work than the change warranted. Each of these is a
+  /// targeted update of one row/entry:
+  ///
+  ///  1. the in-memory song list, so every screen watching it repaints;
+  ///  2. the `song` table, so the change survives a restart;
+  ///  3. the player's song map and queues, which is also what pushes the new
+  ///     values onto the player screen and the now-playing bar;
+  ///  4. the search index, in the background — nothing is waiting on it.
+  ///
+  /// [previousFilename] is for renames, where the entry to replace is not the
+  /// one the updated song now points at.
+  Future<void> _applyLocalSongUpdate(
+    Song updated, {
+    String? previousFilename,
+  }) async {
+    final targetFilename = previousFilename ?? updated.filename;
+
+    if (state.hasValue) {
+      final current = state.value ?? const <Song>[];
+      state = AsyncValue.data([
+        for (final s in current)
+          if (s.filename == targetFilename) updated else s,
+      ]);
+    }
+
+    await DatabaseService.instance.insertSongsBatch([updated]);
+    ref.read(audioPlayerManagerProvider).refreshSongs(state.value ?? const []);
+
+    unawaited(_reindexSong(updated, previousFilename: previousFilename));
+  }
+
+  Future<void> _reindexSong(Song song, {String? previousFilename}) async {
+    final searchService = SearchService();
+    try {
+      await searchService.init();
+      if (previousFilename != null && previousFilename != song.filename) {
+        await searchService.removeSong(previousFilename);
+      }
+      await searchService.updateSong(song);
+    } catch (e) {
+      debugPrint('Search index update failed for ${song.filename}: $e');
+    } finally {
+      await searchService.dispose();
+    }
+  }
+
+  /// The file's modification time after a write, so the scanner does not think
+  /// the row is stale and re-read what we just told it.
+  Future<double?> _statMtime(String url, double? fallback) async {
+    try {
+      final stat = await File(url).stat();
+      return stat.modified.millisecondsSinceEpoch / 1000.0;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  /// Renames the file on disk and returns the song under its new identity.
+  ///
+  /// The caller needs that returned song: `filename` is the primary key for
+  /// every piece of user data, so anything continuing to act on the old value
+  /// after this point would be writing to a path that no longer exists.
+  Future<Song> renameSong(Song song, String newFilename) async {
+    final notifier = ref.read(metadataSaveProvider.notifier);
+    notifier.start();
+    try {
       await ref.read(fileManagerServiceProvider).renameSong(song, newFilename);
-      return _performFullScan();
-    });
+
+      // FileManagerService.renameSong appends the original extension, and
+      // DatabaseService.renameFile has already migrated the dependent rows.
+      final resolvedFilename = '$newFilename${p.extension(song.url)}';
+      final resolvedUrl = p.join(p.dirname(song.url), resolvedFilename);
+      final updated = song.copyWith(
+        filename: resolvedFilename,
+        url: resolvedUrl,
+      );
+
+      // The lyrics cache is keyed off the file URL, so the old entry is now
+      // unreachable garbage.
+      await ref.read(songRepositoryProvider).invalidateLyricsCache(song);
+
+      await _applyLocalSongUpdate(updated, previousFilename: song.filename);
+      notifier.success('Renamed successfully');
+      return updated;
+    } catch (e) {
+      notifier.error('Failed to rename song');
+      debugPrint('Failed to rename song: $e');
+      rethrow;
+    }
   }
 
   Future<void> updateSongTitle(Song song, String newTitle) async {
@@ -884,30 +993,14 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       await ref
           .read(fileManagerServiceProvider)
           .updateSongMetadata(song, title, artist, album);
-      if (state.hasValue) {
-        final current = state.value ?? [];
-        state = AsyncValue.data([
-          for (final s in current)
-            if (s.filename == song.filename)
-              Song(
-                title: title,
-                artist: artist,
-                album: album,
-                filename: s.filename,
-                url: s.url,
-                coverUrl: s.coverUrl,
-                hasLyrics: s.hasLyrics,
-                playCount: s.playCount,
-                duration: s.duration,
-                mtime: s.mtime,
-                createdEpochSec: s.createdEpochSec,
-                songDateEpochSec: s.songDateEpochSec,
-              )
-            else
-              s,
-        ]);
-      }
-      await refresh(isBackground: true);
+
+      final updated = song.copyWith(
+        title: title,
+        artist: artist,
+        album: album,
+        mtime: await _statMtime(song.url, song.mtime),
+      );
+      await _applyLocalSongUpdate(updated);
       notifier.success();
     } catch (e) {
       notifier.error();
@@ -919,45 +1012,24 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final notifier = ref.read(metadataSaveProvider.notifier);
     notifier.start();
     try {
-      await ref.read(audioPlayerManagerProvider).stopIfCurrentSong(song.url);
+      // Deliberately no stop-the-player step: the write swaps the file in via
+      // rename, so anything holding it open keeps reading the old bytes.
       final newCoverPath = await ref
           .read(fileManagerServiceProvider)
           .updateSongCover(song, imagePath);
 
-      double? newMtime;
-      try {
-        final stat = await File(song.url).stat();
-        newMtime = stat.modified.millisecondsSinceEpoch / 1000.0;
-      } catch (_) {
-        newMtime = song.mtime;
-      }
+      final updated = song.copyWith(
+        coverUrl: newCoverPath,
+        clearCoverUrl: newCoverPath == null,
+        mtime: await _statMtime(song.url, song.mtime),
+      );
 
-      if (state.hasValue) {
-        final current = state.value ?? [];
-        state = AsyncValue.data([
-          for (final s in current)
-            if (s.filename == song.filename)
-              Song(
-                title: s.title,
-                artist: s.artist,
-                album: s.album,
-                filename: s.filename,
-                url: s.url,
-                coverUrl: newCoverPath,
-                hasLyrics: s.hasLyrics,
-                playCount: s.playCount,
-                duration: s.duration,
-                mtime: newMtime,
-                createdEpochSec: s.createdEpochSec,
-                songDateEpochSec: s.songDateEpochSec,
-              )
-            else
-              s,
-        ]);
-      }
-      // Force refresh to ensure UI updates across the app
-      ref.read(audioPlayerManagerProvider).refreshSongs(state.value ?? []);
-      await refresh(isBackground: true);
+      // Before publishing, so the queue rebuild and the cover warmer both see
+      // the new artwork rather than re-reading the crop of the old one.
+      await _rebuildNotificationCover(song, updated);
+      await _applyLocalSongUpdate(updated);
+      _refreshPaletteIfPlaying(updated);
+
       notifier.success('Cover updated successfully');
     } catch (e) {
       notifier.error('Failed to update cover');
@@ -966,15 +1038,83 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     }
   }
 
+  /// Replaces the square crop shown on the lock screen, which is cached
+  /// separately from the extracted cover that FileManagerService has already
+  /// rewritten.
+  ///
+  /// Regenerated rather than merely deleted: the notification's art URI is
+  /// baked into the queue entry, and a metadata-only edit deliberately does not
+  /// rebuild the queue, so the file has to reappear at the same path or the
+  /// currently playing track loses its artwork entirely. Even so, the
+  /// notification for the track playing right now may keep showing the old
+  /// image until the next track change — Android caches the decoded bitmap, and
+  /// pushing a new one would mean re-preparing the audio source.
+  Future<void> _rebuildNotificationCover(Song previous, Song updated) async {
+    try {
+      // The cache is keyed off the cover file's name, so the old and new
+      // artwork can land under different keys. Clear both: the old one is now
+      // orphaned, and the new one may be a stale entry from a previous cover
+      // that happened to share a name.
+      for (final key in {
+        FileManagerService.notificationCoverKey(previous),
+        FileManagerService.notificationCoverKey(updated),
+      }) {
+        if (key != null) {
+          await CacheService.instance.invalidateNotificationCover(key);
+        }
+      }
+
+      await ref.read(fileManagerServiceProvider).getOrCreateNotificationCover(
+            updated,
+            ref.read(settingsProvider).coverSizingMode,
+          );
+    } catch (e) {
+      debugPrint(
+          'Notification cover rebuild failed for ${updated.filename}: $e');
+    }
+  }
+
+  /// Re-derives the player accent when the song whose cover just changed is the
+  /// one on screen. Without this the player keeps the colour of the old art.
+  void _refreshPaletteIfPlaying(Song song) {
+    final current =
+        ref.read(audioPlayerManagerProvider).currentSongNotifier.value;
+    if (current?.filename != song.filename) return;
+
+    ColorExtractionService.extractPalette(song.coverUrl, useIsolate: true)
+        .then((palette) {
+      // Extraction runs in an isolate, so the container may be gone by now.
+      if (!ref.mounted) return;
+      ref
+          .read(themeProvider.notifier)
+          .updateExtractedPalette(palette, forFilename: song.filename);
+    });
+  }
+
   Future<void> updateLyrics(Song song, String lyricsContent) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
+    final notifier = ref.read(metadataSaveProvider.notifier);
+    notifier.start();
+    try {
       await ref
           .read(fileManagerServiceProvider)
           .updateLyrics(song, lyricsContent);
       await ref.read(songRepositoryProvider).invalidateLyricsCache(song);
-      return _performFullScan();
-    });
+
+      final updated = song.copyWith(
+        hasLyrics: lyricsContent.trim().isNotEmpty,
+        mtime: await _statMtime(song.url, song.mtime),
+      );
+      await _applyLocalSongUpdate(updated);
+
+      // Wakes up any lyrics view already showing this song — the pane otherwise
+      // only reloads when the track changes.
+      ref.read(lyricsRevisionProvider.notifier).bump();
+      notifier.success('Lyrics saved');
+    } catch (e) {
+      notifier.error('Failed to save lyrics');
+      debugPrint('Failed to update lyrics: $e');
+      rethrow;
+    }
   }
 
   Future<void> moveSong(Song song, String targetDirectoryPath) async {

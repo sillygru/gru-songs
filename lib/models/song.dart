@@ -85,6 +85,41 @@ class Song extends Equatable {
     );
   }
 
+  /// Every field is nullable here, so passing nothing keeps the current value.
+  /// [coverUrl] is deliberately handled through [clearCoverUrl]: a null
+  /// `coverUrl` argument cannot otherwise be told apart from "leave it alone",
+  /// and removing a cover is a real operation.
+  Song copyWith({
+    String? title,
+    String? artist,
+    String? album,
+    String? filename,
+    String? url,
+    String? coverUrl,
+    bool clearCoverUrl = false,
+    bool? hasLyrics,
+    int? playCount,
+    Duration? duration,
+    double? mtime,
+    double? createdEpochSec,
+    double? songDateEpochSec,
+  }) {
+    return Song(
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      filename: filename ?? this.filename,
+      url: url ?? this.url,
+      coverUrl: clearCoverUrl ? null : (coverUrl ?? this.coverUrl),
+      hasLyrics: hasLyrics ?? this.hasLyrics,
+      playCount: playCount ?? this.playCount,
+      duration: duration ?? this.duration,
+      mtime: mtime ?? this.mtime,
+      createdEpochSec: createdEpochSec ?? this.createdEpochSec,
+      songDateEpochSec: songDateEpochSec ?? this.songDateEpochSec,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'title': title,

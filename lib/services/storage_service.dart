@@ -67,12 +67,11 @@ class StorageService {
   }
 
   Future<Set<BackupContentType>> loadAutoBackupContentTypes() async {
-    return _loadContentTypes(autoBackupContentTypesKey,
-        defaultAutoBackupContentTypes);
+    return _loadContentTypes(
+        autoBackupContentTypesKey, defaultAutoBackupContentTypes);
   }
 
-  Future<void> saveAutoBackupContentTypes(
-      Set<BackupContentType> types) async {
+  Future<void> saveAutoBackupContentTypes(Set<BackupContentType> types) async {
     await _saveContentTypes(autoBackupContentTypesKey, types);
   }
 

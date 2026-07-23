@@ -211,26 +211,22 @@ class _AppearanceSettingsScreenState
                         data: SliderTheme.of(context).copyWith(
                           activeTrackColor: accent,
                           thumbColor: accent,
-                          inactiveTrackColor:
-                              accent.withValues(alpha: 0.2),
-                          overlayColor:
-                              accent.withValues(alpha: 0.12),
+                          inactiveTrackColor: accent.withValues(alpha: 0.2),
+                          overlayColor: accent.withValues(alpha: 0.12),
                         ),
                         child: Slider(
-                          value: settings
-                              .playerMotionCustomIntensity,
+                          value: settings.playerMotionCustomIntensity,
                           min: 0.0,
                           max: 1.0,
                           divisions: 4,
-                          label:
-                              _customIntensityLabel(settings.playerMotionCustomIntensity),
-                          onChanged: (value) => notifier
-                              .setPlayerMotionCustomIntensity(value),
+                          label: _customIntensityLabel(
+                              settings.playerMotionCustomIntensity),
+                          onChanged: (value) =>
+                              notifier.setPlayerMotionCustomIntensity(value),
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Row(
                           children: [
                             _sliderLabel('Min', 0.0),

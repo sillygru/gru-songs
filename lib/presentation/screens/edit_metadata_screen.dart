@@ -9,6 +9,7 @@ import '../../providers/providers.dart';
 import '../widgets/album_art_image.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../dialogs/lyrics_search_sheet.dart';
 
 class EditMetadataScreen extends ConsumerStatefulWidget {
   final Song song;
@@ -359,20 +360,24 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
       final newArtist = _artistController.text.trim();
       final newAlbum = _albumController.text.trim();
 
-      // 1. Handle Filename Rename if changed
-      if (newFilename != p.basenameWithoutExtension(widget.song.filename)) {
-        await ref
-            .read(songsProvider.notifier)
-            .renameSong(widget.song, newFilename);
+      // 1. Handle Filename Rename if changed. The renamed song is carried
+      //    forward: the metadata write below addresses the file by path, and
+      //    the old one no longer exists.
+      var song = widget.song;
+      if (newFilename != p.basenameWithoutExtension(song.filename)) {
+        song = await ref.read(songsProvider.notifier).renameSong(
+              song,
+              newFilename,
+            );
       }
 
       // 2. Handle Metadata update
-      if (newTitle != widget.song.title ||
-          newArtist != widget.song.artist ||
-          newAlbum != widget.song.album) {
+      if (newTitle != song.title ||
+          newArtist != song.artist ||
+          newAlbum != song.album) {
         await ref
             .read(songsProvider.notifier)
-            .updateSongMetadata(widget.song, newTitle, newArtist, newAlbum);
+            .updateSongMetadata(song, newTitle, newArtist, newAlbum);
       }
 
       if (mounted) {
@@ -639,12 +644,27 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
     }
   }
 
+  /// Drops a lyrics sheet from LRCLIB into the editor without saving, so it can
+  /// be corrected or retimed before it touches the file.
+  Future<void> _searchOnline() async {
+    final chosen = await showLyricsSearchSheet(context, song: widget.song);
+    if (chosen == null || !mounted) return;
+
+    setState(() => _controller.text = chosen);
+    appSnack(context, "Lyrics loaded — press SAVE to apply");
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Edit Lyrics"),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.travel_explore_rounded),
+            tooltip: "Search online",
+            onPressed: _isSaving ? null : _searchOnline,
+          ),
           if (_isSaving)
             const Center(
               child: Padding(

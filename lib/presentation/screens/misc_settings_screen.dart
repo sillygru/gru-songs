@@ -126,8 +126,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
 
     return AppListRow(
       dense: true,
-      leading: AppRowIcon(
-          icon: Icons.tune_rounded, color: accent, size: 40),
+      leading: AppRowIcon(icon: Icons.tune_rounded, color: accent, size: 40),
       title: 'Auto Backup Content',
       subtitle: 'What data is included in automatic backups',
       trailing: Icon(Icons.chevron_right,

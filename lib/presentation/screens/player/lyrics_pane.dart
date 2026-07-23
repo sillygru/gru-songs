@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
+import '../../components/app_feedback.dart';
+import '../../dialogs/lyrics_search_sheet.dart';
 import '../../models/lyrics_gap_loader_state.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/lyrics_gap_loader.dart';
@@ -40,6 +42,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   /// Below this the loader would barely finish appearing, so it stays away.
   static const Duration _minimumGapLoaderWindow = Duration(seconds: 3);
+
+  /// Vertical space the find-lyrics button occupies at the top of the pane —
+  /// its 48pt touch target plus the inset above it. The lyrics list pads by
+  /// this much so a line never scrolls under the button.
+  static const double _actionStripHeight = 48 + PlayerTokens.s1;
 
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
@@ -112,6 +119,24 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     });
   }
 
+  /// Looks lyrics up on LRCLIB and writes the chosen result into the file.
+  ///
+  /// The write bumps `lyricsRevisionProvider`, which is what reloads this pane —
+  /// no explicit reload here, so applying from anywhere else refreshes it too.
+  Future<void> _findLyricsOnline() async {
+    final chosen = await showLyricsSearchSheet(context, song: widget.song);
+    if (chosen == null || !mounted) return;
+
+    try {
+      await ref.read(songsProvider.notifier).updateLyrics(widget.song, chosen);
+      if (mounted) appSnack(context, 'Lyrics saved', tone: AppTone.success);
+    } catch (e) {
+      if (mounted) {
+        appSnack(context, 'Could not save lyrics: $e', tone: AppTone.danger);
+      }
+    }
+  }
+
   int _activeIndexFor(List<LyricLine> lyrics, Duration position) {
     var active = -1;
     for (var i = 0; i < lyrics.length; i++) {
@@ -143,7 +168,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         // so the next frame's precise scroll can find it.
         const double estimatedHeight = 56;
         final pos = _scrollController.position;
-        final roughTarget = (PlayerTokens.s5 +
+        final roughTarget = (_actionStripHeight +
                 index * estimatedHeight -
                 pos.viewportDimension * _activeLineAnchor)
             .clamp(pos.minScrollExtent, pos.maxScrollExtent);
@@ -185,6 +210,32 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   Widget build(BuildContext context) {
     super.build(context);
 
+    // Lyrics live in the audio file, not in provider state, so a write
+    // elsewhere is invisible from here. The revision counter is the signal.
+    ref.listen(lyricsRevisionProvider, (_, __) => _load());
+
+    return Stack(
+      children: [
+        Positioned.fill(child: _buildContent(context)),
+        // Kept inside the pane rather than in the shell header: the shell owns
+        // the chrome, and this action belongs to the lyrics view alone. The
+        // list reserves [_actionStripHeight] at the top so no lyric ever passes
+        // underneath it.
+        Positioned(
+          top: PlayerTokens.s1,
+          right: PlayerTokens.s3,
+          child: IconButton(
+            icon: const Icon(Icons.travel_explore_rounded),
+            color: Colors.white.withValues(alpha: PlayerTokens.aSecondary),
+            tooltip: 'Find lyrics online',
+            onPressed: _findLyricsOnline,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     if (_loading) {
       return const Center(
         child: SizedBox(
@@ -227,11 +278,12 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         return ListView.builder(
           controller: _scrollController,
           physics: const ClampingScrollPhysics(),
-          // Top padding is deliberately small: the first lines belong at the
-          // top of the pane, not floating mid-screen. The tall bottom padding
-          // is what lets the last lines still scroll up to the anchor.
+          // Top padding is deliberately small: the first lines belong near the
+          // top of the pane, not floating mid-screen. It only clears the
+          // find-lyrics button. The tall bottom padding is what lets the last
+          // lines still scroll up to the anchor.
           padding: EdgeInsets.only(
-            top: PlayerTokens.s5,
+            top: _actionStripHeight,
             bottom: MediaQuery.of(context).size.height * 0.22,
           ),
           itemCount: lyrics.length,
@@ -316,6 +368,16 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
               'This track has no embedded lyrics.',
               textAlign: TextAlign.center,
               style: PlayerTokens.trackSubtitle(context),
+            ),
+            const SizedBox(height: PlayerTokens.s5),
+            FilledButton.icon(
+              onPressed: _findLyricsOnline,
+              icon: const Icon(Icons.travel_explore_rounded, size: 18),
+              label: const Text('Find lyrics online'),
+              style: FilledButton.styleFrom(
+                backgroundColor: widget.accent,
+                foregroundColor: PlayerTokens.onAccent(widget.accent),
+              ),
             ),
           ],
         ),

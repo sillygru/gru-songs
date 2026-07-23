@@ -1487,6 +1487,18 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _savePlaybackState();
     _updateEffectivePlaybackMode();
 
+    // The current-song notifier is otherwise only assigned when the *filename*
+    // changes, so an edit to the playing track's title, artist or cover would
+    // never reach the player screen, the now-playing bar or the notification.
+    // Nothing here changes which track is playing, only what we know about it.
+    final currentFilename = _currentSongFilename;
+    if (currentFilename != null) {
+      final updated = _songMap[currentFilename];
+      if (updated != null && updated != currentSongNotifier.value) {
+        currentSongNotifier.value = updated;
+      }
+    }
+
     if (currentIdx != null && currentItemBefore != null) {
       final currentItemAfter = _effectiveQueue[currentIdx];
       if (currentItemBefore.song.url != currentItemAfter.song.url ||

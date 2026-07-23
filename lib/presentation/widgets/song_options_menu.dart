@@ -133,8 +133,6 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     );
   }
 
-
-
   Future<void> _handlePlayNext() async {
     final song = widget.song;
     if (song == null) return;
@@ -307,7 +305,6 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
   Widget _buildRootView({
     required bool isFavorite,
     required bool isSuggestLess,
-    required bool isCurrentlyPlaying,
   }) {
     final hasSongActions = widget.song != null;
 
@@ -327,9 +324,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           _sectionCard(
             icon: Icons.folder_open_rounded,
             title: 'Library',
-            subtitle: isCurrentlyPlaying
-                ? 'Move and metadata edit (editing disabled while playing)'
-                : 'Move song and edit metadata',
+            subtitle: 'Move song and edit metadata',
             onTap: () => _goTo(_SongMenuView.library),
           ),
         if (hasSongActions) const SizedBox(height: 8),
@@ -407,7 +402,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     );
   }
 
-  Widget _buildLibraryView({required bool isCurrentlyPlaying}) {
+  Widget _buildLibraryView() {
     return Column(
       key: const ValueKey(_SongMenuView.library),
       children: [
@@ -423,19 +418,11 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           subtitle: 'Add or remove from playlists',
           onTap: _handleManagePlaylists,
         ),
-        Opacity(
-          opacity: isCurrentlyPlaying ? 0.45 : 1,
-          child: IgnorePointer(
-            ignoring: isCurrentlyPlaying,
-            child: _submenuEntry(
-              icon: Icons.edit_outlined,
-              label: 'Edit Metadata',
-              subtitle: isCurrentlyPlaying
-                  ? 'Unavailable while this song is playing'
-                  : 'Open metadata editor',
-              onTap: _handleEditMetadata,
-            ),
-          ),
+        _submenuEntry(
+          icon: Icons.edit_outlined,
+          label: 'Edit Metadata',
+          subtitle: 'Open metadata editor',
+          onTap: _handleEditMetadata,
         ),
       ],
     );
@@ -499,7 +486,6 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
   Widget _buildAnimatedMenuContent({
     required bool isFavorite,
     required bool isSuggestLess,
-    required bool isCurrentlyPlaying,
   }) {
     Widget child;
     switch (_view) {
@@ -507,14 +493,13 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         child = _buildRootView(
           isFavorite: isFavorite,
           isSuggestLess: isSuggestLess,
-          isCurrentlyPlaying: isCurrentlyPlaying,
         );
         break;
       case _SongMenuView.playback:
         child = _buildPlaybackView();
         break;
       case _SongMenuView.library:
-        child = _buildLibraryView(isCurrentlyPlaying: isCurrentlyPlaying);
+        child = _buildLibraryView();
         break;
       case _SongMenuView.personalize:
         child = _buildPersonalizeView(
@@ -569,10 +554,6 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     final userData = ref.watch(userDataProvider);
     final isFavorite = userData.isFavorite(widget.songFilename);
     final isSuggestLess = userData.isSuggestLess(widget.songFilename);
-
-    final currentSong =
-        ref.read(audioPlayerManagerProvider).currentSongNotifier.value;
-    final isCurrentlyPlaying = currentSong?.filename == widget.songFilename;
 
     final theme = Theme.of(context);
     final canGoBack = _view != _SongMenuView.root;
@@ -648,7 +629,6 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                   child: _buildAnimatedMenuContent(
                     isFavorite: isFavorite,
                     isSuggestLess: isSuggestLess,
-                    isCurrentlyPlaying: isCurrentlyPlaying,
                   ),
                 ),
               ),

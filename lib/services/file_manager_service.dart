@@ -1,6 +1,8 @@
 import 'package:crypto/crypto.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -17,6 +19,27 @@ import 'ffmpeg_service.dart';
 import 'cache_service.dart';
 
 class FileManagerService {
+  /// Serializes every tag-writing operation across the whole app.
+  ///
+  /// The per-file lock below is not enough on its own: the tagging library used
+  /// for cover art insists on writing beside the process working directory, so
+  /// [_runTagMutation] has to `chdir` — which is process-global, not
+  /// isolate-local. Two writes overlapping would have one of them land its
+  /// output in the other's temp directory. Everything queues through here.
+  static Future<void> _tagWriteChain = Future.value();
+
+  static Future<T> _serializeTagWrite<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    _tagWriteChain = _tagWriteChain.then((_) async {
+      try {
+        completer.complete(await action());
+      } catch (e, stack) {
+        completer.completeError(e, stack);
+      }
+    });
+    return completer.future;
+  }
+
   Future<RandomAccessFile?> _acquireExclusiveLock(String fileUrl) async {
     try {
       final supportDir = await getApplicationSupportDirectory();
@@ -277,14 +300,7 @@ class FileManagerService {
           sourcePath: tempOut.path,
         );
       } else {
-        final original = File(fileUrl);
-        final backup = File('$fileUrl.bak');
-        if (await backup.exists()) {
-          await backup.delete();
-        }
-        await original.rename(backup.path);
-        await tempOut.rename(original.path);
-        await backup.delete();
+        await replaceFileAtomically(source: tempOut, targetPath: fileUrl);
       }
     } finally {
       await tempDir.delete(recursive: true);
@@ -329,21 +345,7 @@ class FileManagerService {
           sourcePath: tempOut.path,
         );
       } else {
-        final original = File(fileUrl);
-        final backup = File('$fileUrl.bak');
-        if (await backup.exists()) {
-          await backup.delete();
-        }
-        await original.rename(backup.path);
-        try {
-          await tempOut.rename(original.path);
-          await backup.delete();
-        } catch (e) {
-          if (!await original.exists() && await backup.exists()) {
-            await backup.rename(original.path);
-          }
-          rethrow;
-        }
+        await replaceFileAtomically(source: tempOut, targetPath: fileUrl);
       }
     } finally {
       await tempDir.delete(recursive: true);
@@ -539,74 +541,111 @@ class FileManagerService {
       String? artist,
       String? album,
       Picture? picture,
-      bool removePicture = false}) async {
-    try {
-      final lock = await _acquireExclusiveLock(fileUrl);
-      try {
-        if (Platform.isAndroid) {
-          final matchingFolder = await _getMatchingMusicFolder(fileUrl);
-          final treeUri = matchingFolder?['treeUri'];
-          final rootPath = matchingFolder?['path'];
-          if (treeUri != null &&
-              treeUri.isNotEmpty &&
-              rootPath != null &&
-              rootPath.isNotEmpty) {
-            if (!p.isWithin(rootPath, fileUrl) &&
-                !p.equals(rootPath, p.dirname(fileUrl))) {
-              throw Exception('Source file is outside the music folder.');
-            }
-
-            final tempDir = await Directory.systemTemp.createTemp('gru_meta_');
-            final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
-            await File(fileUrl).copy(tempFile.path);
-
-            // Use audio_metadata_reader for cover updates and MetadataGod for text
-            await _updateMetadataWithLibraries(
-              tempFile: tempFile,
-              tempDir: tempDir,
-              title: title,
-              artist: artist,
-              album: album,
-              picture: picture,
-              removePicture: removePicture,
-            );
-
-            final sourceRelativePath = p.relative(fileUrl, from: rootPath);
-            await AndroidStorageService.writeFileFromPath(
-              treeUri: treeUri,
-              sourceRelativePath: sourceRelativePath,
-              sourcePath: tempFile.path,
-            );
-
-            await tempDir.delete(recursive: true);
-            debugPrint("Successfully updated metadata for $fileUrl");
-            return;
-          }
-        }
-
-        // Fallback: update via temp file and copy back
-        final tempDir = await Directory.systemTemp.createTemp('gru_meta_');
-        final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
-        await File(fileUrl).copy(tempFile.path);
-
-        await _updateMetadataWithLibraries(
-          tempFile: tempFile,
-          tempDir: tempDir,
+      bool removePicture = false}) {
+    return _serializeTagWrite(() => _updateMetadataInternalSerialized(
+          fileUrl,
           title: title,
           artist: artist,
           album: album,
           picture: picture,
           removePicture: removePicture,
-        );
+        ));
+  }
 
-        await tempFile.copy(fileUrl);
-        await tempDir.delete(recursive: true);
-        debugPrint("Successfully updated metadata for $fileUrl");
+  Future<void> _updateMetadataInternalSerialized(String fileUrl,
+      {String? title,
+      String? artist,
+      String? album,
+      Picture? picture,
+      bool removePicture = false}) async {
+    try {
+      final lock = await _acquireExclusiveLock(fileUrl);
+      try {
+        final tempDir = await Directory.systemTemp.createTemp('gru_meta_');
+        final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
+        try {
+          await File(fileUrl).copy(tempFile.path);
+
+          // Use audio_metadata_reader for cover updates and MetadataGod for text
+          await _updateMetadataWithLibraries(
+            tempFile: tempFile,
+            tempDir: tempDir,
+            title: title,
+            artist: artist,
+            album: album,
+            picture: picture,
+            removePicture: removePicture,
+          );
+
+          if (Platform.isAndroid) {
+            final matchingFolder = await _getMatchingMusicFolder(fileUrl);
+            final treeUri = matchingFolder?['treeUri'];
+            final rootPath = matchingFolder?['path'];
+            if (treeUri != null &&
+                treeUri.isNotEmpty &&
+                rootPath != null &&
+                rootPath.isNotEmpty) {
+              if (!p.isWithin(rootPath, fileUrl) &&
+                  !p.equals(rootPath, p.dirname(fileUrl))) {
+                throw Exception('Source file is outside the music folder.');
+              }
+
+              final sourceRelativePath = p.relative(fileUrl, from: rootPath);
+              await AndroidStorageService.writeFileFromPath(
+                treeUri: treeUri,
+                sourceRelativePath: sourceRelativePath,
+                sourcePath: tempFile.path,
+              );
+
+              debugPrint("Successfully updated metadata for $fileUrl");
+              return;
+            }
+          }
+
+          await replaceFileAtomically(source: tempFile, targetPath: fileUrl);
+          debugPrint("Successfully updated metadata for $fileUrl");
+        } finally {
+          try {
+            await tempDir.delete(recursive: true);
+          } catch (_) {
+            // Best-effort cleanup.
+          }
+        }
       } finally {
         await _releaseLock(lock);
       }
     } catch (e) {
       throw Exception("Failed to update song metadata: $e");
+    }
+  }
+
+  /// Swaps [source] into [targetPath] without ever writing through the target's
+  /// existing inode.
+  ///
+  /// This is what makes it safe to edit the song that is currently playing:
+  /// `rename` replaces the directory entry, so a player holding the old file
+  /// open keeps streaming it to the end of the track instead of reading bytes
+  /// that change under it. Copying over the target would corrupt playback.
+  ///
+  /// The staging file is a sibling of the target so the rename stays within one
+  /// filesystem — renaming across devices fails.
+  @visibleForTesting
+  Future<void> replaceFileAtomically({
+    required File source,
+    required String targetPath,
+  }) async {
+    final staged = File('$targetPath.wispie_tmp');
+    try {
+      if (await staged.exists()) await staged.delete();
+      await source.copy(staged.path);
+      await staged.rename(targetPath);
+    } catch (e) {
+      try {
+        if (await staged.exists()) await staged.delete();
+      } catch (_) {
+        // Best-effort cleanup; the original is untouched either way.
+      }
+      rethrow;
     }
   }
 
@@ -621,77 +660,21 @@ class FileManagerService {
     Picture? picture,
     bool removePicture = false,
   }) async {
-    // For cover updates, use audio_metadata_reader with working directory workaround
-    // The library has a bug where it writes to hardcoded "a_new.mp4" etc.
+    // audio_metadata_reader rewrites the whole file synchronously, so it runs
+    // off the UI isolate.
     if (picture != null || removePicture) {
-      final originalDir = Directory.current;
-      try {
-        // Change to temp directory so the library creates a_new.* files there
-        Directory.current = tempDir;
-
-        amr.updateMetadata(tempFile, (metadata) {
-          final amrPicture = picture != null
-              ? amr.Picture(
-                  Uint8List.fromList(picture.data),
-                  picture.mimeType,
-                  amr.PictureType.coverFront,
-                )
-              : null;
-
-          // Handle different metadata types
-          if (metadata is amr.Mp3Metadata) {
-            if (removePicture) {
-              metadata.pictures.clear();
-            } else if (amrPicture != null) {
-              metadata.pictures = [amrPicture];
-            }
-          } else if (metadata is amr.Mp4Metadata) {
-            metadata.picture = removePicture ? null : amrPicture;
-          } else if (metadata is amr.VorbisMetadata) {
-            if (removePicture) {
-              metadata.pictures.clear();
-            } else if (amrPicture != null) {
-              metadata.pictures = [amrPicture];
-            }
-          } else if (metadata is amr.RiffMetadata) {
-            if (removePicture) {
-              metadata.pictures.clear();
-            } else if (amrPicture != null) {
-              metadata.pictures = [amrPicture];
-            }
-          }
-        });
-
-        // The library writes to a_new.* - rename it back to original
-        final extension = p.extension(tempFile.path).toLowerCase();
-        // audio_metadata_reader tends to write to 'a_new[ext]'
-        final defaultNewName = 'a_new$extension';
-        final newFile = File(p.join(tempDir.path, defaultNewName));
-
-        if (await newFile.exists()) {
-          await newFile.rename(tempFile.path);
-        } else {
-          // Fallback for specific known behaviors if the generic one fails
-          String? specificNewName;
-          if (extension == '.mp4' ||
-              extension == '.m4a' ||
-              extension == '.m4b') {
-            specificNewName =
-                'a_new.mp4'; // Library defaults to .mp4 for m4a container
-          } else if (extension == '.wav') {
-            specificNewName = 'a_new.wav';
-          }
-
-          if (specificNewName != null) {
-            final specificFile = File(p.join(tempDir.path, specificNewName));
-            if (await specificFile.exists()) {
-              await specificFile.rename(tempFile.path);
-            }
-          }
-        }
-      } finally {
-        Directory.current = originalDir;
-      }
+      // Built out here on purpose. The closure handed to Isolate.run captures
+      // whatever it references, and File, Directory and Picture have no
+      // business crossing an isolate boundary — so the request is reduced to
+      // strings, bytes and a bool first, and that is all the closure sees.
+      final request = _TagMutation(
+        tempFilePath: tempFile.path,
+        tempDirPath: tempDir.path,
+        pictureBytes: picture == null ? null : Uint8List.fromList(picture.data),
+        pictureMimeType: picture?.mimeType,
+        removePicture: removePicture,
+      );
+      await Isolate.run(() => _runTagMutation(request));
     }
 
     // If there are no MetadataGod-supported text changes, skip MetadataGod.
@@ -700,7 +683,8 @@ class FileManagerService {
       return;
     }
 
-    // Use MetadataGod for text metadata (works reliably)
+    // Use MetadataGod for text metadata (works reliably). Its work happens on a
+    // native worker thread, so this does not block the UI isolate.
     final metadata = await MetadataGod.readMetadata(file: tempFile.path);
     final updatedMetadata = Metadata(
       title: title ?? metadata.title,
@@ -938,5 +922,104 @@ class FileManagerService {
     }
 
     return Uint8List.fromList(img.encodeJpg(cropped, quality: 90));
+  }
+}
+
+/// Everything [_runTagMutation] needs, in a form that crosses an isolate
+/// boundary — paths and bytes only, no `File`, `Directory` or plugin types.
+class _TagMutation {
+  final String tempFilePath;
+  final String tempDirPath;
+  final Uint8List? pictureBytes;
+  final String? pictureMimeType;
+  final bool removePicture;
+
+  const _TagMutation({
+    required this.tempFilePath,
+    required this.tempDirPath,
+    required this.pictureBytes,
+    required this.pictureMimeType,
+    required this.removePicture,
+  });
+}
+
+/// Writes cover art into the staged copy of the file. Runs in a background
+/// isolate — `amr.updateMetadata` is synchronous and rewrites the entire file,
+/// which on a large track is seconds of frozen UI if left on the main isolate.
+///
+/// The `chdir` below is the library's own constraint: it emits its output as
+/// `a_new.<ext>` relative to the working directory rather than beside the
+/// input. `chdir` is process-wide even from here, which is why every caller is
+/// funnelled through `FileManagerService._serializeTagWrite`.
+void _runTagMutation(_TagMutation request) {
+  final tempFile = File(request.tempFilePath);
+  final tempDir = Directory(request.tempDirPath);
+  final originalDir = Directory.current;
+
+  try {
+    Directory.current = tempDir;
+
+    final bytes = request.pictureBytes;
+    final amrPicture = bytes == null
+        ? null
+        : amr.Picture(
+            bytes,
+            request.pictureMimeType ?? 'image/jpeg',
+            amr.PictureType.coverFront,
+          );
+
+    amr.updateMetadata(tempFile, (metadata) {
+      // Handle different metadata types
+      if (metadata is amr.Mp3Metadata) {
+        if (request.removePicture) {
+          metadata.pictures.clear();
+        } else if (amrPicture != null) {
+          metadata.pictures = [amrPicture];
+        }
+      } else if (metadata is amr.Mp4Metadata) {
+        metadata.picture = request.removePicture ? null : amrPicture;
+      } else if (metadata is amr.VorbisMetadata) {
+        if (request.removePicture) {
+          metadata.pictures.clear();
+        } else if (amrPicture != null) {
+          metadata.pictures = [amrPicture];
+        }
+      } else if (metadata is amr.RiffMetadata) {
+        if (request.removePicture) {
+          metadata.pictures.clear();
+        } else if (amrPicture != null) {
+          metadata.pictures = [amrPicture];
+        }
+      }
+    });
+
+    // The library writes to a_new.* - rename it back to original
+    final extension = p.extension(tempFile.path).toLowerCase();
+    // audio_metadata_reader tends to write to 'a_new[ext]'
+    final defaultNewName = 'a_new$extension';
+    final newFile = File(p.join(tempDir.path, defaultNewName));
+
+    if (newFile.existsSync()) {
+      newFile.renameSync(tempFile.path);
+      return;
+    }
+
+    // Fallback for specific known behaviors if the generic one fails
+    String? specificNewName;
+    if (extension == '.mp4' || extension == '.m4a' || extension == '.m4b') {
+      specificNewName =
+          'a_new.mp4'; // Library defaults to .mp4 for m4a container
+    } else if (extension == '.wav') {
+      specificNewName = 'a_new.wav';
+    }
+
+    if (specificNewName != null) {
+      final specificFile = File(p.join(tempDir.path, specificNewName));
+      if (specificFile.existsSync()) {
+        specificFile.renameSync(tempFile.path);
+      }
+    }
+  } finally {
+    Directory.current = originalDir;
   }
 }

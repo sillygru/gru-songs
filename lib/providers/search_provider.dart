@@ -41,7 +41,6 @@ class SearchFilterNotifier extends Notifier<SearchFilterState> {
   void reset() {
     state = const SearchFilterState(all: true);
   }
-
 }
 
 /// Provider for search results

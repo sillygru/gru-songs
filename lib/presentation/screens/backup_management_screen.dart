@@ -91,8 +91,7 @@ class _BackupManagementScreenState
 
     final options = await showDialog<BackupOptions>(
       context: context,
-      builder: (context) =>
-          BackupOptionsDialog(initialTypes: initialTypes),
+      builder: (context) => BackupOptionsDialog(initialTypes: initialTypes),
     );
 
     if (options != null) {
@@ -628,5 +627,3 @@ class _BackupManagementScreenState
     }
   }
 }
-
-

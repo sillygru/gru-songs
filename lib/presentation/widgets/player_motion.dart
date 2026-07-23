@@ -226,8 +226,7 @@ class MotionIntensitySpec {
           a.particleImpulse + (b.particleImpulse - a.particleImpulse) * t,
       particleOpacity:
           a.particleOpacity + (b.particleOpacity - a.particleOpacity) * t,
-      particleDrift:
-          a.particleDrift + (b.particleDrift - a.particleDrift) * t,
+      particleDrift: a.particleDrift + (b.particleDrift - a.particleDrift) * t,
     );
   }
 }

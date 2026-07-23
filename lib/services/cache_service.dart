@@ -331,6 +331,21 @@ class CacheService {
     return File(p.join(notifDir.path, '$songFilename.jpg'));
   }
 
+  /// Drops one cached notification cover after the artwork behind it changed.
+  ///
+  /// [cacheKey] is a `FileManagerService.notificationCoverKey` — derived from
+  /// the cover file's name, not the song's, so callers must not pass a song
+  /// filename here.
+  Future<void> invalidateNotificationCover(String cacheKey) async {
+    try {
+      final file = await getNotificationCoverCacheFile(cacheKey);
+      if (await file.exists()) await file.delete();
+      _notifCoverGeneration++;
+    } catch (_) {
+      // A cover we cannot delete is refreshed by the next full prune.
+    }
+  }
+
   static String _cacheKey(String value) {
     return sha1.convert(utf8.encode(value)).toString();
   }

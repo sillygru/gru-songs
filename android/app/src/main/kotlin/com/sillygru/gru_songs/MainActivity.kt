@@ -4,12 +4,16 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import com.ryanheise.audioservice.AudioServiceActivity
 
 class MainActivity : AudioServiceActivity() {
@@ -18,6 +22,55 @@ class MainActivity : AudioServiceActivity() {
     private val requestPickTree = 9001
     private var pendingResult: MethodChannel.Result? = null
     private lateinit var volumeMonitorPlugin: VolumeMonitorPlugin
+
+    /**
+     * Handlers that stream whole audio files run here instead of on the platform
+     * main thread, where copying a 40 MB track froze the UI for seconds every
+     * time metadata was saved.
+     *
+     * Single-threaded on purpose: SAF operations against one document tree are
+     * serialized rather than racing each other.
+     */
+    private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Runs [block] on [ioExecutor], giving it a result that always reports back
+     * on the main thread — a MethodChannel.Result must be completed there.
+     */
+    private fun onIoThread(result: MethodChannel.Result, block: (MethodChannel.Result) -> Unit) {
+        val proxy = MainThreadResult(result, mainHandler)
+        ioExecutor.execute {
+            try {
+                block(proxy)
+            } catch (e: Exception) {
+                proxy.error("unexpected", e.message, null)
+            }
+        }
+    }
+
+    /** Forwards a [MethodChannel.Result] onto the main thread. */
+    private class MainThreadResult(
+        private val delegate: MethodChannel.Result,
+        private val handler: Handler
+    ) : MethodChannel.Result {
+        override fun success(value: Any?) {
+            handler.post { delegate.success(value) }
+        }
+
+        override fun error(code: String, message: String?, details: Any?) {
+            handler.post { delegate.error(code, message, details) }
+        }
+
+        override fun notImplemented() {
+            handler.post { delegate.notImplemented() }
+        }
+    }
+
+    override fun onDestroy() {
+        ioExecutor.shutdown()
+        super.onDestroy()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -29,14 +82,18 @@ class MainActivity : AudioServiceActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    // pickTree must stay on the main thread: it starts an
+                    // activity and is completed from onActivityResult.
                     "pickTree" -> handlePickTree(result)
                     "createFolder" -> handleCreateFolder(call.arguments as Map<*, *>, result)
-                    "moveFile" -> handleMoveFile(call.arguments as Map<*, *>, result)
-                    "moveFolder" -> handleMoveFolder(call.arguments as Map<*, *>, result)
                     "renameFile" -> handleRenameFile(call.arguments as Map<*, *>, result)
                     "deleteFile" -> handleDeleteFile(call.arguments as Map<*, *>, result)
-                    "writeFileFromPath" -> handleWriteFileFromPath(call.arguments as Map<*, *>, result)
-                    "readFile" -> handleReadFile(call.arguments as Map<*, *>, result)
+                    // The rest copy file contents, so they go to the IO thread.
+                    "moveFile" -> onIoThread(result) { handleMoveFile(call.arguments as Map<*, *>, it) }
+                    "moveFolder" -> onIoThread(result) { handleMoveFolder(call.arguments as Map<*, *>, it) }
+                    "writeFileFromPath" ->
+                        onIoThread(result) { handleWriteFileFromPath(call.arguments as Map<*, *>, it) }
+                    "readFile" -> onIoThread(result) { handleReadFile(call.arguments as Map<*, *>, it) }
                     else -> result.notImplemented()
                 }
             }
