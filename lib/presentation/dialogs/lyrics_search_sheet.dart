@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/lrclib_result.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../services/lrclib_service.dart';
 import '../components/app_sheet.dart';
 import '../tokens/app_tokens.dart';
 
@@ -47,8 +48,13 @@ class _LyricsSearchSheetState extends ConsumerState<_LyricsSearchSheet> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.song.title);
-    _artistController = TextEditingController(text: widget.song.artist);
+    // Start from the file's tags, but blank out the scanner's placeholders so
+    // an untagged file shows an empty artist box rather than "Unknown Artist"
+    // (which LRCLIB would treat as a filter that matches nothing).
+    _titleController = TextEditingController(
+        text: LrclibService.cleanTag(widget.song.title) ?? '');
+    _artistController = TextEditingController(
+        text: LrclibService.cleanTag(widget.song.artist) ?? '');
     // The song's own tags are the best first guess, so search immediately
     // rather than making the user press a button to see the obvious query.
     WidgetsBinding.instance.addPostFrameCallback((_) => _search());

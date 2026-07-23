@@ -25,6 +25,24 @@ class LrclibService {
   /// request just to build a header.
   static String? _userAgent;
 
+  /// The scanner's stand-in tags for untagged files. LRCLIB treats every query
+  /// field as an AND filter, so sending one of these as `artist_name` matches
+  /// nothing — see [cleanTag].
+  static const _placeholderTags = {
+    'unknown title',
+    'unknown artist',
+    'unknown album',
+  };
+
+  /// Trims a tag and drops the scanner's placeholder values, so an untagged
+  /// file never turns into an AND filter that LRCLIB cannot satisfy. Returns
+  /// null when there is nothing usable to search on.
+  static String? cleanTag(String? value) {
+    final v = value?.trim() ?? '';
+    if (v.isEmpty || _placeholderTags.contains(v.toLowerCase())) return null;
+    return v;
+  }
+
   /// Looks up lyrics for [song] and returns candidates best-first.
   ///
   /// Runs the exact-match and search endpoints together: `/api/get` needs every
@@ -37,15 +55,16 @@ class LrclibService {
     String? titleOverride,
     String? artistOverride,
   }) async {
-    final title = (titleOverride ?? song.title).trim();
-    final artist = (artistOverride ?? song.artist).trim();
+    final title = cleanTag(titleOverride ?? song.title) ?? '';
+    final artist = cleanTag(artistOverride ?? song.artist) ?? '';
+    final album = cleanTag(song.album);
     if (title.isEmpty && artist.isEmpty) return const [];
 
     final results = await Future.wait([
       getExact(
         trackName: title,
         artistName: artist,
-        albumName: song.album,
+        albumName: album,
         duration: song.duration,
       ),
       search(trackName: title, artistName: artist),
@@ -56,9 +75,11 @@ class LrclibService {
 
     // Structured search needs track_name to match reasonably closely. Free-text
     // is the fallback for the "Artist - Title.mp3" style tags that a local
-    // library is full of.
+    // library is full of. Build it from the cleaned parts so a placeholder tag
+    // can't leak back into the query.
     if (found.isEmpty) {
-      found = await searchFreeText('$title $artist'.trim());
+      found = await searchFreeText(
+          [title, artist].where((s) => s.isNotEmpty).join(' '));
     }
 
     final merged = <int, LrclibResult>{};
