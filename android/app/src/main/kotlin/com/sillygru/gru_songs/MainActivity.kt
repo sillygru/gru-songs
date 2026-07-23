@@ -67,11 +67,6 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
-    override fun onDestroy() {
-        ioExecutor.shutdown()
-        super.onDestroy()
-    }
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -507,6 +502,7 @@ class MainActivity : AudioServiceActivity() {
     }
 
     override fun onDestroy() {
+        ioExecutor.shutdown()
         super.onDestroy()
         if (::volumeMonitorPlugin.isInitialized) {
             volumeMonitorPlugin.cleanup()
