@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../domain/services/video_sync_policy.dart';
 import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
@@ -33,12 +35,17 @@ class NowPlayingPane extends ConsumerStatefulWidget {
   /// painted up there rather than here so it can spill past this pane.
   final GlobalKey coverKey;
 
+  /// Whether this pane is the one on screen. The pane is kept alive across
+  /// swipes, so without this a video would go on decoding behind the Queue.
+  final ValueListenable<bool> paneVisible;
+
   const NowPlayingPane({
     super.key,
     required this.song,
     required this.accent,
     required this.motion,
     required this.coverKey,
+    required this.paneVisible,
   });
 
   @override
@@ -78,16 +85,17 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
                         .min(box.maxWidth, box.maxHeight)
                         .clamp(0.0, coverCap);
 
-                    return Center(
-                      child: _CoverStage(
-                        song: widget.song,
-                        accent: widget.accent,
-                        size: side,
-                        coverSizing: coverSizing,
-                        audioManager: audioManager,
-                        motion: widget.motion,
-                        coverKey: widget.coverKey,
-                      ),
+                    return _CoverStage(
+                      song: widget.song,
+                      accent: widget.accent,
+                      size: side,
+                      boxWidth: box.maxWidth,
+                      boxHeight: box.maxHeight,
+                      coverSizing: coverSizing,
+                      audioManager: audioManager,
+                      motion: widget.motion,
+                      coverKey: widget.coverKey,
+                      paneVisible: widget.paneVisible,
                     );
                   },
                 ),
@@ -296,25 +304,41 @@ class _FavoriteButtonState extends ConsumerState<_FavoriteButton>
 }
 
 /// The artwork, or the video surface when the track has video and video mode is
-/// on. Strictly square — the toggle lives outside it as [_VideoModeToggle], so
-/// the pane can hand this the whole leftover box and get a square back.
+/// on. The toggle lives outside it as [_VideoModeToggle], so the pane can hand
+/// this the whole leftover box.
+///
+/// Artwork is square, as it always was. Video is not: it lays out at its own
+/// aspect ratio inside the box, so a phone recording stays portrait and a music
+/// video stays wide instead of both being letterboxed into the artwork's square.
 class _CoverStage extends ConsumerWidget {
   final Song song;
   final Color accent;
+
+  /// The artwork's side. Also what the video surface falls back to before it
+  /// knows its own dimensions.
   final double size;
+
+  /// The whole box the stage may use. Only video spreads into it.
+  final double boxWidth;
+  final double boxHeight;
+
   final PlayerCoverSizingMode coverSizing;
   final AudioPlayerManager audioManager;
   final PlayerMotionController motion;
   final GlobalKey coverKey;
+  final ValueListenable<bool> paneVisible;
 
   const _CoverStage({
     required this.song,
     required this.accent,
     required this.size,
+    required this.boxWidth,
+    required this.boxHeight,
     required this.coverSizing,
     required this.audioManager,
     required this.motion,
     required this.coverKey,
+    required this.paneVisible,
   });
 
   @override
@@ -328,18 +352,29 @@ class _CoverStage extends ConsumerWidget {
         final isVideo = mode == PlaybackMediaMode.video;
 
         return SizedBox(
-          width: size,
-          height: size,
-          child: AnimatedSwitcher(
-            duration: PlayerTokens.dBase,
-            switchInCurve: PlayerTokens.cStandard,
-            child: isVideo
-                ? _VideoSurface(
-                    key: ValueKey('video_${song.filename}'),
-                    song: song,
-                    audioManager: audioManager,
-                  )
-                : _buildCover(context, beatReactive),
+          width: boxWidth,
+          height: boxHeight,
+          // Centred outside the switcher, so each branch is free to size itself
+          // — which is the whole point for video — and so the switcher still
+          // sees two differently-typed children and crossfades between them.
+          child: Center(
+            child: AnimatedSwitcher(
+              duration: PlayerTokens.dBase,
+              switchInCurve: PlayerTokens.cStandard,
+              child: isVideo
+                  ? _VideoSurface(
+                      key: ValueKey('video_${song.filename}'),
+                      song: song,
+                      audioManager: audioManager,
+                      paneVisible: paneVisible,
+                      placeholderSize: size,
+                    )
+                  : SizedBox(
+                      width: size,
+                      height: size,
+                      child: _buildCover(context, beatReactive),
+                    ),
+            ),
           ),
         );
       },
@@ -436,40 +471,78 @@ class _VideoModeToggle extends StatelessWidget {
 ///
 /// just_audio stays the single source of audio truth — the video is always
 /// silent and is corrected toward the audio clock, never the other way round.
+///
+/// Decoding video is the most expensive thing this app ever does, so the surface
+/// only runs when someone can actually see it: not while the app is backgrounded
+/// (the audio keeps going through just_audio_background regardless), and not
+/// while the pane has been swiped away. Correction timing lives in
+/// [resolveVideoSync] rather than here.
 class _VideoSurface extends StatefulWidget {
   final Song song;
   final AudioPlayerManager audioManager;
+
+  /// Whether this pane is the one on screen. Owned by the shell, which is where
+  /// the pane ordering lives.
+  final ValueListenable<bool> paneVisible;
+
+  /// Fallback square for the placeholder and error states, which have no video
+  /// dimensions to lay out against yet.
+  final double placeholderSize;
 
   const _VideoSurface({
     super.key,
     required this.song,
     required this.audioManager,
+    required this.paneVisible,
+    required this.placeholderSize,
   });
 
   @override
   State<_VideoSurface> createState() => _VideoSurfaceState();
 }
 
-class _VideoSurfaceState extends State<_VideoSurface> {
-  /// Only correct when the video has drifted past this, otherwise constant
-  /// seeking makes playback stutter.
-  static const Duration _maxDrift = Duration(milliseconds: 250);
+class _VideoSurfaceState extends State<_VideoSurface>
+    with WidgetsBindingObserver {
+  /// Sync is checked on a timer rather than off `positionStream`: that stream
+  /// emits every 200ms, while the video's own position only refreshes from a
+  /// 100ms platform poll, so comparing them any faster than this mostly measures
+  /// the gap between two clocks rather than any real drift.
+  static const Duration _syncInterval = Duration(seconds: 1);
 
   VideoPlayerController? _controller;
-  StreamSubscription<Duration>? _positionSub;
+  Timer? _syncTimer;
   StreamSubscription<PlayerState>? _stateSub;
   bool _initialized = false;
   Object? _error;
 
+  /// Read once after initialize, never from a listener: the controller notifies
+  /// on every 100ms position poll, so rebuilding off it would rebuild the
+  /// subtree ten times a second for nothing.
+  double _aspectRatio = 1;
+
+  bool _appResumed = true;
+  bool _visible = true;
+  bool _seeking = false;
+  final Stopwatch _sinceLastSeek = Stopwatch();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _appResumed = WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    _visible = widget.paneVisible.value;
+    widget.paneVisible.addListener(_onPaneVisibilityChanged);
     _setUp();
   }
 
   @override
   void didUpdateWidget(_VideoSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.paneVisible != widget.paneVisible) {
+      oldWidget.paneVisible.removeListener(_onPaneVisibilityChanged);
+      widget.paneVisible.addListener(_onPaneVisibilityChanged);
+    }
     if (oldWidget.song.filename != widget.song.filename) {
       _tearDown();
       _setUp();
@@ -478,8 +551,30 @@ class _VideoSurfaceState extends State<_VideoSurface> {
 
   @override
   void dispose() {
+    widget.paneVisible.removeListener(_onPaneVisibilityChanged);
+    WidgetsBinding.instance.removeObserver(this);
     _tearDown();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final resumed = state == AppLifecycleState.resumed;
+    if (resumed == _appResumed) return;
+    _appResumed = resumed;
+    // Coming back, the audio has moved on without the video, so a plain resume
+    // would start from wherever it was paused. Resync before playing.
+    _applyPlayState(resync: resumed);
+  }
+
+  void _onPaneVisibilityChanged() {
+    final visible = widget.paneVisible.value;
+    if (visible == _visible) return;
+    _visible = visible;
+    // Same as coming back from the background: the audio ran on while the video
+    // sat paused, so it has to be put back in place before it resumes.
+    _applyPlayState(resync: visible);
   }
 
   String? _resolveVideoPath() {
@@ -497,7 +592,14 @@ class _VideoSurfaceState extends State<_VideoSurface> {
     final path = _resolveVideoPath();
     if (path == null) return;
 
-    final controller = VideoPlayerController.file(File(path));
+    final controller = VideoPlayerController.file(
+      File(path),
+      // Without this the video's own ExoPlayer requests audio focus the moment
+      // it plays, and the system duly tells just_audio it has lost focus — the
+      // music ducks or stops. Muting the video does not prevent that; only
+      // declining to handle focus does.
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     _controller = controller;
 
     try {
@@ -515,36 +617,102 @@ class _VideoSurfaceState extends State<_VideoSurface> {
 
     final player = widget.audioManager.player;
     await controller.seekTo(player.position);
-    if (player.playing) await controller.play();
+    _sinceLastSeek
+      ..reset()
+      ..start();
 
-    _stateSub = player.playerStateStream.listen((state) async {
+    _stateSub = player.playerStateStream.listen((_) {
       if (_controller != controller) return;
-      if (state.playing) {
-        await controller.play();
-      } else {
-        await controller.pause();
-      }
+      _applyPlayState();
     });
 
-    _positionSub = player.positionStream.listen((position) async {
-      if (_controller != controller || !controller.value.isInitialized) return;
-      final drift = controller.value.position - position;
-      if (drift.abs() > _maxDrift) {
-        await controller.seekTo(position);
-      }
-    });
+    _syncTimer = Timer.periodic(_syncInterval, (_) => _syncToAudio());
 
-    if (mounted) setState(() => _initialized = true);
+    await _applyPlayState();
+
+    if (mounted) {
+      setState(() {
+        _aspectRatio = videoDisplayAspectRatio(
+          controller.value.aspectRatio,
+          controller.value.rotationCorrection,
+        );
+        _initialized = true;
+      });
+    }
+  }
+
+  /// The one place that decides whether the video is running.
+  ///
+  /// Three things can veto playback — the audio being paused, the app being
+  /// backgrounded, the pane being swiped away — and routing all of them through
+  /// here is what stops them from contradicting each other.
+  Future<void> _applyPlayState({bool resync = false}) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    final player = widget.audioManager.player;
+    final shouldPlay = player.playing && _appResumed && _visible;
+
+    if (!shouldPlay) {
+      if (controller.value.isPlaying) await controller.pause();
+      return;
+    }
+
+    if (resync) await _seekTo(player.position);
+    if (_controller != controller) return;
+    if (!controller.value.isPlaying) await controller.play();
+  }
+
+  Future<void> _syncToAudio() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (!_appResumed || !_visible) return;
+
+    final player = widget.audioManager.player;
+    final action = resolveVideoSync(
+      audioPosition: player.position,
+      videoPosition: controller.value.position,
+      audioPlaying: player.playing,
+      videoBuffering: controller.value.isBuffering,
+      seekInFlight: _seeking,
+      msSinceLastSeek: _sinceLastSeek.isRunning
+          ? _sinceLastSeek.elapsedMilliseconds.toDouble()
+          : double.infinity,
+    );
+    if (action == VideoSyncAction.none) return;
+
+    await _seekTo(player.position);
+  }
+
+  /// Seeks with a reentrancy guard: an exact seek can take a while on a slow
+  /// decoder, and stacking them up is how the old sync loop stalled playback.
+  Future<void> _seekTo(Duration position) async {
+    final controller = _controller;
+    if (controller == null || _seeking) return;
+
+    _seeking = true;
+    try {
+      await controller.seekTo(position);
+    } catch (_) {
+      // A seek that lands after disposal is not worth surfacing.
+    } finally {
+      _seeking = false;
+      _sinceLastSeek
+        ..reset()
+        ..start();
+    }
   }
 
   void _tearDown() {
-    _positionSub?.cancel();
-    _positionSub = null;
+    _syncTimer?.cancel();
+    _syncTimer = null;
     _stateSub?.cancel();
     _stateSub = null;
     _controller?.dispose();
     _controller = null;
     _initialized = false;
+    _seeking = false;
+    _sinceLastSeek.stop();
   }
 
   @override
@@ -565,26 +733,33 @@ class _VideoSurfaceState extends State<_VideoSurface> {
       );
     }
 
-    return ClipRRect(
-      borderRadius: PlayerTokens.brLg,
-      child: Container(
-        color: Colors.black,
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: controller.value.aspectRatio,
-            child: VideoPlayer(controller),
-          ),
+    // Sized to the video rather than boxed into the artwork's square, so there
+    // is nothing to letterbox — the shell's backdrop shows through around it.
+    // The repaint boundary keeps the beat-reactive chrome painting beside this
+    // from pulling the video texture into its repaints every frame.
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: PlayerTokens.brLg,
+        child: AspectRatio(
+          aspectRatio: _aspectRatio,
+          child: VideoPlayer(controller),
         ),
       ),
     );
   }
 
+  /// Square, because until the controller reports its dimensions there is no
+  /// video shape to lay out against and a guess would only make things jump.
   Widget _buildPlaceholder(Widget child) {
-    return ClipRRect(
-      borderRadius: PlayerTokens.brLg,
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.55),
-        child: Center(child: child),
+    return SizedBox(
+      width: widget.placeholderSize,
+      height: widget.placeholderSize,
+      child: ClipRRect(
+        borderRadius: PlayerTokens.brLg,
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.55),
+          child: Center(child: child),
+        ),
       ),
     );
   }

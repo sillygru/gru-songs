@@ -9,12 +9,25 @@ import 'player_motion.dart';
 /// Lives in the player shell rather than any one pane, so the whole screen —
 /// lyrics, artwork and queue alike — shares the same field.
 ///
-/// The field is built around one rule: **it has to actually go somewhere.** An
-/// earlier version drove position from a sinusoidal *velocity*, which integrates
-/// to an oscillation a couple of percent of the screen wide, and layered
-/// per-frame white noise on top — so the motes buzzed in place instead of
-/// travelling. Here each mote carries a real velocity, steers it toward a smooth
-/// spatial flow field, and crosses the screen in something like fifteen seconds.
+/// The field is built around one rule: **the music has to be what moves them.**
+///
+/// Two earlier versions missed that in different ways. The first drove position
+/// from a sinusoidal *velocity*, which integrates to an oscillation a couple of
+/// percent of the screen wide, so the motes buzzed in place. The second gave
+/// them real travel — but drove it entirely from a wall-clock flow field, and
+/// left the beat with only forces that undo themselves: a radial spring that
+/// returns to rest by construction, and a rotation small enough to be
+/// sub-perceptual. The motes wandered convincingly and shivered on the beat
+/// without ever being *carried* by it.
+///
+/// So travel here is split in two. Ambient velocity steers toward a slow
+/// divergence-free flow — the wandering — while a separate [Particle.surgeX] /
+/// [Particle.surgeY] is kicked along each mote's own heading when a beat reaches
+/// it and decays over a fraction of a beat. The surge leaves real displacement
+/// behind, roughly `Δv · τ` per beat, so the field advances in time with the
+/// music and coasts between. Because the kick follows the mote's heading rather
+/// than pointing outward, it cannot drain the screen the way a radial impulse
+/// does — see [ParticleSystem._stepBeatResponse].
 ///
 /// On top of that travel each mote lives its own life: its own slow glow cycle,
 /// its own lifetime, and its own answer to the beat. Nothing is driven by a
@@ -58,15 +71,33 @@ class _BeatParticleFieldState extends State<BeatParticleField> {
 
 /// One drifting mote. Positions are normalised 0..1 so the simulation is
 /// resolution independent and survives rotation without teleporting.
+///
+/// Velocities, unlike positions, are in *visual* units — screen widths per
+/// second on both axes — so a heading means the same thing horizontally and
+/// vertically. [ParticleSystem.update] converts to normalised units at the
+/// integration step. Without that, the same number moves a mote more than twice
+/// as far vertically as horizontally on a phone, and every direction in the
+/// simulation is quietly a different direction on screen.
 @visibleForTesting
 class Particle {
   double x;
   double y;
 
-  /// Travel velocity in normalised units per second. Steered toward the flow
-  /// field rather than set from it, so paths curve instead of kinking.
+  /// Ambient travel velocity. Steered toward the flow field rather than set from
+  /// it, so paths curve instead of kinking.
   double vx = 0;
   double vy = 0;
+
+  /// Beat-driven travel velocity, added to the ambient one and decaying on
+  /// [ParticleSystem._surgeTau] with no steering of its own.
+  ///
+  /// This is where the visible beat travel lives. It decays to zero, so it never
+  /// accumulates into a runaway — but unlike a spring it is never pulled *back*,
+  /// so each beat leaves roughly `Δv · τ` of permanent displacement behind. That
+  /// is the difference between a field that shivers on the beat and one the beat
+  /// actually carries.
+  double surgeX = 0;
+  double surgeY = 0;
 
   /// Displacement along this particle's own radial direction, in normalised
   /// units, and its rate of change.
@@ -77,14 +108,6 @@ class Particle {
   /// particle a permanent outward drift, and the screen empties.
   double push = 0;
   double pushVelocity = 0;
-
-  /// Angular velocity about the field centre, in radians per second, decaying
-  /// with drag.
-  ///
-  /// This is where the *visible* beat travel comes from. A rotation can never
-  /// drain the field the way an outward impulse can, so it can be large enough
-  /// to see without any risk of the screen slowly emptying.
-  double swirlVelocity = 0;
 
   /// 0..1 flare left over from the last beat this mote answered, decaying on
   /// its own [excitationTau]. Size, brightness and the colour split all read
@@ -106,18 +129,27 @@ class Particle {
   /// as listening rather than as being triggered.
   final double beatThreshold;
 
-  /// Which way this mote leans when a beat spins the field, and by how much.
-  /// Signed per particle so a beat raises eddies rather than turning the whole
-  /// field like a wheel.
+  /// Which way this mote leans when a beat turns it, and by how much. Signed per
+  /// particle so a beat raises eddies rather than turning the whole field like a
+  /// wheel.
   final double swirlBias;
 
-  /// Travel speed at full energy, normalised units per second.
+  /// How far off its own heading this mote is thrown when a beat surges it,
+  /// in radians. Signed with [swirlBias], so a mote leans the same way it turns.
+  final double swerveAngle;
+
+  /// Travel speed at full energy, in visual units per second.
   final double baseSpeed;
 
-  /// Constant heading bias on top of the flow, so two motes caught in the same
-  /// current still separate.
-  final double headingX;
-  final double headingY;
+  /// Heading bias on top of the flow, so two motes caught in the same current
+  /// still separate.
+  ///
+  /// Rotated by beats rather than fixed, so a mote's long-run direction is
+  /// something the music decided. It is deliberately weak: a strong constant
+  /// heading is ballistic translation, and it was most of why motes used to
+  /// march off the edge of the screen instead of wandering a region of it.
+  double headingX;
+  double headingY;
 
   /// How quickly velocity converges on the flow. Longer means heavier and more
   /// sweeping; shorter means darting.
@@ -155,6 +187,7 @@ class Particle {
     required this.response,
     required this.beatThreshold,
     required this.swirlBias,
+    required this.swerveAngle,
     required this.baseSpeed,
     required this.headingX,
     required this.headingY,
@@ -208,9 +241,28 @@ class _BeatWave {
 
 @visibleForTesting
 class ParticleSystem {
-  static const double _waveSpeed = 0.85;
+  /// How fast a beat's wavefront crosses the field, and how thick it is.
+  ///
+  /// The speed is set by a hard constraint: the front has to reach the far edge
+  /// well inside one beat. The field is about 0.6 across in these units, so at
+  /// the 0.85 this used to be, arrival times spanned ~0.7s — longer than a beat
+  /// at 120 BPM. Every mote still surged on a beat, but each at a different
+  /// phase, and the field as a whole averaged out to no beat-locked motion at
+  /// all. At this speed the front reaches the far edge in ~0.1s and the travel
+  /// it starts has resolved within ~0.3s, while the sweep is still staggered
+  /// enough to read as a ripple rather than as everything moving at once.
+  static const double _waveSpeed = 6.5;
   static const double _waveWidth = 0.13;
   static const int _maxWaves = 4;
+
+  /// Normalises the impulse a mote accumulates while a front passes over it.
+  ///
+  /// The raw per-frame sum is proportional to `_waveWidth / _waveSpeed` — the
+  /// time the front takes to cross — so without this, retuning the geometry
+  /// silently retunes how hard beats hit. With it, a mote crossing a
+  /// full-strength front accumulates exactly 1.0 before the per-particle terms,
+  /// which is the basis every gain below is expressed against.
+  static const double _frontGain = 3 * _waveSpeed / (2 * _waveWidth);
 
   /// Where the field breathes from, in normalised coordinates: roughly where
   /// the artwork sits.
@@ -223,23 +275,55 @@ class ParticleSystem {
   static const double _pushDamping = 0.55;
   static const double _maxPush = 0.12;
 
-  /// Drag on [Particle.swirlVelocity], and a ceiling so a run of beats landing
-  /// the same way cannot wind a mote up into a spin.
+  /// How long a beat's kick to [Particle.surgeX] takes to bleed off, and the
+  /// ceiling on it.
   ///
-  /// The time constant is deliberately shorter than a beat at any danceable
-  /// tempo, so each beat's turn has mostly bled off before the next one lands
-  /// and the rotation stays a nudge rather than something that accumulates.
-  static const double _swirlTau = 0.40;
-  static const double _maxSwirl = 0.45;
+  /// Shorter than a beat at any danceable tempo, so each beat's travel has
+  /// mostly resolved before the next lands — the field surges and coasts rather
+  /// than riding a raised plateau. Net displacement per beat is roughly
+  /// `Δv · _surgeTau`, which is what [_surgeGain] is set against.
+  static const double _surgeTau = 0.18;
+  static const double _maxSurge = 0.8;
+
+  /// Converts the impulse a mote picks up crossing a wavefront into surge
+  /// velocity, and into radians of heading change.
+  ///
+  /// Both are set from a target rather than by feel: at `bold`, a full-strength
+  /// beat moves a mote about 4.5% of the screen width (`Δv · _surgeTau`) and
+  /// turns it by roughly a quarter radian.
+  /// `test/particle_travel_metrics_test.dart` measures the result of both, so
+  /// retuning them means moving a number the tests already report.
+  static const double _surgeGain = 0.25;
+  static const double _swerveGain = 0.25;
+
+  /// The radial breath and the flare, against the same unit basis.
+  static const double _pushGain = 1.0;
+  static const double _flareGain = 1.8;
 
   /// How much of the travel comes from the shared flow versus each mote's own
   /// heading.
   static const double _flowGain = 0.85;
 
-  /// Where a mote is wrapped back around, and the band over which it fades out
-  /// on the way there. Equal by construction, so a mote is invisible by the
-  /// time it wraps.
-  static const double _wrapMargin = 0.08;
+  /// The band at each edge where a mote is nudged back inward, and how hard.
+  ///
+  /// Deliberately soft. Motes are *allowed* to leave and wrap — a field that
+  /// never crosses an edge reads as trapped in a box — but with nothing pulling
+  /// back, a fifth of the field was off screen at any moment. This curves most
+  /// paths around before they get there without ever forbidding the crossing;
+  /// a mote riding a strong surge still sails straight out.
+  static const double _edgeBand = 0.12;
+  static const double _edgeBias = 0.05;
+
+  /// Where a mote is wrapped back around, and how far *inside* the border its
+  /// fade begins.
+  ///
+  /// The fade used to start only once the mote was already outside `0..1`, so
+  /// the whole of it happened where nobody could see it: motes held full alpha
+  /// to the border and then vanished. Starting inside means the exit is a fade
+  /// rather than a clip, and the margin past the border only has to cover what
+  /// is left.
+  static const double _wrapMargin = 0.04;
+  static const double _edgeFadeInset = 0.03;
 
   /// Peak of the smooth positional shimmer at full high-frequency energy.
   static const double _wobbleAmplitude = 0.0022;
@@ -250,6 +334,13 @@ class ParticleSystem {
   /// nothing.
   static const double _maxStepSeconds = 0.05;
 
+  /// How fast the flow field itself evolves: a floor so it never freezes solid,
+  /// a term that rises with the music's energy, and a kick on every beat.
+  static const double _flowIdleRate = 0.40;
+  static const double _flowEnergyRate = 1.10;
+  static const double _flowBeatRate = 3.00;
+  static const double _flowKickTau = 0.25;
+
   final math.Random _random = math.Random(20260722);
   final List<Particle> particles = [];
   final List<_BeatWave> _waves = [];
@@ -258,6 +349,26 @@ class ParticleSystem {
   double _lastElapsedSeconds = -1;
   double _now = 0;
   double _air = 0;
+
+  /// Screen width over height. Positions stay normalised `0..1` on both axes,
+  /// but velocities are isotropic, so the conversion happens here.
+  double _aspect = 1;
+
+  /// The flow field's own clock, advancing with the music rather than with the
+  /// wall.
+  ///
+  /// Kept separate from [_now], which still drives the glow, twinkle and
+  /// lifetimes: those are the field's idle life and have to keep running at a
+  /// constant rate. This one lurches on beats and nearly stalls in a quiet
+  /// passage, so the whole current re-aims in time with the track and
+  /// neighbouring motes shift together.
+  double _flowTime = 0;
+  double _beatKick = 0;
+
+  /// Output of the last [_sampleFlow]. Written rather than returned: this runs
+  /// once per particle per frame, and a record would allocate on every call.
+  double _flowVx = 0;
+  double _flowVy = 0;
 
   void _resize(int count) {
     while (particles.length > count) {
@@ -273,18 +384,22 @@ class ParticleSystem {
     // of quiet depth and only a few bright foreground motes.
     final depth = math.pow(_random.nextDouble(), 2).toDouble();
     final heading = _random.nextDouble() * math.pi * 2;
-    final headingWeight = 0.25 + _random.nextDouble() * 0.35;
+    // Weak by design — see [Particle.headingX]. The eddies do the travelling;
+    // this only keeps two motes in the same current from tracking each other.
+    final headingWeight = 0.10 + _random.nextDouble() * 0.15;
+    final swirlBias = (_random.nextBool() ? 1.0 : -1.0) *
+        (0.45 + _random.nextDouble() * 0.85);
     return Particle(
       x: _random.nextDouble(),
       y: _random.nextDouble(),
       depth: depth,
       response: 0.4 + _random.nextDouble() * 0.8,
       beatThreshold: 0.15 + _random.nextDouble() * 0.75,
-      swirlBias: (_random.nextBool() ? 1.0 : -1.0) *
-          (0.45 + _random.nextDouble() * 0.85),
+      swirlBias: swirlBias,
+      swerveAngle: swirlBias.sign * (0.25 + _random.nextDouble() * 0.5),
       // Near motes travel faster than far ones: the same parallax that makes
       // depth read as depth rather than as size.
-      baseSpeed: (0.026 + 0.050 * depth) * (0.8 + _random.nextDouble() * 0.4),
+      baseSpeed: (0.021 + 0.040 * depth) * (0.8 + _random.nextDouble() * 0.4),
       headingX: math.cos(heading) * headingWeight,
       headingY: math.sin(heading) * headingWeight,
       steerTau: 0.6 + _random.nextDouble() * 1.0,
@@ -311,32 +426,64 @@ class ParticleSystem {
     particles[index] = _spawn();
   }
 
-  /// Two-scale pseudo-curl flow. Spatially varying and slowly turning, so
-  /// neighbouring motes share a local current for a while and then diverge —
-  /// eddies rather than parallel lanes. Scaled to roughly unit magnitude.
-  /// Divided by the sum's *typical* magnitude rather than its worst case: three
-  /// sines at these amplitudes almost never peak together, so normalising by
-  /// 1.5 would leave the field drifting at less than half the intended speed.
-  static double _flowX(double x, double y, double t) =>
-      (math.sin(y * 5.1 + t * 0.29) * 0.7 +
-          math.sin(y * 2.3 - x * 1.7 + t * 0.17) * 0.5 +
-          math.sin(x * 3.7 + t * 0.11) * 0.3) /
-      0.8;
+  /// Two-octave flow field, written into [_flowVx] / [_flowVy].
+  ///
+  /// This is the **curl of a stream function** `ψ = Σ aᵢ·sin(kᵢx)·cos(lᵢy)`
+  /// rather than an arbitrary pair of sine sums, and that is the whole point:
+  ///
+  ///     flowX =  ∂ψ/∂y     flowY = -∂ψ/∂x
+  ///
+  /// A field built that way is divergence-free, so it has no sources and no
+  /// sinks and advecting motes through it preserves their density exactly. The
+  /// previous version summed sines independently per axis, which does have
+  /// sources and sinks — the field pooled into bands and left the rest of the
+  /// screen empty, measurably so.
+  ///
+  /// It costs eight transcendentals per sample against the previous six — both
+  /// components share the four per octave — which is the price of the guarantee,
+  /// not a saving. At 58 motes that is ~28k calls a second, well inside budget
+  /// for a layer that already draws two to four blended circles per mote.
+  ///
+  /// [yv] is the vertical coordinate in the same units as [x], so the eddies are
+  /// round on screen instead of stretched. The phases drift with [t] — a static
+  /// stream function has closed streamlines, and motes would orbit one eddy
+  /// forever and stop travelling at all.
+  void _sampleFlow(double x, double yv, double t) {
+    const k1 = 5.5, l1 = 4.5, a1 = 1.0;
+    const k2 = 10.1, l2 = 8.3, a2 = 0.38;
 
-  static double _flowY(double x, double y, double t) =>
-      (math.cos(x * 4.6 - t * 0.23) * 0.7 +
-          math.cos(x * 2.9 + y * 1.9 - t * 0.13) * 0.5 +
-          math.cos(y * 3.1 - t * 0.19) * 0.3) /
-      0.8;
+    final u1 = k1 * x + t * 0.31;
+    final v1 = l1 * yv - t * 0.23;
+    final u2 = k2 * x - t * 0.19;
+    final v2 = l2 * yv + t * 0.27;
+
+    final sinU1 = math.sin(u1), cosU1 = math.cos(u1);
+    final sinV1 = math.sin(v1), cosV1 = math.cos(v1);
+    final sinU2 = math.sin(u2), cosU2 = math.cos(u2);
+    final sinV2 = math.sin(v2), cosV2 = math.cos(v2);
+
+    // Normalised by the sum's *typical* magnitude rather than its worst case:
+    // the octaves almost never peak together, so dividing by the maximum would
+    // leave the field drifting at a fraction of the intended speed.
+    const norm = 1 / 5.6;
+    _flowVx = -(a1 * l1 * sinU1 * sinV1 + a2 * l2 * sinU2 * sinV2) * norm;
+    _flowVy = -(a1 * k1 * cosU1 * cosV1 + a2 * k2 * cosU2 * cosV2) * norm;
+  }
 
   /// Advances the simulation to [elapsedSeconds].
+  ///
+  /// [aspect] is the painted box's width over its height. It defaults to square
+  /// so a caller that does not care — or has no size yet — still gets a sane
+  /// simulation.
   void update({
     required double elapsedSeconds,
     required BeatFrame frame,
     required MotionIntensitySpec spec,
+    double aspect = 1,
   }) {
     _now = elapsedSeconds;
     _air = frame.air;
+    _aspect = aspect <= 0 ? 1 : aspect;
     _resize(spec.particleCount);
 
     var dt =
@@ -356,6 +503,9 @@ class ParticleSystem {
         power: power,
         swirl: _beatSpin(frame.beatIndex),
       ));
+      // Shoves the flow field's own clock forward, so the current re-aims on the
+      // beat rather than only the motes riding it.
+      _beatKick = math.max(_beatKick, power);
     } else if (!frame.hasBeat) {
       _lastBeatIndex = -1;
     }
@@ -367,10 +517,21 @@ class ParticleSystem {
       if (wave.radius > 1.6 || wave.strength < 0.02) _waves.removeAt(i);
     }
 
-    // Mid-range energy sets how briskly the field moves; a busy passage stirs
-    // it up, a sparse one lets it settle.
-    final energy = (0.75 + 0.5 * frame.mid) * spec.particleDrift;
-    final swirlDecay = math.exp(-dt / _swirlTau);
+    // Band energy sets how briskly the field moves; a busy passage stirs it up,
+    // a sparse one lets it settle. Wider than it was, so the difference between
+    // a breakdown and a drop is something the eye can actually read.
+    final energy =
+        (0.30 + 0.80 * frame.mid + 0.30 * frame.bass) * spec.particleDrift;
+    final surgeDecay = math.exp(-dt / _surgeTau);
+
+    _beatKick *= math.exp(-dt / _flowKickTau);
+    _flowTime += dt *
+        (_flowIdleRate + _flowEnergyRate * energy + _flowBeatRate * _beatKick);
+
+    // 1 normalised unit of y is one screen height, i.e. `1 / aspect` widths, so
+    // this is what turns an isotropic velocity back into normalised travel.
+    final yScale = _aspect;
+    final invAspect = 1 / _aspect;
 
     for (var i = 0; i < particles.length; i++) {
       final particle = particles[i];
@@ -380,11 +541,10 @@ class ParticleSystem {
         continue;
       }
 
-      final flowX = _flowX(particle.x, particle.y, elapsedSeconds);
-      final flowY = _flowY(particle.x, particle.y, elapsedSeconds);
+      _sampleFlow(particle.x, particle.y * invAspect, _flowTime);
       final speed = particle.baseSpeed * energy;
-      final targetVx = (flowX * _flowGain + particle.headingX) * speed;
-      final targetVy = (flowY * _flowGain + particle.headingY) * speed;
+      final targetVx = (_flowVx * _flowGain + particle.headingX) * speed;
+      final targetVy = (_flowVy * _flowGain + particle.headingY) * speed;
 
       // Exponential steering rather than a fixed lerp, so the feel does not
       // change with frame rate — and `dt` is clamped above, so it would.
@@ -392,10 +552,12 @@ class ParticleSystem {
       particle.vx += (targetVx - particle.vx) * blend;
       particle.vy += (targetVy - particle.vy) * blend;
 
-      particle.x += particle.vx * dt;
-      particle.y += particle.vy * dt;
+      _applyEdgeBias(particle, dt, invAspect);
 
-      _stepBeatResponse(particle, spec, dt, swirlDecay);
+      particle.x += (particle.vx + particle.surgeX) * dt;
+      particle.y += (particle.vy + particle.surgeY) * yScale * dt;
+
+      _stepBeatResponse(particle, spec, dt, surgeDecay);
 
       // Toroidal wrap, so the field never thins out at the edges. The edge fade
       // has already taken the mote to zero alpha by the time it gets here.
@@ -406,13 +568,41 @@ class ParticleSystem {
     }
   }
 
-  /// Advances one particle's answer to the beat: the radial breath a spring
-  /// takes back, the rotation drag takes back, and the flare that fades.
+  /// Leans a mote's ambient velocity back toward the middle once it is inside
+  /// [_edgeBand] of an edge, in proportion to how far in it has gone.
+  ///
+  /// Acts on the ambient velocity only, never on the surge, and never clamps the
+  /// position: a mote can still leave, and one carried out by a strong beat
+  /// will. It just makes leaving something that happens occasionally rather than
+  /// a fifth of the time.
+  void _applyEdgeBias(Particle particle, double dt, double invAspect) {
+    final push = _edgeBias * dt;
+
+    if (particle.x < _edgeBand) {
+      particle.vx += (_edgeBand - particle.x) * push;
+    } else if (particle.x > 1 - _edgeBand) {
+      particle.vx -= (particle.x - (1 - _edgeBand)) * push;
+    }
+
+    // The band is a share of each axis, so on the long axis it is the same
+    // fraction of the screen but a longer distance — hence the aspect term,
+    // which puts the restoring force in the same isotropic units as the
+    // velocity it is added to.
+    if (particle.y < _edgeBand) {
+      particle.vy += (_edgeBand - particle.y) * push * invAspect;
+    } else if (particle.y > 1 - _edgeBand) {
+      particle.vy -= (particle.y - (1 - _edgeBand)) * push * invAspect;
+    }
+  }
+
+  /// Advances one particle's answer to the beat: the surge that carries it, the
+  /// turn that re-aims it, the radial breath a spring takes back, and the flare
+  /// that fades.
   void _stepBeatResponse(
     Particle particle,
     MotionIntensitySpec spec,
     double dt,
-    double swirlDecay,
+    double surgeDecay,
   ) {
     // A small per-particle offset on where the front is felt, so neighbours are
     // reached a moment apart rather than all on the same frame.
@@ -428,9 +618,9 @@ class ParticleSystem {
       // Falls off toward the edges of the wavefront, so particles are nudged as
       // it passes rather than snapping when it arrives.
       final falloff = 1 - offset / _waveWidth;
-      // `dt * 60` normalises the accumulation to a per-60fps-frame impulse, so
-      // the total a mote picks up crossing the front does not depend on the
-      // frame rate.
+      // `dt * _frontGain` normalises the accumulation, so the total a mote picks
+      // up crossing the front depends on neither the frame rate nor the front's
+      // own geometry.
       final impulse = wave.strength *
           falloff *
           falloff *
@@ -438,24 +628,63 @@ class ParticleSystem {
           particle.response *
           (0.35 + 0.65 * particle.depth) *
           dt *
-          60;
+          _frontGain;
 
-      particle.pushVelocity += impulse * 0.22;
-      particle.excitation = math.min(1.0, particle.excitation + impulse * 0.30);
+      particle.pushVelocity += impulse * _pushGain;
+      particle.excitation =
+          math.min(1.0, particle.excitation + impulse * _flareGain);
 
-      // The turn deliberately does not carry `response`. Stacking every spread
+      // The travel. Thrown along the direction the mote was *already* going,
+      // turned by its own swerve angle — not outward from the centre.
+      //
+      // That distinction is the whole design. An outward impulse is never given
+      // back, so every beat biases the field away from the middle and the screen
+      // slowly empties; that bug is what the returning spring above was
+      // introduced to work around, at the cost of the beat producing no travel
+      // at all. A kick along the heading is ergodic with respect to the flow —
+      // the ensemble has no preferred radial direction — so it can be large
+      // enough to see and still leave the field where it found it.
+      final heading = math.sqrt(
+        particle.vx * particle.vx + particle.vy * particle.vy,
+      );
+      double dirX, dirY;
+      if (heading > 1e-6) {
+        dirX = particle.vx / heading;
+        dirY = particle.vy / heading;
+      } else {
+        // Nothing to follow yet — fall back to the wavefront's own direction.
+        dirX = wave.swirl;
+        dirY = 0;
+      }
+      final swerve = particle.swerveAngle * wave.swirl;
+      final cosS = math.cos(swerve);
+      final sinS = math.sin(swerve);
+
+      // Neither the surge nor the turn carries `response`. Stacking every spread
       // that already shapes the push — response, depth and bias together — puts
-      // a 25x range on the rotation, so the liveliest motes saturate the cap
-      // into a constant spin while typical ones turn by a fraction of a degree.
-      // Depth and bias alone leave enough variety without either extreme.
-      final turn = wave.strength *
+      // a 25x range on them, so the liveliest motes saturate the cap while
+      // typical ones move by a fraction of what they should. Depth alone leaves
+      // enough variety without either extreme.
+      final carry = wave.strength *
           falloff *
           falloff *
           spec.particleImpulse *
           (0.5 + 0.5 * particle.depth) *
           dt *
-          60;
-      particle.swirlVelocity += turn * 0.04 * particle.swirlBias * wave.swirl;
+          _frontGain;
+
+      particle.surgeX += (dirX * cosS - dirY * sinS) * carry * _surgeGain;
+      particle.surgeY += (dirX * sinS + dirY * cosS) * carry * _surgeGain;
+
+      // And the beat re-aims where the mote drifts next, so its path kinks on
+      // the music rather than tracing a streamline the music never touched.
+      final turn = carry * _swerveGain * particle.swirlBias * wave.swirl;
+      final cosT = math.cos(turn);
+      final sinT = math.sin(turn);
+      final hx = particle.headingX;
+      final hy = particle.headingY;
+      particle.headingX = hx * cosT - hy * sinT;
+      particle.headingY = hx * sinT + hy * cosT;
     }
 
     // Semi-implicit Euler: velocity first, then position, which is what keeps a
@@ -468,20 +697,10 @@ class ParticleSystem {
 
     particle.excitation *= math.exp(-dt / particle.excitationTau);
 
-    particle.swirlVelocity =
-        (particle.swirlVelocity * swirlDecay).clamp(-_maxSwirl, _maxSwirl);
-    if (particle.swirlVelocity.abs() > 1e-4) {
-      // Rotating the position itself, rather than offsetting at paint time, so
-      // the beat genuinely carries the mote somewhere new instead of returning
-      // it to where it started.
-      final angle = particle.swirlVelocity * dt;
-      final dx = particle.x - _centreX;
-      final dy = particle.y - _centreY;
-      final cos = math.cos(angle);
-      final sin = math.sin(angle);
-      particle.x = _centreX + dx * cos - dy * sin;
-      particle.y = _centreY + dx * sin + dy * cos;
-    }
+    particle.surgeX =
+        (particle.surgeX * surgeDecay).clamp(-_maxSurge, _maxSurge);
+    particle.surgeY =
+        (particle.surgeY * surgeDecay).clamp(-_maxSurge, _maxSurge);
   }
 
   /// A stable ±1 for a beat index. Cheap integer hash rather than a Random, so
@@ -494,8 +713,10 @@ class ParticleSystem {
     return (hash & 1) == 0 ? 1.0 : -1.0;
   }
 
+  /// Distance from the field centre in screen heights, so a wavefront expands as
+  /// a circle on screen rather than as an ellipse stretched down the long axis.
   double _distanceFromCentre(Particle particle) {
-    final dx = particle.x - _centreX;
+    final dx = (particle.x - _centreX) * _aspect;
     final dy = particle.y - _centreY;
     return math.sqrt(dx * dx + dy * dy);
   }
@@ -543,14 +764,20 @@ class ParticleSystem {
 
   /// 0..1 fade as a mote leaves the screen, reaching zero exactly at the wrap
   /// point so the wrap is never seen.
+  ///
+  /// The band starts [_edgeFadeInset] *inside* the border and runs to
+  /// [_wrapMargin] outside it. Measuring from the border alone put the entire
+  /// fade off screen, where its only effect was that motes held full brightness
+  /// right up to the edge and then disappeared.
   double edgeFadeOf(Particle particle) {
-    final outX =
-        particle.x < 0 ? -particle.x : (particle.x > 1 ? particle.x - 1 : 0.0);
-    final outY =
-        particle.y < 0 ? -particle.y : (particle.y > 1 ? particle.y - 1 : 0.0);
+    const span = _edgeFadeInset + _wrapMargin;
+    final outX = math.max(
+        _edgeFadeInset - particle.x, particle.x - (1 - _edgeFadeInset));
+    final outY = math.max(
+        _edgeFadeInset - particle.y, particle.y - (1 - _edgeFadeInset));
     final out = math.max(outX, outY);
     if (out <= 0) return 1;
-    return (1 - out / _wrapMargin).clamp(0.0, 1.0);
+    return (1 - out / span).clamp(0.0, 1.0);
   }
 
   /// Slow independent brightness cycle — what makes a mote read as a firefly
@@ -600,6 +827,7 @@ class _ParticlePainter extends CustomPainter {
       elapsedSeconds: seconds,
       frame: frame,
       spec: spec,
+      aspect: size.width / size.height,
     );
 
     // Shimmer depth, not shimmer itself: high-frequency content decides how

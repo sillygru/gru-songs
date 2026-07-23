@@ -629,7 +629,7 @@ void main() {
           reason: 'motes should hold a heading between frames');
     });
 
-    test('the beat stops turning the field once the music stops', () {
+    test('the beat stops carrying the field once the music stops', () {
       final controller = PlayerMotionController.forTesting()
         ..beatMap = gridMap(beats: 200);
       addTearDown(controller.dispose);
@@ -646,14 +646,18 @@ void main() {
           spec: spec,
         );
         for (final particle in system.particles) {
-          peak = math.max(peak, particle.swirlVelocity.abs());
+          final surge = math.sqrt(
+            particle.surgeX * particle.surgeX +
+                particle.surgeY * particle.surgeY,
+          );
+          peak = math.max(peak, surge);
         }
       }
 
-      // Beats visibly turn the field...
-      expect(peak, greaterThan(0.03));
-      // ...without ever winding a mote up into a spin.
-      expect(peak, lessThan(0.45));
+      // Beats visibly carry the field...
+      expect(peak, greaterThan(0.05));
+      // ...without ever flinging a mote across the screen.
+      expect(peak, lessThan(0.6));
 
       for (var frame = 1801; frame <= 2100; frame++) {
         final ms = frame * 1000 / 60;
@@ -664,7 +668,8 @@ void main() {
         );
       }
       for (final particle in system.particles) {
-        expect(particle.swirlVelocity.abs(), lessThan(0.001));
+        expect(particle.surgeX.abs(), lessThan(0.001));
+        expect(particle.surgeY.abs(), lessThan(0.001));
       }
     });
 

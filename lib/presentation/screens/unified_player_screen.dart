@@ -65,6 +65,11 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   /// snapping once the page settles.
   final ValueNotifier<double> _pagePosition = ValueNotifier(0);
 
+  /// Whether the Now Playing pane is the one being looked at. The panes are kept
+  /// alive across swipes, which is right for state but wrong for a video
+  /// decoder — it would keep running behind the Lyrics or Queue pane.
+  final ValueNotifier<bool> _nowPlayingVisible = ValueNotifier(false);
+
   /// Let the glow layer locate the artwork inside the pane, and convert it into
   /// the shell's coordinates. The glow is painted up here so it can spill past
   /// the pane, which clips.
@@ -84,6 +89,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     super.initState();
     _pane = widget.initialPane.index;
     _pagePosition.value = _pane.toDouble();
+    _nowPlayingVisible.value = _isNowPlayingVisible(_pagePosition.value);
     _pageController = PageController(initialPage: _pane);
     _pageController.addListener(_onPageScroll);
 
@@ -112,6 +118,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
     _pagePosition.dispose();
+    _nowPlayingVisible.dispose();
     _releaseWakeLock();
     super.dispose();
   }
@@ -164,10 +171,16 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
       ..latencyMs = settings.playerMotionLatencyMs;
   }
 
+  /// Under a full page of slack, so a settled neighbouring pane always counts as
+  /// hidden while an overscroll or a bounce does not.
+  bool _isNowPlayingVisible(double page) =>
+      (page - PlayerPane.player.index).abs() <= 0.6;
+
   void _onPageScroll() {
     final page = _pageController.page;
     if (page == null) return;
     _pagePosition.value = page;
+    _nowPlayingVisible.value = _isNowPlayingVisible(page);
 
     // Deliberately no setState: nothing in build() depends on _pane, and
     // rebuilding the shell mid-swipe would re-render the backdrop and dock,
@@ -341,6 +354,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
                       accent: accent,
                       motion: _motion,
                       coverKey: _coverKey,
+                      paneVisible: _nowPlayingVisible,
                     ),
                     QueuePane(
                       accent: accent,
