@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/play_session.dart';
 import '../../providers/providers.dart';
@@ -20,7 +21,7 @@ class SessionDetailScreen extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final events = session.events ?? [];
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text('Session Details'),
       ),

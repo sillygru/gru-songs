@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
@@ -24,7 +25,7 @@ class SettingsScreen extends ConsumerWidget {
       return const ScanningProgressBar();
     }
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Settings'),
       body: AppSettingsList(
         children: [
@@ -176,7 +177,7 @@ class LibrarySettingsScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Library'),
       body: AppSettingsList(
         children: [

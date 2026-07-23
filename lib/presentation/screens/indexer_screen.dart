@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/indexer_provider.dart';
@@ -29,7 +30,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text('Indexer'),
       ),

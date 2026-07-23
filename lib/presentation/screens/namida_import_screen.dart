@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/namida_import_service.dart';
 import '../../services/storage_service.dart';
@@ -240,7 +241,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text('Import from Namida'),
       ),

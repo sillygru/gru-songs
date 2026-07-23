@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/providers.dart';
@@ -33,7 +34,7 @@ class AboutSettingsScreen extends ConsumerWidget {
                 ? 'Latest release: ${updateState.latestVersionLabel}'
                 : 'Tap below to check manually.';
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'About'),
       body: AppSettingsList(
         children: [

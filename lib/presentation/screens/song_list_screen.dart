@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
@@ -57,7 +58,7 @@ class SongListScreen extends ConsumerWidget {
           ref.read(selectionProvider.notifier).exitSelectionMode();
         }
       },
-      child: Scaffold(
+      child: AmbientScaffold(
         body: CustomScrollView(
           slivers: [
             AppSliverHeader(

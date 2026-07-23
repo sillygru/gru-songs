@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../components/app_feedback.dart';
@@ -77,7 +78,7 @@ class _FolderManagementScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Music Folders'),
       body: _isLoading
           ? const AppLoading()

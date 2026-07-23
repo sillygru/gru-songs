@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/play_session.dart';
 import '../../providers/session_history_provider.dart';
@@ -14,7 +15,7 @@ class SessionHistoryScreen extends ConsumerWidget {
     final sessionsAsync = ref.watch(sessionHistoryProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text('Session History'),
         actions: [

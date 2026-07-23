@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import '../../services/cache_service.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
@@ -66,7 +67,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text("Sync & Storage"),
       ),

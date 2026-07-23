@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
@@ -38,7 +39,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Misc'),
       body: AppSettingsList(
         children: [

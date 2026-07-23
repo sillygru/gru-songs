@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/storage_analysis_service.dart';
 import '../../providers/setup_provider.dart';
@@ -539,7 +540,7 @@ class _StorageManagementScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text('Manage Storage'),
       ),

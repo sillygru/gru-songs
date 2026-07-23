@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/quick_action_config.dart';
 import '../../providers/settings_provider.dart';
@@ -120,7 +121,7 @@ class _QuickActionsSettingsScreenState
         .where((action) => !_enabledActions.contains(action))
         .toList();
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text("Quick Actions"),
         actions: [

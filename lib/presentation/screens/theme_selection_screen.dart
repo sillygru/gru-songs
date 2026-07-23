@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/theme_provider.dart';
@@ -60,7 +61,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
     final themeState = ref.watch(themeProvider);
     final currentThemeMode = themeState.mode;
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Choose Theme'),
       body: SingleChildScrollView(
         child: Column(

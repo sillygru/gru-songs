@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import '../components/app_screen_header.dart';
@@ -25,7 +26,7 @@ class _PlaybackSettingsScreenState
     final bool isFadeMode =
         settings.fadeOutDuration > 0 || settings.fadeInDuration > 0;
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Playback'),
       body: AppSettingsList(
         children: [

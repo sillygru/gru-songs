@@ -266,20 +266,27 @@ class _Actions extends ConsumerWidget {
           onTap: () =>
               ref.read(userDataProvider.notifier).toggleFavorite(song.filename),
         ),
-        IconButton(
-          iconSize: 20,
-          visualDensity: VisualDensity.compact,
-          icon: Icon(
-            Icons.more_vert_rounded,
-            color: AppTokens.fgSecondary,
-          ),
-          onPressed: () => showSongOptionsMenu(
-            context,
-            ref,
-            song.filename,
-            song.title,
-            song: song,
-            playlistId: playlistId,
+        Builder(
+          builder: (btnContext) => IconButton(
+            iconSize: 20,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              Icons.more_vert_rounded,
+              color: AppTokens.fgSecondary,
+            ),
+            onPressed: () {
+              final box = btnContext.findRenderObject() as RenderBox?;
+              final anchor = box?.localToGlobal(box.size.center(Offset.zero));
+              showSongOptionsMenu(
+                context,
+                ref,
+                song.filename,
+                song.title,
+                song: song,
+                playlistId: playlistId,
+                anchor: anchor,
+              );
+            },
           ),
         ),
       ],

@@ -1,9 +1,6 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../providers/settings_provider.dart';
 import '../tokens/app_tokens.dart';
 
 /// The scrolling header for the top-level screens.
@@ -42,31 +39,39 @@ class AppSliverHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final blurEnabled =
-        ref.watch(settingsProvider.select((s) => s.showProgressiveBlurHeaders));
-    final useBlur = blurEnabled && isScrolled;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+
+    // No glass: when the content scrolls under the header, a solid, ambient-
+    // matching scrim eases in so the title stays legible. It fades from clear
+    // at the top to the scaffold colour at the bottom — depth from a gradient,
+    // never a blur panel.
+    final Widget? scrim = isScrolled
+        ? IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    scaffoldBg.withValues(alpha: 0.0),
+                    scaffoldBg.withValues(alpha: 0.92),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : null;
 
     return SliverAppBar(
       pinned: pinned,
       floating: floating,
       snap: snap,
-      backgroundColor: isScrolled && !blurEnabled
-          ? Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.95)
-          : Colors.transparent,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
       elevation: 0,
       titleSpacing: AppTokens.s5,
-      flexibleSpace: useBlur
-          ? RepaintBoundary(
-              child: ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                  child: Container(color: Colors.transparent),
-                ),
-              ),
-            )
-          : null,
+      flexibleSpace: scrim,
       title: Text(
         title,
         style: large

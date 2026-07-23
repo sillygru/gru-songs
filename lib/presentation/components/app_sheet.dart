@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../tokens/app_tokens.dart';
 import 'press_highlight.dart';
@@ -28,7 +29,7 @@ Future<T?> showAppSheet<T>(
 }
 
 /// The sheet shell: grab handle, optional title, flat fill, large top corners.
-class AppSheet extends StatelessWidget {
+class AppSheet extends ConsumerWidget {
   final Widget child;
   final String? title;
   final bool showHandle;
@@ -45,14 +46,20 @@ class AppSheet extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final accent = AppTokens.accentOf(context, ref);
 
     return Container(
       decoration: BoxDecoration(
+        // Flat, no glass — a near-scaffold fill lifted by a hint of the current
+        // cover colour so the sheet reads as part of the immersive surface.
         color: Color.alphaBlend(
-          AppTokens.surface(1),
-          theme.scaffoldBackgroundColor,
+          accent.withValues(alpha: 0.10),
+          Color.alphaBlend(
+            AppTokens.surface(1),
+            theme.scaffoldBackgroundColor,
+          ),
         ),
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(AppTokens.rLg),

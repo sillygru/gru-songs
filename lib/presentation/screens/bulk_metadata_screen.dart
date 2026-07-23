@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
@@ -102,7 +103,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
     final changes = plan.countChanges(widget.songs);
     final preview = plan.buildPreview(widget.songs, limit: 3);
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Bulk Metadata'),
       body: Stack(
         children: [

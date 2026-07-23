@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
@@ -16,7 +17,7 @@ class MergedSongsScreen extends ConsumerWidget {
     final userData = ref.watch(userDataProvider);
     final songsAsync = ref.watch(songsProvider);
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text('Merged Songs',
             style: TextStyle(fontWeight: FontWeight.w900)),

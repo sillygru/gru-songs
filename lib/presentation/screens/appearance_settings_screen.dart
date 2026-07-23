@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/settings_provider.dart';
@@ -44,7 +45,7 @@ class _AppearanceSettingsScreenState
     final notifier = ref.read(settingsProvider.notifier);
     final accent = AppTokens.accentOf(context, ref);
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: const AppTopBar(title: 'Appearance'),
       body: AppSettingsList(
         children: [

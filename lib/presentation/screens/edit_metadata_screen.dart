@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -402,7 +403,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
       orElse: () => widget.song,
     );
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text("Edit Metadata"),
         actions: [
@@ -661,7 +662,7 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: const Text("Edit Lyrics"),
         actions: [

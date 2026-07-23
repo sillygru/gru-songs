@@ -210,17 +210,15 @@ class _MainScreenState extends ConsumerState<MainScreen>
         ? (androidSystemBottomInset > 0 ? 10.0 : 0.0)
         : androidSystemBottomInset;
     final bottomDockHeight = _bottomDockBaseHeight + bottomInsetReduced;
-    final nowPlayingBottomPadding = settings.autoHideBottomBarOnScroll &&
-            isBottomDockHidden &&
-            androidSystemBottomInset > 0
-        ? Platform.isIOS
-            ? 12.0
-            : 8.0 + androidSystemBottomInset
-        : settings.autoHideBottomBarOnScroll && isBottomDockHidden
-            ? Platform.isIOS
-                ? 16.0
-                : 20.0
-            : 12.0;
+
+    // The now-playing bar floats at the very bottom of the body. When the nav
+    // dock is visible it owns the system inset, so the bar only needs a small
+    // resting gap above it. When the dock is collapsed (auto-hide on scroll)
+    // the bar must clear the system inset itself.
+    final bool dockCollapsed =
+        settings.autoHideBottomBarOnScroll && isBottomDockHidden;
+    final double nowPlayingBottomPadding =
+        dockCollapsed ? AppTokens.s3 + bottomInsetReduced : AppTokens.s3;
 
     final isSelectionMode =
         ref.watch(selectionProvider.select((s) => s.isSelectionMode));
@@ -301,7 +299,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 },
                 child: Stack(
                   children: [
-                    ImmersiveBackground(
+                    AmbientBackground(
                       child: Stack(
                         children: _screens.asMap().entries.map((entry) {
                           final index = entry.key;

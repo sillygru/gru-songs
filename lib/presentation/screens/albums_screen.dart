@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
@@ -35,7 +36,7 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
   Widget build(BuildContext context) {
     final songsAsync = ref.watch(songsProvider);
 
-    return Scaffold(
+    return AmbientScaffold(
       appBar: AppBar(
         title: _isSearching
             ? TextField(

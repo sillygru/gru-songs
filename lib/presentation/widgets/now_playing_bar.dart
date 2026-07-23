@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -105,7 +104,7 @@ class _NowPlayingContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
+    final accent = AppTokens.accentOf(context, ref);
     final double barHeight =
         compact ? (isDesktopOrTablet ? 72 : 60) : (isDesktopOrTablet ? 78 : 64);
     final double imageSize = compact ? 40 : 44;
@@ -298,8 +297,6 @@ class _NowPlayingContent extends ConsumerWidget {
       ),
     );
 
-    final showBlur = settings.showProgressiveBlurHeaders;
-
     if (embedded) {
       return ClipRRect(
         borderRadius: borderRadius,
@@ -307,32 +304,24 @@ class _NowPlayingContent extends ConsumerWidget {
       );
     }
 
-    // The bar floats over scrolling content, so it keeps its blur — the one
-    // place outside the player that does. Depth comes from the blur and the
-    // fill; no drop shadow, no outline.
-    Widget mainContainer = Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: showBlur ? 0.45 : 0.75),
-        borderRadius: borderRadius,
-      ),
-      child: content,
+    // The bar floats over scrolling content. Instead of glass, it sits on a
+    // near-black fill tinted by the current cover colour — so it reads as part
+    // of the same immersive surface as everything behind it. No blur, no
+    // border, no shadow.
+    final Color fill = Color.alphaBlend(
+      accent.withValues(alpha: 0.20),
+      Colors.black.withValues(alpha: 0.86),
     );
 
-    if (showBlur) {
-      mainContainer = ClipRRect(
-        borderRadius: borderRadius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: mainContainer,
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: borderRadius,
         ),
-      );
-    } else {
-      mainContainer = ClipRRect(
-        borderRadius: borderRadius,
-        child: mainContainer,
-      );
-    }
-
-    return mainContainer;
+        child: content,
+      ),
+    );
   }
 }

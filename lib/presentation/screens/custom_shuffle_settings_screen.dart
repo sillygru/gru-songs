@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/shuffle_config.dart';
 import '../../providers/providers.dart';
@@ -103,7 +104,7 @@ class _CustomShuffleSettingsScreenState
           Navigator.pop(context);
         }
       },
-      child: Scaffold(
+      child: AmbientScaffold(
         appBar: AppBar(
           title: const Text('Custom Shuffle Settings'),
           actions: [

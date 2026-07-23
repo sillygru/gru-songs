@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../models/song.dart';
@@ -128,7 +129,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           rootPathAsync.value != null;
       if (hasContent) return buildFolderTab();
 
-      return Scaffold(
+      return AmbientScaffold(
         appBar: AppTopBar(title: widget.relativePath ?? 'Library'),
         body: buildFolderTab(),
       );
@@ -424,8 +425,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
       );
     } else {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
+      return AmbientScaffold(
         body: NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
           child: CustomScrollView(

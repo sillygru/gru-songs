@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/search_filter.dart';
 import '../../domain/models/search_result.dart';
@@ -66,7 +67,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ref.read(selectionProvider.notifier).exitSelectionMode();
         }
       },
-      child: Scaffold(
+      child: AmbientScaffold(
         appBar: AppBar(
           title: TextField(
             controller: _searchController,
