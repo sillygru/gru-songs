@@ -5,6 +5,7 @@ import '../../providers/settings_provider.dart';
 import '../components/app_list_row.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
+import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'theme_selection_screen.dart';
 import 'quick_actions_settings_screen.dart';
@@ -55,11 +56,7 @@ class _AppearanceSettingsScreenState
                 icon: Icons.color_lens_outlined,
                 title: 'App Theme',
                 subtitle: 'Choose your visual style',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const ThemeSelectionScreen()),
-                ),
+                onTap: () => context.pushApp(const ThemeSelectionScreen()),
               ),
             ],
           ),
@@ -311,11 +308,8 @@ class _AppearanceSettingsScreenState
                 icon: Icons.flash_on_outlined,
                 title: 'Quick Actions',
                 subtitle: 'Customize long-press actions',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const QuickActionsSettingsScreen()),
-                ),
+                onTap: () =>
+                    context.pushApp(const QuickActionsSettingsScreen()),
               ),
             ],
           ),

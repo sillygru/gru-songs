@@ -12,8 +12,11 @@ import '../widgets/folder_grid_image.dart';
 import '../../providers/selection_provider.dart';
 import 'select_songs_screen.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_dialog.dart';
+import '../components/app_screen_header.dart';
 import '../components/app_sheet.dart';
 import '../components/app_feedback.dart';
+import '../routes/app_page_route.dart';
 
 class SongListScreen extends ConsumerWidget {
   final String title;
@@ -35,7 +38,6 @@ class SongListScreen extends ConsumerWidget {
     final userData = ref.watch(userDataProvider);
     final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
     final playCounts = ref.watch(playCountsProvider);
-    final colorScheme = Theme.of(context).colorScheme;
 
     final sortedSongs = LibraryLogic.sortSongs(
       songs,
@@ -58,30 +60,28 @@ class SongListScreen extends ConsumerWidget {
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
+            AppSliverHeader(
+              title: title,
+              large: false,
               floating: true,
               snap: true,
-              title: Text(title,
-                  style: const TextStyle(fontWeight: FontWeight.w900)),
               actions: [
                 const SortMenu(),
                 if (playlistId != null)
                   IconButton(
-                    icon: const Icon(Icons.more_vert),
+                    icon: const Icon(Icons.more_vert_rounded),
                     onPressed: () => _showPlaylistOptions(context, ref),
                     tooltip: 'Playlist Options',
                   ),
                 if (playlistId == null && sortedSongs.length >= 2)
                   IconButton(
-                    icon: const Icon(Icons.merge_type),
+                    icon: const Icon(Icons.merge_type_rounded),
                     onPressed: () async {
-                      final result = await Navigator.push<Map<String, dynamic>>(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SelectSongsScreen(
-                            songs: sortedSongs,
-                            title: 'Select Songs to Merge',
-                          ),
+                      final result =
+                          await context.pushApp<Map<String, dynamic>>(
+                        SelectSongsScreen(
+                          songs: sortedSongs,
+                          title: 'Select Songs to Merge',
                         ),
                       );
                       if (result != null && context.mounted) {
@@ -135,25 +135,19 @@ class SongListScreen extends ConsumerWidget {
                           : null,
                       child: Text(
                         title,
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                        style: AppTokens.screenTitle(context),
                         textAlign: TextAlign.center,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppTokens.s2),
                     if (sortedSongs.isNotEmpty)
                       CollectionDurationDisplay(
                         songs: sortedSongs,
                         showSongCount: true,
                         compact: true,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        style: AppTokens.meta(context),
                       ),
                     const SizedBox(height: 24),
                     Row(
@@ -204,18 +198,11 @@ class SongListScreen extends ConsumerWidget {
               ),
             ),
             if (sortedSongs.isEmpty)
-              SliverFillRemaining(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.music_note_outlined,
-                          size: 64, color: AppTokens.fgTertiary),
-                      const SizedBox(height: 16),
-                      Text('No songs in this list',
-                          style: Theme.of(context).textTheme.titleMedium),
-                    ],
-                  ),
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: AppEmptyState(
+                  icon: Icons.music_note_rounded,
+                  title: 'No songs in this list',
                 ),
               )
             else
@@ -251,23 +238,23 @@ class SongListScreen extends ConsumerWidget {
 
     showAppSheet(
       context,
-      builder: (context) => Column(
+      builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(
-            leading: const Icon(Icons.edit),
-            title: const Text('Rename'),
+          AppSheetAction(
+            icon: Icons.edit_rounded,
+            label: 'Rename',
             onTap: () {
-              Navigator.pop(context);
+              Navigator.pop(sheetContext);
               _showRenameDialog(context, ref);
             },
           ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline, color: AppTokens.danger),
-            title:
-                const Text('Delete', style: TextStyle(color: AppTokens.danger)),
+          AppSheetAction(
+            icon: Icons.delete_outline_rounded,
+            label: 'Delete',
+            isDanger: true,
             onTap: () {
-              Navigator.pop(context);
+              Navigator.pop(sheetContext);
               _showDeleteConfirmation(context, ref);
             },
           ),
@@ -276,69 +263,37 @@ class SongListScreen extends ConsumerWidget {
     );
   }
 
-  void _showRenameDialog(BuildContext context, WidgetRef ref) {
+  Future<void> _showRenameDialog(BuildContext context, WidgetRef ref) async {
     if (playlistId == null) return;
 
-    final controller = TextEditingController(text: title);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rename Playlist'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final newName = controller.text;
-              if (newName.isNotEmpty && newName != title) {
-                ref
-                    .read(userDataProvider.notifier)
-                    .updatePlaylistName(playlistId!, newName);
-              }
-              Navigator.pop(context);
-            },
-            child: const Text('Rename'),
-          ),
-        ],
-      ),
+    final newName = await showAppTextPrompt(
+      context,
+      title: 'Rename Playlist',
+      initialValue: title,
+      confirmLabel: 'Rename',
     );
+    if (newName != null && newName != title) {
+      ref.read(userDataProvider.notifier).updatePlaylistName(
+            playlistId!,
+            newName,
+          );
+    }
   }
 
-  void _showDeleteConfirmation(BuildContext context, WidgetRef ref) {
+  Future<void> _showDeleteConfirmation(
+      BuildContext context, WidgetRef ref) async {
     if (playlistId == null) return;
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Playlist'),
-        content: Text('Are you sure you want to delete "$title"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(userDataProvider.notifier).deletePlaylist(playlistId!);
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTokens.danger,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirm(
+      context,
+      title: 'Delete Playlist',
+      message: 'Are you sure you want to delete "$title"?',
+      confirmLabel: 'Delete',
+      isDanger: true,
     );
+    if (confirmed == true && context.mounted) {
+      ref.read(userDataProvider.notifier).deletePlaylist(playlistId!);
+      Navigator.pop(context);
+    }
   }
 }

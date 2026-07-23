@@ -640,7 +640,7 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
         ),
         if (SleepTimerService.instance.isActive) ...[
           const SizedBox(height: AppTokens.s3),
-          OutlinedButton.icon(
+          FilledButton.icon(
             onPressed: () {
               SleepTimerService.instance.cancel();
               setState(() {});
@@ -648,7 +648,9 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
             },
             icon: const Icon(Icons.stop_rounded),
             label: const Text('Cancel Active Timer'),
-            style: OutlinedButton.styleFrom(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTokens.surface(2),
+              foregroundColor: AppTokens.fgPrimary,
               minimumSize: const Size.fromHeight(52),
             ),
           ),

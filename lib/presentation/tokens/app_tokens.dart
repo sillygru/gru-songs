@@ -43,6 +43,40 @@ class AppTokens {
   static const Curve cStandard = PlayerTokens.cStandard;
   static const Curve cEmphasized = PlayerTokens.cEmphasized;
 
+  // ----------------------------------------------------------------- springs
+  // The one thing the app was missing next to the player: a shared physical
+  // feel for touch. A spring is defined by mass/stiffness/damping and, unlike a
+  // curve, it is *interruptible* — re-run it from the element's current value
+  // and velocity and it retargets smoothly instead of snapping back to 0. That
+  // is the "hold your finger mid-animation" feel; every [Pressable] uses these.
+
+  /// Standard press response — quick, barely any overshoot. Buttons, rows,
+  /// nav items: the surface dips under the finger and settles back crisply.
+  static const SpringDescription springSnappy = SpringDescription(
+    mass: 1,
+    stiffness: 520,
+    damping: 30,
+  );
+
+  /// A touch looser, with a hint of overshoot — for larger moving surfaces
+  /// (cards, sheets) where a little bounce reads as physical rather than nervous.
+  static const SpringDescription springGentle = SpringDescription(
+    mass: 1,
+    stiffness: 340,
+    damping: 24,
+  );
+
+  /// Pronounced overshoot, for a deliberate "pop" (toggles, confirmations).
+  static const SpringDescription springBouncy = SpringDescription(
+    mass: 1,
+    stiffness: 300,
+    damping: 16,
+  );
+
+  /// How far a [Pressable] scales down while held. Small on purpose — iOS press
+  /// feedback is felt more than seen.
+  static const double pressScale = 0.96;
+
   // --------------------------------------------------------- tonal surfaces
   /// Resting raised surface — grouped row blocks, cards, tiles.
   static const double surface1Alpha = 0.04;
@@ -56,6 +90,14 @@ class AppTokens {
   /// Fill for a raised surface at [level] (1 or 2).
   static Color surface(int level) => Colors.white
       .withValues(alpha: level >= 2 ? surface2Alpha : surface1Alpha);
+
+  /// Style for a secondary button — the neutral tonal fill that replaces every
+  /// [OutlinedButton] in the app. A filled surface, never an outline; the
+  /// primary action stays the accent-filled [FilledButton] beside it.
+  static ButtonStyle get tonalButton => FilledButton.styleFrom(
+        backgroundColor: surface(2),
+        foregroundColor: fgPrimary,
+      );
 
   // ------------------------------------------------------- foreground ladder
   static const double aPrimary = PlayerTokens.aPrimary; // 1.0

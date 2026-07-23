@@ -10,6 +10,10 @@ import '../widgets/search_filter_chips.dart';
 import '../widgets/search_result_item.dart';
 import '../widgets/bulk_selection_bar.dart';
 import '../../providers/selection_provider.dart';
+import '../components/app_feedback.dart';
+import '../components/app_section_header.dart';
+import '../routes/app_page_route.dart';
+import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -105,33 +109,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search,
-            size: 80,
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Search your music collection',
-            style: TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Find songs, artists, albums, and lyrics',
-            style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurfaceVariant
-                  .withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
+    return const AppEmptyState(
+      icon: Icons.search_rounded,
+      title: 'Search your music collection',
+      message: 'Find songs, artists, albums, and lyrics.',
     );
   }
 
@@ -152,7 +133,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         final displayResults = _organizeResults(results, filterState);
 
         return ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.only(
+            top: AppTokens.s2,
+            bottom: AppTokens.scrollBottomInset,
+          ),
           itemCount: displayResults.length,
           itemBuilder: (context, index) {
             if (!context.mounted) return const SizedBox.shrink();
@@ -161,55 +145,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           },
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, stack) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text('Error searching: $err'),
-          ],
-        ),
+      loading: () => const AppLoading(),
+      error: (err, stack) => AppEmptyState(
+        icon: Icons.error_outline_rounded,
+        title: 'Could not search',
+        message: '$err',
+        tone: AppTone.danger,
       ),
     );
   }
 
   Widget _buildNoResultsState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off,
-            size: 64,
-            color: Theme.of(context)
-                .colorScheme
-                .onSurfaceVariant
-                .withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No results found for "$_query"',
-            style: const TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Try different keywords or check your filters',
-            style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurfaceVariant
-                  .withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
+    return AppEmptyState(
+      icon: Icons.search_off_rounded,
+      title: 'No results found for "$_query"',
+      message: 'Try different keywords or check your filters.',
     );
   }
 
@@ -355,17 +305,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             _showAlbumSongs(item.albumName, item.artistName, item.results),
       );
     } else if (item is _SectionHeader) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(
-          item.title,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-      );
+      return AppSectionHeader(label: item.title);
     }
     return const SizedBox.shrink();
   }
@@ -377,29 +317,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _showArtistSongs(String artistName, List<SearchResult> results) {
     final songs = results.map((r) => r.song).toList();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SongListScreen(
-          title: artistName,
-          songs: songs,
-        ),
-      ),
-    );
+    context.pushApp(SongListScreen(title: artistName, songs: songs));
   }
 
   void _showAlbumSongs(
       String albumName, String artistName, List<SearchResult> results) {
     final songs = results.map((r) => r.song).toList();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SongListScreen(
-          title: albumName,
-          songs: songs,
-        ),
-      ),
-    );
+    context.pushApp(SongListScreen(title: albumName, songs: songs));
   }
 }
 

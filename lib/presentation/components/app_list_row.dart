@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
+import 'press_highlight.dart';
 
 /// The one list row in the app — the counterpart to the player's
 /// [PlayerTrackRow], with the same anatomy so a song in a library list and a
@@ -127,14 +128,10 @@ class AppListRow extends StatelessWidget {
 
     if (onTap == null && onLongPress == null) return row;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: AppTokens.brMd,
-        child: row,
-      ),
+    return PressHighlight(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: row,
     );
   }
 }

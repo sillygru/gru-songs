@@ -17,6 +17,7 @@ import '../widgets/folder_grid_image.dart';
 import '../widgets/sort_menu.dart';
 import 'search_screen.dart';
 import 'unified_player_screen.dart';
+import '../routes/app_page_route.dart';
 import '../routes/player_route.dart';
 import '../components/app_dialog.dart';
 import '../components/app_feedback.dart';
@@ -186,14 +187,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 color: AppTokens.accentOf(context, ref),
               )
             : null,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SongListScreen(
-              title: playlist.name,
-              songs: playlistSongs,
-              playlistId: playlist.id,
-            ),
+        onTap: () => context.pushApp(
+          SongListScreen(
+            title: playlist.name,
+            songs: playlistSongs,
+            playlistId: playlist.id,
           ),
         ),
         onLongPress: () => _showMixOptions(
@@ -294,7 +292,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: AppTokens.s2),
-                  OutlinedButton.icon(
+                  // Secondary action: a neutral tonal fill, not an outline.
+                  FilledButton.icon(
                     onPressed: () {
                       Navigator.pop(ctx);
                       audioManager.setPendingQueueReplacement(
@@ -310,8 +309,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     },
                     icon: const Icon(Icons.skip_next_rounded),
                     label: const Text('Play After Current Song'),
-                    style: OutlinedButton.styleFrom(
+                    style: FilledButton.styleFrom(
                       minimumSize: const Size(double.infinity, 48),
+                      backgroundColor: AppTokens.surface(2),
+                      foregroundColor: AppTokens.fgPrimary,
                     ),
                   ),
                 ],
@@ -514,11 +515,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       IconButton(
                         tooltip: 'Search',
                         icon: const Icon(Icons.search_rounded),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const SearchScreen()),
-                        ),
+                        onPressed: () => context.pushApp(const SearchScreen()),
                       ),
                     ],
                   ),

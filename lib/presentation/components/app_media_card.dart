@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
+import 'pressable.dart';
 
 /// Artwork-led card for carousels and grids.
 ///
@@ -106,10 +107,11 @@ class AppMediaCard extends StatelessWidget {
 
     if (onTap == null && onLongPress == null) return body;
 
-    return GestureDetector(
+    // A card is a large surface, so it carries a little spring overshoot well.
+    return Pressable(
       onTap: onTap,
       onLongPress: onLongPress,
-      behavior: HitTestBehavior.opaque,
+      spring: AppTokens.springGentle,
       child: body,
     );
   }

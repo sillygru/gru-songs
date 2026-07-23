@@ -12,6 +12,7 @@ import '../components/app_list_row.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_section_header.dart';
 import '../components/app_surface.dart';
+import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'settings_screen.dart';
 import 'backup_management_screen.dart';
@@ -372,12 +373,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             title: 'Configure Custom Shuffle',
                             subtitle: 'Adjust shuffle behavior settings',
                             accent: accent,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const CustomShuffleSettingsScreen(),
-                              ),
+                            onTap: () => context.pushApp(
+                              const CustomShuffleSettingsScreen(),
                             ),
                           ),
                         ],
@@ -409,24 +406,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         title: 'Manage Backups',
                         subtitle: 'Create, restore, and manage app backups',
                         accent: accent,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const BackupManagementScreen(),
-                          ),
-                        ),
+                        onTap: () =>
+                            context.pushApp(const BackupManagementScreen()),
                       ),
                       _navRow(
                         icon: Icons.settings_rounded,
                         title: 'Settings',
                         subtitle: 'Theme & storage',
                         accent: accent,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        ),
+                        onTap: () => context.pushApp(const SettingsScreen()),
                       ),
                     ],
                   ),

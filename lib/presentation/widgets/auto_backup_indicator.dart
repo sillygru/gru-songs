@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
@@ -148,13 +147,15 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
               },
               child: ClipRRect(
                 borderRadius: AppTokens.brMd,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: RepaintBoundary(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 400),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surface.withValues(alpha: 0.85),
+                      color: Color.alphaBlend(
+                        AppTokens.surface(2),
+                        theme.colorScheme.surface,
+                      ),
                       borderRadius: AppTokens.brMd,
                     ),
                     child: Row(
@@ -243,13 +244,15 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
           alignment: Alignment.topCenter,
           child: ClipRRect(
             borderRadius: AppTokens.brMd,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: RepaintBoundary(
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 400),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withValues(alpha: 0.85),
+                  color: Color.alphaBlend(
+                    AppTokens.surface(2),
+                    theme.colorScheme.surface,
+                  ),
                   borderRadius: AppTokens.brMd,
                 ),
                 child: Row(

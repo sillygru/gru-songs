@@ -12,7 +12,10 @@ import '../screens/edit_metadata_screen.dart';
 import 'playlist_selector_screen.dart';
 import 'folder_picker.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_dialog.dart';
 import '../components/app_feedback.dart';
+import '../components/pressable.dart';
+import '../routes/app_page_route.dart';
 
 class BulkSelectionBar extends ConsumerWidget {
   const BulkSelectionBar({super.key});
@@ -22,6 +25,7 @@ class BulkSelectionBar extends ConsumerWidget {
     final selectionState = ref.watch(selectionProvider);
     if (!selectionState.isSelectionMode) return const SizedBox.shrink();
 
+    final accent = AppTokens.accentOf(context, ref);
     final settings = ref.watch(settingsProvider);
     final enabledActions = settings.quickActionConfig.enabledActions;
     final actionOrder = settings.quickActionConfig.actionOrder;
@@ -108,16 +112,26 @@ class BulkSelectionBar extends ConsumerWidget {
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Icons.close_rounded),
+                  tooltip: 'Done',
                   onPressed: () =>
                       ref.read(selectionProvider.notifier).exitSelectionMode(),
                 ),
-                Text(
-                  '$selectedCount selected',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                      text: '$selectedCount',
+                      style: AppTokens.paneTitle(context).copyWith(
+                        color: accent,
+                        fontSize: 18,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' selected',
+                      style:
+                          AppTokens.paneTitle(context).copyWith(fontSize: 18),
+                    ),
+                  ]),
                 ),
                 const Spacer(),
                 TextButton(
@@ -128,11 +142,12 @@ class BulkSelectionBar extends ConsumerWidget {
                         .read(selectionProvider.notifier)
                         .selectAll(allFilenames);
                   },
-                  child: const Text('Select All'),
+                  style: TextButton.styleFrom(foregroundColor: accent),
+                  child: const Text('Select all'),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTokens.s2),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -153,7 +168,8 @@ class BulkSelectionBar extends ConsumerWidget {
     final allFavorited = songs.every((s) => userData.isFavorite(s.filename));
 
     return _ActionButton(
-      icon: allFavorited ? Icons.favorite : Icons.favorite_border,
+      icon:
+          allFavorited ? Icons.favorite_rounded : Icons.favorite_border_rounded,
       label: allFavorited ? 'Unfavorite' : 'Favorite',
       color: allFavorited ? AppTokens.danger : null,
       onTap: () {
@@ -176,7 +192,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildPlaylistButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.playlist_add,
+      icon: Icons.playlist_add_rounded,
       label: 'Playlist',
       onTap: () {
         if (!context.mounted) return;
@@ -218,7 +234,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildShareButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.share,
+      icon: Icons.ios_share_rounded,
       label: 'Share',
       onTap: () {
         if (!context.mounted) return;
@@ -235,25 +251,15 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildMetadataButton(BuildContext context, WidgetRef ref,
       List<Song> songs, int count, bool isCurrentlyPlaying) {
     return _ActionButton(
-      icon: Icons.edit,
+      icon: Icons.edit_rounded,
       label: 'Metadata',
       onTap: isCurrentlyPlaying
           ? null
           : () {
               if (count == 1) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => EditMetadataScreen(song: songs[0]),
-                  ),
-                );
+                context.pushApp(EditMetadataScreen(song: songs[0]));
               } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BulkMetadataScreen(songs: songs),
-                  ),
-                );
+                context.pushApp(BulkMetadataScreen(songs: songs));
               }
             },
     );
@@ -262,35 +268,23 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildHideButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.visibility_off,
+      icon: Icons.visibility_off_rounded,
       label: 'Hide',
-      onTap: () {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Hide Songs'),
-            content: Text('Hide ${songs.length} selected songs from library?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () {
-                  if (!ctx.mounted) return;
-                  ref.read(userDataProvider.notifier).bulkHide(
-                        songs.map((s) => s.filename).toList(),
-                        true,
-                      );
-                  ref.read(selectionProvider.notifier).exitSelectionMode();
-                  if (!ctx.mounted) return;
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Hide'),
-              ),
-            ],
-          ),
+      onTap: () async {
+        final confirmed = await showAppConfirm(
+          context,
+          title: 'Hide Songs',
+          message: 'Hide ${songs.length} selected songs from library?',
+          confirmLabel: 'Hide',
+          isDanger: true,
         );
+        if (confirmed == true) {
+          ref.read(userDataProvider.notifier).bulkHide(
+                songs.map((s) => s.filename).toList(),
+                true,
+              );
+          ref.read(selectionProvider.notifier).exitSelectionMode();
+        }
       },
     );
   }
@@ -298,38 +292,22 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildDeleteButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.delete_outline,
+      icon: Icons.delete_outline_rounded,
       label: 'Delete',
       color: AppTokens.danger,
-      onTap: () {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Delete Files'),
-            content: Text(
+      onTap: () async {
+        final confirmed = await showAppConfirm(
+          context,
+          title: 'Delete Files',
+          message:
               'Permanently delete ${songs.length} files from storage? This cannot be undone.',
-              style: const TextStyle(color: AppTokens.danger),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                style:
-                    FilledButton.styleFrom(backgroundColor: AppTokens.danger),
-                onPressed: () {
-                  if (!ctx.mounted) return;
-                  ref.read(songsProvider.notifier).bulkDeleteSongs(songs);
-                  ref.read(selectionProvider.notifier).exitSelectionMode();
-                  if (!ctx.mounted) return;
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Delete Permanently'),
-              ),
-            ],
-          ),
+          confirmLabel: 'Delete Permanently',
+          isDanger: true,
         );
+        if (confirmed == true) {
+          ref.read(songsProvider.notifier).bulkDeleteSongs(songs);
+          ref.read(selectionProvider.notifier).exitSelectionMode();
+        }
       },
     );
   }
@@ -337,7 +315,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildPlayNextButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.queue,
+      icon: Icons.queue_music_rounded,
       label: 'Play Next',
       onTap: () {
         if (!context.mounted) return;
@@ -360,7 +338,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildMoveToFolderButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.drive_file_move_outlined,
+      icon: Icons.drive_file_move_rounded,
       label: 'Move',
       onTap: () async {
         if (kDebugMode) {
@@ -422,7 +400,7 @@ class BulkSelectionBar extends ConsumerWidget {
         songs.every((s) => userData.isSuggestLess(s.filename));
 
     return _ActionButton(
-      icon: Icons.heart_broken,
+      icon: Icons.heart_broken_rounded,
       label: allSuggestLess ? 'Suggest More' : 'Suggest Less',
       color: allSuggestLess ? AppTokens.fgTertiary : null,
       onTap: () {
@@ -447,79 +425,29 @@ class BulkSelectionBar extends ConsumerWidget {
     return _ActionButton(
       icon: Icons.playlist_add_circle_outlined,
       label: 'New Playlist',
-      onTap: () {
-        if (!context.mounted) return;
-        final controller = TextEditingController();
+      onTap: () async {
         final filenames = songs.map((s) => s.filename).toList();
-
-        showDialog(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('New Playlist'),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(hintText: 'Playlist Name'),
-              autofocus: true,
-              onSubmitted: (value) {
-                if (value.trim().isNotEmpty) {
-                  if (!dialogContext.mounted) return;
-                  ref.read(userDataProvider.notifier).createPlaylist(
-                      value.trim(),
-                      filenames.isNotEmpty ? filenames.first : null);
-                  if (filenames.length > 1) {
-                    final playlists = ref.read(userDataProvider).playlists;
-                    final newPlaylist =
-                        playlists.lastWhere((p) => p.name == value.trim());
-                    ref.read(userDataProvider.notifier).bulkAddSongsToPlaylist(
-                          newPlaylist.id,
-                          filenames.skip(1).toList(),
-                        );
-                  }
-                  if (!dialogContext.mounted) return;
-                  Navigator.pop(dialogContext);
-                  if (!context.mounted) return;
-                  ref.read(selectionProvider.notifier).exitSelectionMode();
-                  if (!context.mounted) return;
-                  appSnack(context, 'Created playlist "$value"');
-                }
-              },
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () {
-                  if (!dialogContext.mounted) return;
-                  final name = controller.text.trim();
-                  if (name.isNotEmpty) {
-                    ref.read(userDataProvider.notifier).createPlaylist(
-                        name, filenames.isNotEmpty ? filenames.first : null);
-                    if (filenames.length > 1) {
-                      final playlists = ref.read(userDataProvider).playlists;
-                      final newPlaylist =
-                          playlists.lastWhere((p) => p.name == name);
-                      ref
-                          .read(userDataProvider.notifier)
-                          .bulkAddSongsToPlaylist(
-                            newPlaylist.id,
-                            filenames.skip(1).toList(),
-                          );
-                    }
-                    if (!dialogContext.mounted) return;
-                    Navigator.pop(dialogContext);
-                    if (!context.mounted) return;
-                    ref.read(selectionProvider.notifier).exitSelectionMode();
-                    if (!context.mounted) return;
-                    appSnack(context, 'Created playlist "$name"');
-                  }
-                },
-                child: const Text('Create'),
-              ),
-            ],
-          ),
+        final name = await showAppTextPrompt(
+          context,
+          title: 'New Playlist',
+          hintText: 'Playlist name',
+          confirmLabel: 'Create',
         );
+        if (name == null) return;
+
+        ref.read(userDataProvider.notifier).createPlaylist(
+            name, filenames.isNotEmpty ? filenames.first : null);
+        if (filenames.length > 1) {
+          final playlists = ref.read(userDataProvider).playlists;
+          final newPlaylist = playlists.lastWhere((p) => p.name == name);
+          ref.read(userDataProvider.notifier).bulkAddSongsToPlaylist(
+                newPlaylist.id,
+                filenames.skip(1).toList(),
+              );
+        }
+        ref.read(selectionProvider.notifier).exitSelectionMode();
+        if (!context.mounted) return;
+        appSnack(context, 'Created playlist "$name"');
       },
     );
   }
@@ -540,34 +468,35 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor =
-        color ?? Theme.of(context).colorScheme.onSurfaceVariant;
+    final effectiveColor = color ?? AppTokens.fg(AppTokens.aSecondary);
     final isDisabled = onTap == null;
+    final tint =
+        isDisabled ? effectiveColor.withValues(alpha: 0.3) : effectiveColor;
 
-    return InkWell(
+    return Pressable(
       onTap: onTap,
-      borderRadius: AppTokens.brSm,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.s3,
+          vertical: AppTokens.s2,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: isDisabled
-                  ? effectiveColor.withValues(alpha: 0.3)
-                  : effectiveColor,
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTokens.surface(1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 22, color: tint),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppTokens.s1 + 2),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 12,
-                color: isDisabled
-                    ? effectiveColor.withValues(alpha: 0.3)
-                    : effectiveColor,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppTokens.meta(context).copyWith(color: tint),
             ),
           ],
         ),

@@ -100,16 +100,14 @@ Future<void> showUpdateAvailableDialog(
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
+                  child: FilledButton(
                     onPressed: () async {
                       await UpdateService.dismissVersion(dismissalTag);
                       if (ctx.mounted) Navigator.of(ctx).pop();
                     },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colorScheme.onSurfaceVariant,
-                      side: BorderSide(
-                        color: colorScheme.outlineVariant,
-                      ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTokens.surface(2),
+                      foregroundColor: AppTokens.fgPrimary,
                       shape: RoundedRectangleBorder(
                         borderRadius: AppTokens.brSm,
                       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
+import 'press_highlight.dart';
 
 /// The one raised surface in the app.
 ///
@@ -66,16 +67,11 @@ class AppSurface extends StatelessWidget {
     );
 
     if (onTap != null || onLongPress != null) {
-      content = Material(
-        color: Colors.transparent,
+      content = PressHighlight(
+        onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: radius,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: radius,
-          child: content,
-        ),
+        child: content,
       );
     }
 

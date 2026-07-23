@@ -20,6 +20,7 @@ import '../../tokens/player_tokens.dart';
 import '../../widgets/album_art_image.dart';
 import '../../widgets/beat_reactive_cover.dart';
 import '../../widgets/heart_context_menu.dart';
+import '../../widgets/now_playing_lyric_peek.dart';
 import '../../widgets/player_motion.dart';
 
 /// Center pane. Content only — the shell owns the backdrop, header, pill and
@@ -110,7 +111,9 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
             ],
             const SizedBox(height: PlayerTokens.s4),
             _buildTitleBlock(context),
-            const SizedBox(height: PlayerTokens.s3),
+            const SizedBox(height: PlayerTokens.s2),
+            NowPlayingLyricPeek(song: widget.song, accent: widget.accent),
+            const SizedBox(height: PlayerTokens.s2),
           ],
         );
       },

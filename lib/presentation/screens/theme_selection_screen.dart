@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/theme_provider.dart';
+import '../components/app_feedback.dart';
+import '../components/app_screen_header.dart';
 import '../tokens/app_tokens.dart';
 
 class ThemeSelectionScreen extends ConsumerStatefulWidget {
@@ -36,7 +38,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
   String _getModeName(AppThemeMode mode) {
     switch (mode) {
       case AppThemeMode.defaultTheme:
-        return "PURPLE";
+        return "SIGNATURE";
       case AppThemeMode.lightBlue:
         return "BLUE";
       case AppThemeMode.oled:
@@ -50,10 +52,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
     final selectedMode = AppThemeMode.values[_currentIndex];
     ref.read(themeProvider.notifier).setTheme(selectedMode);
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text("Theme set to ${_getModeName(selectedMode)}"),
-      duration: const Duration(seconds: 1),
-    ));
+    appSnack(context, 'Theme set to ${_getModeName(selectedMode)}');
   }
 
   @override
@@ -62,9 +61,7 @@ class _ThemeSelectionScreenState extends ConsumerState<ThemeSelectionScreen> {
     final currentThemeMode = themeState.mode;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Choose Theme'),
-      ),
+      appBar: const AppTopBar(title: 'Choose Theme'),
       body: SingleChildScrollView(
         child: Column(
           children: [

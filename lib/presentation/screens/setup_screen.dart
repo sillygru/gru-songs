@@ -253,7 +253,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       ),
                 ),
                 const SizedBox(height: 16),
-                OutlinedButton.icon(
+                FilledButton.icon(
                   onPressed: _isLoading ? null : _pickMusicFolder,
                   icon: Icon(
                     _folderSelected
@@ -269,7 +269,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                         ? 'Music folder selected'
                         : 'Select Music Folder',
                   ),
-                  style: OutlinedButton.styleFrom(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTokens.surface(2),
+                    foregroundColor: AppTokens.fgPrimary,
                     padding: const EdgeInsets.symmetric(
                         vertical: 14, horizontal: 24),
                   ),

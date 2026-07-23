@@ -443,26 +443,28 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      OutlinedButton.icon(
+                      FilledButton.icon(
                         onPressed: () => _pickImage(currentSong),
-                        icon: const Icon(Icons.image),
+                        icon: const Icon(Icons.image_rounded),
                         label: const Text("Change Cover"),
+                        style: AppTokens.tonalButton,
                       ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton.icon(
+                            child: FilledButton.icon(
                               onPressed: currentSong.coverUrl == null
                                   ? null
                                   : () => _fixThumbnail(currentSong),
-                              icon: const Icon(Icons.auto_fix_high),
+                              icon: const Icon(Icons.auto_fix_high_rounded),
                               label: const Text("Fix Thumbnail"),
+                              style: AppTokens.tonalButton,
                             ),
                           ),
                           IconButton(
                             onPressed: _showFixHelp,
-                            icon: const Icon(Icons.help_outline),
+                            icon: const Icon(Icons.help_outline_rounded),
                             tooltip: "What does this do?",
                           ),
                         ],
@@ -471,24 +473,27 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton.icon(
+                            child: FilledButton.icon(
                               onPressed: currentSong.coverUrl == null
                                   ? null
                                   : () => _exportImage(currentSong),
-                              icon: const Icon(Icons.download),
+                              icon: const Icon(Icons.download_rounded),
                               label: const Text("Export"),
+                              style: AppTokens.tonalButton,
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: OutlinedButton.icon(
+                            child: FilledButton.icon(
                               onPressed: currentSong.coverUrl == null
                                   ? null
                                   : () => _removeImage(currentSong),
-                              icon: const Icon(Icons.delete,
-                                  color: AppTokens.danger),
-                              label: const Text("Remove",
-                                  style: TextStyle(color: AppTokens.danger)),
+                              icon: const Icon(Icons.delete_rounded),
+                              label: const Text("Remove"),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppTokens.surface(2),
+                                foregroundColor: AppTokens.danger,
+                              ),
                             ),
                           ),
                         ],

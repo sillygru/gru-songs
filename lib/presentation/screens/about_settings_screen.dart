@@ -105,10 +105,11 @@ class AboutSettingsScreen extends ConsumerWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton(
+                      child: FilledButton(
                         onPressed: updateState.isChecking
                             ? null
                             : () => updateNotifier.checkForUpdate(force: true),
+                        style: AppTokens.tonalButton,
                         child: const Text('Check now'),
                       ),
                     ),

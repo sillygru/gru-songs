@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
+import 'press_highlight.dart';
 
 /// Opens the app's one bottom sheet.
 ///
@@ -139,44 +140,42 @@ class AppSheetAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = isDanger ? AppTokens.danger : Colors.white;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppTokens.s5,
-            vertical: AppTokens.s3,
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 22, color: color),
-              const SizedBox(width: AppTokens.s4),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: AppTokens.rowTitle(context).copyWith(
-                        color: color,
-                        fontSize: 15,
-                      ),
+    return PressHighlight(
+      onTap: onTap,
+      borderRadius: BorderRadius.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.s5,
+          vertical: AppTokens.s3,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: color),
+            const SizedBox(width: AppTokens.s4),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: AppTokens.rowTitle(context).copyWith(
+                      color: color,
+                      fontSize: 15,
                     ),
-                    if (description != null) ...[
-                      const SizedBox(height: 2),
-                      Text(description!, style: AppTokens.meta(context)),
-                    ],
+                  ),
+                  if (description != null) ...[
+                    const SizedBox(height: 2),
+                    Text(description!, style: AppTokens.meta(context)),
                   ],
-                ),
+                ],
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: AppTokens.s2),
-                trailing!,
-              ],
+            ),
+            if (trailing != null) ...[
+              const SizedBox(width: AppTokens.s2),
+              trailing!,
             ],
-          ),
+          ],
         ),
       ),
     );

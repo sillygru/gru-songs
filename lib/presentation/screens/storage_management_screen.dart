@@ -736,25 +736,17 @@ class _StorageManagementScreenState
               ],
             ),
             if (onClear != null) ...[
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTokens.s4),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
+                child: FilledButton.icon(
                   onPressed: onClear,
-                  icon: Icon(
-                    Icons.delete_outline,
-                    color: isDestructive ? AppTokens.danger : null,
-                  ),
-                  label: Text(
-                    'Clear',
-                    style: TextStyle(
-                      color: isDestructive ? AppTokens.danger : null,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: isDestructive ? AppTokens.danger : null,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('Clear'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTokens.surface(2),
+                    foregroundColor:
+                        isDestructive ? AppTokens.danger : AppTokens.fgPrimary,
                   ),
                 ),
               ),

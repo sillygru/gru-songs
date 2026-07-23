@@ -17,7 +17,9 @@ import '../components/app_feedback.dart';
 import '../components/app_list_row.dart';
 import '../components/app_media_card.dart';
 import '../components/app_screen_header.dart';
+import '../components/app_segmented_tabs.dart';
 import '../components/app_sheet.dart';
+import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
 import 'merged_songs_screen.dart';
@@ -167,14 +169,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     error: (_, __) => const SizedBox.shrink(),
                   ),
                 ],
-                // Indicator, label weights and the absent divider all come
-                // from tabBarTheme now.
-                bottom: const TabBar(
-                  tabs: [
-                    Tab(text: 'Folders'),
-                    Tab(text: 'Artists'),
-                    Tab(text: 'Albums'),
-                  ],
+                bottom: AppSegmentedTabs(
+                  controller: DefaultTabController.of(context),
+                  labels: const ['Folders', 'Artists', 'Albums'],
+                  accent: AppTokens.accentOf(context, ref),
                 ),
               ),
             ];
@@ -250,14 +248,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               compact: true,
             ),
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SongListScreen(
-                    title: 'Favorites',
-                    songs: favSongs,
-                  ),
-                ),
+              context.pushApp(
+                SongListScreen(title: 'Favorites', songs: favSongs),
               );
             },
           );
@@ -279,13 +271,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               icon: const Icon(Icons.add_rounded),
               tooltip: 'Create new merge group',
               onPressed: () async {
-                final result = await Navigator.push<Map<String, dynamic>>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SelectSongsScreen(
-                      songs: allSongs,
-                      title: 'Select Songs to Merge',
-                    ),
+                final result = await context.pushApp<Map<String, dynamic>>(
+                  SelectSongsScreen(
+                    songs: allSongs,
+                    title: 'Select Songs to Merge',
                   ),
                 );
                 if (result != null && context.mounted) {
@@ -314,12 +303,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               },
             ),
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MergedSongsScreen(),
-                ),
-              );
+              context.pushApp(const MergedSongsScreen());
             },
           );
         }
@@ -367,14 +351,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               },
             ),
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SongListScreen(
-                    title: playlist.name,
-                    songs: playlistSongs,
-                    playlistId: playlist.id,
-                  ),
+              context.pushApp(
+                SongListScreen(
+                  title: playlist.name,
+                  songs: playlistSongs,
+                  playlistId: playlist.id,
                 ),
               );
             },
@@ -410,12 +391,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             },
           ),
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => LibraryScreen(relativePath: folderRelativePath),
-              ),
-            );
+            context.pushApp(LibraryScreen(relativePath: folderRelativePath));
           },
         );
       }
@@ -583,14 +559,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             title: entry.key,
             subtitle: subtitleFor(entry.songs),
             artwork: FolderGridImage(songs: entry.songs, isGridItem: true),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SongListScreen(
-                  title: entry.key,
-                  songs: entry.songs,
-                ),
-              ),
+            onTap: () => context.pushApp(
+              SongListScreen(title: entry.key, songs: entry.songs),
             ),
           );
         },

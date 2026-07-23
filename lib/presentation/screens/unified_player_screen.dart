@@ -11,6 +11,7 @@ import '../../services/audio_player_manager.dart';
 import '../../services/screen_wake_lock_service.dart';
 import '../../theme/app_theme.dart';
 import '../components/player_segmented_pill.dart';
+import '../components/pressable.dart';
 import '../components/song_actions.dart';
 import '../tokens/player_tokens.dart';
 import '../widgets/basic_progress_bar.dart';
@@ -601,14 +602,16 @@ class _TransportDock extends ConsumerWidget {
             });
           },
         ),
-        IconButton(
-          tooltip: 'Previous',
-          iconSize: 34,
-          icon: Icon(
-            Icons.skip_previous_rounded,
-            color: canSkipPrevious ? Colors.white : disabled,
+        Pressable(
+          onTap: canSkipPrevious ? player.seekToPrevious : null,
+          child: Padding(
+            padding: const EdgeInsets.all(PlayerTokens.s3),
+            child: Icon(
+              Icons.skip_previous_rounded,
+              size: 34,
+              color: canSkipPrevious ? Colors.white : disabled,
+            ),
           ),
-          onPressed: canSkipPrevious ? player.seekToPrevious : null,
         ),
         StreamBuilder<PlayerState>(
           stream: player.playerStateStream,
@@ -619,11 +622,9 @@ class _TransportDock extends ConsumerWidget {
             final buffering =
                 state?.processingState == ProcessingState.buffering;
 
-            return GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                audioManager.togglePlayPause();
-              },
+            return Pressable(
+              onTap: audioManager.togglePlayPause,
+              pressedScale: 0.9,
               child: Container(
                 width: 62,
                 height: 62,
@@ -657,14 +658,16 @@ class _TransportDock extends ConsumerWidget {
             );
           },
         ),
-        IconButton(
-          tooltip: 'Next',
-          iconSize: 34,
-          icon: Icon(
-            Icons.skip_next_rounded,
-            color: canSkipNext ? Colors.white : disabled,
+        Pressable(
+          onTap: canSkipNext ? player.seekToNext : null,
+          child: Padding(
+            padding: const EdgeInsets.all(PlayerTokens.s3),
+            child: Icon(
+              Icons.skip_next_rounded,
+              size: 34,
+              color: canSkipNext ? Colors.white : disabled,
+            ),
           ),
-          onPressed: canSkipNext ? player.seekToNext : null,
         ),
         IconButton(
           tooltip: 'Share',

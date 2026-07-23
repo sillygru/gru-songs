@@ -240,13 +240,14 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
             Expanded(
               child: SizedBox(
                 height: 40,
-                child: OutlinedButton(
+                child: FilledButton(
                   onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTokens.surface(2),
+                    foregroundColor: AppTokens.fgPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: AppTokens.brSm,
                     ),
-                    side: BorderSide(color: theme.colorScheme.outline),
                   ),
                   child: const Text('Cancel'),
                 ),

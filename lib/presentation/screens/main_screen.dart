@@ -15,6 +15,7 @@ import '../widgets/bulk_selection_bar.dart';
 import '../widgets/immersive_background.dart';
 import '../widgets/auto_backup_indicator.dart';
 import '../components/app_feedback.dart';
+import '../components/app_nav_bar.dart';
 import '../tokens/app_tokens.dart';
 
 class SyncIndicator extends ConsumerWidget {
@@ -386,25 +387,23 @@ class _MainScreenState extends ConsumerState<MainScreen>
               },
               child: Padding(
                 padding: const EdgeInsets.only(bottom: AppTokens.s2),
-                // Colours, label behaviour and indicator shape all come from
-                // navigationBarTheme now — nothing to restyle here.
-                child: NavigationBar(
+                child: AppNavBar(
                   selectedIndex: _selectedIndex,
-                  onDestinationSelected: _onTabSelected,
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.home_outlined),
-                      selectedIcon: Icon(Icons.home_rounded),
+                  onSelected: _onTabSelected,
+                  items: const [
+                    AppNavItem(
+                      icon: Icons.home_outlined,
+                      selectedIcon: Icons.home_rounded,
                       label: 'Home',
                     ),
-                    NavigationDestination(
-                      icon: Icon(Icons.library_music_outlined),
-                      selectedIcon: Icon(Icons.library_music_rounded),
+                    AppNavItem(
+                      icon: Icons.library_music_outlined,
+                      selectedIcon: Icons.library_music_rounded,
                       label: 'Library',
                     ),
-                    NavigationDestination(
-                      icon: Icon(Icons.person_outline),
-                      selectedIcon: Icon(Icons.person_rounded),
+                    AppNavItem(
+                      icon: Icons.person_outline,
+                      selectedIcon: Icons.person_rounded,
                       label: 'Profile',
                     ),
                   ],

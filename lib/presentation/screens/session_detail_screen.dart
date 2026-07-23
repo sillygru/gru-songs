@@ -371,14 +371,7 @@ class SessionDetailScreen extends ConsumerWidget {
   ) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-      ),
+      color: colorScheme.surface,
       child: SafeArea(
         child: Column(
           children: [
@@ -401,7 +394,7 @@ class SessionDetailScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
+            FilledButton.icon(
               onPressed: () =>
                   _repeatQueue(context, ref, events, whenSongEnds: true),
               icon: const Icon(Icons.skip_next_rounded),
@@ -409,7 +402,9 @@ class SessionDetailScreen extends ConsumerWidget {
                 'Play After Current Song',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
-              style: OutlinedButton.styleFrom(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTokens.surface(2),
+                foregroundColor: AppTokens.fgPrimary,
                 minimumSize: const Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(
                   borderRadius: AppTokens.brMd,

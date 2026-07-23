@@ -7,9 +7,10 @@ import '../widgets/folder_grid_image.dart';
 import '../widgets/duration_display.dart';
 import '../components/app_feedback.dart';
 import '../components/app_media_card.dart';
+import '../components/app_sheet.dart';
+import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
-import '../components/app_sheet.dart';
 
 /// Parses a multi-artist string and returns individual artist names.
 /// Handles formats like:
@@ -65,7 +66,6 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
   @override
   Widget build(BuildContext context) {
     final songsAsync = ref.watch(songsProvider);
-    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -125,7 +125,11 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
           final sortedArtists = _sortArtists(artistMap);
 
           if (sortedArtists.isEmpty) {
-            return _buildEmptyState(context, colorScheme);
+            return const AppEmptyState(
+              icon: Icons.person_rounded,
+              title: 'No artists found',
+              message: 'Add music to your library to see artists.',
+            );
           }
 
           return GridView.builder(
@@ -150,7 +154,6 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
                 context,
                 artist: artist,
                 songs: artistSongs,
-                colorScheme: colorScheme,
               );
             },
           );
@@ -170,7 +173,6 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
     BuildContext context, {
     required String artist,
     required List<Song> songs,
-    required ColorScheme colorScheme,
   }) {
     return AppMediaCard(
       expand: true,
@@ -183,45 +185,8 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
           final songArtist = s.artist.isEmpty ? 'Unknown Artist' : s.artist;
           return _artistMatches(songArtist, artist);
         }).toList();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SongListScreen(
-              title: artist,
-              songs: artistSongs,
-            ),
-          ),
-        );
+        context.pushApp(SongListScreen(title: artist, songs: artistSongs));
       },
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context, ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.person_outline,
-            size: 100,
-            color: colorScheme.primary.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'No artists found',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Add music to your library to see artists',
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -249,29 +214,36 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
   void _showSortOptions(BuildContext context) {
     showAppSheet(
       context,
-      builder: (context) => Column(
+      title: 'Sort artists',
+      builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(
-            leading: const Icon(Icons.sort_by_alpha),
-            title: const Text('Name (A-Z)'),
-            trailing: _sortBy == 'name' ? const Icon(Icons.check) : null,
-            onTap: () {
-              setState(() => _sortBy = 'name');
-              Navigator.pop(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.music_note),
-            title: const Text('Most Songs'),
-            trailing: _sortBy == 'songs' ? const Icon(Icons.check) : null,
-            onTap: () {
-              setState(() => _sortBy = 'songs');
-              Navigator.pop(context);
-            },
-          ),
+          _sortAction(
+              sheetContext, 'name', Icons.sort_by_alpha_rounded, 'Name (A-Z)'),
+          _sortAction(
+              sheetContext, 'songs', Icons.music_note_rounded, 'Most Songs'),
         ],
       ),
+    );
+  }
+
+  Widget _sortAction(
+    BuildContext sheetContext,
+    String value,
+    IconData icon,
+    String label,
+  ) {
+    final selected = _sortBy == value;
+    return AppSheetAction(
+      icon: icon,
+      label: label,
+      trailing: selected
+          ? Icon(Icons.check_rounded, color: AppTokens.accentOf(context, ref))
+          : null,
+      onTap: () {
+        setState(() => _sortBy = value);
+        Navigator.pop(sheetContext);
+      },
     );
   }
 }

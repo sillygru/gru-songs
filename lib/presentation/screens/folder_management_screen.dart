@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../components/app_feedback.dart';
+import '../components/app_list_row.dart';
+import '../components/app_screen_header.dart';
+import '../tokens/app_tokens.dart';
 
 class FolderManagementScreen extends ConsumerStatefulWidget {
   const FolderManagementScreen({super.key});
@@ -75,74 +78,50 @@ class _FolderManagementScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Music Folders"),
-      ),
+      appBar: const AppTopBar(title: 'Music Folders'),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppTokens.s5,
+                    AppTokens.s3,
+                    AppTokens.s5,
+                    AppTokens.s3,
+                  ),
                   child: Text(
-                    "Select folders containing your music files",
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                    'Select folders containing your music files',
+                    style: AppTokens.rowSubtitle(context),
                   ),
                 ),
                 Expanded(
                   child: _folders.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.folder_open,
-                                size: 64,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant
-                                    .withValues(alpha: 0.5),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                "No folders added yet",
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                              ),
-                            ],
-                          ),
+                      ? const AppEmptyState(
+                          icon: Icons.folder_open_rounded,
+                          title: 'No folders added yet',
+                          message: 'Add a folder to build your library.',
                         )
                       : ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTokens.s3,
+                          ),
                           itemCount: _folders.length,
                           itemBuilder: (context, index) {
                             final folder = _folders[index];
                             final path = folder['path'] ?? '';
                             final name = path.split('/').last;
 
-                            return ListTile(
-                              leading: const Icon(Icons.folder),
-                              title: Text(name),
-                              subtitle: Text(
-                                path,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
+                            return AppListRow(
+                              leading: AppRowIcon(
+                                icon: Icons.folder_rounded,
+                                color: AppTokens.accentOf(context, ref),
                               ),
+                              title: name,
+                              subtitle: path,
                               trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline),
+                                icon: const Icon(Icons.delete_outline_rounded),
+                                tooltip: 'Remove folder',
                                 onPressed: () => _removeFolder(folder),
                               ),
                             );
@@ -151,13 +130,13 @@ class _FolderManagementScreenState
                 ),
                 SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(AppTokens.s4),
                     child: SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: _addFolder,
-                        icon: const Icon(Icons.add),
-                        label: const Text("Add Folder"),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Add Folder'),
                       ),
                     ),
                   ),

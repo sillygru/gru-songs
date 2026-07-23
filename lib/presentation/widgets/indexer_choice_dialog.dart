@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/app_dialog.dart';
 import '../tokens/app_tokens.dart';
 
 /// Dialog for choosing between "Just Missing" and "Force All" options
@@ -16,8 +17,8 @@ class IndexerChoiceDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(title),
+    return AppDialog(
+      title: title,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,8 +60,9 @@ class IndexerChoiceDialog extends StatelessWidget {
           onPressed: () => Navigator.pop(context, null),
           child: const Text('Cancel'),
         ),
-        OutlinedButton(
+        FilledButton(
           onPressed: () => Navigator.pop(context, false),
+          style: AppTokens.tonalButton,
           child: const Text('Just Missing'),
         ),
         FilledButton(

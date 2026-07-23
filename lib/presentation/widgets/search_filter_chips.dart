@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/search_filter.dart';
 import '../../providers/search_provider.dart';
+import '../components/app_chip.dart';
 import '../tokens/app_tokens.dart';
 
 /// Widget displaying filter chips for search filtering
@@ -11,96 +12,37 @@ class SearchFilterChips extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filterState = ref.watch(searchFilterProvider);
+    final notifier = ref.read(searchFilterProvider.notifier);
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      padding: const EdgeInsets.symmetric(horizontal: AppTokens.s5),
       child: Row(
         children: [
-          _FilterChip(
+          AppChip(
             label: 'All',
-            isSelected: filterState.all,
-            onSelected: (selected) {
-              if (selected) {
-                ref
-                    .read(searchFilterProvider.notifier)
-                    .selectFilter(SearchFilterType.all);
-              }
-            },
+            selected: filterState.all,
+            onTap: () => notifier.selectFilter(SearchFilterType.all),
           ),
-          const SizedBox(width: 8),
-          _FilterChip(
+          const SizedBox(width: AppTokens.s2),
+          AppChip(
             label: 'Songs',
-            isSelected: filterState.songs,
-            onSelected: (selected) {
-              ref
-                  .read(searchFilterProvider.notifier)
-                  .toggleFilter(SearchFilterType.songs);
-            },
+            selected: filterState.songs,
+            onTap: () => notifier.toggleFilter(SearchFilterType.songs),
           ),
-          const SizedBox(width: 8),
-          _FilterChip(
+          const SizedBox(width: AppTokens.s2),
+          AppChip(
             label: 'Artists',
-            isSelected: filterState.artists,
-            onSelected: (selected) {
-              ref
-                  .read(searchFilterProvider.notifier)
-                  .toggleFilter(SearchFilterType.artists);
-            },
+            selected: filterState.artists,
+            onTap: () => notifier.toggleFilter(SearchFilterType.artists),
           ),
-          const SizedBox(width: 8),
-          _FilterChip(
+          const SizedBox(width: AppTokens.s2),
+          AppChip(
             label: 'Albums',
-            isSelected: filterState.albums,
-            onSelected: (selected) {
-              ref
-                  .read(searchFilterProvider.notifier)
-                  .toggleFilter(SearchFilterType.albums);
-            },
+            selected: filterState.albums,
+            onTap: () => notifier.toggleFilter(SearchFilterType.albums),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Individual filter chip widget
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final ValueChanged<bool> onSelected;
-
-  const _FilterChip({
-    required this.label,
-    required this.isSelected,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: onSelected,
-      showCheckmark: false,
-      selectedColor: theme.colorScheme.primaryContainer,
-      labelStyle: TextStyle(
-        color: isSelected
-            ? theme.colorScheme.onPrimaryContainer
-            : theme.colorScheme.onSurface,
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-      ),
-      backgroundColor: theme.colorScheme.surfaceContainerHighest,
-      side: isSelected
-          ? BorderSide(color: theme.colorScheme.primary)
-          : BorderSide.none,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppTokens.brMd,
-        side: isSelected
-            ? BorderSide(color: theme.colorScheme.primary)
-            : BorderSide.none,
       ),
     );
   }
@@ -113,81 +55,33 @@ class CompactSearchFilterChips extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filterState = ref.watch(searchFilterProvider);
+    final notifier = ref.read(searchFilterProvider.notifier);
 
     return Wrap(
-      spacing: 8,
+      spacing: AppTokens.s2,
+      runSpacing: AppTokens.s2,
       children: [
-        _CompactChip(
+        AppChip(
           label: 'All',
-          isSelected: filterState.all,
-          onTap: () => ref
-              .read(searchFilterProvider.notifier)
-              .selectFilter(SearchFilterType.all),
+          selected: filterState.all,
+          onTap: () => notifier.selectFilter(SearchFilterType.all),
         ),
-        _CompactChip(
+        AppChip(
           label: 'Songs',
-          isSelected: filterState.songs,
-          onTap: () => ref
-              .read(searchFilterProvider.notifier)
-              .toggleFilter(SearchFilterType.songs),
+          selected: filterState.songs,
+          onTap: () => notifier.toggleFilter(SearchFilterType.songs),
         ),
-        _CompactChip(
+        AppChip(
           label: 'Artists',
-          isSelected: filterState.artists,
-          onTap: () => ref
-              .read(searchFilterProvider.notifier)
-              .toggleFilter(SearchFilterType.artists),
+          selected: filterState.artists,
+          onTap: () => notifier.toggleFilter(SearchFilterType.artists),
         ),
-        _CompactChip(
+        AppChip(
           label: 'Albums',
-          isSelected: filterState.albums,
-          onTap: () => ref
-              .read(searchFilterProvider.notifier)
-              .toggleFilter(SearchFilterType.albums),
+          selected: filterState.albums,
+          onTap: () => notifier.toggleFilter(SearchFilterType.albums),
         ),
       ],
-    );
-  }
-}
-
-/// Compact chip for wrap layouts
-class _CompactChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _CompactChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Material(
-      color: isSelected
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.surfaceContainerHighest,
-      borderRadius: AppTokens.brMd,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppTokens.brMd,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: isSelected
-                  ? theme.colorScheme.onPrimaryContainer
-                  : theme.colorScheme.onSurface,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

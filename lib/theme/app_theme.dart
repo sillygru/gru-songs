@@ -20,7 +20,14 @@ class AppTheme {
   static const Color _containerDark = Color(0xFF1A1A1A);
   static const Color _containerOled = Color(0xFF121212);
 
-  static const Color _defaultSeed = Color(0xFFBB86FC);
+  // Signature accent used when no cover colour is driving the theme. The old
+  // default was Material's stock lavender (0xFFBB86FC) — the single most
+  // recognisable "untouched Flutter / generated app" tell there is. This aurora
+  // teal gives the app an identity of its own before a track's artwork takes
+  // over, and its hue sits clear of every semantic role (danger/warning/
+  // success/info) so the brand accent is never mistaken for one. (Swap the hex
+  // to re-tune.)
+  static const Color _defaultSeed = Color(0xFF3DD6C0);
   static const Color _lightBlueSeed = Color(0xFFB5C3FF);
 
   static ThemeData getTheme(ThemeState state, {Color? coverColor}) {

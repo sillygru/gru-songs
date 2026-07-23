@@ -6,6 +6,7 @@ import '../widgets/scanning_progress_bar.dart';
 import '../components/app_feedback.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
+import '../routes/app_page_route.dart';
 import 'folder_management_screen.dart';
 import 'playback_settings_screen.dart';
 import 'appearance_settings_screen.dart';
@@ -34,31 +35,19 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.library_music_outlined,
                 title: 'Library',
                 subtitle: 'Music folders, scanning',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const LibrarySettingsScreen()),
-                ),
+                onTap: () => context.pushApp(const LibrarySettingsScreen()),
               ),
               AppSettingsTile(
                 icon: Icons.play_circle_outline_rounded,
                 title: 'Playback',
                 subtitle: 'Audio settings, transitions',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const PlaybackSettingsScreen()),
-                ),
+                onTap: () => context.pushApp(const PlaybackSettingsScreen()),
               ),
               AppSettingsTile(
                 icon: Icons.palette_outlined,
                 title: 'Appearance',
                 subtitle: 'Theme, display options',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const AppearanceSettingsScreen()),
-                ),
+                onTap: () => context.pushApp(const AppearanceSettingsScreen()),
               ),
             ],
           ),
@@ -69,20 +58,14 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.settings_backup_restore_rounded,
                 title: 'Data Management',
                 subtitle: 'Backup, restore, storage, optimize',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const DataManagementSettingsScreen()),
-                ),
+                onTap: () =>
+                    context.pushApp(const DataManagementSettingsScreen()),
               ),
               AppSettingsTile(
                 icon: Icons.data_object_rounded,
                 title: 'Indexer',
                 subtitle: 'Manage and rebuild all app indexes and caches',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const IndexerScreen()),
-                ),
+                onTap: () => context.pushApp(const IndexerScreen()),
               ),
             ],
           ),
@@ -93,20 +76,13 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.miscellaneous_services_outlined,
                 title: 'Misc',
                 subtitle: 'Privacy, behavior',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const MiscSettingsScreen()),
-                ),
+                onTap: () => context.pushApp(const MiscSettingsScreen()),
               ),
               AppSettingsTile(
                 icon: Icons.info_outline_rounded,
                 title: 'About',
                 subtitle: 'Version, updates, release notes',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const AboutSettingsScreen()),
-                ),
+                onTap: () => context.pushApp(const AboutSettingsScreen()),
               ),
             ],
           ),
@@ -212,12 +188,7 @@ class LibrarySettingsScreen extends ConsumerWidget {
                 icon: Icons.folder_outlined,
                 title: 'Music Folders',
                 subtitle: 'Manage music library folders',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const FolderManagementScreen(),
-                  ),
-                ),
+                onTap: () => context.pushApp(const FolderManagementScreen()),
               ),
               AppSettingsTile(
                 icon: Icons.refresh_rounded,

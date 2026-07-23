@@ -8,6 +8,7 @@ import '../../providers/settings_provider.dart';
 import '../../providers/selection_provider.dart';
 import '../../services/audio_player_manager.dart';
 import '../components/app_list_row.dart';
+import '../components/pop_icon.dart';
 import '../tokens/app_tokens.dart';
 import 'album_art_image.dart';
 import 'song_options_menu.dart';
@@ -257,14 +258,12 @@ class _Actions extends ConsumerWidget {
               ),
             ),
           ),
-        IconButton(
-          iconSize: 20,
-          visualDensity: VisualDensity.compact,
-          icon: Icon(
-            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            color: isFavorite ? accent : AppTokens.fgTertiary,
-          ),
-          onPressed: () =>
+        PopIcon(
+          isActive: isFavorite,
+          activeColor: accent,
+          inactiveColor: AppTokens.fgTertiary,
+          size: 20,
+          onTap: () =>
               ref.read(userDataProvider.notifier).toggleFavorite(song.filename),
         ),
         IconButton(
