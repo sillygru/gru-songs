@@ -168,6 +168,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
       ..enabled = settings.beatReactiveCoverEnabled ||
           settings.beatReactiveParticlesEnabled
       ..intensity = settings.playerMotionIntensity
+      ..customIntensity = settings.playerMotionCustomIntensity
       ..latencyMs = settings.playerMotionLatencyMs;
   }
 
@@ -252,6 +253,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
           s.beatReactiveCoverEnabled,
           s.beatReactiveParticlesEnabled,
           s.playerMotionIntensity,
+          s.playerMotionCustomIntensity,
           s.playerMotionLatencyMs,
         ),
       ),

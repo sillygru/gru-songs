@@ -149,25 +149,49 @@ class MotionIntensitySpec {
   );
 
   static const _balanced = MotionIntensitySpec(
-    coverPunch: 0.065,
-    coverBreath: 0.016,
-    coverLift: 3.6,
-    coverSway: 0.0062,
-    particleCount: 42,
-    particleImpulse: 1.0,
-    particleOpacity: 0.42,
-    particleDrift: 1.0,
+    coverPunch: 0.058,
+    coverBreath: 0.014,
+    coverLift: 3.2,
+    coverSway: 0.0055,
+    particleCount: 38,
+    particleImpulse: 0.90,
+    particleOpacity: 0.39,
+    particleDrift: 0.94,
   );
 
   static const _bold = MotionIntensitySpec(
-    coverPunch: 0.105,
-    coverBreath: 0.024,
-    coverLift: 6.0,
-    coverSway: 0.0105,
-    particleCount: 58,
-    particleImpulse: 1.7,
-    particleOpacity: 0.55,
-    particleDrift: 1.35,
+    coverPunch: 0.092,
+    coverBreath: 0.021,
+    coverLift: 5.2,
+    coverSway: 0.0092,
+    particleCount: 52,
+    particleImpulse: 1.50,
+    particleOpacity: 0.50,
+    particleDrift: 1.25,
+  );
+
+  /// Floor of the custom slider range — half of [subtle].
+  static const _min = MotionIntensitySpec(
+    coverPunch: 0.018,
+    coverBreath: 0.005,
+    coverLift: 1.0,
+    coverSway: 0.0018,
+    particleCount: 14,
+    particleImpulse: 0.28,
+    particleOpacity: 0.15,
+    particleDrift: 0.38,
+  );
+
+  /// Ceiling of the custom slider range — roughly 1.4x [bold].
+  static const _max = MotionIntensitySpec(
+    coverPunch: 0.13,
+    coverBreath: 0.029,
+    coverLift: 7.3,
+    coverSway: 0.013,
+    particleCount: 74,
+    particleImpulse: 2.1,
+    particleOpacity: 0.70,
+    particleDrift: 1.75,
   );
 
   static MotionIntensitySpec of(PlayerMotionIntensity intensity) {
@@ -175,7 +199,36 @@ class MotionIntensitySpec {
       PlayerMotionIntensity.subtle => _subtle,
       PlayerMotionIntensity.balanced => _balanced,
       PlayerMotionIntensity.bold => _bold,
+      PlayerMotionIntensity.custom => _subtle,
     };
+  }
+
+  /// Custom intensity from a 0-1 slider where the quartiles correspond to the
+  /// three presets (0.25 = subtle, 0.5 = balanced, 0.75 = bold).
+  static MotionIntensitySpec custom(double t) {
+    t = t.clamp(0.0, 1.0);
+    if (t <= 0.25) return _lerpSpec(_min, _subtle, t / 0.25);
+    if (t <= 0.5) return _lerpSpec(_subtle, _balanced, (t - 0.25) / 0.25);
+    if (t <= 0.75) return _lerpSpec(_balanced, _bold, (t - 0.5) / 0.25);
+    return _lerpSpec(_bold, _max, (t - 0.75) / 0.25);
+  }
+
+  static MotionIntensitySpec _lerpSpec(
+      MotionIntensitySpec a, MotionIntensitySpec b, double t) {
+    return MotionIntensitySpec(
+      coverPunch: a.coverPunch + (b.coverPunch - a.coverPunch) * t,
+      coverBreath: a.coverBreath + (b.coverBreath - a.coverBreath) * t,
+      coverLift: a.coverLift + (b.coverLift - a.coverLift) * t,
+      coverSway: a.coverSway + (b.coverSway - a.coverSway) * t,
+      particleCount:
+          (a.particleCount + (b.particleCount - a.particleCount) * t).round(),
+      particleImpulse:
+          a.particleImpulse + (b.particleImpulse - a.particleImpulse) * t,
+      particleOpacity:
+          a.particleOpacity + (b.particleOpacity - a.particleOpacity) * t,
+      particleDrift:
+          a.particleDrift + (b.particleDrift - a.particleDrift) * t,
+    );
   }
 }
 
@@ -258,6 +311,8 @@ class PlayerMotionController extends ChangeNotifier {
 
   BeatMap? _beatMap;
   BeatFrame _frame = BeatFrame.idle;
+  PlayerMotionIntensity _intensityEnum = PlayerMotionIntensity.subtle;
+  double _customIntensity = 0.5;
   MotionIntensitySpec _spec =
       MotionIntensitySpec.of(PlayerMotionIntensity.subtle);
 
@@ -337,9 +392,26 @@ class PlayerMotionController extends ChangeNotifier {
   }
 
   set intensity(PlayerMotionIntensity value) {
-    final next = MotionIntensitySpec.of(value);
-    if (next == _spec) return;
-    _spec = next;
+    if (_intensityEnum == value) return;
+    _intensityEnum = value;
+    _applySpec();
+  }
+
+  /// Fine-grained intensity for the [custom] setting. Only applied when the
+  /// current [intensity] is [PlayerMotionIntensity.custom].
+  set customIntensity(double value) {
+    final clamped = value.clamp(0.0, 1.0);
+    if (_customIntensity == clamped) return;
+    _customIntensity = clamped;
+    if (_intensityEnum == PlayerMotionIntensity.custom) {
+      _applySpec();
+    }
+  }
+
+  void _applySpec() {
+    _spec = _intensityEnum == PlayerMotionIntensity.custom
+        ? MotionIntensitySpec.custom(_customIntensity)
+        : MotionIntensitySpec.of(_intensityEnum);
     notifyListeners();
   }
 

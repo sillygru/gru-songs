@@ -19,6 +19,24 @@ class AppearanceSettingsScreen extends ConsumerStatefulWidget {
 
 class _AppearanceSettingsScreenState
     extends ConsumerState<AppearanceSettingsScreen> {
+  String _customIntensityLabel(double value) {
+    if (value <= 0.125) return 'Min';
+    if (value <= 0.375) return 'Subtle';
+    if (value <= 0.625) return 'Balanced';
+    if (value <= 0.875) return 'Bold';
+    return 'Max';
+  }
+
+  Widget _sliderLabel(String text, double align) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
@@ -171,9 +189,65 @@ class _AppearanceSettingsScreenState
                       value: PlayerMotionIntensity.bold,
                       child: Text('Bold'),
                     ),
+                    DropdownMenuItem(
+                      value: PlayerMotionIntensity.custom,
+                      child: Text('Custom'),
+                    ),
                   ],
                 ),
               ),
+              if (settings.playerMotionIntensity ==
+                  PlayerMotionIntensity.custom)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: AppTokens.s3 + 40 + AppTokens.s3,
+                    right: AppTokens.s3,
+                    bottom: AppTokens.s2,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          activeTrackColor: accent,
+                          thumbColor: accent,
+                          inactiveTrackColor:
+                              accent.withValues(alpha: 0.2),
+                          overlayColor:
+                              accent.withValues(alpha: 0.12),
+                        ),
+                        child: Slider(
+                          value: settings
+                              .playerMotionCustomIntensity,
+                          min: 0.0,
+                          max: 1.0,
+                          divisions: 4,
+                          label:
+                              _customIntensityLabel(settings.playerMotionCustomIntensity),
+                          onChanged: (value) => notifier
+                              .setPlayerMotionCustomIntensity(value),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4),
+                        child: Row(
+                          children: [
+                            _sliderLabel('Min', 0.0),
+                            const Spacer(),
+                            _sliderLabel('Subtle', 0.25),
+                            const Spacer(),
+                            _sliderLabel('Balanced', 0.5),
+                            const Spacer(),
+                            _sliderLabel('Bold', 0.75),
+                            const Spacer(),
+                            _sliderLabel('Max', 1.0),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               // Output latency is a property of the listener's hardware, not the
               // app: Bluetooth typically runs 150-250ms behind wired. Without
               // this the pulse is permanently early on BT with no recourse.

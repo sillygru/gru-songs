@@ -88,6 +88,8 @@ Object _sampleValue(String key) {
     case 'player_motion_intensity':
     case 'player_motion_latency_ms':
       return 1;
+    case 'player_motion_custom_intensity':
+      return 0.5;
     default:
       return 'sample';
   }

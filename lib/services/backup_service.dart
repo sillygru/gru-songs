@@ -113,7 +113,7 @@ class BackupInfo {
 }
 
 class BackupService {
-  static const String _backupsDirName = 'backups';
+  static const String backupsDirName = 'backups';
   static const String _metadataFile = 'metadata.json';
   static const String statsDbName = 'wispie_stats.db';
   static const String dataDbName = 'wispie_data.db';
@@ -121,9 +121,9 @@ class BackupService {
   static BackupService get instance => _instance ??= BackupService._();
   BackupService._();
 
-  Future<Directory> get _backupsDir async {
+  Future<Directory> get backupsDir async {
     final appDir = await getApplicationDocumentsDirectory();
-    final backupsDir = Directory(p.join(appDir.path, _backupsDirName));
+    final backupsDir = Directory(p.join(appDir.path, backupsDirName));
     if (!await backupsDir.exists()) {
       await backupsDir.create(recursive: true);
     }
@@ -132,8 +132,8 @@ class BackupService {
 
   Future<List<BackupInfo>> getBackupsList() async {
     try {
-      final backupsDir = await _backupsDir;
-      final files = await backupsDir
+      final dir = await backupsDir;
+      final files = await dir
           .list()
           .where((entity) => entity is File && entity.path.endsWith('.zip'))
           .cast<File>()
@@ -194,10 +194,10 @@ class BackupService {
     return backups.first.number + 1;
   }
 
-  /// The content types used for automatic backups and pre-selected when
-  /// creating one manually.
+  /// The content types used for automatic backups.
+  /// The content types used for automatic backups.
   Future<BackupOptions> defaultBackupOptions() async {
-    final types = await StorageService().loadBackupContentTypes();
+    final types = await StorageService().loadAutoBackupContentTypes();
     return BackupOptions(contentTypes: types);
   }
 
@@ -311,13 +311,13 @@ class BackupService {
     options ??= await defaultBackupOptions();
 
     try {
-      final backupsDir = await _backupsDir;
+      final dir = await backupsDir;
       final backupNumber = await _getNextBackupNumber();
       final now = DateTime.now();
 
       final backupFilename =
           '${backupNumber.toString().padLeft(3, '0')}_${now.year.toString().padLeft(4, '0')}_${now.month.toString().padLeft(2, '0')}_${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}.zip';
-      final backupPath = p.join(backupsDir.path, backupFilename);
+      final backupPath = p.join(dir.path, backupFilename);
 
       final tempDir = await Directory.systemTemp.createTemp('gru_backup_');
       final dataDir = Directory(p.join(tempDir.path, 'data'));

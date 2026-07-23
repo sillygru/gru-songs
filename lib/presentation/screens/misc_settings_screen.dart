@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
+import '../../services/storage_service.dart';
+import '../../services/backup_service.dart';
 import '../components/app_list_row.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
 import '../tokens/app_tokens.dart';
+import '../widgets/backup_options_dialog.dart';
 
 class MiscSettingsScreen extends ConsumerStatefulWidget {
   const MiscSettingsScreen({super.key});
@@ -73,6 +76,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
                       .setFrequencyHours(val);
                 },
               ),
+              _contentTypeRow(context, ref),
               _dropdownRow(
                 icon: Icons.delete_outline_rounded,
                 title: 'Auto-Delete Old Backups',
@@ -115,6 +119,43 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _contentTypeRow(BuildContext context, WidgetRef ref) {
+    final accent = AppTokens.accentOf(context, ref);
+
+    return AppListRow(
+      dense: true,
+      leading: AppRowIcon(
+          icon: Icons.tune_rounded, color: accent, size: 40),
+      title: 'Auto Backup Content',
+      subtitle: 'What data is included in automatic backups',
+      trailing: Icon(Icons.chevron_right,
+          color: Theme.of(context).colorScheme.onSurfaceVariant),
+      onTap: () => _configureAutoContent(context),
+    );
+  }
+
+  Future<void> _configureAutoContent(BuildContext context) async {
+    final storage = StorageService();
+    final initialTypes = await storage.loadAutoBackupContentTypes();
+
+    if (!context.mounted) return;
+
+    final options = await showDialog<BackupOptions>(
+      context: context,
+      builder: (context) => BackupOptionsDialog(
+        initialTypes: initialTypes,
+        title: 'Auto Backup Content',
+        subtitle: 'Select content for automatic backups',
+        buttonLabel: 'Save',
+        buttonIcon: Icons.save_rounded,
+      ),
+    );
+
+    if (options != null) {
+      await storage.saveAutoBackupContentTypes(options.contentTypes);
+    }
   }
 
   Widget _dropdownRow({

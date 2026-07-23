@@ -22,9 +22,11 @@ class StorageService {
   static const String _telemetryEnabledKey = 'telemetry_enabled';
   static const String _telemetryIdKey = 'telemetry_id';
 
-  /// Content types (by [BackupContentType.name]) included in automatic and
-  /// newly created backups.
+  /// Content types (by [BackupContentType.name]) included in automatic backups.
   static const String autoBackupContentTypesKey = 'auto_backup_content_types';
+
+  /// Content types included in manually created backups.
+  static const String manualBackupContentTypesKey = 'backup_content_types';
 
   static const List<BackupContentType> defaultBackupContentTypes = [
     BackupContentType.userStats,
@@ -32,11 +34,18 @@ class StorageService {
     BackupContentType.userSettings,
   ];
 
-  Future<Set<BackupContentType>> loadBackupContentTypes() async {
+  static const List<BackupContentType> defaultAutoBackupContentTypes = [
+    BackupContentType.userStats,
+    BackupContentType.userData,
+    BackupContentType.userSettings,
+  ];
+
+  Future<Set<BackupContentType>> _loadContentTypes(
+      String key, List<BackupContentType> defaults) async {
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList(autoBackupContentTypesKey);
+    final stored = prefs.getStringList(key);
     if (stored == null || stored.isEmpty) {
-      return defaultBackupContentTypes.toSet();
+      return defaults.toSet();
     }
 
     final types = <BackupContentType>{};
@@ -45,15 +54,36 @@ class StorageService {
         if (type.name == name) types.add(type);
       }
     }
-    return types.isEmpty ? defaultBackupContentTypes.toSet() : types;
+    return types.isEmpty ? defaults.toSet() : types;
   }
 
-  Future<void> saveBackupContentTypes(Set<BackupContentType> types) async {
+  Future<void> _saveContentTypes(
+      String key, Set<BackupContentType> types) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      autoBackupContentTypesKey,
+      key,
       types.map((t) => t.name).toList(),
     );
+  }
+
+  Future<Set<BackupContentType>> loadAutoBackupContentTypes() async {
+    return _loadContentTypes(autoBackupContentTypesKey,
+        defaultAutoBackupContentTypes);
+  }
+
+  Future<void> saveAutoBackupContentTypes(
+      Set<BackupContentType> types) async {
+    await _saveContentTypes(autoBackupContentTypesKey, types);
+  }
+
+  Future<Set<BackupContentType>> loadManualBackupContentTypes() async {
+    return _loadContentTypes(
+        manualBackupContentTypesKey, defaultBackupContentTypes);
+  }
+
+  Future<void> saveManualBackupContentTypes(
+      Set<BackupContentType> types) async {
+    await _saveContentTypes(manualBackupContentTypesKey, types);
   }
 
   Future<String> get _localPath async {
@@ -504,6 +534,7 @@ class StorageService {
     'beat_reactive_cover_enabled',
     'beat_reactive_particles_enabled',
     'player_motion_intensity',
+    'player_motion_custom_intensity',
     'player_motion_latency_ms',
     'progressive_blur_headers',
     'show_quick_picks',
@@ -637,6 +668,7 @@ class StorageService {
     'beat_reactive_cover_enabled',
     'beat_reactive_particles_enabled',
     'player_motion_intensity',
+    'player_motion_custom_intensity',
     'player_motion_latency_ms',
     'progressive_blur_headers',
     'show_quick_picks',

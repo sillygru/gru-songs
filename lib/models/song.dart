@@ -23,6 +23,7 @@ enum PlayerMotionIntensity {
   subtle,
   balanced,
   bold,
+  custom,
 }
 
 class Song extends Equatable {

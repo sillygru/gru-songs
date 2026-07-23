@@ -34,6 +34,7 @@ class SettingsState {
   final bool beatReactiveCoverEnabled;
   final bool beatReactiveParticlesEnabled;
   final PlayerMotionIntensity playerMotionIntensity;
+  final double playerMotionCustomIntensity;
   final int playerMotionLatencyMs;
   final bool showProgressiveBlurHeaders;
   final bool showQuickPicks;
@@ -70,6 +71,7 @@ class SettingsState {
     this.beatReactiveCoverEnabled = true,
     this.beatReactiveParticlesEnabled = true,
     this.playerMotionIntensity = PlayerMotionIntensity.subtle,
+    this.playerMotionCustomIntensity = 0.5,
     this.playerMotionLatencyMs = 80,
     this.showProgressiveBlurHeaders = false,
     this.showQuickPicks = true,
@@ -107,6 +109,7 @@ class SettingsState {
     bool? beatReactiveCoverEnabled,
     bool? beatReactiveParticlesEnabled,
     PlayerMotionIntensity? playerMotionIntensity,
+    double? playerMotionCustomIntensity,
     int? playerMotionLatencyMs,
     bool? showProgressiveBlurHeaders,
     bool? showQuickPicks,
@@ -157,6 +160,8 @@ class SettingsState {
           beatReactiveParticlesEnabled ?? this.beatReactiveParticlesEnabled,
       playerMotionIntensity:
           playerMotionIntensity ?? this.playerMotionIntensity,
+      playerMotionCustomIntensity:
+          playerMotionCustomIntensity ?? this.playerMotionCustomIntensity,
       playerMotionLatencyMs:
           playerMotionLatencyMs ?? this.playerMotionLatencyMs,
       showProgressiveBlurHeaders:
@@ -199,6 +204,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyBeatReactiveParticlesEnabled =
       'beat_reactive_particles_enabled';
   static const _keyPlayerMotionIntensity = 'player_motion_intensity';
+  static const _keyPlayerMotionCustomIntensity =
+      'player_motion_custom_intensity';
   static const _keyPlayerMotionLatencyMs = 'player_motion_latency_ms';
   static const _keyProgressiveBlurHeaders = 'progressive_blur_headers';
   static const _keyShowQuickPicks = 'show_quick_picks';
@@ -269,6 +276,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
               motionIntensityIndex < PlayerMotionIntensity.values.length
           ? PlayerMotionIntensity.values[motionIntensityIndex]
           : PlayerMotionIntensity.subtle,
+      playerMotionCustomIntensity:
+          (prefs.getDouble(_keyPlayerMotionCustomIntensity) ?? 0.5)
+              .clamp(0.0, 1.0),
       playerMotionLatencyMs:
           (prefs.getInt(_keyPlayerMotionLatencyMs) ?? 80).clamp(-200, 500),
       showProgressiveBlurHeaders:
@@ -475,6 +485,13 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(playerMotionIntensity: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyPlayerMotionIntensity, value.index);
+  }
+
+  Future<void> setPlayerMotionCustomIntensity(double value) async {
+    final clamped = value.clamp(0.0, 1.0);
+    state = state.copyWith(playerMotionCustomIntensity: clamped);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyPlayerMotionCustomIntensity, clamped);
   }
 
   /// Visual offset compensating audio output latency, in milliseconds.

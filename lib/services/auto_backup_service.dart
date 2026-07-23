@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'backup_service.dart';
@@ -20,6 +22,7 @@ class AutoBackupResult {
 
 class AutoBackupService {
   static const String _lastAutoBackupKey = 'last_auto_backup_timestamp';
+  static const String _lastAutoBackupFilenameKey = 'last_auto_backup_filename';
   static final AutoBackupService _instance = AutoBackupService._internal();
   factory AutoBackupService() => _instance;
   AutoBackupService._internal();
@@ -40,20 +43,15 @@ class AutoBackupService {
         return true;
       }
 
-      final lastBackup = DateTime.fromMillisecondsSinceEpoch(lastBackupMs);
-
-      if (!await _lastAutoBackupStillExists(lastBackup)) {
+      if (!await _lastAutoBackupStillExists()) {
         return true;
       }
 
+      final lastBackup = DateTime.fromMillisecondsSinceEpoch(lastBackupMs);
       final now = DateTime.now();
       final hoursSince = now.difference(lastBackup).inHours;
 
       if (hoursSince >= frequencyHours) {
-        return true;
-      }
-
-      if (isCloseToThreshold(hoursSince, frequencyHours)) {
         return true;
       }
 
@@ -64,30 +62,24 @@ class AutoBackupService {
     }
   }
 
-  Future<bool> _lastAutoBackupStillExists(DateTime lastBackup) async {
+  /// Checks whether the specific backup file created by the last auto-backup
+  /// still exists on disk. Returns true if no filename is recorded (backward
+  /// compatibility) to avoid false-positive re-runs.
+  Future<bool> _lastAutoBackupStillExists() async {
     try {
-      final backups = await BackupService.instance.getBackupsList();
-      if (backups.isEmpty) {
-        return false;
-      }
-
-      final newestBackup = backups.first;
-      final timeDiff = newestBackup.timestamp.difference(lastBackup).abs();
-
-      if (timeDiff.inMinutes < 1) {
+      final prefs = await SharedPreferences.getInstance();
+      final filename = prefs.getString(_lastAutoBackupFilenameKey);
+      if (filename == null || filename.isEmpty) {
         return true;
       }
 
-      return false;
+      final backupsDir = await BackupService.instance.backupsDir;
+      final file = File(p.join(backupsDir.path, filename));
+      return await file.exists();
     } catch (e) {
       debugPrint('Error checking if last auto-backup still exists: $e');
-      return false;
+      return true;
     }
-  }
-
-  bool isCloseToThreshold(int hoursSince, int frequency) {
-    final hoursUntilThreshold = frequency - hoursSince;
-    return hoursUntilThreshold <= 2;
   }
 
   Future<AutoBackupResult> performAutoBackup() async {
@@ -106,6 +98,7 @@ class AutoBackupService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(
           _lastAutoBackupKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setString(_lastAutoBackupFilenameKey, backupFilename);
 
       await _autoDeleteOldBackups();
 
@@ -208,8 +201,9 @@ class AutoBackupService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_lastAutoBackupKey);
+      await prefs.remove(_lastAutoBackupFilenameKey);
     } catch (e) {
-      debugPrint('Error resetting last auto-backup: $e');
+      debugPrint('Error resetting auto-backup: $e');
     }
   }
 
