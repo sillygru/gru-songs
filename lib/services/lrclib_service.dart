@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../domain/models/lrclib_result.dart';
 import '../domain/services/lrclib_match.dart';
+import '../domain/services/lrclib_query.dart';
 import '../models/song.dart';
 
 /// Read-only client for the LRCLIB lyrics database (<https://lrclib.net>).
@@ -55,9 +56,13 @@ class LrclibService {
     String? titleOverride,
     String? artistOverride,
   }) async {
-    final title = cleanTag(titleOverride ?? song.title) ?? '';
     final artist = cleanTag(artistOverride ?? song.artist) ?? '';
     final album = cleanTag(song.album);
+    // Local files ripped from video sites carry titles like
+    // "Artist - Title (Official Audio)"; strip that noise so it can match
+    // LRCLIB's clean track_name.
+    final rawTitle = cleanTag(titleOverride ?? song.title) ?? '';
+    final title = cleanSearchTitle(rawTitle, artist: artist);
     if (title.isEmpty && artist.isEmpty) return const [];
 
     final results = await Future.wait([
