@@ -8,6 +8,8 @@ import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class AboutSettingsScreen extends ConsumerWidget {
   const AboutSettingsScreen({super.key});
@@ -80,10 +82,10 @@ class AboutSettingsScreen extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Icon(
+                    AppIcon(
                       updateState.hasUpdate
-                          ? Icons.system_update_alt_rounded
-                          : Icons.verified_outlined,
+                          ? AppIcons.softwareUpdate
+                          : AppIcons.verified,
                       color: accent,
                       size: 20,
                     ),

@@ -8,6 +8,8 @@ import '../widgets/album_art_image.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class MergedSongsScreen extends ConsumerWidget {
   const MergedSongsScreen({super.key});
@@ -37,8 +39,8 @@ class MergedSongsScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.merge_type,
+            AppIcon(
+              AppIcons.merge,
               size: 64,
               color: Theme.of(context)
                   .colorScheme
@@ -204,8 +206,8 @@ class _MergeGroupCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.merge_type,
+                AppIcon(
+                  AppIcons.merge,
                   size: 20,
                   color: Theme.of(context).colorScheme.primary,
                 ),
@@ -230,7 +232,7 @@ class _MergeGroupCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20),
+                  icon: const AppIcon(AppIcons.delete, size: 20),
                   onPressed: onDeleteGroup,
                   tooltip: 'Unmerge all',
                 ),
@@ -268,7 +270,7 @@ class _MergeGroupCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 trailing: IconButton(
-                  icon: const Icon(Icons.link_off, size: 20),
+                  icon: const AppIcon(AppIcons.linkOff, size: 20),
                   onPressed: () => onUnmerge(song),
                   tooltip: 'Unmerge',
                 ),

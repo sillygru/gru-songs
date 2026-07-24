@@ -9,6 +9,8 @@ import 'album_art_image.dart';
 import 'lyrics_match_widget.dart';
 import 'song_options_menu.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// Widget for displaying a search result item
 class SearchResultItem extends ConsumerWidget {
@@ -117,8 +119,8 @@ class SearchResultItem extends ConsumerWidget {
                                       .withValues(alpha: 0.6),
                                   borderRadius: AppTokens.brSm,
                                 ),
-                                child: const Icon(
-                                  Icons.check,
+                                child: const AppIcon(
+                                  AppIcons.tick,
                                   color: Colors.white,
                                   size: 32,
                                 ),
@@ -147,8 +149,8 @@ class SearchResultItem extends ConsumerWidget {
                     ),
                     if (isFavorite && !selectionState.isSelectionMode) ...[
                       const SizedBox(width: 8),
-                      Icon(
-                        Icons.favorite,
+                      AppIcon(
+                        AppIcons.favorite,
                         size: 18,
                         color: AppTokens.danger.withValues(alpha: 0.7),
                       ),
@@ -316,8 +318,8 @@ class ArtistSearchResultItem extends StatelessWidget {
                               color: theme.colorScheme.primaryContainer,
                               borderRadius: AppTokens.brSm,
                             ),
-                            child: Icon(
-                              Icons.person,
+                            child: AppIcon(
+                              AppIcons.person,
                               size: 32,
                               color: theme.colorScheme.onPrimaryContainer,
                             ),
@@ -349,8 +351,8 @@ class ArtistSearchResultItem extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right,
+                AppIcon(
+                  AppIcons.chevronRight,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ],
@@ -418,8 +420,8 @@ class AlbumSearchResultItem extends StatelessWidget {
                               color: theme.colorScheme.secondaryContainer,
                               borderRadius: AppTokens.brSm,
                             ),
-                            child: Icon(
-                              Icons.album,
+                            child: AppIcon(
+                              AppIcons.album,
                               size: 32,
                               color: theme.colorScheme.onSecondaryContainer,
                             ),
@@ -461,8 +463,8 @@ class AlbumSearchResultItem extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right,
+                AppIcon(
+                  AppIcons.chevronRight,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ],

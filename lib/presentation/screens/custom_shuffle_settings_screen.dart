@@ -6,6 +6,8 @@ import '../../providers/providers.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class CustomShuffleSettingsScreen extends ConsumerStatefulWidget {
   const CustomShuffleSettingsScreen({super.key});
@@ -110,13 +112,13 @@ class _CustomShuffleSettingsScreenState
           actions: [
             TextButton.icon(
               onPressed: _resetToDefaults,
-              icon: const Icon(Icons.refresh, size: 20),
+              icon: const AppIcon(AppIcons.refresh, size: 20),
               label: const Text('Reset'),
             ),
             if (_hasChanges)
               TextButton.icon(
                 onPressed: _saveSettings,
-                icon: const Icon(Icons.save, size: 20),
+                icon: const AppIcon(AppIcons.save, size: 20),
                 label: const Text('Save'),
               ),
           ],
@@ -131,8 +133,8 @@ class _CustomShuffleSettingsScreenState
                   padding: const EdgeInsets.all(12.0),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.info_outline,
+                      AppIcon(
+                        AppIcons.info,
                         size: 20,
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
@@ -199,10 +201,8 @@ class _CustomShuffleSettingsScreenState
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: const Text('Fine-tune individual weight values'),
-              trailing: Icon(
-                _showAdvanced
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
+              trailing: AppIcon(
+                _showAdvanced ? AppIcons.arrowUp : AppIcons.arrowDown,
               ),
               onTap: () {
                 setState(() {

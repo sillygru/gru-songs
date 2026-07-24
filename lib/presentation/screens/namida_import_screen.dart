@@ -8,6 +8,8 @@ import '../../presentation/widgets/import_options_dialog.dart';
 import '../../providers/providers.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// Screen for importing data from Namida backup files
 class NamidaImportScreen extends ConsumerStatefulWidget {
@@ -176,7 +178,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: AppTokens.success),
+            AppIcon(AppIcons.checkCircle, color: AppTokens.success),
             SizedBox(width: 8),
             Text('Import Complete'),
           ],
@@ -187,11 +189,11 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
           children: [
             Text(result.message),
             const SizedBox(height: 16),
-            _buildResultRow(Icons.favorite_rounded, 'Favorites imported:',
+            _buildResultRow(AppIcons.favorite, 'Favorites imported:',
                 result.favoritesImported),
-            _buildResultRow(Icons.playlist_play_rounded, 'Playlists imported:',
+            _buildResultRow(AppIcons.playlist, 'Playlists imported:',
                 result.playlistsImported),
-            _buildResultRow(Icons.history_rounded, 'Tracks with stats:',
+            _buildResultRow(AppIcons.clock, 'Tracks with stats:',
                 result.tracksWithStatsImported),
           ],
         ),
@@ -208,12 +210,12 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
     );
   }
 
-  Widget _buildResultRow(IconData icon, String label, int count) {
+  Widget _buildResultRow(AppIconData icon, String label, int count) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+          AppIcon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 8),
           Expanded(child: Text(label)),
           Text(
@@ -257,8 +259,8 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    Icon(
-                      Icons.download_rounded,
+                    AppIcon(
+                      AppIcons.download,
                       size: 64,
                       color: Theme.of(context).colorScheme.primary,
                     ),
@@ -291,11 +293,11 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
             ),
             const SizedBox(height: 12),
             _buildFeatureRow(
-                Icons.favorite_rounded, 'Favorites', 'Your liked songs'),
-            _buildFeatureRow(Icons.playlist_play_rounded, 'Playlists',
-                'All your custom playlists'),
-            _buildFeatureRow(Icons.history_rounded, 'Listening History',
-                'Play counts and stats'),
+                AppIcons.favorite, 'Favorites', 'Your liked songs'),
+            _buildFeatureRow(
+                AppIcons.playlist, 'Playlists', 'All your custom playlists'),
+            _buildFeatureRow(
+                AppIcons.clock, 'Listening History', 'Play counts and stats'),
             const Spacer(),
 
             // Import Button
@@ -312,7 +314,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
             ] else ...[
               ElevatedButton.icon(
                 onPressed: _selectAndImport,
-                icon: const Icon(Icons.file_upload_rounded),
+                icon: const AppIcon(AppIcons.upload),
                 label: const Text('Select Namida Backup File'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -336,7 +338,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
     );
   }
 
-  Widget _buildFeatureRow(IconData icon, String title, String subtitle) {
+  Widget _buildFeatureRow(AppIconData icon, String title, String subtitle) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -348,7 +350,7 @@ class _NamidaImportScreenState extends ConsumerState<NamidaImportScreen> {
                   Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: AppTokens.brSm,
             ),
-            child: Icon(
+            child: AppIcon(
               icon,
               color: Theme.of(context).colorScheme.primary,
               size: 24,

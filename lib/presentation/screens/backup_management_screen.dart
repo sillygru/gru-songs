@@ -14,6 +14,8 @@ import '../../providers/providers.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class BackupManagementScreen extends ConsumerStatefulWidget {
   const BackupManagementScreen({super.key});
@@ -441,7 +443,7 @@ class _BackupManagementScreenState
                                   child:
                                       CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : const Icon(Icons.backup_rounded),
+                              : const AppIcon(AppIcons.cloudUpload),
                           label: Text(_isCreatingBackup
                               ? 'Creating...'
                               : 'Create Backup'),
@@ -475,8 +477,8 @@ class _BackupManagementScreenState
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.backup_outlined,
+          AppIcon(
+            AppIcons.cloudUpload,
             size: 64,
             color:
                 Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
@@ -545,7 +547,7 @@ class _BackupManagementScreenState
               value: 'restore',
               child: Row(
                 children: [
-                  Icon(Icons.restore_rounded),
+                  AppIcon(AppIcons.restore),
                   SizedBox(width: 8),
                   Text('Restore'),
                 ],
@@ -555,7 +557,7 @@ class _BackupManagementScreenState
               value: 'export',
               child: Row(
                 children: [
-                  Icon(Icons.file_upload_rounded),
+                  AppIcon(AppIcons.upload),
                   SizedBox(width: 8),
                   Text('Export'),
                 ],
@@ -565,7 +567,7 @@ class _BackupManagementScreenState
               value: 'compare',
               child: Row(
                 children: [
-                  Icon(Icons.compare_arrows_rounded),
+                  AppIcon(AppIcons.swapHoriz),
                   SizedBox(width: 8),
                   Text('Compare'),
                 ],
@@ -575,7 +577,7 @@ class _BackupManagementScreenState
               value: 'delete',
               child: Row(
                 children: [
-                  Icon(Icons.delete_rounded, color: AppTokens.danger),
+                  AppIcon(AppIcons.delete, color: AppTokens.danger),
                   SizedBox(width: 8),
                   Text('Delete', style: TextStyle(color: AppTokens.danger)),
                 ],
@@ -592,7 +594,7 @@ class _BackupManagementScreenState
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.restart_alt, color: AppTokens.info, size: 48),
+        icon: const AppIcon(AppIcons.refresh, color: AppTokens.info, size: 48),
         title: const Text('Restart Required'),
         content: const Text(
           'Backup restore has been completed successfully.\n\n'

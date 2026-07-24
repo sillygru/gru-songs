@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../tokens/app_tokens.dart';
 import 'press_highlight.dart';
+import '../tokens/app_icons.dart';
+import 'app_icon.dart';
 
 /// Opens the app's one bottom sheet.
 ///
@@ -64,6 +66,7 @@ class AppSheet extends ConsumerWidget {
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(AppTokens.rLg),
         ),
+        boxShadow: AppTokens.shadowFloating,
       ),
       child: SafeArea(
         top: false,
@@ -122,7 +125,7 @@ class AppSheet extends ConsumerWidget {
 /// A single tappable action inside a sheet. Replaces the `ListTile`s that
 /// option sheets currently hand-build, each with its own icon tint.
 class AppSheetAction extends StatelessWidget {
-  final IconData icon;
+  final AppIconData icon;
   final String label;
   final String? description;
   final VoidCallback? onTap;
@@ -157,7 +160,7 @@ class AppSheetAction extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: color),
+            AppIcon(icon, size: 22, color: color),
             const SizedBox(width: AppTokens.s4),
             Expanded(
               child: Column(

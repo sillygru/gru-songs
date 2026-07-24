@@ -5,6 +5,8 @@ import '../../models/quick_action_config.dart';
 import '../../providers/settings_provider.dart';
 import '../components/app_surface.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class QuickActionsSettingsScreen extends ConsumerStatefulWidget {
   const QuickActionsSettingsScreen({super.key});
@@ -71,35 +73,35 @@ class _QuickActionsSettingsScreenState
     final color = enabled
         ? Theme.of(context).colorScheme.primary
         : Theme.of(context).colorScheme.outline;
-    return Icon(_getIconData(action), color: color);
+    return AppIcon(_getIconData(action), color: color);
   }
 
-  IconData _getIconData(QuickAction action) {
+  AppIconData _getIconData(QuickAction action) {
     switch (action) {
       case QuickAction.playNext:
-        return Icons.queue;
+        return AppIcons.queue;
       case QuickAction.goToAlbum:
-        return Icons.album;
+        return AppIcons.album;
       case QuickAction.goToArtist:
-        return Icons.person;
+        return AppIcons.person;
       case QuickAction.moveToFolder:
-        return Icons.drive_file_move_outlined;
+        return AppIcons.folderMove;
       case QuickAction.addToPlaylist:
-        return Icons.playlist_add;
+        return AppIcons.playlistAdd;
       case QuickAction.share:
-        return Icons.share;
+        return AppIcons.share;
       case QuickAction.addToNewPlaylist:
-        return Icons.playlist_add_circle_outlined;
+        return AppIcons.playlistAdd;
       case QuickAction.editMetadata:
-        return Icons.edit_outlined;
+        return AppIcons.edit;
       case QuickAction.toggleFavorite:
-        return Icons.favorite;
+        return AppIcons.favorite;
       case QuickAction.toggleSuggestLess:
-        return Icons.heart_broken;
+        return AppIcons.heartBroken;
       case QuickAction.delete:
-        return Icons.delete_outline;
+        return AppIcons.delete;
       case QuickAction.hide:
-        return Icons.visibility_off;
+        return AppIcons.visibilityOff;
     }
   }
 
@@ -139,8 +141,8 @@ class _QuickActionsSettingsScreenState
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.check_circle,
+                    AppIcon(
+                      AppIcons.checkCircle,
                       size: 16,
                       color: Theme.of(context).colorScheme.primary,
                     ),
@@ -191,8 +193,8 @@ class _QuickActionsSettingsScreenState
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.disabled_by_default,
+                    AppIcon(
+                      AppIcons.close,
                       size: 16,
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -275,7 +277,7 @@ class _QuickActionsSettingsScreenState
             if (enabled)
               ReorderableDragStartListener(
                 index: index,
-                child: const Icon(Icons.drag_handle),
+                child: const AppIcon(AppIcons.dragHandle),
               ),
           ],
         ),

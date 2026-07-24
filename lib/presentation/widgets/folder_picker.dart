@@ -6,6 +6,8 @@ import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
 import 'folder_grid_image.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class FolderPicker extends ConsumerStatefulWidget {
   final String rootPath;
@@ -113,7 +115,7 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
                         if (_currentRelativePath.isNotEmpty)
                           Expanded(
                             child: ListTile(
-                              leading: const Icon(Icons.arrow_back),
+                              leading: const AppIcon(AppIcons.arrowBack),
                               title: const Text('.. (Go back)'),
                               onTap: () {
                                 setState(() {
@@ -129,7 +131,7 @@ class _FolderPickerState extends ConsumerState<FolderPicker> {
                             ),
                           ),
                         IconButton(
-                          icon: const Icon(Icons.create_new_folder_outlined),
+                          icon: const AppIcon(AppIcons.folderAdd),
                           tooltip: 'New Folder',
                           onPressed: () async {
                             final name = await _showNewFolderDialog(context);

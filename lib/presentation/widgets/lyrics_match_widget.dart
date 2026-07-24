@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../domain/models/search_result.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// Widget that displays a lyrics match with the matched text in bold
 ///
@@ -30,8 +32,8 @@ class LyricsMatchWidget extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.lyrics_outlined,
+          AppIcon(
+            AppIcons.lyrics,
             size: 14,
             color: theme.colorScheme.primary,
           ),
@@ -123,8 +125,8 @@ class CompactLyricsMatchWidget extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.lyrics_outlined,
+          AppIcon(
+            AppIcons.lyrics,
             size: 12,
             color: theme.colorScheme.primary.withValues(alpha: 0.7),
           ),
@@ -187,8 +189,8 @@ class LyricsAvailableIndicator extends StatelessWidget {
 
     return Tooltip(
       message: 'Lyrics available',
-      child: Icon(
-        Icons.lyrics_outlined,
+      child: AppIcon(
+        AppIcons.lyrics,
         size: 16,
         color: theme.colorScheme.primary.withValues(alpha: 0.6),
       ),

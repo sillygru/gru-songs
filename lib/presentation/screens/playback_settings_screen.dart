@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
+import '../tokens/app_icons.dart';
 
 class PlaybackSettingsScreen extends ConsumerStatefulWidget {
   const PlaybackSettingsScreen({super.key});
@@ -32,24 +33,24 @@ class _PlaybackSettingsScreenState
         children: [
           AppSettingsGroup(
             label: 'Audio',
-            icon: Icons.play_circle_outline_rounded,
+            icon: AppIcons.playCircle,
             children: [
               AppSettingsSwitch(
-                icon: Icons.volume_off_rounded,
+                icon: AppIcons.volumeOff,
                 title: 'Auto-Pause on Mute',
                 subtitle: 'Pause playback when volume reaches 0',
                 value: settings.autoPauseOnVolumeZero,
                 onChanged: notifier.setAutoPauseOnVolumeZero,
               ),
               AppSettingsSwitch(
-                icon: Icons.volume_up_rounded,
+                icon: AppIcons.volumeUp,
                 title: 'Auto-Resume on Unmute',
                 subtitle: 'Resume playback when volume is restored',
                 value: settings.autoResumeOnVolumeRestore,
                 onChanged: notifier.setAutoResumeOnVolumeRestore,
               ),
               AppSettingsSwitch(
-                icon: Icons.screen_lock_portrait_outlined,
+                icon: AppIcons.screenLock,
                 title: 'Keep Screen Awake on Lyrics',
                 subtitle: 'Prevent sleep while the lyrics pane is open',
                 value: settings.keepScreenAwakeOnLyrics,
@@ -59,10 +60,10 @@ class _PlaybackSettingsScreenState
           ),
           AppSettingsGroup(
             label: 'Transitions',
-            icon: Icons.swap_horiz_rounded,
+            icon: AppIcons.swapHoriz,
             children: [
               AppSettingsSlider(
-                icon: Icons.hourglass_empty_rounded,
+                icon: AppIcons.hourglass,
                 title: isFadeMode ? 'Gap / Delay (off)' : 'Gap / Delay',
                 valueLabel: '${settings.delayDuration.toStringAsFixed(1)}s',
                 value: settings.delayDuration,
@@ -72,7 +73,7 @@ class _PlaybackSettingsScreenState
                 onChanged: isFadeMode ? (_) {} : notifier.setDelayDuration,
               ),
               AppSettingsSlider(
-                icon: Icons.volume_down_rounded,
+                icon: AppIcons.volumeDown,
                 title: isGapMode ? 'Fade Out (off)' : 'Fade Out',
                 valueLabel: '${settings.fadeOutDuration.toStringAsFixed(1)}s',
                 value: settings.fadeOutDuration,
@@ -82,7 +83,7 @@ class _PlaybackSettingsScreenState
                 onChanged: isGapMode ? (_) {} : notifier.setFadeOutDuration,
               ),
               AppSettingsSlider(
-                icon: Icons.volume_up_rounded,
+                icon: AppIcons.volumeUp,
                 title: isGapMode ? 'Fade In (off)' : 'Fade In',
                 valueLabel: '${settings.fadeInDuration.toStringAsFixed(1)}s',
                 value: settings.fadeInDuration,
@@ -95,10 +96,10 @@ class _PlaybackSettingsScreenState
           ),
           AppSettingsGroup(
             label: 'Play / Pause',
-            icon: Icons.play_circle_outline_rounded,
+            icon: AppIcons.playCircle,
             children: [
               AppSettingsSlider(
-                icon: Icons.play_arrow_rounded,
+                icon: AppIcons.play,
                 title: 'Fade on Play',
                 valueLabel: _fadeLabel(settings.playFadeDuration),
                 value: settings.playFadeDuration,
@@ -108,7 +109,7 @@ class _PlaybackSettingsScreenState
                 onChanged: notifier.setPlayFadeDuration,
               ),
               AppSettingsSlider(
-                icon: Icons.pause_rounded,
+                icon: AppIcons.pause,
                 title: 'Fade on Pause',
                 valueLabel: _fadeLabel(settings.pauseFadeDuration),
                 value: settings.pauseFadeDuration,

@@ -10,6 +10,8 @@ import 'select_songs_screen.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_sheet.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class PlaylistsScreen extends ConsumerStatefulWidget {
   const PlaylistsScreen({super.key});
@@ -57,7 +59,7 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                     _searchController.clear();
                   });
                 },
-                icon: const Icon(Icons.arrow_back),
+                icon: const AppIcon(AppIcons.arrowBack),
               )
             : null,
         actions: [
@@ -71,11 +73,11 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                 }
               });
             },
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            icon: AppIcon(_isSearching ? AppIcons.close : AppIcons.search),
           ),
           IconButton(
             onPressed: () => _createPlaylist(context, ref, songsAsync),
-            icon: const Icon(Icons.add),
+            icon: const AppIcon(AppIcons.add),
             tooltip: 'Create Playlist',
           ),
         ],
@@ -177,7 +179,7 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
                             playlist.id,
                             playlist.name,
                           ),
-                          icon: const Icon(Icons.more_vert),
+                          icon: const AppIcon(AppIcons.moreVert),
                         ),
                       ],
                     ),
@@ -202,8 +204,8 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.queue_music_outlined,
+          AppIcon(
+            AppIcons.queue,
             size: 100,
             color: colorScheme.primary.withValues(alpha: 0.3),
           ),
@@ -224,7 +226,7 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
           const SizedBox(height: 32),
           FilledButton.icon(
             onPressed: () => _createPlaylist(context, ref, songsAsync),
-            icon: const Icon(Icons.add),
+            icon: const AppIcon(AppIcons.add),
             label: const Text('Create Playlist'),
           ),
         ],
@@ -313,7 +315,7 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: const Icon(Icons.edit),
+            leading: const AppIcon(AppIcons.edit),
             title: const Text('Rename'),
             onTap: () {
               Navigator.pop(context);
@@ -321,7 +323,7 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete_outline, color: AppTokens.danger),
+            leading: const AppIcon(AppIcons.delete, color: AppTokens.danger),
             title:
                 const Text('Delete', style: TextStyle(color: AppTokens.danger)),
             onTap: () {

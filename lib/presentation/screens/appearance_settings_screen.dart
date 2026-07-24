@@ -8,8 +8,8 @@ import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
 import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
-import 'theme_selection_screen.dart';
 import 'quick_actions_settings_screen.dart';
+import '../tokens/app_icons.dart';
 
 class AppearanceSettingsScreen extends ConsumerStatefulWidget {
   const AppearanceSettingsScreen({super.key});
@@ -50,58 +50,46 @@ class _AppearanceSettingsScreenState
       body: AppSettingsList(
         children: [
           AppSettingsGroup(
-            label: 'Theme',
-            icon: Icons.palette_outlined,
-            children: [
-              AppSettingsTile(
-                icon: Icons.color_lens_outlined,
-                title: 'App Theme',
-                subtitle: 'Choose your visual style',
-                onTap: () => context.pushApp(const ThemeSelectionScreen()),
-              ),
-            ],
-          ),
-          AppSettingsGroup(
             label: 'Display',
-            icon: Icons.view_list_rounded,
+            icon: AppIcons.viewList,
             children: [
               AppSettingsSwitch(
-                icon: Icons.waves_rounded,
+                icon: AppIcons.waves,
                 title: 'Audio Visualizer',
                 subtitle: 'Show animated wave while playing',
                 value: settings.visualizerEnabled,
                 onChanged: notifier.setVisualizerEnabled,
               ),
               AppSettingsSwitch(
-                icon: Icons.graphic_eq_rounded,
+                icon: AppIcons.graphicEq,
                 title: 'Waveform Progress Bar',
                 subtitle: 'Show song waveform in player',
                 value: settings.showWaveform,
                 onChanged: notifier.setShowWaveform,
               ),
               AppSettingsSwitch(
-                icon: Icons.timer_outlined,
+                icon: AppIcons.timer,
                 title: 'Show Song Duration',
                 subtitle: 'Display duration in song lists',
                 value: settings.showSongDuration,
                 onChanged: notifier.setShowSongDuration,
               ),
               AppSettingsSwitch(
-                icon: Icons.swap_vert_rounded,
+                icon: AppIcons.swapVert,
                 title: 'Auto-Hide Bottom Dock',
                 subtitle: 'Hide on downward scroll, restore on upward scroll',
                 value: settings.autoHideBottomBarOnScroll,
                 onChanged: notifier.setAutoHideBottomBarOnScroll,
               ),
               AppSettingsSwitch(
-                icon: Icons.blur_on_rounded,
+                icon: AppIcons.blur,
                 title: 'Lyrics blur overlay',
                 subtitle: 'Progressive blur on the lyrics top and bottom edges',
                 value: settings.lyricsBlurOverlayEnabled,
                 onChanged: notifier.setLyricsBlurOverlayEnabled,
               ),
               AppSettingsSwitch(
-                icon: Icons.blur_linear_rounded,
+                icon: AppIcons.blur,
                 title: 'Progressive blur on list headers',
                 subtitle: 'Blur behind scrolling headers (performance heavy)',
                 value: settings.showProgressiveBlurHeaders,
@@ -110,7 +98,7 @@ class _AppearanceSettingsScreenState
               AppListRow(
                 dense: true,
                 leading: AppRowIcon(
-                  icon: Icons.photo_size_select_large_outlined,
+                  icon: AppIcons.photoSize,
                   color: accent,
                   size: 40,
                 ),
@@ -140,17 +128,17 @@ class _AppearanceSettingsScreenState
           ),
           AppSettingsGroup(
             label: 'Player motion',
-            icon: Icons.graphic_eq_rounded,
+            icon: AppIcons.graphicEq,
             children: [
               AppSettingsSwitch(
-                icon: Icons.album_outlined,
+                icon: AppIcons.album,
                 title: 'Beat-reactive cover',
                 subtitle: 'Album art pulses with the beat',
                 value: settings.beatReactiveCoverEnabled,
                 onChanged: notifier.setBeatReactiveCoverEnabled,
               ),
               AppSettingsSwitch(
-                icon: Icons.auto_awesome_outlined,
+                icon: AppIcons.autoAwesome,
                 title: 'Beat-reactive particles',
                 subtitle: 'Floating particles that drift and breathe with the '
                     'music',
@@ -160,7 +148,7 @@ class _AppearanceSettingsScreenState
               AppListRow(
                 dense: true,
                 leading: AppRowIcon(
-                  icon: Icons.tune_rounded,
+                  icon: AppIcons.tune,
                   color: accent,
                   size: 40,
                 ),
@@ -248,7 +236,7 @@ class _AppearanceSettingsScreenState
               AppListRow(
                 dense: true,
                 leading: AppRowIcon(
-                  icon: Icons.sync_alt_rounded,
+                  icon: AppIcons.syncAlt,
                   color: accent,
                   size: 40,
                 ),
@@ -276,24 +264,24 @@ class _AppearanceSettingsScreenState
           ),
           AppSettingsGroup(
             label: 'Home screen',
-            icon: Icons.home_outlined,
+            icon: AppIcons.home,
             children: [
               AppSettingsSwitch(
-                icon: Icons.auto_awesome_rounded,
+                icon: AppIcons.autoAwesome,
                 title: 'Quick Picks',
                 subtitle: 'Show quick pick recommendations',
                 value: settings.showQuickPicks,
                 onChanged: notifier.setShowQuickPicks,
               ),
               AppSettingsSwitch(
-                icon: Icons.history_rounded,
+                icon: AppIcons.clock,
                 title: 'Recent Queues',
                 subtitle: 'Show recently played queues',
                 value: settings.showRecentQueues,
                 onChanged: notifier.setShowRecentQueues,
               ),
               AppSettingsSwitch(
-                icon: Icons.explore_rounded,
+                icon: AppIcons.explore,
                 title: 'For You',
                 subtitle: 'Show recommended playlists',
                 value: settings.showForYou,
@@ -303,10 +291,10 @@ class _AppearanceSettingsScreenState
           ),
           AppSettingsGroup(
             label: 'Interaction',
-            icon: Icons.touch_app_outlined,
+            icon: AppIcons.touchApp,
             children: [
               AppSettingsTile(
-                icon: Icons.flash_on_outlined,
+                icon: AppIcons.flashOn,
                 title: 'Quick Actions',
                 subtitle: 'Customize long-press actions',
                 onTap: () =>

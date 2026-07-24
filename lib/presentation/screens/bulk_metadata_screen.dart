@@ -7,6 +7,8 @@ import '../../services/bulk_metadata_service.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class BulkMetadataScreen extends ConsumerStatefulWidget {
   final List<Song> songs;
@@ -115,7 +117,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
               _SectionCard(
                 title: 'Artist',
                 subtitle: 'Add, append, or rename artist values',
-                icon: Icons.person,
+                icon: AppIcons.person,
                 enabled: _artistEnabled,
                 onToggle: (value) => setState(() => _artistEnabled = value),
                 child: Column(
@@ -160,7 +162,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
               _SectionCard(
                 title: 'Title',
                 subtitle: 'Replace words or phrases in song titles',
-                icon: Icons.text_fields,
+                icon: AppIcons.textFields,
                 enabled: _titleEnabled,
                 onToggle: (value) => setState(() => _titleEnabled = value),
                 child: Column(
@@ -191,7 +193,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
               _SectionCard(
                 title: 'Album',
                 subtitle: 'Set a shared album for the selection',
-                icon: Icons.album,
+                icon: AppIcons.album,
                 enabled: _albumEnabled,
                 onToggle: (value) => setState(() => _albumEnabled = value),
                 child: _LabeledField(
@@ -218,7 +220,7 @@ class _BulkMetadataScreenState extends ConsumerState<BulkMetadataScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.check_circle_outline),
+                    : const AppIcon(AppIcons.checkCircle),
                 label: Text(
                   _saving
                       ? 'Applying changes...'
@@ -275,7 +277,7 @@ class _HeaderCard extends StatelessWidget {
               shape: BoxShape.circle,
               color: theme.colorScheme.primary.withValues(alpha: 0.2),
             ),
-            child: Icon(Icons.auto_fix_high, color: theme.colorScheme.primary),
+            child: AppIcon(AppIcons.autoFix, color: theme.colorScheme.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -309,7 +311,7 @@ class _HeaderCard extends StatelessWidget {
 class _SectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
-  final IconData icon;
+  final AppIconData icon;
   final bool enabled;
   final ValueChanged<bool> onToggle;
   final Widget child;
@@ -352,7 +354,7 @@ class _SectionCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: theme.colorScheme.primary.withValues(alpha: 0.2),
                 ),
-                child: Icon(icon, color: theme.colorScheme.primary),
+                child: AppIcon(icon, color: theme.colorScheme.primary),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -444,15 +446,15 @@ class _ModeSelector extends StatelessWidget {
         ButtonSegment(
             value: ArtistBulkMode.set,
             label: Text('Set'),
-            icon: Icon(Icons.edit)),
+            icon: AppIcon(AppIcons.edit)),
         ButtonSegment(
             value: ArtistBulkMode.append,
             label: Text('Append'),
-            icon: Icon(Icons.add)),
+            icon: AppIcon(AppIcons.add)),
         ButtonSegment(
             value: ArtistBulkMode.replace,
             label: Text('Replace'),
-            icon: Icon(Icons.sync_alt)),
+            icon: AppIcon(AppIcons.syncAlt)),
       ],
       selected: {value},
       onSelectionChanged: (selection) => onChanged(selection.first),

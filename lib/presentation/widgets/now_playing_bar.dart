@@ -11,6 +11,8 @@ import '../../providers/settings_provider.dart';
 import '../routes/player_route.dart';
 import '../tokens/app_tokens.dart';
 import 'audio_visualizer.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class NowPlayingBar extends ConsumerStatefulWidget {
   final EdgeInsetsGeometry padding;
@@ -156,8 +158,8 @@ class _NowPlayingContent extends ConsumerWidget {
                                             color: Colors.white,
                                             isPlaying: true,
                                           )
-                                        : Icon(
-                                            Icons.graphic_eq,
+                                        : AppIcon(
+                                            AppIcons.graphicEq,
                                             color: Colors.white,
                                             size: compact ? 17 : 19,
                                           ),
@@ -196,7 +198,7 @@ class _NowPlayingContent extends ConsumerWidget {
                 ),
                 const SizedBox(width: 8),
                 if (!compact && isDesktopOrTablet) ...[
-                  Icon(Icons.volume_down_rounded,
+                  AppIcon(AppIcons.volumeDown,
                       size: 18, color: AppTokens.fgTertiary),
                   SizedBox(
                     width: 100,
@@ -211,7 +213,7 @@ class _NowPlayingContent extends ConsumerWidget {
                       },
                     ),
                   ),
-                  Icon(Icons.volume_up_rounded,
+                  AppIcon(AppIcons.volumeUp,
                       size: 18, color: AppTokens.fgTertiary),
                   const SizedBox(width: 12),
                 ],
@@ -242,10 +244,8 @@ class _NowPlayingContent extends ConsumerWidget {
                         return IconButton(
                           constraints: const BoxConstraints(),
                           padding: const EdgeInsets.all(8),
-                          icon: Icon(
-                            playing
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
+                          icon: AppIcon(
+                            playing ? AppIcons.pause : AppIcons.play,
                             size: compact ? 28 : 30,
                             color: Colors.white,
                           ),
@@ -258,8 +258,8 @@ class _NowPlayingContent extends ConsumerWidget {
                     IconButton(
                       constraints: const BoxConstraints(),
                       padding: const EdgeInsets.all(8),
-                      icon: Icon(
-                        Icons.skip_next_rounded,
+                      icon: AppIcon(
+                        AppIcons.skipNext,
                         size: compact ? 24 : 28,
                         color: Colors.white,
                       ),
@@ -307,9 +307,13 @@ class _NowPlayingContent extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final showBlur = settings.showProgressiveBlurHeaders;
 
-    // The bar floats over scrolling content. Depth comes from the fill (and
-    // optionally blur) — no drop shadow, no outline, no border.
-    final Color fill = Colors.black.withValues(alpha: 0.85);
+    // The bar floats over scrolling content as an L2 slab. Opaque fill (never
+    // glass — content must not show through) lifted one notch off the canvas,
+    // and a soft floating shadow does the lifting.
+    final Color fill = Color.alphaBlend(
+      AppTokens.floatingFill,
+      Theme.of(context).colorScheme.surface,
+    );
 
     Widget bar = DecoratedBox(
       decoration: BoxDecoration(
@@ -334,6 +338,13 @@ class _NowPlayingContent extends ConsumerWidget {
       );
     }
 
-    return bar;
+    // Shadow lives outside the clip so it is not cropped to the bar's corners.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: AppTokens.shadowFloating,
+      ),
+      child: bar,
+    );
   }
 }

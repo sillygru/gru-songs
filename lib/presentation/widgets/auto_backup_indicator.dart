@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class AutoBackupIndicator extends ConsumerStatefulWidget {
   const AutoBackupIndicator({super.key});
@@ -61,7 +63,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
     if (autoBackupState.isRunning) {
       return _buildNotification(
         context,
-        icon: Icons.backup_rounded,
+        icon: AppIcons.cloudUpload,
         title: 'Backing Up',
         subtitle: 'Creating backup...',
         iconColor: AppTokens.info,
@@ -77,7 +79,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
     if (lastResult.success) {
       return _buildNotification(
         context,
-        icon: Icons.check_circle_rounded,
+        icon: AppIcons.checkCircle,
         title: 'Auto-Backup Complete',
         subtitle: lastResult.backupFilename ?? 'Backup saved',
         iconColor: AppTokens.success,
@@ -94,7 +96,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
 
     return _buildNotification(
       context,
-      icon: Icons.error_rounded,
+      icon: AppIcons.error,
       title: 'Auto-Backup Failed',
       subtitle: lastResult.errorMessage ?? 'Unknown error',
       iconColor: AppTokens.danger,
@@ -107,7 +109,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
 
   Widget _buildNotification(
     BuildContext context, {
-    required IconData icon,
+    required AppIconData icon,
     required String title,
     required String subtitle,
     required Color iconColor,
@@ -133,8 +135,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                   color: AppTokens.danger,
                   borderRadius: AppTokens.brMd,
                 ),
-                child: const Icon(
-                  Icons.delete_outline_rounded,
+                child: const AppIcon(
+                  AppIcons.delete,
                   color: Colors.white,
                   size: 24,
                 ),
@@ -176,7 +178,7 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                                     color: iconColor,
                                   ),
                                 )
-                              : Icon(
+                              : AppIcon(
                                   icon,
                                   color: iconColor,
                                   size: 24,
@@ -214,8 +216,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                             borderRadius: AppTokens.brSm,
                             child: Padding(
                               padding: const EdgeInsets.all(4),
-                              child: Icon(
-                                Icons.close_rounded,
+                              child: AppIcon(
+                                AppIcons.close,
                                 size: 18,
                                 color: theme.colorScheme.onSurfaceVariant
                                     .withValues(alpha: 0.6),
@@ -264,8 +266,8 @@ class _AutoBackupIndicatorState extends ConsumerState<AutoBackupIndicator>
                         color: AppTokens.warning.withValues(alpha: 0.12),
                         borderRadius: AppTokens.brSm,
                       ),
-                      child: const Icon(
-                        Icons.warning_rounded,
+                      child: const AppIcon(
+                        AppIcons.warning,
                         color: AppTokens.warning,
                         size: 24,
                       ),

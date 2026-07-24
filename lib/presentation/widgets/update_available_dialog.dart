@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/update_service.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 Future<void> showUpdateAvailableDialog(
   BuildContext context, {
@@ -33,8 +35,8 @@ Future<void> showUpdateAvailableDialog(
                 color: colorScheme.primaryContainer.withValues(alpha: 0.4),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.system_update_alt_rounded,
+              child: AppIcon(
+                AppIcons.softwareUpdate,
                 size: 36,
                 color: colorScheme.primary,
               ),
@@ -69,8 +71,8 @@ Future<void> showUpdateAvailableDialog(
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Icon(
-                      Icons.arrow_forward_rounded,
+                    child: AppIcon(
+                      AppIcons.arrowForward,
                       size: 20,
                       color: colorScheme.primary,
                     ),
@@ -145,8 +147,8 @@ Future<void> showUpdateAvailableDialog(
                 await UpdateService().openLatestRelease(url: releaseUrl);
                 // Don't pop — let the user return and decide to download.
               },
-              icon: Icon(
-                Icons.open_in_new_rounded,
+              icon: AppIcon(
+                AppIcons.openInNew,
                 size: 16,
                 color: colorScheme.primary,
               ),

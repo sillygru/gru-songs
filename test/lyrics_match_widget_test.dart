@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wispie/domain/models/search_result.dart';
 import 'package:wispie/presentation/widgets/lyrics_match_widget.dart';
+import 'package:wispie/presentation/components/app_icon.dart';
 
 void main() {
   group('LyricsMatchWidget', () {
@@ -24,7 +25,7 @@ void main() {
 
       // Verify the widget displays
       expect(find.byType(LyricsMatchWidget), findsOneWidget);
-      expect(find.byIcon(Icons.lyrics_outlined), findsOneWidget);
+      expect(find.byType(AppIcon), findsOneWidget);
     });
 
     testWidgets('handles empty query gracefully', (tester) async {
@@ -87,7 +88,7 @@ void main() {
       );
 
       expect(find.byType(CompactLyricsMatchWidget), findsOneWidget);
-      expect(find.byIcon(Icons.lyrics_outlined), findsOneWidget);
+      expect(find.byType(AppIcon), findsOneWidget);
     });
 
     testWidgets('truncates long lines', (tester) async {
@@ -123,7 +124,7 @@ void main() {
       );
 
       expect(find.byType(LyricsAvailableIndicator), findsOneWidget);
-      expect(find.byIcon(Icons.lyrics_outlined), findsOneWidget);
+      expect(find.byType(AppIcon), findsOneWidget);
     });
   });
 }

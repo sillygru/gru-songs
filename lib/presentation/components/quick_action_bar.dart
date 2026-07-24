@@ -9,6 +9,8 @@ import '../../providers/settings_provider.dart';
 import '../tokens/player_tokens.dart';
 import '../widgets/heart_context_menu.dart';
 import 'song_actions.dart';
+import 'app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// The configurable row of actions on the Now Playing pane.
 ///
@@ -105,7 +107,7 @@ class _QuickActionButton extends ConsumerWidget {
         child: SizedBox(
           width: 52,
           height: 48,
-          child: Icon(
+          child: AppIcon(
             _icon(isFavorite: isFavorite, isSuggestLess: isSuggestLess),
             size: 22,
             color: foreground,
@@ -158,34 +160,32 @@ class _QuickActionButton extends ConsumerWidget {
     }
   }
 
-  IconData _icon({required bool isFavorite, required bool isSuggestLess}) {
+  AppIconData _icon({required bool isFavorite, required bool isSuggestLess}) {
     switch (action) {
       case QuickAction.toggleFavorite:
-        return isFavorite ? Icons.favorite_rounded : Icons.favorite_border;
+        return isFavorite ? AppIcons.favorite : AppIcons.favorite;
       case QuickAction.toggleSuggestLess:
-        return isSuggestLess
-            ? Icons.thumb_down_rounded
-            : Icons.thumb_down_off_alt_rounded;
+        return isSuggestLess ? AppIcons.thumbDown : AppIcons.thumbDown;
       case QuickAction.playNext:
-        return Icons.playlist_play_rounded;
+        return AppIcons.playlist;
       case QuickAction.addToPlaylist:
-        return Icons.playlist_add_rounded;
+        return AppIcons.playlistAdd;
       case QuickAction.addToNewPlaylist:
-        return Icons.library_add_rounded;
+        return AppIcons.libraryAdd;
       case QuickAction.share:
-        return Icons.ios_share_rounded;
+        return AppIcons.share;
       case QuickAction.editMetadata:
-        return Icons.edit_rounded;
+        return AppIcons.edit;
       case QuickAction.moveToFolder:
-        return Icons.drive_file_move_outline;
+        return AppIcons.folderMove;
       case QuickAction.goToAlbum:
-        return Icons.album_rounded;
+        return AppIcons.album;
       case QuickAction.goToArtist:
-        return Icons.person_rounded;
+        return AppIcons.person;
       case QuickAction.hide:
-        return Icons.visibility_off_rounded;
+        return AppIcons.visibilityOff;
       case QuickAction.delete:
-        return Icons.delete_outline_rounded;
+        return AppIcons.delete;
     }
   }
 

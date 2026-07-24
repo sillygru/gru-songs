@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../components/app_dialog.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// Dialog for choosing between "Just Missing" and "Force All" options
 class IndexerChoiceDialog extends StatelessWidget {
@@ -34,8 +36,8 @@ class IndexerChoiceDialog extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
+                  AppIcon(
+                    AppIcons.warning,
                     color: AppTokens.warning,
                     size: 20,
                   ),

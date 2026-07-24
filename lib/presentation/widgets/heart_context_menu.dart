@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../models/playlist.dart';
 import 'playlist_selector_screen.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 void showHeartContextMenu({
   required BuildContext context,
@@ -57,8 +59,8 @@ void showHeartContextMenu({
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: Icon(
-                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                      leading: AppIcon(
+                        isFavorite ? AppIcons.favorite : AppIcons.favorite,
                         color: isFavorite ? Colors.red : null,
                       ),
                       title: Text(isFavorite
@@ -72,7 +74,7 @@ void showHeartContextMenu({
                       },
                     ),
                     ListTile(
-                      leading: const Icon(Icons.playlist_add),
+                      leading: const AppIcon(AppIcons.playlistAdd),
                       title: const Text("Add to Playlist"),
                       onTap: () {
                         Navigator.pop(context);
@@ -80,7 +82,7 @@ void showHeartContextMenu({
                       },
                     ),
                     ListTile(
-                      leading: const Icon(Icons.playlist_add_circle_outlined),
+                      leading: const AppIcon(AppIcons.playlistAdd),
                       title: const Text("Add to New Playlist"),
                       onTap: () {
                         Navigator.pop(context);
@@ -89,7 +91,7 @@ void showHeartContextMenu({
                     ),
                     if (latestPlaylistWithSong != null)
                       ListTile(
-                        leading: const Icon(Icons.playlist_remove,
+                        leading: const AppIcon(AppIcons.playlistRemove,
                             color: Colors.red),
                         title: Text(
                             "Remove from ${latestPlaylistWithSong.name}",
@@ -101,7 +103,7 @@ void showHeartContextMenu({
                         },
                       ),
                     ListTile(
-                      leading: Icon(Icons.heart_broken,
+                      leading: AppIcon(AppIcons.heartBroken,
                           color: isSuggestLess ? Colors.grey : null),
                       title:
                           Text(isSuggestLess ? "Suggest more" : "Suggest less"),

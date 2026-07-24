@@ -2,19 +2,15 @@ import 'package:flutter/material.dart';
 import '../providers/theme_provider.dart';
 import '../presentation/tokens/app_tokens.dart';
 
-enum AppThemeMode { matchCover, defaultTheme, oled, lightBlue }
-
-/// The app is dark-only. What varies between modes is just two values — the
-/// seed colour and how black the background is — so there is one theme builder
-/// and the modes are arguments to it.
+/// The app is dark-only and always matches the current cover. There are no
+/// user-facing theme modes: the artwork *is* the theme. What varies is only the
+/// seed colour — pulled from the cover, or the signature teal before one loads.
 ///
 /// Component themes are declared here in full. That is deliberate: every widget
 /// theme left undeclared is a widget that gets styled at its call site instead,
 /// which is how the app drifted into several visual languages in the first
 /// place.
 class AppTheme {
-  static const int _darkAlpha = 200;
-
   static const Color _surfaceDark = Color(0xFF0F0F0F);
   static const Color _surfaceOled = Colors.black;
   static const Color _containerDark = Color(0xFF1A1A1A);
@@ -28,54 +24,31 @@ class AppTheme {
   // success/info) so the brand accent is never mistaken for one. (Swap the hex
   // to re-tune.)
   static const Color _defaultSeed = Color(0xFF3DD6C0);
-  static const Color _lightBlueSeed = Color(0xFFB5C3FF);
 
+  /// The one theme entry point. Always cover-matching:
+  ///  - no artwork colour yet  → the signature teal identity
+  ///  - black-and-white cover  → match its *absence* of colour (OLED variant),
+  ///    rather than amplifying sensor noise into a fake hue
+  ///  - otherwise              → seed from the (already legibility-corrected)
+  ///    cover accent
   static ThemeData getTheme(ThemeState state, {Color? coverColor}) {
     final effectiveCoverColor = coverColor ?? state.extractedColor;
 
-    if (state.mode == AppThemeMode.matchCover && effectiveCoverColor != null) {
-      // Black-and-white artwork has no hue to match, so match its *absence* of
-      // colour instead of amplifying sensor noise into one: that is exactly the
-      // OLED theme.
-      if (state.isNeutralCover) return _oledTheme();
-      return _coverTheme(effectiveCoverColor);
+    if (effectiveCoverColor == null) {
+      return _buildTheme(
+        seed: _defaultSeed,
+        background: _surfaceDark,
+        container: _containerDark,
+      );
     }
-
-    final Color? overlayColor =
-        state.useCoverColor ? effectiveCoverColor : null;
-
-    switch (state.mode) {
-      case AppThemeMode.oled:
-        return _buildTheme(
-          seed: _seedFor(overlayColor, Colors.white, _surfaceOled),
-          background: _surfaceOled,
-          container: _containerOled,
-        );
-      case AppThemeMode.lightBlue:
-        return _buildTheme(
-          seed: _seedFor(overlayColor, _lightBlueSeed, _surfaceDark),
-          background: _surfaceDark,
-          container: _containerDark,
-        );
-      case AppThemeMode.defaultTheme:
-      case AppThemeMode.matchCover:
-        return _buildTheme(
-          seed: _seedFor(overlayColor, _defaultSeed, _surfaceDark),
-          background: _surfaceDark,
-          container: _containerDark,
-        );
-    }
+    if (state.isNeutralCover) return _oledTheme();
+    return _coverTheme(effectiveCoverColor);
   }
 
-  static ThemeData getPlayerTheme(ThemeState state, Color? coverColor) {
-    final effectiveCoverColor = coverColor ?? state.extractedColor;
-    if ((state.mode == AppThemeMode.matchCover || state.useCoverColor) &&
-        effectiveCoverColor != null) {
-      if (state.isNeutralCover) return _oledTheme();
-      return _coverTheme(effectiveCoverColor);
-    }
-    return getTheme(state, coverColor: effectiveCoverColor);
-  }
+  /// The player rides the same cover-matching theme; kept as a named entry
+  /// point so the player call site reads clearly.
+  static ThemeData getPlayerTheme(ThemeState state, Color? coverColor) =>
+      getTheme(state, coverColor: coverColor);
 
   /// The one place a cover accent becomes a theme. Both the app and the player
   /// route through it, which is what keeps them on the same colour — they used
@@ -98,18 +71,6 @@ class AppTheme {
       background: _surfaceOled,
       container: _containerOled,
     );
-  }
-
-  static Color _blendWithSurface(Color color, Color surface) {
-    return Color.alphaBlend(color.withAlpha(_darkAlpha), surface);
-  }
-
-  /// A cover override is blended toward the background so it never comes out
-  /// as a raw, over-saturated seed. White in OLED mode is left alone.
-  static Color _seedFor(Color? override, Color fallback, Color background) {
-    if (override == null) return fallback;
-    if (override == Colors.white) return override;
-    return _blendWithSurface(override, background);
   }
 
   static ThemeData _buildTheme({
@@ -141,28 +102,28 @@ class AppTheme {
 
       textTheme: const TextTheme(
         headlineLarge: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: -1.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.8,
           fontSize: 32,
         ),
         headlineMedium: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: -1.0,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.6,
           fontSize: 28,
         ),
         headlineSmall: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: -0.9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.5,
           fontSize: 26,
         ),
         titleLarge: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: -0.6,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.4,
           fontSize: 20,
         ),
         titleMedium: TextStyle(
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.4,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
           fontSize: 16,
         ),
         bodyMedium: TextStyle(
@@ -184,9 +145,9 @@ class AppTheme {
         elevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w700,
           fontSize: 24,
-          letterSpacing: -0.5,
+          letterSpacing: -0.4,
           color: Colors.white,
         ),
       ),
@@ -213,9 +174,9 @@ class AppTheme {
         iconColor: onSurfaceVariant,
         textColor: Colors.white,
         titleTextStyle: const TextStyle(
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           fontSize: 16,
-          letterSpacing: -0.4,
+          letterSpacing: -0.3,
           color: Colors.white,
         ),
         subtitleTextStyle: TextStyle(
@@ -239,12 +200,15 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: Color.alphaBlend(AppTokens.surface(2), background),
         surfaceTintColor: Colors.transparent,
-        elevation: 0,
+        // A dialog is the top-most L2 plane — let it cast a soft shadow so it
+        // clearly floats above the scrim.
+        elevation: 12,
+        shadowColor: const Color(0x66000000),
         shape: RoundedRectangleBorder(borderRadius: AppTokens.brLg),
         titleTextStyle: const TextStyle(
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w700,
           fontSize: 20,
-          letterSpacing: -0.6,
+          letterSpacing: -0.4,
           color: Colors.white,
         ),
         contentTextStyle: TextStyle(
@@ -386,10 +350,12 @@ class AppTheme {
         ),
       ),
 
-      // Filled, never outlined — this is what kills every text-field box.
+      // Filled, never outlined — this is what kills every text-field box. The
+      // fill is a *recessed well* (darker than the canvas), so a field reads as
+      // sunk into the page rather than sitting on it.
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppTokens.surface(1),
+        fillColor: AppTokens.wellFill,
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
         focusedBorder: InputBorder.none,

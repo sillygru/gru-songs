@@ -10,6 +10,8 @@ import 'backup_management_screen.dart';
 import 'storage_management_screen.dart';
 import '../components/app_surface.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class DataManagementSettingsScreen extends ConsumerStatefulWidget {
   const DataManagementSettingsScreen({super.key});
@@ -32,10 +34,10 @@ class _DataManagementSettingsScreenState
         children: [
           _buildSettingsGroup(
             title: 'Backup & Restore',
-            icon: Icons.backup_rounded,
+            icon: AppIcons.cloudUpload,
             children: [
               _buildListTile(
-                icon: Icons.upload_file_rounded,
+                icon: AppIcons.upload,
                 title: 'Export App Data',
                 subtitle: 'Backup your stats, favorites, and playlists',
                 onTap: () async {
@@ -56,13 +58,13 @@ class _DataManagementSettingsScreenState
                 },
               ),
               _buildListTile(
-                icon: Icons.download_for_offline_rounded,
+                icon: AppIcons.download,
                 title: 'Import App Data',
                 subtitle: 'Restore data from a backup (replaces all)',
                 onTap: () => _handleImport(),
               ),
               _buildListTile(
-                icon: Icons.download_rounded,
+                icon: AppIcons.download,
                 title: 'Import from Namida',
                 subtitle: 'Import playlists and favorites from Namida',
                 onTap: () {
@@ -74,7 +76,7 @@ class _DataManagementSettingsScreenState
                 },
               ),
               _buildListTile(
-                icon: Icons.backup_rounded,
+                icon: AppIcons.cloudUpload,
                 title: 'Manage Backups',
                 subtitle: 'Create, restore, and manage app backups',
                 onTap: () {
@@ -89,10 +91,10 @@ class _DataManagementSettingsScreenState
           ),
           _buildSettingsGroup(
             title: 'Storage',
-            icon: Icons.storage_outlined,
+            icon: AppIcons.storage,
             children: [
               _buildListTile(
-                icon: Icons.storage_rounded,
+                icon: AppIcons.storage,
                 title: 'Manage Storage',
                 subtitle: 'Disk usage and data management',
                 onTap: () {
@@ -307,7 +309,7 @@ class _DataManagementSettingsScreenState
   Widget _buildSettingsGroup({
     required String title,
     required List<Widget> children,
-    required IconData icon,
+    required AppIconData icon,
   }) {
     final theme = Theme.of(context);
     final List<Widget> childrenWithDividers = [];
@@ -333,7 +335,7 @@ class _DataManagementSettingsScreenState
           padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
           child: Row(
             children: [
-              Icon(icon, size: 16, color: theme.colorScheme.primary),
+              AppIcon(icon, size: 16, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text(
                 title.toUpperCase(),
@@ -359,19 +361,19 @@ class _DataManagementSettingsScreenState
   }
 
   Widget _buildListTile({
-    required IconData icon,
+    required AppIconData icon,
     required String title,
     String? subtitle,
     required VoidCallback onTap,
   }) {
     return ListTile(
       leading:
-          Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          AppIcon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: subtitle != null
           ? Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)
           : null,
-      trailing: const Icon(Icons.chevron_right, size: 20),
+      trailing: const AppIcon(AppIcons.chevronRight, size: 20),
       onTap: onTap,
     );
   }

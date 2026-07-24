@@ -44,11 +44,17 @@ class AppMediaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final art = ClipRRect(
-      borderRadius: AppTokens.brMd,
-      child: expand
-          ? AspectRatio(aspectRatio: 1, child: artwork)
-          : SizedBox(width: size, height: size, child: artwork),
+    final art = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: AppTokens.brMd,
+        boxShadow: AppTokens.shadowRaised,
+      ),
+      child: ClipRRect(
+        borderRadius: AppTokens.brMd,
+        child: expand
+            ? AspectRatio(aspectRatio: 1, child: artwork)
+            : SizedBox(width: size, height: size, child: artwork),
+      ),
     );
 
     final artStack = badge == null

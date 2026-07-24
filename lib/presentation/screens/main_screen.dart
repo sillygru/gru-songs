@@ -17,6 +17,7 @@ import '../widgets/auto_backup_indicator.dart';
 import '../components/app_feedback.dart';
 import '../components/app_nav_bar.dart';
 import '../tokens/app_tokens.dart';
+import '../tokens/app_icons.dart';
 
 class SyncIndicator extends ConsumerWidget {
   const SyncIndicator({super.key});
@@ -30,27 +31,27 @@ class SyncIndicator extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final (String text, AppTone tone, IconData icon, bool busy) = switch ((
+    final (String text, AppTone tone, AppIconData icon, bool busy) = switch ((
       isScanning,
       metadataState.status,
     )) {
-      (true, _) => ('Scanning library…', AppTone.info, Icons.search, true),
+      (true, _) => ('Scanning library…', AppTone.info, AppIcons.search, true),
       (_, MetadataSaveStatus.saving) => (
           metadataState.message,
           AppTone.warning,
-          Icons.edit_rounded,
+          AppIcons.edit,
           true,
         ),
       (_, MetadataSaveStatus.success) => (
           metadataState.message,
           AppTone.success,
-          Icons.check_circle_rounded,
+          AppIcons.checkCircle,
           false,
         ),
       _ => (
           metadataState.message,
           AppTone.danger,
-          Icons.error_rounded,
+          AppIcons.error,
           false,
         ),
     };
@@ -393,18 +394,18 @@ class _MainScreenState extends ConsumerState<MainScreen>
                   onSelected: _onTabSelected,
                   items: const [
                     AppNavItem(
-                      icon: Icons.home_outlined,
-                      selectedIcon: Icons.home_rounded,
+                      icon: AppIcons.home,
+                      selectedIcon: AppIcons.home,
                       label: 'Home',
                     ),
                     AppNavItem(
-                      icon: Icons.library_music_outlined,
-                      selectedIcon: Icons.library_music_rounded,
+                      icon: AppIcons.library,
+                      selectedIcon: AppIcons.library,
                       label: 'Library',
                     ),
                     AppNavItem(
-                      icon: Icons.person_outline,
-                      selectedIcon: Icons.person_rounded,
+                      icon: AppIcons.person,
+                      selectedIcon: AppIcons.person,
                       label: 'Profile',
                     ),
                   ],

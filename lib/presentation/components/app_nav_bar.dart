@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../tokens/app_tokens.dart';
 import 'pressable.dart';
+import '../tokens/app_icons.dart';
+import 'app_icon.dart';
 
 /// One destination in [AppNavBar].
 class AppNavItem {
-  final IconData icon;
-  final IconData selectedIcon;
+  final AppIconData icon;
+  final AppIconData selectedIcon;
   final String label;
 
   const AppNavItem({
@@ -40,32 +42,45 @@ class AppNavBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final accent = AppTokens.accentOf(context, ref);
     final bottomInset = MediaQuery.of(context).padding.bottom;
+    // Opaque, never translucent: a glass dock would show the list scrolling
+    // through it. The fill is the canvas lifted one notch, so the dock reads as
+    // a solid slab floating over the page — the shadow does the lifting.
+    final dockColor = Color.alphaBlend(
+      AppTokens.floatingFill,
+      Theme.of(context).colorScheme.surface,
+    );
 
-    return SizedBox(
-      height: 64 + bottomInset,
-      child: Column(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                for (var i = 0; i < items.length; i++)
-                  Expanded(
-                    child: Pressable(
-                      haptic: PressHaptic.selection,
-                      spring: AppTokens.springSnappy,
-                      onTap: () => onSelected(i),
-                      child: _NavDestination(
-                        item: items[i],
-                        selected: i == selectedIndex,
-                        accent: accent,
-                      ),
-                    ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppTokens.s4,
+        0,
+        AppTokens.s4,
+        bottomInset > 0 ? 0 : AppTokens.s1,
+      ),
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: dockColor,
+          borderRadius: AppTokens.brLg,
+          boxShadow: AppTokens.shadowFloating,
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < items.length; i++)
+              Expanded(
+                child: Pressable(
+                  haptic: PressHaptic.selection,
+                  spring: AppTokens.springSnappy,
+                  onTap: () => onSelected(i),
+                  child: _NavDestination(
+                    item: items[i],
+                    selected: i == selectedIndex,
+                    accent: accent,
                   ),
-              ],
-            ),
-          ),
-          SizedBox(height: bottomInset),
-        ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -108,11 +123,14 @@ class _NavDestination extends StatelessWidget {
               opacity: animation,
               child: ScaleTransition(scale: animation, child: child),
             ),
-            child: Icon(
+            child: AppIcon(
               selected ? item.selectedIcon : item.icon,
               key: ValueKey(selected),
               size: 24,
               color: iconColor,
+              // Icon weight echoes the depth ladder: the active glyph draws a
+              // heavier stroke, the way a raised surface reads heavier.
+              strokeWidth: selected ? 2.4 : 1.6,
             ),
           ),
         ),

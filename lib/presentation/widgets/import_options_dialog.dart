@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/import_options.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class ImportOptionsDialog extends StatefulWidget {
   final Set<ImportDataCategory> availableCategories;
@@ -111,11 +113,11 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
       contentPadding: EdgeInsets.zero,
       title: Row(
         children: [
-          const Icon(Icons.restore),
+          const AppIcon(AppIcons.restore),
           const SizedBox(width: 8),
           const Expanded(child: Text('Select Data to Restore')),
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: const AppIcon(AppIcons.close),
             onPressed: () => Navigator.of(context).pop(null),
           ),
         ],
@@ -133,7 +135,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                   'Database',
                   databaseCategoriesAvailable,
                   databaseCategoriesDisabled,
-                  Icons.storage_outlined,
+                  AppIcons.storage,
                   databaseCategories,
                 ),
               if (storageCategories.isNotEmpty)
@@ -142,7 +144,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                   'Storage',
                   storageCategoriesAvailable,
                   storageCategoriesDisabled,
-                  Icons.folder_outlined,
+                  AppIcons.folder,
                   storageCategories,
                 ),
               if (settingsCategories.isNotEmpty)
@@ -151,7 +153,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                   'Settings',
                   settingsCategoriesAvailable,
                   settingsCategoriesDisabled,
-                  Icons.settings_outlined,
+                  AppIcons.settings,
                   settingsCategories,
                 ),
               if (cacheCategories.isNotEmpty)
@@ -160,7 +162,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                   'Cache',
                   cacheCategoriesAvailable,
                   cacheCategoriesDisabled,
-                  Icons.folder_zip_outlined,
+                  AppIcons.folderZip,
                   cacheCategories,
                 ),
               const Divider(),
@@ -254,7 +256,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     String title,
     Set<ImportDataCategory> availableCategories,
     Set<ImportDataCategory> disabledCategories,
-    IconData icon,
+    AppIconData icon,
     Set<ImportDataCategory> allCategories,
   ) {
     final theme = Theme.of(context);
@@ -266,7 +268,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
           padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
           child: Row(
             children: [
-              Icon(icon, size: 18, color: theme.colorScheme.primary),
+              AppIcon(icon, size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text(
                 title,

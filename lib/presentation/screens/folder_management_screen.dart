@@ -6,6 +6,8 @@ import '../components/app_feedback.dart';
 import '../components/app_list_row.dart';
 import '../components/app_screen_header.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class FolderManagementScreen extends ConsumerStatefulWidget {
   const FolderManagementScreen({super.key});
@@ -99,7 +101,7 @@ class _FolderManagementScreenState
                 Expanded(
                   child: _folders.isEmpty
                       ? const AppEmptyState(
-                          icon: Icons.folder_open_rounded,
+                          icon: AppIcons.folder,
                           title: 'No folders added yet',
                           message: 'Add a folder to build your library.',
                         )
@@ -115,13 +117,13 @@ class _FolderManagementScreenState
 
                             return AppListRow(
                               leading: AppRowIcon(
-                                icon: Icons.folder_rounded,
+                                icon: AppIcons.folder,
                                 color: AppTokens.accentOf(context, ref),
                               ),
                               title: name,
                               subtitle: path,
                               trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline_rounded),
+                                icon: const AppIcon(AppIcons.delete),
                                 tooltip: 'Remove folder',
                                 onPressed: () => _removeFolder(folder),
                               ),
@@ -136,7 +138,7 @@ class _FolderManagementScreenState
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: _addFolder,
-                        icon: const Icon(Icons.add_rounded),
+                        icon: const AppIcon(AppIcons.add),
                         label: const Text('Add Folder'),
                       ),
                     ),

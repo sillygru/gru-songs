@@ -19,6 +19,8 @@ import '../components/app_screen_header.dart';
 import '../components/app_section_header.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// The slide-out navigation panel.
 ///
@@ -133,7 +135,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             ),
                           ),
                           _buildNavItem(
-                            icon: Icons.favorite_rounded,
+                            icon: AppIcons.favorite,
                             label: 'Favorites',
                             subtitle: 'Your liked tracks',
                             color: AppTokens.danger,
@@ -154,21 +156,21 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             },
                           ),
                           _buildNavItem(
-                            icon: Icons.queue_music_rounded,
+                            icon: AppIcons.queue,
                             label: 'Playlists',
                             subtitle: 'Curated sets',
                             color: accent,
                             onTap: () => _navigateTo(const PlaylistsScreen()),
                           ),
                           _buildNavItem(
-                            icon: Icons.album_rounded,
+                            icon: AppIcons.album,
                             label: 'Albums',
                             subtitle: 'Browse releases',
                             color: accent,
                             onTap: () => _navigateTo(const AlbumsScreen()),
                           ),
                           _buildNavItem(
-                            icon: Icons.person_rounded,
+                            icon: AppIcons.person,
                             label: 'Artists',
                             subtitle: 'Jump by artist',
                             color: accent,
@@ -184,14 +186,14 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             ),
                           ),
                           _buildNavItem(
-                            icon: Icons.history_rounded,
+                            icon: AppIcons.clock,
                             label: 'Song History',
                             subtitle: 'What has been playing',
                             color: accent,
                             onTap: () => _navigateTo(const PlayHistoryScreen()),
                           ),
                           _buildNavItem(
-                            icon: Icons.queue_play_next_rounded,
+                            icon: AppIcons.queuePlayNext,
                             label: 'Session History',
                             subtitle: 'Previous listening sessions',
                             color: accent,
@@ -199,7 +201,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                                 _navigateTo(const SessionHistoryScreen()),
                           ),
                           _buildNavItem(
-                            icon: Icons.queue_music_rounded,
+                            icon: AppIcons.queue,
                             label: 'Queue History',
                             subtitle: 'Past queues and order',
                             color: accent,
@@ -215,7 +217,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             ),
                           ),
                           _buildNavItem(
-                            icon: Icons.bedtime_rounded,
+                            icon: AppIcons.bedtime,
                             label: 'Sleep Timer',
                             subtitle: 'Stop playback gracefully',
                             color: accent,
@@ -231,7 +233,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             ),
                           ),
                           _buildNavItem(
-                            icon: Icons.settings_rounded,
+                            icon: AppIcons.settings,
                             label: 'Settings',
                             subtitle: 'Tune the app',
                             color: accent,
@@ -271,8 +273,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Container(
                   color: accent.withValues(alpha: AppTokens.accentWashAlpha),
-                  child:
-                      Icon(Icons.music_note_rounded, color: accent, size: 26),
+                  child: AppIcon(AppIcons.musicNote, color: accent, size: 26),
                 ),
               ),
             ),
@@ -295,7 +296,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
           IconButton(
             onPressed: _closeDrawer,
             tooltip: 'Close',
-            icon: const Icon(Icons.close_rounded),
+            icon: const AppIcon(AppIcons.close),
           ),
         ],
       ),
@@ -303,7 +304,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
   }
 
   Widget _buildNavItem({
-    required IconData icon,
+    required AppIconData icon,
     required String label,
     required String subtitle,
     required Color color,
@@ -333,8 +334,8 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
             ),
         ],
       ),
-      trailing: Icon(
-        Icons.chevron_right_rounded,
+      trailing: AppIcon(
+        AppIcons.chevronRight,
         size: 20,
         color: AppTokens.fgTertiary,
       ),
@@ -429,25 +430,25 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
     const modes = [
       (
         SleepTimerMode.loopCurrent,
-        Icons.repeat_one_rounded,
+        AppIcons.repeatOne,
         'Loop Current Song',
         'Repeat the current song for a set time'
       ),
       (
         SleepTimerMode.playForTime,
-        Icons.timer_rounded,
+        AppIcons.timer,
         'Play for Time',
         'Stop after a specified duration'
       ),
       (
         SleepTimerMode.stopAfterCurrent,
-        Icons.stop_circle_rounded,
+        AppIcons.stop,
         'Stop After Current',
         'Stop when the current song ends'
       ),
       (
         SleepTimerMode.stopAfterTracks,
-        Icons.playlist_play_rounded,
+        AppIcons.playlist,
         'Stop After Tracks',
         'Stop after playing X more songs'
       ),
@@ -464,7 +465,7 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
             leading: AppRowIcon(icon: icon, color: accent),
             onTap: () => setState(() => _mode = modeValue),
             trailing: _mode == modeValue
-                ? Icon(Icons.check_circle_rounded, color: accent, size: 20)
+                ? AppIcon(AppIcons.checkCircle, color: accent, size: 20)
                 : null,
           ),
       ],
@@ -569,8 +570,7 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
         child: AppSurface(
           child: Row(
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: AppTokens.danger, size: 20),
+              const AppIcon(AppIcons.error, color: AppTokens.danger, size: 20),
               const SizedBox(width: AppTokens.s3),
               Expanded(
                 child: Text(
@@ -632,7 +632,7 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
       children: [
         FilledButton.icon(
           onPressed: _startTimer,
-          icon: const Icon(Icons.play_arrow_rounded),
+          icon: const AppIcon(AppIcons.play),
           label: const Text('Start Timer'),
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(52),
@@ -646,7 +646,7 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
               setState(() {});
               appSnack(context, 'Sleep timer cancelled');
             },
-            icon: const Icon(Icons.stop_rounded),
+            icon: const AppIcon(AppIcons.stop),
             label: const Text('Cancel Active Timer'),
             style: FilledButton.styleFrom(
               backgroundColor: AppTokens.surface(2),
@@ -764,7 +764,7 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
           IconButton(
             onPressed: _loadHistory,
             tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const AppIcon(AppIcons.refresh),
           ),
         ],
       ),
@@ -772,14 +772,14 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
           ? const AppLoading()
           : _error != null
               ? AppEmptyState(
-                  icon: Icons.error_outline_rounded,
+                  icon: AppIcons.error,
                   title: 'Could not load history',
                   message: _error,
                   tone: AppTone.danger,
                 )
               : _events.isEmpty
                   ? const AppEmptyState(
-                      icon: Icons.history_rounded,
+                      icon: AppIcons.clock,
                       title: 'No play history yet',
                       message: 'Start listening to build your history.',
                     )
@@ -801,20 +801,19 @@ class _PlayHistoryScreenState extends ConsumerState<PlayHistoryScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildLegendItem(
-              Icons.play_arrow_rounded, AppTokens.success, 'Listen'),
+          _buildLegendItem(AppIcons.play, AppTokens.success, 'Listen'),
           const SizedBox(width: AppTokens.s5),
-          _buildLegendItem(Icons.skip_next_rounded, AppTokens.warning, 'Skip'),
+          _buildLegendItem(AppIcons.skipNext, AppTokens.warning, 'Skip'),
         ],
       ),
     );
   }
 
-  Widget _buildLegendItem(IconData icon, Color color, String label) {
+  Widget _buildLegendItem(AppIconData icon, Color color, String label) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: color, size: 15),
+        AppIcon(icon, color: color, size: 15),
         const SizedBox(width: AppTokens.s1),
         Text(
           label.toUpperCase(),

@@ -25,6 +25,8 @@ import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
 import 'merged_songs_screen.dart';
 import 'select_songs_screen.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   final String? relativePath;
@@ -87,7 +89,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           data: (musicRoot) {
             if (musicRoot == null) {
               return const AppEmptyState(
-                icon: Icons.folder_off_rounded,
+                icon: AppIcons.folderOff,
                 title: 'No music folder yet',
                 message: 'Select a music folder in Home to fill this out.',
               );
@@ -105,7 +107,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           },
           loading: () => const AppLoading(),
           error: (e, s) => AppEmptyState(
-            icon: Icons.error_outline_rounded,
+            icon: AppIcons.error,
             title: 'Could not find your music folder',
             message: '$e',
             tone: AppTone.danger,
@@ -113,7 +115,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
         loading: () => const AppLoading(),
         error: (e, s) => AppEmptyState(
-          icon: Icons.error_outline_rounded,
+          icon: AppIcons.error,
           title: isRoot ? 'Could not load library' : 'Could not open folder',
           message: '$e',
           tone: AppTone.danger,
@@ -155,7 +157,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       children: [
                         const SortMenu(),
                         IconButton(
-                          icon: const Icon(Icons.shuffle_rounded),
+                          icon: const AppIcon(AppIcons.shuffle),
                           tooltip: 'Shuffle all',
                           onPressed: () {
                             if (songs.isNotEmpty) {
@@ -188,7 +190,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             loading: () => const AppLoading(),
             error: (e, s) => AppEmptyState(
-              icon: Icons.error_outline_rounded,
+              icon: AppIcons.error,
               title: 'Could not load library',
               message: '$e',
               tone: AppTone.danger,
@@ -239,7 +241,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
           return AppListRow(
             leading: const AppRowIcon(
-              icon: Icons.favorite_rounded,
+              icon: AppIcons.favorite,
               color: AppTokens.danger,
             ),
             title: 'Favorites',
@@ -263,13 +265,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
           return AppListRow(
             leading: AppRowIcon(
-              icon: Icons.merge_type_rounded,
+              icon: AppIcons.merge,
               color: AppTokens.accentOf(context, ref),
             ),
             title: 'Merged Songs',
             subtitle: '$mergedCount group${mergedCount != 1 ? 's' : ''}',
             trailing: IconButton(
-              icon: const Icon(Icons.add_rounded),
+              icon: const AppIcon(AppIcons.add),
               tooltip: 'Create new merge group',
               onPressed: () async {
                 final result = await context.pushApp<Map<String, dynamic>>(
@@ -331,14 +333,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               compact: true,
             ),
             trailing: IconButton(
-              icon: const Icon(Icons.more_vert_rounded),
+              icon: const AppIcon(AppIcons.moreVert),
               tooltip: 'Playlist options',
               onPressed: () {
                 showAppSheet(
                   context,
                   title: playlist.name,
                   builder: (sheetContext) => AppSheetAction(
-                    icon: Icons.delete_outline_rounded,
+                    icon: AppIcons.delete,
                     label: 'Delete playlist',
                     isDanger: true,
                     onTap: () {
@@ -382,7 +384,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             compact: true,
           ),
           trailing: IconButton(
-            icon: const Icon(Icons.more_vert_rounded),
+            icon: const AppIcon(AppIcons.moreVert),
             tooltip: 'Folder options',
             onPressed: () {
               // Absolute, because the tree root is not necessarily the
@@ -442,7 +444,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   const SortMenu(),
                   if (content.allSongsInFolder.isNotEmpty)
                     IconButton(
-                      icon: const Icon(Icons.shuffle_rounded),
+                      icon: const AppIcon(AppIcons.shuffle),
                       tooltip: 'Shuffle folder',
                       onPressed: () => audioManager.shuffleAndPlay(
                         content.allSongsInFolder,
@@ -482,7 +484,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       },
       loading: () => const AppLoading(),
       error: (e, s) => AppEmptyState(
-        icon: Icons.error_outline_rounded,
+        icon: AppIcons.error,
         title: 'Could not load artists',
         message: '$e',
         tone: AppTone.danger,
@@ -506,7 +508,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       },
       loading: () => const AppLoading(),
       error: (e, s) => AppEmptyState(
-        icon: Icons.error_outline_rounded,
+        icon: AppIcons.error,
         title: 'Could not load albums',
         message: '$e',
         tone: AppTone.danger,
@@ -529,7 +531,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     if (entries.isEmpty) {
       return AppEmptyState(
-        icon: Icons.library_music_rounded,
+        icon: AppIcons.library,
         title: emptyTitle,
         message: 'Scan a music folder to fill this out.',
       );

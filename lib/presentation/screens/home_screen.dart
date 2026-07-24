@@ -27,6 +27,8 @@ import '../components/app_section_header.dart';
 import '../components/app_sheet.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
@@ -181,8 +183,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           isGridItem: true,
         ),
         badge: isPinned
-            ? Icon(
-                Icons.push_pin_rounded,
+            ? AppIcon(
+                AppIcons.pushPin,
                 size: 14,
                 color: AppTokens.accentOf(context, ref),
               )
@@ -285,7 +287,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             Navigator.push(context, PlayerPageRoute()),
                       );
                     },
-                    icon: const Icon(Icons.play_arrow_rounded),
+                    icon: const AppIcon(AppIcons.play),
                     label: const Text('Play Now'),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(double.infinity, 50),
@@ -307,7 +309,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         onAction: audioManager.cancelPendingQueueReplacement,
                       );
                     },
-                    icon: const Icon(Icons.skip_next_rounded),
+                    icon: const AppIcon(AppIcons.skipNext),
                     label: const Text('Play After Current Song'),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(double.infinity, 48),
@@ -340,7 +342,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           AppSheetAction(
-            icon: Icons.playlist_add_rounded,
+            icon: AppIcons.playlistAdd,
             label: 'Save to new playlist',
             onTap: () async {
               Navigator.pop(sheetContext);
@@ -368,7 +370,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           ),
           AppSheetAction(
-            icon: isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+            icon: isPinned ? AppIcons.pushPin : AppIcons.pushPin,
             label: isPinned ? 'Unpin' : 'Pin recommendation',
             onTap: () {
               Navigator.pop(sheetContext);
@@ -382,7 +384,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           ),
           AppSheetAction(
-            icon: Icons.edit_rounded,
+            icon: AppIcons.edit,
             label: 'Rename recommendation',
             onTap: () async {
               Navigator.pop(sheetContext);
@@ -401,7 +403,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           ),
           AppSheetAction(
-            icon: Icons.delete_outline_rounded,
+            icon: AppIcons.delete,
             label: 'Remove recommendation',
             isDanger: true,
             onTap: () async {
@@ -449,22 +451,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: songsAsyncValue.when(
         loading: () => const AppLoading(),
         error: (error, stack) => AppEmptyState(
-          icon: Icons.error_outline_rounded,
+          icon: AppIcons.error,
           title: 'Something went wrong',
           message: error.toString(),
           tone: AppTone.danger,
           actionLabel: 'Try Again',
-          actionIcon: Icons.refresh_rounded,
+          actionIcon: AppIcons.refresh,
           onAction: () => ref.invalidate(songsProvider),
         ),
         data: (songs) {
           if (songs.isEmpty) {
             return AppEmptyState(
-              icon: Icons.music_off_rounded,
+              icon: AppIcons.musicOff,
               title: 'No songs found',
               message: 'Select your music folder to start listening offline.',
               actionLabel: 'Select Music Folder',
-              actionIcon: Icons.folder_open_rounded,
+              actionIcon: AppIcons.folder,
               onAction: _selectMusicFolder,
             );
           }
@@ -506,7 +508,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     actions: [
                       IconButton(
                         tooltip: 'Shuffle all',
-                        icon: Icon(Icons.shuffle_rounded, color: accent),
+                        icon: AppIcon(AppIcons.shuffle, color: accent),
                         onPressed: () => audioManager.shuffleAndPlay(
                           songs,
                           isRestricted: false,
@@ -514,7 +516,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                       IconButton(
                         tooltip: 'Search',
-                        icon: const Icon(Icons.search_rounded),
+                        icon: const AppIcon(AppIcons.search),
                         onPressed: () => context.pushApp(const SearchScreen()),
                       ),
                     ],
@@ -706,8 +708,8 @@ class _HomeQueueArtwork extends StatelessWidget {
       color: AppTokens.surface(1),
       child: songs.isEmpty
           ? Center(
-              child: Icon(
-                Icons.queue_music_rounded,
+              child: AppIcon(
+                AppIcons.queue,
                 size: 40,
                 color: AppTokens.fgTertiary,
               ),
@@ -729,8 +731,8 @@ class _HomeQueueArtwork extends StatelessWidget {
                           fit: BoxFit.cover,
                           errorWidget: ColoredBox(
                             color: fallback,
-                            child: Icon(
-                              Icons.music_note_rounded,
+                            child: AppIcon(
+                              AppIcons.musicNote,
                               color: AppTokens.fgTertiary,
                               size: 18,
                             ),

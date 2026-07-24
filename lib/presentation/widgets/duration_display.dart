@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../models/song.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// "12 tracks · 48:20" — the one-line summary shown under a collection card.
 /// Lives here next to [DurationFormatter] so artists, albums, folders and
@@ -207,8 +209,8 @@ class DurationBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (showIcon) ...[
-            Icon(
-              Icons.schedule,
+            AppIcon(
+              AppIcons.clock,
               size: 12,
               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
             ),

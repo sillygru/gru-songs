@@ -12,6 +12,8 @@ import '../components/app_sheet.dart';
 import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// Parses a multi-artist string and returns individual artist names.
 /// Handles formats like:
@@ -90,7 +92,7 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
                     _searchController.clear();
                   });
                 },
-                icon: const Icon(Icons.arrow_back),
+                icon: const AppIcon(AppIcons.arrowBack),
               )
             : null,
         actions: [
@@ -104,11 +106,11 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
                 }
               });
             },
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            icon: AppIcon(_isSearching ? AppIcons.close : AppIcons.search),
           ),
           IconButton(
             onPressed: () => _showSortOptions(context),
-            icon: const Icon(Icons.sort),
+            icon: const AppIcon(AppIcons.sort),
           ),
         ],
       ),
@@ -127,7 +129,7 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
 
           if (sortedArtists.isEmpty) {
             return const AppEmptyState(
-              icon: Icons.person_rounded,
+              icon: AppIcons.person,
               title: 'No artists found',
               message: 'Add music to your library to see artists.',
             );
@@ -161,7 +163,7 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
         },
         loading: () => const AppLoading(),
         error: (e, _) => AppEmptyState(
-          icon: Icons.error_outline_rounded,
+          icon: AppIcons.error,
           title: 'Could not load artists',
           message: '$e',
           tone: AppTone.danger,
@@ -219,10 +221,8 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
       builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _sortAction(
-              sheetContext, 'name', Icons.sort_by_alpha_rounded, 'Name (A-Z)'),
-          _sortAction(
-              sheetContext, 'songs', Icons.music_note_rounded, 'Most Songs'),
+          _sortAction(sheetContext, 'name', AppIcons.sort, 'Name (A-Z)'),
+          _sortAction(sheetContext, 'songs', AppIcons.musicNote, 'Most Songs'),
         ],
       ),
     );
@@ -231,7 +231,7 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
   Widget _sortAction(
     BuildContext sheetContext,
     String value,
-    IconData icon,
+    AppIconData icon,
     String label,
   ) {
     final selected = _sortBy == value;
@@ -239,7 +239,7 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
       icon: icon,
       label: label,
       trailing: selected
-          ? Icon(Icons.check_rounded, color: AppTokens.accentOf(context, ref))
+          ? AppIcon(AppIcons.tick, color: AppTokens.accentOf(context, ref))
           : null,
       onTap: () {
         setState(() => _sortBy = value);

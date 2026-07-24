@@ -14,6 +14,8 @@ import 'album_art_image.dart';
 import 'song_options_menu.dart';
 import 'audio_visualizer.dart';
 import 'duration_display.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// A song in any of the app's lists.
 ///
@@ -182,8 +184,8 @@ class _Artwork extends StatelessWidget {
                 color: accent.withValues(alpha: 0.72),
                 borderRadius: AppTokens.brSm,
               ),
-              child: Icon(
-                Icons.check_rounded,
+              child: AppIcon(
+                AppIcons.tick,
                 color: AppTokens.onAccent(accent),
                 size: 26,
               ),
@@ -212,7 +214,7 @@ class _Artwork extends StatelessWidget {
                             height: 22,
                             isPlaying: true,
                           )
-                        : const Icon(Icons.graphic_eq_rounded,
+                        : const AppIcon(AppIcons.graphicEq,
                             color: Colors.white, size: 22),
                   ),
                 );
@@ -270,8 +272,8 @@ class _Actions extends ConsumerWidget {
           builder: (btnContext) => IconButton(
             iconSize: 20,
             visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.more_vert_rounded,
+            icon: AppIcon(
+              AppIcons.moreVert,
               color: AppTokens.fgSecondary,
             ),
             onPressed: () {

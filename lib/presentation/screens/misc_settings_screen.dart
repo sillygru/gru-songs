@@ -10,6 +10,8 @@ import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
 import '../tokens/app_tokens.dart';
 import '../widgets/backup_options_dialog.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class MiscSettingsScreen extends ConsumerStatefulWidget {
   const MiscSettingsScreen({super.key});
@@ -45,10 +47,10 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
         children: [
           AppSettingsGroup(
             label: 'Privacy',
-            icon: Icons.security_outlined,
+            icon: AppIcons.security,
             children: [
               AppSettingsSwitch(
-                icon: Icons.analytics_outlined,
+                icon: AppIcons.analytics,
                 title: 'Telemetry',
                 subtitle:
                     'Anonymous usage stats. No personal data is collected.',
@@ -60,10 +62,10 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
           ),
           AppSettingsGroup(
             label: 'Backup',
-            icon: Icons.backup_rounded,
+            icon: AppIcons.cloudUpload,
             children: [
               _dropdownRow(
-                icon: Icons.backup_rounded,
+                icon: AppIcons.cloudUpload,
                 title: 'Auto Backup',
                 subtitle: 'How often a backup is taken',
                 value: settings.autoBackupFrequencyHours,
@@ -79,7 +81,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
               ),
               _contentTypeRow(context, ref),
               _dropdownRow(
-                icon: Icons.delete_outline_rounded,
+                icon: AppIcons.delete,
                 title: 'Auto-Delete Old Backups',
                 subtitle: 'Discard backups older than this',
                 value: settings.autoBackupDeleteAfterDays,
@@ -97,13 +99,13 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
           ),
           AppSettingsGroup(
             label: 'Behavior',
-            icon: Icons.touch_app_outlined,
+            icon: AppIcons.touchApp,
             children: [
               FutureBuilder<bool>(
                 future:
                     ref.read(storageServiceProvider).getPullToRefreshEnabled(),
                 builder: (context, snapshot) => AppSettingsSwitch(
-                  icon: Icons.touch_app_outlined,
+                  icon: AppIcons.touchApp,
                   title: 'Pull to Refresh',
                   subtitle: 'Swipe down to refresh the library',
                   value: snapshot.data ?? true,
@@ -127,10 +129,10 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
 
     return AppListRow(
       dense: true,
-      leading: AppRowIcon(icon: Icons.tune_rounded, color: accent, size: 40),
+      leading: AppRowIcon(icon: AppIcons.tune, color: accent, size: 40),
       title: 'Auto Backup Content',
       subtitle: 'What data is included in automatic backups',
-      trailing: Icon(Icons.chevron_right,
+      trailing: AppIcon(AppIcons.chevronRight,
           color: Theme.of(context).colorScheme.onSurfaceVariant),
       onTap: () => _configureAutoContent(context),
     );
@@ -149,7 +151,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
         title: 'Auto Backup Content',
         subtitle: 'Select content for automatic backups',
         buttonLabel: 'Save',
-        buttonIcon: Icons.save_rounded,
+        buttonIcon: AppIcons.save,
       ),
     );
 
@@ -159,7 +161,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
   }
 
   Widget _dropdownRow({
-    required IconData icon,
+    required AppIconData icon,
     required String title,
     required String subtitle,
     required int value,

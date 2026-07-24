@@ -4,6 +4,8 @@ import '../../services/cache_service.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class CacheManagementScreen extends StatefulWidget {
   const CacheManagementScreen({super.key});
@@ -95,14 +97,14 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 ),
                 const SizedBox(height: 24),
                 ListTile(
-                  leading: const Icon(Icons.refresh),
+                  leading: const AppIcon(AppIcons.refresh),
                   title: const Text("Recalculate Size"),
                   onTap: _calculateSizes,
                 ),
                 const Divider(),
                 ListTile(
                   leading:
-                      const Icon(Icons.delete_outline, color: AppTokens.danger),
+                      const AppIcon(AppIcons.delete, color: AppTokens.danger),
                   title: const Text("Clear Sync Cache",
                       style: TextStyle(color: AppTokens.danger)),
                   onTap: () async {

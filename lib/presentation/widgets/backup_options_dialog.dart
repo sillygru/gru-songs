@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../services/backup_service.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class BackupOptionsDialog extends StatefulWidget {
   final Set<BackupContentType> initialTypes;
   final String title;
   final String subtitle;
   final String buttonLabel;
-  final IconData buttonIcon;
+  final AppIconData buttonIcon;
 
   const BackupOptionsDialog({
     super.key,
@@ -15,7 +17,7 @@ class BackupOptionsDialog extends StatefulWidget {
     this.title = 'Create Backup',
     this.subtitle = 'Select content to backup',
     this.buttonLabel = 'Create',
-    this.buttonIcon = Icons.backup_rounded,
+    this.buttonIcon = AppIcons.cloudUpload,
   });
 
   @override
@@ -72,26 +74,26 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
     }
   }
 
-  IconData _getContentTypeIcon(BackupContentType type) {
+  AppIconData _getContentTypeIcon(BackupContentType type) {
     switch (type) {
       case BackupContentType.userStats:
-        return Icons.analytics_outlined;
+        return AppIcons.analytics;
       case BackupContentType.userData:
-        return Icons.person_outline;
+        return AppIcons.person;
       case BackupContentType.userSettings:
-        return Icons.settings_outlined;
+        return AppIcons.settings;
       case BackupContentType.coverCache:
-        return Icons.album_outlined;
+        return AppIcons.album;
       case BackupContentType.libraryCache:
-        return Icons.library_music_outlined;
+        return AppIcons.library;
       case BackupContentType.searchIndex:
-        return Icons.search_outlined;
+        return AppIcons.search;
       case BackupContentType.waveformCache:
-        return Icons.waves_outlined;
+        return AppIcons.waves;
       case BackupContentType.colorCache:
-        return Icons.palette_outlined;
+        return AppIcons.palette;
       case BackupContentType.lyricsCache:
-        return Icons.lyrics_outlined;
+        return AppIcons.lyrics;
     }
   }
 
@@ -120,7 +122,7 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
               color: theme.colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: AppTokens.brSm,
             ),
-            child: Icon(widget.buttonIcon,
+            child: AppIcon(widget.buttonIcon,
                 color: theme.colorScheme.primary, size: 22),
           ),
           const SizedBox(width: 12),
@@ -179,7 +181,7 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
                               : theme.colorScheme.surfaceContainerHighest,
                           borderRadius: AppTokens.brSm,
                         ),
-                        child: Icon(
+                        child: AppIcon(
                           _getContentTypeIcon(type),
                           size: 17,
                           color: isSelected
@@ -215,10 +217,8 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
                           ],
                         ),
                       ),
-                      Icon(
-                        isSelected
-                            ? Icons.check_circle_rounded
-                            : Icons.circle_outlined,
+                      AppIcon(
+                        isSelected ? AppIcons.checkCircle : AppIcons.circle,
                         color: isSelected
                             ? theme.colorScheme.primary
                             : theme.colorScheme.onSurfaceVariant
@@ -266,7 +266,7 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
                             BackupOptions(contentTypes: _selectedTypes),
                           );
                         },
-                  icon: Icon(widget.buttonIcon, size: 18),
+                  icon: AppIcon(widget.buttonIcon, size: 18),
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: AppTokens.brSm,

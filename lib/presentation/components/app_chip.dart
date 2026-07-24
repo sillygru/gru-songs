@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
 import 'pressable.dart';
+import '../tokens/app_icons.dart';
+import 'app_icon.dart';
 
 /// A selectable pill — filter chips, choice chips, tag toggles.
 ///
@@ -15,7 +17,7 @@ class AppChip extends StatelessWidget {
   final VoidCallback onTap;
 
   /// Leading glyph, e.g. a filter icon.
-  final IconData? icon;
+  final AppIconData? icon;
 
   /// Accent for the selected state. Defaults to the theme (cover) accent.
   final Color? accent;
@@ -54,7 +56,7 @@ class AppChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 16, color: fg),
+              AppIcon(icon!, size: 16, color: fg),
               const SizedBox(width: AppTokens.s1),
             ],
             Text(

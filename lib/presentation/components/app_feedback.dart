@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
+import 'app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// Severity of a transient message or banner. Replaces the
 /// `Colors.blue.shade700` / `orange.shade800` / `green.shade700` /
@@ -42,7 +44,7 @@ void appSnack(
         content: Row(
           children: [
             if (tone != AppTone.neutral) ...[
-              Icon(_iconFor(tone), size: 18, color: accent),
+              AppIcon(_iconFor(tone), size: 18, color: accent),
               const SizedBox(width: AppTokens.s3),
             ],
             Expanded(child: Text(message)),
@@ -59,11 +61,11 @@ void appSnack(
     );
 }
 
-IconData _iconFor(AppTone tone) => switch (tone) {
-      AppTone.success => Icons.check_circle_rounded,
-      AppTone.warning => Icons.warning_amber_rounded,
-      AppTone.danger => Icons.error_rounded,
-      _ => Icons.info_rounded,
+AppIconData _iconFor(AppTone tone) => switch (tone) {
+      AppTone.success => AppIcons.checkCircle,
+      AppTone.warning => AppIcons.warning,
+      AppTone.danger => AppIcons.error,
+      _ => AppIcons.info,
     };
 
 /// The floating status pill used for scanning, metadata saves and auto-backup
@@ -76,7 +78,7 @@ class AppStatusBanner extends StatelessWidget {
   /// Shows a spinner in place of the icon, for in-flight work.
   final bool busy;
 
-  final IconData? icon;
+  final AppIconData? icon;
 
   /// Determinate progress, 0..1. Drawn as a hairline under the pill.
   final double? progress;
@@ -124,7 +126,7 @@ class AppStatusBanner extends StatelessWidget {
                     ),
                   )
                 else
-                  Icon(icon ?? _iconFor(tone), size: 15, color: accent),
+                  AppIcon(icon ?? _iconFor(tone), size: 15, color: accent),
                 const SizedBox(width: AppTokens.s2),
                 Flexible(
                   child: Text(
@@ -166,12 +168,12 @@ class AppStatusBanner extends StatelessWidget {
 /// Home alone had three variations of icon + headline + body + button; this is
 /// all of them.
 class AppEmptyState extends StatelessWidget {
-  final IconData icon;
+  final AppIconData icon;
   final String title;
   final String? message;
 
   final String? actionLabel;
-  final IconData? actionIcon;
+  final AppIconData? actionIcon;
   final VoidCallback? onAction;
 
   final AppTone tone;
@@ -195,7 +197,7 @@ class AppEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            AppIcon(
               icon,
               size: 56,
               color: tone == AppTone.neutral
@@ -221,7 +223,7 @@ class AppEmptyState extends StatelessWidget {
               if (actionIcon != null)
                 FilledButton.icon(
                   onPressed: onAction,
-                  icon: Icon(actionIcon, size: 18),
+                  icon: AppIcon(actionIcon!, size: 18),
                   label: Text(actionLabel!),
                 )
               else
@@ -268,7 +270,7 @@ class AppLoading extends StatelessWidget {
 class AppStatTile extends StatelessWidget {
   final String label;
   final String value;
-  final IconData? icon;
+  final AppIconData? icon;
 
   const AppStatTile({
     super.key,
@@ -283,7 +285,8 @@ class AppStatTile extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+          AppIcon(icon!,
+              size: 18, color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: AppTokens.s1),
         ],
         Text(value, style: AppTokens.stat(context)),

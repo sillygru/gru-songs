@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../services/cover_refresh_service.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class AlbumArtImage extends StatefulWidget {
   final String url;
@@ -201,7 +203,7 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
       height: widget.height,
       color: const Color(0xFF1E1E1E),
       child: const Center(
-        child: Icon(Icons.music_note, color: Colors.white24),
+        child: AppIcon(AppIcons.musicNote, color: Colors.white24),
       ),
     );
   }
@@ -325,7 +327,7 @@ class StaticAlbumArtImage extends StatelessWidget {
       height: height,
       color: const Color(0xFF1E1E1E),
       child: const Center(
-        child: Icon(Icons.music_note, color: Colors.white24),
+        child: AppIcon(AppIcons.musicNote, color: Colors.white24),
       ),
     );
   }

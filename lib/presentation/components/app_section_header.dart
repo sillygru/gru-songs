@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
+import '../tokens/app_icons.dart';
+import 'app_icon.dart';
 
 /// Section label with an optional trailing action — the app's counterpart to
 /// [PlayerSectionHeader], so a "Recent Queues / See All" row on Home and an
@@ -14,7 +16,7 @@ class AppSectionHeader extends StatelessWidget {
   final bool large;
 
   /// Optional icon before the label, for settings groups.
-  final IconData? icon;
+  final AppIconData? icon;
 
   final String? actionLabel;
   final VoidCallback? onActionTap;
@@ -49,7 +51,7 @@ class AppSectionHeader extends StatelessWidget {
       child: Row(
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 15, color: accent),
+            AppIcon(icon!, size: 15, color: accent),
             const SizedBox(width: AppTokens.s2),
           ],
           Expanded(

@@ -16,6 +16,8 @@ import '../components/app_section_header.dart';
 import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -88,7 +90,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           actions: [
             if (_query.isNotEmpty)
               IconButton(
-                icon: const Icon(Icons.clear),
+                icon: const AppIcon(AppIcons.close),
                 onPressed: _clearSearch,
               ),
           ],
@@ -111,7 +113,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   Widget _buildEmptyState(BuildContext context) {
     return const AppEmptyState(
-      icon: Icons.search_rounded,
+      icon: AppIcons.search,
       title: 'Search your music collection',
       message: 'Find songs, artists, albums, and lyrics.',
     );
@@ -148,7 +150,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       },
       loading: () => const AppLoading(),
       error: (err, stack) => AppEmptyState(
-        icon: Icons.error_outline_rounded,
+        icon: AppIcons.error,
         title: 'Could not search',
         message: '$err',
         tone: AppTone.danger,
@@ -158,7 +160,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   Widget _buildNoResultsState(BuildContext context) {
     return AppEmptyState(
-      icon: Icons.search_off_rounded,
+      icon: AppIcons.searchOff,
       title: 'No results found for "$_query"',
       message: 'Try different keywords or check your filters.',
     );

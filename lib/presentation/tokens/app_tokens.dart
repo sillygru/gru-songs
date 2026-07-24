@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'player_tokens.dart';
 
+/// The z-layer a surface lives on. Drives both its fill and its shadow through
+/// [AppTokens.fillFor] / [AppTokens.shadowFor], so the whole app shares one
+/// sense of depth. See the "depth ladder" section in [AppTokens].
+enum AppDepth { well, raised, floating }
+
 /// Design tokens for everything *outside* the unified player.
 ///
 /// The player already runs on [PlayerTokens]; this file deliberately aliases
@@ -10,9 +15,9 @@ import 'player_tokens.dart';
 /// cannot drift apart. If a number needs to change, it changes in one place.
 ///
 /// Where the player earns its depth from blurred glass over cover art, the app
-/// has no cover backdrop — so depth here comes from a flat tonal ladder
-/// instead: a raised surface is a slightly lighter fill, never an outline and
-/// never a shadow.
+/// builds depth from a layered ladder instead (see "depth ladder" below): a
+/// raised surface is a lighter fill lifted by a soft shadow, a recessed well
+/// is a darker fill sunk into the canvas — never an outline, never glass.
 class AppTokens {
   const AppTokens._();
 
@@ -99,6 +104,76 @@ class AppTokens {
         foregroundColor: fgPrimary,
       );
 
+  // --------------------------------------------------------- depth ladder
+  // The flat tonal ladder above says "how light"; this says "how far off the
+  // page". Every surface in the app maps to exactly one of these layers, and
+  // its layer is what gives it weight — a raised card sits on a lighter fill
+  // AND casts a soft shadow, a recessed well sinks below the canvas by going
+  // *darker* with no shadow at all. No glass, no outlines: the light-vs-shadow
+  // pairing is the whole depth cue.
+  //
+  //   canvas  (L0)  the cover-tinted app background — the darkest plane
+  //   well    (L-1) recessed/heavier: search fields, inputs, progress tracks
+  //   raised  (L1)  cards, tiles, grouped row blocks, sheets
+  //   floating(L2)  nav dock, now-playing bar, dialogs, the song-options popup
+
+  /// A recessed well is *darker* than the canvas — a black wash, not a white
+  /// one — so it reads as sunk in rather than lifted.
+  static const double wellAlpha = 0.22;
+  static Color get wellFill => Colors.black.withValues(alpha: wellAlpha);
+
+  /// Raised and floating fills lighten the surface; the shadow does the lifting.
+  static const double raisedAlpha = 0.05;
+  static const double floatingAlpha = 0.075;
+  static Color get raisedFill => Colors.white.withValues(alpha: raisedAlpha);
+  static Color get floatingFill =>
+      Colors.white.withValues(alpha: floatingAlpha);
+
+  /// Soft, wide, low-opacity — two stacked shadows (a broad ambient one and a
+  /// tighter contact one) so the edge reads without a hard drop line.
+  static const List<BoxShadow> shadowRaised = [
+    BoxShadow(
+      color: Color(0x40000000),
+      blurRadius: 18,
+      offset: Offset(0, 8),
+      spreadRadius: -6,
+    ),
+    BoxShadow(
+      color: Color(0x24000000),
+      blurRadius: 6,
+      offset: Offset(0, 2),
+      spreadRadius: -2,
+    ),
+  ];
+
+  /// Larger and softer — for the L2 plane that floats over everything.
+  static const List<BoxShadow> shadowFloating = [
+    BoxShadow(
+      color: Color(0x59000000),
+      blurRadius: 32,
+      offset: Offset(0, 16),
+      spreadRadius: -8,
+    ),
+    BoxShadow(
+      color: Color(0x30000000),
+      blurRadius: 10,
+      offset: Offset(0, 4),
+      spreadRadius: -3,
+    ),
+  ];
+
+  static Color fillFor(AppDepth depth) => switch (depth) {
+        AppDepth.well => wellFill,
+        AppDepth.raised => raisedFill,
+        AppDepth.floating => floatingFill,
+      };
+
+  static List<BoxShadow> shadowFor(AppDepth depth) => switch (depth) {
+        AppDepth.well => const [],
+        AppDepth.raised => shadowRaised,
+        AppDepth.floating => shadowFloating,
+      };
+
   // ------------------------------------------------------- foreground ladder
   static const double aPrimary = PlayerTokens.aPrimary; // 1.0
   static const double aSecondary = PlayerTokens.aSecondary; // 0.66
@@ -140,11 +215,12 @@ class AppTokens {
   static Color onAccent(Color background) => PlayerTokens.onAccent(background);
 
   // -------------------------------------------------------------- type ramp
-  /// Large screen title — the app's loudest text, used once per screen.
+  /// Large screen title — the app's loudest text, used once per screen. Calmer
+  /// than a display face (w700, gentle tracking): refined, not shouting.
   static TextStyle screenTitle(BuildContext context) => const TextStyle(
-        fontWeight: FontWeight.w900,
+        fontWeight: FontWeight.w700,
         fontSize: 26,
-        letterSpacing: -0.9,
+        letterSpacing: -0.5,
         color: Colors.white,
       );
 
@@ -169,17 +245,17 @@ class AppTokens {
 
   /// The number in a stat tile.
   static TextStyle stat(BuildContext context) => const TextStyle(
-        fontWeight: FontWeight.w900,
+        fontWeight: FontWeight.w800,
         fontSize: 22,
-        letterSpacing: -0.8,
+        letterSpacing: -0.5,
         color: Colors.white,
       );
 
   /// Title under a media card in a carousel or grid.
   static TextStyle cardTitle(BuildContext context) => const TextStyle(
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         fontSize: 15,
-        letterSpacing: -0.4,
+        letterSpacing: -0.3,
         color: Colors.white,
       );
 

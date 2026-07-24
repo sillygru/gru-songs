@@ -11,6 +11,8 @@ import '../widgets/album_art_image.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
 import '../dialogs/lyrics_search_sheet.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class EditMetadataScreen extends ConsumerStatefulWidget {
   final Song song;
@@ -166,7 +168,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                         ),
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Icon(Icons.arrow_forward),
+                          child: AppIcon(AppIcons.arrowForward),
                         ),
                         Expanded(
                           child: Column(
@@ -201,7 +203,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                         TextButton.icon(
                           onPressed: () =>
                               setState(() => showAlternatives = true),
-                          icon: const Icon(Icons.grid_view),
+                          icon: const AppIcon(AppIcons.gridView),
                           label: const Text("See Alternatives"),
                         )
                       else
@@ -293,7 +295,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
       builder: (context) => AlertDialog(
         title: Row(
           children: const [
-            Icon(Icons.auto_fix_high),
+            AppIcon(AppIcons.autoFix),
             SizedBox(width: 8),
             Text("Fix Thumbnail"),
           ],
@@ -446,7 +448,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                     children: [
                       FilledButton.icon(
                         onPressed: () => _pickImage(currentSong),
-                        icon: const Icon(Icons.image_rounded),
+                        icon: const AppIcon(AppIcons.image),
                         label: const Text("Change Cover"),
                         style: AppTokens.tonalButton,
                       ),
@@ -458,14 +460,14 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                               onPressed: currentSong.coverUrl == null
                                   ? null
                                   : () => _fixThumbnail(currentSong),
-                              icon: const Icon(Icons.auto_fix_high_rounded),
+                              icon: const AppIcon(AppIcons.autoFix),
                               label: const Text("Fix Thumbnail"),
                               style: AppTokens.tonalButton,
                             ),
                           ),
                           IconButton(
                             onPressed: _showFixHelp,
-                            icon: const Icon(Icons.help_outline_rounded),
+                            icon: const AppIcon(AppIcons.help),
                             tooltip: "What does this do?",
                           ),
                         ],
@@ -478,7 +480,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                               onPressed: currentSong.coverUrl == null
                                   ? null
                                   : () => _exportImage(currentSong),
-                              icon: const Icon(Icons.download_rounded),
+                              icon: const AppIcon(AppIcons.download),
                               label: const Text("Export"),
                               style: AppTokens.tonalButton,
                             ),
@@ -489,7 +491,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                               onPressed: currentSong.coverUrl == null
                                   ? null
                                   : () => _removeImage(currentSong),
-                              icon: const Icon(Icons.delete_rounded),
+                              icon: const AppIcon(AppIcons.delete),
                               label: const Text("Remove"),
                               style: FilledButton.styleFrom(
                                 backgroundColor: AppTokens.surface(2),
@@ -545,10 +547,10 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
             _buildSectionTitle("Additional Content"),
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.lyrics_outlined),
+              leading: const AppIcon(AppIcons.lyrics),
               title: const Text("Edit Lyrics"),
               subtitle: const Text("View or edit embedded lyrics"),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const AppIcon(AppIcons.chevronRight),
               shape: RoundedRectangleBorder(
                 borderRadius: AppTokens.brSm,
                 side: BorderSide(color: AppTokens.fgTertiary),
@@ -667,7 +669,7 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
         title: const Text("Edit Lyrics"),
         actions: [
           IconButton(
-            icon: const Icon(Icons.travel_explore_rounded),
+            icon: const AppIcon(AppIcons.travelExplore),
             tooltip: "Search online",
             onPressed: _isSaving ? null : _searchOnline,
           ),

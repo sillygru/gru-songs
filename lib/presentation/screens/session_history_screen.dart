@@ -6,6 +6,8 @@ import '../../providers/session_history_provider.dart';
 import 'session_detail_screen.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class SessionHistoryScreen extends ConsumerWidget {
   const SessionHistoryScreen({super.key});
@@ -21,7 +23,7 @@ class SessionHistoryScreen extends ConsumerWidget {
         actions: [
           IconButton(
             onPressed: () => ref.refresh(sessionHistoryProvider),
-            icon: const Icon(Icons.refresh),
+            icon: const AppIcon(AppIcons.refresh),
           ),
         ],
       ),
@@ -37,7 +39,7 @@ class SessionHistoryScreen extends ConsumerWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+              AppIcon(AppIcons.error, size: 48, color: colorScheme.error),
               const SizedBox(height: 16),
               Text(
                 'Failed to load sessions',
@@ -67,8 +69,8 @@ class SessionHistoryScreen extends ConsumerWidget {
               color: colorScheme.primaryContainer.withValues(alpha: 0.5),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              Icons.history_rounded,
+            child: AppIcon(
+              AppIcons.clock,
               size: 64,
               color: colorScheme.primary.withValues(alpha: 0.7),
             ),
@@ -212,8 +214,8 @@ class SessionHistoryScreen extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Icon(
-                        Icons.access_time_rounded,
+                      AppIcon(
+                        AppIcons.clock,
                         size: 14,
                         color: colorScheme.onPrimaryContainer
                             .withValues(alpha: 0.7),
@@ -238,8 +240,8 @@ class SessionHistoryScreen extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(
-                            Icons.timer_outlined,
+                          AppIcon(
+                            AppIcons.timer,
                             size: 14,
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -257,8 +259,8 @@ class SessionHistoryScreen extends ConsumerWidget {
                   ),
                 ),
                 // Arrow
-                Icon(
-                  Icons.chevron_right_rounded,
+                AppIcon(
+                  AppIcons.chevronRight,
                   color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                 ),
               ],

@@ -17,6 +17,8 @@ import '../tokens/app_tokens.dart';
 import 'settings_screen.dart';
 import 'backup_management_screen.dart';
 import 'custom_shuffle_settings_screen.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
@@ -221,7 +223,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     child: ClipRRect(
                       borderRadius: AppTokens.brMd,
                       child: ExpansionTile(
-                        leading: Icon(Icons.insights_rounded, color: accent),
+                        leading: AppIcon(AppIcons.analytics, color: accent),
                         title: const Text('Fun Stats'),
                         subtitle: const Text('Your listening habits analyzed'),
                         shape: const Border(),
@@ -369,7 +371,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       child: AppSurfaceGroup(
                         children: [
                           _navRow(
-                            icon: Icons.tune_rounded,
+                            icon: AppIcons.tune,
                             title: 'Configure Custom Shuffle',
                             subtitle: 'Adjust shuffle behavior settings',
                             accent: accent,
@@ -394,7 +396,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   child: AppSurfaceGroup(
                     children: [
                       _navRow(
-                        icon: Icons.person_outline_rounded,
+                        icon: AppIcons.person,
                         title: 'Change Display Name',
                         subtitle: 'Current: ${authState.username}',
                         accent: accent,
@@ -402,7 +404,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             _showChangeUsernameDialog(authState.username),
                       ),
                       _navRow(
-                        icon: Icons.backup_rounded,
+                        icon: AppIcons.cloudUpload,
                         title: 'Manage Backups',
                         subtitle: 'Create, restore, and manage app backups',
                         accent: accent,
@@ -410,7 +412,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             context.pushApp(const BackupManagementScreen()),
                       ),
                       _navRow(
-                        icon: Icons.settings_rounded,
+                        icon: AppIcons.settings,
                         title: 'Settings',
                         subtitle: 'Theme & storage',
                         accent: accent,
@@ -432,7 +434,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _navRow({
-    required IconData icon,
+    required AppIconData icon,
     required String title,
     required String subtitle,
     required Color accent,
@@ -443,8 +445,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       title: title,
       subtitle: subtitle,
       onTap: onTap,
-      trailing: Icon(
-        Icons.chevron_right_rounded,
+      trailing: AppIcon(
+        AppIcons.chevronRight,
         size: 20,
         color: AppTokens.fgTertiary,
       ),

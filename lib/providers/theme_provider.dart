@@ -1,13 +1,12 @@
 import 'dart:ui';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../theme/app_theme.dart';
 import '../services/color_extraction_service.dart';
 
+/// The theme has exactly one input: the palette extracted from the current
+/// cover. There are no modes to persist — the artwork is the theme (see
+/// [AppTheme]). This state just carries the live palette and the song it
+/// belongs to.
 class ThemeState {
-  final AppThemeMode mode;
-  final bool useCoverColor;
-  final bool applyCoverColorToAll;
   final ExtractedPalette? extractedPalette;
 
   /// The song [extractedPalette] belongs to. Extraction is asynchronous, so
@@ -16,9 +15,6 @@ class ThemeState {
   final String? paletteFilename;
 
   ThemeState({
-    required this.mode,
-    this.useCoverColor = false,
-    this.applyCoverColorToAll = false,
     this.extractedPalette,
     this.paletteFilename,
   });
@@ -31,29 +27,8 @@ class ThemeState {
 
   List<Color> get palette => extractedPalette?.palette ?? [];
 
-  ThemeState copyWith({
-    AppThemeMode? mode,
-    bool? useCoverColor,
-    bool? applyCoverColorToAll,
-    ExtractedPalette? extractedPalette,
-    String? paletteFilename,
-  }) {
-    return ThemeState(
-      mode: mode ?? this.mode,
-      useCoverColor: useCoverColor ?? this.useCoverColor,
-      applyCoverColorToAll: applyCoverColorToAll ?? this.applyCoverColorToAll,
-      extractedPalette: extractedPalette ?? this.extractedPalette,
-      paletteFilename: paletteFilename ?? this.paletteFilename,
-    );
-  }
-
-  /// `copyWith` cannot express "clear the palette", since a null argument means
-  /// "keep the current value" there.
   ThemeState withPalette(ExtractedPalette? palette, String? filename) {
     return ThemeState(
-      mode: mode,
-      useCoverColor: useCoverColor,
-      applyCoverColorToAll: applyCoverColorToAll,
       extractedPalette: palette,
       paletteFilename: filename,
     );
@@ -62,51 +37,7 @@ class ThemeState {
 
 class ThemeNotifier extends Notifier<ThemeState> {
   @override
-  ThemeState build() {
-    _loadSettings();
-    return ThemeState(mode: AppThemeMode.matchCover);
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final themeName = prefs.getString('theme_mode');
-    final useCover = prefs.getBool('use_cover_color') ?? false;
-    final applyAll = prefs.getBool('apply_cover_color_to_all') ?? false;
-
-    AppThemeMode mode = AppThemeMode.matchCover;
-    if (themeName != null) {
-      try {
-        mode = AppThemeMode.values.firstWhere(
-          (e) => e.toString() == themeName,
-        );
-      } catch (_) {
-        mode = AppThemeMode.matchCover;
-        await prefs.setString('theme_mode', mode.toString());
-      }
-    }
-
-    state = ThemeState(
-      mode: mode,
-      useCoverColor: useCover,
-      applyCoverColorToAll: applyAll,
-    );
-  }
-
-  Future<void> setTheme(AppThemeMode mode) async {
-    final bool useCover = mode == AppThemeMode.matchCover;
-    final bool applyAll = mode == AppThemeMode.matchCover;
-
-    state = state.copyWith(
-      mode: mode,
-      useCoverColor: useCover,
-      applyCoverColorToAll: applyAll,
-    );
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('theme_mode', mode.toString());
-    await prefs.setBool('use_cover_color', useCover);
-    await prefs.setBool('apply_cover_color_to_all', applyAll);
-  }
+  ThemeState build() => ThemeState();
 
   /// Applies the palette extracted for [forFilename].
   ///

@@ -5,6 +5,8 @@ import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../components/song_actions.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 void showSongOptionsMenu(
   BuildContext context,
@@ -211,7 +213,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
   }
 
   Widget _submenuEntry({
-    required IconData icon,
+    required AppIconData icon,
     required String label,
     required String subtitle,
     required VoidCallback onTap,
@@ -228,7 +230,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
               .withValues(alpha: 0.15),
           borderRadius: AppTokens.brSm,
         ),
-        child: Icon(icon, size: 18, color: iconColor),
+        child: AppIcon(icon, size: 18, color: iconColor),
       ),
       title: Text(label),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -237,7 +239,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
   }
 
   Widget _sectionCard({
-    required IconData icon,
+    required AppIconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -261,7 +263,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                   color: color.withValues(alpha: 0.2),
                   borderRadius: AppTokens.brSm,
                 ),
-                child: Icon(icon, size: 18, color: color),
+                child: AppIcon(icon, size: 18, color: color),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -288,8 +290,8 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
+              AppIcon(
+                AppIcons.chevronRight,
                 color: Theme.of(context)
                     .colorScheme
                     .onSurfaceVariant
@@ -314,7 +316,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       children: [
         if (hasSongActions)
           _sectionCard(
-            icon: Icons.play_arrow_rounded,
+            icon: AppIcons.play,
             title: 'Playback',
             subtitle: 'Queue, playlist, and share actions',
             onTap: () => _goTo(_SongMenuView.playback),
@@ -322,14 +324,14 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         if (hasSongActions) const SizedBox(height: 8),
         if (hasSongActions)
           _sectionCard(
-            icon: Icons.folder_open_rounded,
+            icon: AppIcons.folder,
             title: 'Library',
             subtitle: 'Move song and edit metadata',
             onTap: () => _goTo(_SongMenuView.library),
           ),
         if (hasSongActions) const SizedBox(height: 8),
         _sectionCard(
-          icon: Icons.favorite_rounded,
+          icon: AppIcons.favorite,
           title: 'Personalize',
           subtitle: 'Favorite and recommendation settings',
           onTap: () => _goTo(_SongMenuView.personalize),
@@ -340,7 +342,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         if (hasSongActions) const SizedBox(height: 8),
         if (hasSongActions)
           _sectionCard(
-            icon: Icons.delete_outline_rounded,
+            icon: AppIcons.delete,
             title: 'Danger Zone',
             subtitle: 'Remove from playlist or delete song',
             onTap: () => _goTo(_SongMenuView.danger),
@@ -355,13 +357,13 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       key: const ValueKey(_SongMenuView.playback),
       children: [
         _submenuEntry(
-          icon: Icons.queue_music_rounded,
+          icon: AppIcons.queue,
           label: 'Play Next',
           subtitle: 'Add song to play immediately after current track',
           onTap: _handlePlayNext,
         ),
         _submenuEntry(
-          icon: Icons.queue_music_rounded,
+          icon: AppIcons.queue,
           label: 'Play Next (Allow Duplicate)',
           subtitle: 'Add again even if already in queue',
           onTap: () async {
@@ -381,19 +383,19 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           },
         ),
         _submenuEntry(
-          icon: Icons.playlist_add_rounded,
+          icon: AppIcons.playlistAdd,
           label: 'Add to Playlist',
           subtitle: 'Quick add to your most recent playlist',
           onTap: _handleAddToPlaylist,
         ),
         _submenuEntry(
-          icon: Icons.playlist_add_circle_outlined,
+          icon: AppIcons.playlistAdd,
           label: 'Add to New Playlist',
           subtitle: 'Create a playlist and add this song',
           onTap: _handleAddToNewPlaylist,
         ),
         _submenuEntry(
-          icon: Icons.share_rounded,
+          icon: AppIcons.share,
           label: 'Share',
           subtitle: 'Share the audio file externally',
           onTap: _handleShare,
@@ -407,19 +409,19 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       key: const ValueKey(_SongMenuView.library),
       children: [
         _submenuEntry(
-          icon: Icons.drive_file_move_outline,
+          icon: AppIcons.folderMove,
           label: 'Move to Folder',
           subtitle: 'Move this file to another folder',
           onTap: _handleMoveToFolder,
         ),
         _submenuEntry(
-          icon: Icons.playlist_add_check_rounded,
+          icon: AppIcons.playlistAdd,
           label: 'Manage Playlists',
           subtitle: 'Add or remove from playlists',
           onTap: _handleManagePlaylists,
         ),
         _submenuEntry(
-          icon: Icons.edit_outlined,
+          icon: AppIcons.edit,
           label: 'Edit Metadata',
           subtitle: 'Open metadata editor',
           onTap: _handleEditMetadata,
@@ -436,14 +438,14 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       key: const ValueKey(_SongMenuView.personalize),
       children: [
         _submenuEntry(
-          icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border,
+          icon: isFavorite ? AppIcons.favorite : AppIcons.favorite,
           iconColor: isFavorite ? AppTokens.danger : null,
           label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
           subtitle: 'Tune your favorite songs list',
           onTap: () => _toggleFavorite(isFavorite),
         ),
         _submenuEntry(
-          icon: Icons.heart_broken_outlined,
+          icon: AppIcons.heartBroken,
           iconColor: isSuggestLess ? AppTokens.fgTertiary : null,
           label: isSuggestLess ? 'Suggest More' : 'Suggest Less',
           subtitle: 'Adjust how often this song appears in suggestions',
@@ -459,21 +461,21 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       children: [
         if (widget.playlistId != null)
           _submenuEntry(
-            icon: Icons.playlist_remove_rounded,
+            icon: AppIcons.playlistRemove,
             iconColor: AppTokens.danger,
             label: 'Remove from Current Playlist',
             subtitle: 'Keep file, remove playlist mapping',
             onTap: _handleRemoveFromCurrentPlaylist,
           ),
         _submenuEntry(
-          icon: Icons.visibility_off_rounded,
+          icon: AppIcons.visibilityOff,
           iconColor: AppTokens.fgTertiary,
           label: 'Remove from Library',
           subtitle: 'Keep file but hide from the library',
           onTap: _handleHideFromLibrary,
         ),
         _submenuEntry(
-          icon: Icons.delete_outline_rounded,
+          icon: AppIcons.delete,
           iconColor: AppTokens.danger,
           label: 'Delete Permanently',
           subtitle: 'Delete the file from the device',
@@ -565,7 +567,10 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           AppTokens.surface(2),
           theme.scaffoldBackgroundColor,
         ),
-        elevation: 0,
+        // The options popup is the top-most floating plane — lift it clearly
+        // off the dimmed page.
+        elevation: 16,
+        shadowColor: const Color(0x73000000),
         borderRadius: AppTokens.brLg,
         clipBehavior: Clip.antiAlias,
         child: Builder(
@@ -581,7 +586,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                   children: [
                     if (canGoBack)
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_rounded),
+                        icon: const AppIcon(AppIcons.arrowBack),
                         onPressed: () => _goTo(_SongMenuView.root),
                         tooltip: 'Back',
                       )
@@ -616,7 +621,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const AppIcon(AppIcons.close),
                       onPressed: _closePopup,
                       tooltip: 'Close',
                     ),

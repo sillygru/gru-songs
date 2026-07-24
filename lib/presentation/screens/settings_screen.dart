@@ -15,6 +15,7 @@ import 'data_management_settings_screen.dart';
 import 'misc_settings_screen.dart';
 import 'about_settings_screen.dart';
 import 'indexer_screen.dart';
+import '../tokens/app_icons.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -33,19 +34,19 @@ class SettingsScreen extends ConsumerWidget {
             label: 'Setup',
             children: [
               AppSettingsTile(
-                icon: Icons.library_music_outlined,
+                icon: AppIcons.library,
                 title: 'Library',
                 subtitle: 'Music folders, scanning',
                 onTap: () => context.pushApp(const LibrarySettingsScreen()),
               ),
               AppSettingsTile(
-                icon: Icons.play_circle_outline_rounded,
+                icon: AppIcons.playCircle,
                 title: 'Playback',
                 subtitle: 'Audio settings, transitions',
                 onTap: () => context.pushApp(const PlaybackSettingsScreen()),
               ),
               AppSettingsTile(
-                icon: Icons.palette_outlined,
+                icon: AppIcons.palette,
                 title: 'Appearance',
                 subtitle: 'Theme, display options',
                 onTap: () => context.pushApp(const AppearanceSettingsScreen()),
@@ -56,14 +57,14 @@ class SettingsScreen extends ConsumerWidget {
             label: 'Data',
             children: [
               AppSettingsTile(
-                icon: Icons.settings_backup_restore_rounded,
+                icon: AppIcons.restore,
                 title: 'Data Management',
                 subtitle: 'Backup, restore, storage, optimize',
                 onTap: () =>
                     context.pushApp(const DataManagementSettingsScreen()),
               ),
               AppSettingsTile(
-                icon: Icons.data_object_rounded,
+                icon: AppIcons.dataObject,
                 title: 'Indexer',
                 subtitle: 'Manage and rebuild all app indexes and caches',
                 onTap: () => context.pushApp(const IndexerScreen()),
@@ -74,13 +75,13 @@ class SettingsScreen extends ConsumerWidget {
             label: 'About',
             children: [
               AppSettingsTile(
-                icon: Icons.miscellaneous_services_outlined,
+                icon: AppIcons.misc,
                 title: 'Misc',
                 subtitle: 'Privacy, behavior',
                 onTap: () => context.pushApp(const MiscSettingsScreen()),
               ),
               AppSettingsTile(
-                icon: Icons.info_outline_rounded,
+                icon: AppIcons.info,
                 title: 'About',
                 subtitle: 'Version, updates, release notes',
                 onTap: () => context.pushApp(const AboutSettingsScreen()),
@@ -183,16 +184,16 @@ class LibrarySettingsScreen extends ConsumerWidget {
         children: [
           AppSettingsGroup(
             label: 'Library',
-            icon: Icons.library_music_outlined,
+            icon: AppIcons.library,
             children: [
               AppSettingsTile(
-                icon: Icons.folder_outlined,
+                icon: AppIcons.folder,
                 title: 'Music Folders',
                 subtitle: 'Manage music library folders',
                 onTap: () => context.pushApp(const FolderManagementScreen()),
               ),
               AppSettingsTile(
-                icon: Icons.refresh_rounded,
+                icon: AppIcons.refresh,
                 title: 'Re-scan Library Now',
                 subtitle: 'Manually refresh all songs from disk',
                 onTap: () => appSnack(context, 'Scanning library…'),
@@ -201,17 +202,17 @@ class LibrarySettingsScreen extends ConsumerWidget {
           ),
           AppSettingsGroup(
             label: 'Filters',
-            icon: Icons.filter_list_rounded,
+            icon: AppIcons.filterList,
             children: [
               AppSettingsSwitch(
-                icon: Icons.video_library_outlined,
+                icon: AppIcons.videoLibrary,
                 title: 'Include Videos',
                 subtitle: 'Show video files in your song library',
                 value: settings.includeVideos,
                 onChanged: notifier.setIncludeVideos,
               ),
               AppSettingsSlider(
-                icon: Icons.data_usage_rounded,
+                icon: AppIcons.dataUsage,
                 title: 'Minimum File Size',
                 valueLabel: _formatFileSize(settings.minimumFileSizeBytes),
                 value: _nearestFileSizeIndex(settings.minimumFileSizeBytes)
@@ -223,7 +224,7 @@ class LibrarySettingsScreen extends ConsumerWidget {
                     .setMinimumFileSizeBytes(_fileSizeSteps[val.round()]),
               ),
               AppSettingsSlider(
-                icon: Icons.timer_outlined,
+                icon: AppIcons.timer,
                 title: 'Minimum Duration',
                 valueLabel: _formatDuration(settings.minimumTrackDurationMs),
                 value: _nearestDurationIndex(settings.minimumTrackDurationMs)

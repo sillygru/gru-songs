@@ -7,6 +7,8 @@ import '../routes/player_route.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class SessionDetailScreen extends ConsumerWidget {
   final PlaySession session;
@@ -72,8 +74,8 @@ class SessionDetailScreen extends ConsumerWidget {
                   color: colorScheme.primary,
                   borderRadius: AppTokens.brMd,
                 ),
-                child: Icon(
-                  Icons.access_time_filled,
+                child: AppIcon(
+                  AppIcons.clock,
                   size: 32,
                   color: colorScheme.onPrimary,
                 ),
@@ -111,7 +113,7 @@ class SessionDetailScreen extends ConsumerWidget {
             children: [
               _buildStatItem(
                 context,
-                icon: Icons.music_note,
+                icon: AppIcons.musicNote,
                 value: '${session.songCount}',
                 label: session.songCount == 1 ? 'Song' : 'Songs',
                 colorScheme: colorScheme,
@@ -123,7 +125,7 @@ class SessionDetailScreen extends ConsumerWidget {
               ),
               _buildStatItem(
                 context,
-                icon: Icons.timer,
+                icon: AppIcons.timer,
                 value: session.formattedDuration,
                 label: 'Duration',
                 colorScheme: colorScheme,
@@ -137,14 +139,14 @@ class SessionDetailScreen extends ConsumerWidget {
 
   Widget _buildStatItem(
     BuildContext context, {
-    required IconData icon,
+    required AppIconData icon,
     required String value,
     required String label,
     required ColorScheme colorScheme,
   }) {
     return Column(
       children: [
-        Icon(
+        AppIcon(
           icon,
           size: 24,
           color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
@@ -218,8 +220,8 @@ class SessionDetailScreen extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.music_off_outlined,
+          AppIcon(
+            AppIcons.musicOff,
             size: 64,
             color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
           ),
@@ -259,16 +261,16 @@ class SessionDetailScreen extends ConsumerWidget {
     final timeStr =
         '${event.dateTime.hour.toString().padLeft(2, '0')}:${event.dateTime.minute.toString().padLeft(2, '0')}';
 
-    IconData statusIcon;
+    AppIconData statusIcon;
     Color statusColor;
     if (event.isCompleted) {
-      statusIcon = Icons.check_circle;
+      statusIcon = AppIcons.checkCircle;
       statusColor = AppTokens.success;
     } else if (event.isSkipped) {
-      statusIcon = Icons.skip_next;
+      statusIcon = AppIcons.skipNext;
       statusColor = AppTokens.warning;
     } else {
-      statusIcon = Icons.play_circle_filled;
+      statusIcon = AppIcons.playCircle;
       statusColor = colorScheme.primary;
     }
 
@@ -353,7 +355,7 @@ class SessionDetailScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(width: 12),
-            Icon(
+            AppIcon(
               statusIcon,
               color: statusColor,
               size: 22,
@@ -379,7 +381,7 @@ class SessionDetailScreen extends ConsumerWidget {
             FilledButton.icon(
               onPressed: () =>
                   _repeatQueue(context, ref, events, whenSongEnds: false),
-              icon: const Icon(Icons.repeat),
+              icon: const AppIcon(AppIcons.repeat),
               label: const Text(
                 'Repeat Queue Now',
                 style: TextStyle(
@@ -398,7 +400,7 @@ class SessionDetailScreen extends ConsumerWidget {
             FilledButton.icon(
               onPressed: () =>
                   _repeatQueue(context, ref, events, whenSongEnds: true),
-              icon: const Icon(Icons.skip_next_rounded),
+              icon: const AppIcon(AppIcons.skipNext),
               label: const Text(
                 'Play After Current Song',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),

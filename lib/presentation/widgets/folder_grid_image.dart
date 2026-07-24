@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../models/song.dart';
 import 'album_art_image.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class FolderGridImage extends StatelessWidget {
   final List<Song> songs;
@@ -37,7 +39,8 @@ class FolderGridImage extends StatelessWidget {
           color: AppTokens.warning.withValues(alpha: 0.2),
           borderRadius: AppTokens.brSm,
         ),
-        child: Icon(Icons.folder, size: size * 0.6, color: AppTokens.warning),
+        child: AppIcon(AppIcons.folder,
+            size: size * 0.6, color: AppTokens.warning),
       );
     }
 

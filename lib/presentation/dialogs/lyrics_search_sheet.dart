@@ -7,6 +7,8 @@ import '../../providers/providers.dart';
 import '../../services/lrclib_service.dart';
 import '../components/app_sheet.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// Opens the LRCLIB lyrics picker for [song].
 ///
@@ -176,7 +178,7 @@ class _LyricsSearchSheetState extends ConsumerState<_LyricsSearchSheet> {
                     const SizedBox(width: AppTokens.s3),
                     FilledButton.icon(
                       onPressed: _searching ? null : _search,
-                      icon: const Icon(Icons.search_rounded, size: 18),
+                      icon: const AppIcon(AppIcons.search, size: 18),
                       label: const Text('Search'),
                     ),
                   ],

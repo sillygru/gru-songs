@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class ScanningProgressBar extends ConsumerWidget {
   const ScanningProgressBar({super.key});
@@ -30,8 +32,8 @@ class ScanningProgressBar extends ConsumerWidget {
                   .withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              Icons.library_music_rounded,
+            child: AppIcon(
+              AppIcons.library,
               size: 64,
               color: Theme.of(context).colorScheme.primary,
             ),

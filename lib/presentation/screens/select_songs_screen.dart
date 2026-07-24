@@ -7,6 +7,8 @@ import '../../providers/settings_provider.dart';
 import '../../services/library_logic.dart';
 import '../widgets/album_art_image.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class SelectSongsScreen extends ConsumerStatefulWidget {
   final List<Song> songs;
@@ -96,8 +98,8 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        Icons.info_outline,
+                      AppIcon(
+                        AppIcons.info,
                         size: 20,
                         color: Theme.of(context).colorScheme.primary,
                       ),
@@ -134,10 +136,10 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
             child: TextField(
               decoration: InputDecoration(
                 hintText: 'Search songs...',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const AppIcon(AppIcons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: const AppIcon(AppIcons.close),
                         onPressed: () {
                           setState(() {
                             _searchQuery = '';
@@ -160,8 +162,8 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
             color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             child: Row(
               children: [
-                Icon(
-                  Icons.check_circle,
+                AppIcon(
+                  AppIcons.checkCircle,
                   size: 20,
                   color: Theme.of(context).colorScheme.primary,
                 ),
@@ -191,7 +193,7 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off,
+                        AppIcon(AppIcons.searchOff,
                             size: 48, color: AppTokens.fgTertiary),
                         const SizedBox(height: 16),
                         Text('No songs found',
@@ -232,8 +234,8 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
                             // Priority star button (only show if selected AND merging)
                             if (isSelected && widget.isMerging)
                               IconButton(
-                                icon: Icon(
-                                  isPriority ? Icons.star : Icons.star_border,
+                                icon: AppIcon(
+                                  isPriority ? AppIcons.star : AppIcons.star,
                                   color: isPriority
                                       ? AppTokens.warning
                                       : Theme.of(context)

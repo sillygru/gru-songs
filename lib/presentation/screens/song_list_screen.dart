@@ -18,6 +18,8 @@ import '../components/app_screen_header.dart';
 import '../components/app_sheet.dart';
 import '../components/app_feedback.dart';
 import '../routes/app_page_route.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class SongListScreen extends ConsumerWidget {
   final String title;
@@ -70,13 +72,13 @@ class SongListScreen extends ConsumerWidget {
                 const SortMenu(),
                 if (playlistId != null)
                   IconButton(
-                    icon: const Icon(Icons.more_vert_rounded),
+                    icon: const AppIcon(AppIcons.moreVert),
                     onPressed: () => _showPlaylistOptions(context, ref),
                     tooltip: 'Playlist Options',
                   ),
                 if (playlistId == null && sortedSongs.length >= 2)
                   IconButton(
-                    icon: const Icon(Icons.merge_type_rounded),
+                    icon: const AppIcon(AppIcons.merge),
                     onPressed: () async {
                       final result =
                           await context.pushApp<Map<String, dynamic>>(
@@ -161,7 +163,7 @@ class SongListScreen extends ConsumerWidget {
                                       isRestricted: true);
                                 }
                               : null,
-                          icon: const Icon(Icons.shuffle),
+                          icon: const AppIcon(AppIcons.shuffle),
                           label: const Text('Shuffle'),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
@@ -182,7 +184,7 @@ class SongListScreen extends ConsumerWidget {
                                   );
                                 }
                               : null,
-                          icon: const Icon(Icons.play_arrow),
+                          icon: const AppIcon(AppIcons.play),
                           label: const Text('Play'),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
@@ -202,7 +204,7 @@ class SongListScreen extends ConsumerWidget {
               const SliverFillRemaining(
                 hasScrollBody: false,
                 child: AppEmptyState(
-                  icon: Icons.music_note_rounded,
+                  icon: AppIcons.musicNote,
                   title: 'No songs in this list',
                 ),
               )
@@ -243,7 +245,7 @@ class SongListScreen extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           AppSheetAction(
-            icon: Icons.edit_rounded,
+            icon: AppIcons.edit,
             label: 'Rename',
             onTap: () {
               Navigator.pop(sheetContext);
@@ -251,7 +253,7 @@ class SongListScreen extends ConsumerWidget {
             },
           ),
           AppSheetAction(
-            icon: Icons.delete_outline_rounded,
+            icon: AppIcons.delete,
             label: 'Delete',
             isDanger: true,
             onTap: () {

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
 import '../../providers/settings_provider.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class SortMenu extends ConsumerWidget {
   const SortMenu({super.key});
@@ -11,7 +13,7 @@ class SortMenu extends ConsumerWidget {
     final sortOrder = ref.watch(settingsProvider).sortOrder;
 
     return PopupMenuButton<SongSortOrder>(
-      icon: const Icon(Icons.sort, size: 20),
+      icon: const AppIcon(AppIcons.sort, size: 20),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
       tooltip: 'Sort by',

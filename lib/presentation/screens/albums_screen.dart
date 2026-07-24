@@ -12,6 +12,8 @@ import '../components/app_sheet.dart';
 import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class AlbumsScreen extends ConsumerStatefulWidget {
   const AlbumsScreen({super.key});
@@ -58,7 +60,7 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
                     _searchController.clear();
                   });
                 },
-                icon: const Icon(Icons.arrow_back),
+                icon: const AppIcon(AppIcons.arrowBack),
               )
             : null,
         actions: [
@@ -72,11 +74,11 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
                 }
               });
             },
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            icon: AppIcon(_isSearching ? AppIcons.close : AppIcons.search),
           ),
           IconButton(
             onPressed: () => _showSortOptions(context),
-            icon: const Icon(Icons.sort),
+            icon: const AppIcon(AppIcons.sort),
           ),
         ],
       ),
@@ -95,7 +97,7 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
 
           if (sortedAlbums.isEmpty) {
             return const AppEmptyState(
-              icon: Icons.album_rounded,
+              icon: AppIcons.album,
               title: 'No albums found',
               message: 'Add music to your library to see albums.',
             );
@@ -133,7 +135,7 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
         },
         loading: () => const AppLoading(),
         error: (e, _) => AppEmptyState(
-          icon: Icons.error_outline_rounded,
+          icon: AppIcons.error,
           title: 'Could not load albums',
           message: '$e',
           tone: AppTone.danger,
@@ -195,11 +197,9 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
       builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _sortAction(
-              sheetContext, 'name', Icons.sort_by_alpha_rounded, 'Name (A-Z)'),
-          _sortAction(sheetContext, 'artist', Icons.person_rounded, 'Artist'),
-          _sortAction(
-              sheetContext, 'songs', Icons.music_note_rounded, 'Most Songs'),
+          _sortAction(sheetContext, 'name', AppIcons.sort, 'Name (A-Z)'),
+          _sortAction(sheetContext, 'artist', AppIcons.person, 'Artist'),
+          _sortAction(sheetContext, 'songs', AppIcons.musicNote, 'Most Songs'),
         ],
       ),
     );
@@ -208,7 +208,7 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
   Widget _sortAction(
     BuildContext sheetContext,
     String value,
-    IconData icon,
+    AppIconData icon,
     String label,
   ) {
     final selected = _sortBy == value;
@@ -216,7 +216,7 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
       icon: icon,
       label: label,
       trailing: selected
-          ? Icon(Icons.check_rounded, color: AppTokens.accentOf(context, ref))
+          ? AppIcon(AppIcons.tick, color: AppTokens.accentOf(context, ref))
           : null,
       onTap: () {
         setState(() => _sortBy = value);

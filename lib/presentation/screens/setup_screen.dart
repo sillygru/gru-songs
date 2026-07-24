@@ -13,6 +13,8 @@ import '../../providers/settings_provider.dart';
 import '../../services/storage_service.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 enum _SetupStep { username, telemetry, permissions }
 
@@ -62,8 +64,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // App Logo/Title
-                    Icon(
-                      Icons.music_note_rounded,
+                    AppIcon(
+                      AppIcons.musicNote,
                       size: 80,
                       color: Theme.of(context).colorScheme.primary,
                     ),
@@ -115,7 +117,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           decoration: const InputDecoration(
             labelText: 'Display Name',
             hintText: 'What should we call you?',
-            prefixIcon: Icon(Icons.person_outline),
+            prefixIcon: AppIcon(AppIcons.person),
             border: OutlineInputBorder(),
           ),
           enabled: !_isLoading,
@@ -189,8 +191,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           ),
           child: Column(
             children: [
-              Icon(
-                Icons.storage_rounded,
+              AppIcon(
+                AppIcons.storage,
                 size: 48,
                 color: Theme.of(context).colorScheme.primary,
               ),
@@ -216,7 +218,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               if (!_permissionGranted) ...[
                 FilledButton.icon(
                   onPressed: _isLoading ? null : _requestPermission,
-                  icon: const Icon(Icons.folder_open_rounded, size: 20),
+                  icon: const AppIcon(AppIcons.folder, size: 20),
                   label: Text(_permissionDeniedOnce
                       ? 'Open App Settings'
                       : 'Grant Storage Access'),
@@ -240,8 +242,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   ),
                 ],
               ] else ...[
-                Icon(
-                  Icons.check_circle_rounded,
+                AppIcon(
+                  AppIcons.checkCircle,
                   size: 32,
                   color: Theme.of(context).colorScheme.primary,
                 ),
@@ -256,10 +258,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: _isLoading ? null : _pickMusicFolder,
-                  icon: Icon(
-                    _folderSelected
-                        ? Icons.check_circle_outline
-                        : Icons.add_rounded,
+                  icon: AppIcon(
+                    _folderSelected ? AppIcons.checkCircle : AppIcons.add,
                     size: 20,
                     color: _folderSelected
                         ? Theme.of(context).colorScheme.primary

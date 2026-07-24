@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../tokens/app_tokens.dart';
+import 'app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// A toggle icon that pops when tapped — squash, overshoot, then settle — with
 /// an accent ring that blooms outward the moment it becomes active.
@@ -16,8 +18,8 @@ import '../tokens/app_tokens.dart';
 /// flipping.
 class PopIcon extends StatefulWidget {
   final bool isActive;
-  final IconData activeIcon;
-  final IconData inactiveIcon;
+  final AppIconData activeIcon;
+  final AppIconData inactiveIcon;
 
   /// Accent used for the active glyph and the bloom ring.
   final Color activeColor;
@@ -35,8 +37,8 @@ class PopIcon extends StatefulWidget {
     super.key,
     required this.isActive,
     required this.onTap,
-    this.activeIcon = Icons.favorite_rounded,
-    this.inactiveIcon = Icons.favorite_border_rounded,
+    this.activeIcon = AppIcons.favorite,
+    this.inactiveIcon = AppIcons.favorite,
     required this.activeColor,
     this.inactiveColor,
     this.onLongPress,
@@ -146,7 +148,7 @@ class _PopIconState extends State<PopIcon> with SingleTickerProviderStateMixin {
               ],
             );
           },
-          child: Icon(
+          child: AppIcon(
             widget.isActive ? widget.activeIcon : widget.inactiveIcon,
             size: widget.size,
             color: widget.isActive ? widget.activeColor : inactive,

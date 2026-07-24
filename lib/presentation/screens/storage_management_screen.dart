@@ -7,6 +7,8 @@ import '../../providers/providers.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class StorageManagementScreen extends ConsumerStatefulWidget {
   const StorageManagementScreen({super.key});
@@ -555,7 +557,7 @@ class _StorageManagementScreenState
                     title: 'Database',
                     subtitle: 'User data, statistics, and settings',
                     size: _databaseSize,
-                    icon: Icons.storage_rounded,
+                    icon: AppIcons.storage,
                     color: AppTokens.info,
                     onClear: _databaseSize > 0 ? _handleClearDatabase : null,
                     isDestructive: true,
@@ -564,7 +566,7 @@ class _StorageManagementScreenState
                     title: 'Cover Cache',
                     subtitle: 'Cached song album art',
                     size: _coversSize,
-                    icon: Icons.image_rounded,
+                    icon: AppIcons.image,
                     color: AppTokens.info,
                     onClear: _coversSize > 0 ? _handleClearCovers : null,
                   ),
@@ -572,7 +574,7 @@ class _StorageManagementScreenState
                     title: 'Backups',
                     subtitle: 'Local backup files',
                     size: _backupsSize,
-                    icon: Icons.backup_rounded,
+                    icon: AppIcons.cloudUpload,
                     color: AppTokens.warning,
                     onClear: _backupsSize > 0 ? _handleClearBackups : null,
                   ),
@@ -580,7 +582,7 @@ class _StorageManagementScreenState
                     title: 'Library Cache',
                     subtitle: 'Cached song library data',
                     size: _libraryCacheSize,
-                    icon: Icons.library_music_rounded,
+                    icon: AppIcons.library,
                     color: AppTokens.success,
                     onClear:
                         _libraryCacheSize > 0 ? _handleClearLibraryCache : null,
@@ -589,7 +591,7 @@ class _StorageManagementScreenState
                     title: 'Search Index',
                     subtitle: 'Search index for fast queries',
                     size: _searchIndexSize,
-                    icon: Icons.search_rounded,
+                    icon: AppIcons.search,
                     color: AppTokens.success,
                     onClear:
                         _searchIndexSize > 0 ? _handleClearSearchIndex : null,
@@ -598,7 +600,7 @@ class _StorageManagementScreenState
                     title: 'Waveform Cache',
                     subtitle: 'Cached song waveforms for visualizers',
                     size: _waveformCacheSize,
-                    icon: Icons.waves_rounded,
+                    icon: AppIcons.waves,
                     color: AppTokens.info,
                     onClear: _waveformCacheSize > 0
                         ? _handleClearWaveformCache
@@ -608,7 +610,7 @@ class _StorageManagementScreenState
                     title: 'Beat Analysis',
                     subtitle: 'Cached beat maps for the reactive player',
                     size: _beatMapCacheSize,
-                    icon: Icons.graphic_eq_rounded,
+                    icon: AppIcons.graphicEq,
                     color: AppTokens.success,
                     onClear:
                         _beatMapCacheSize > 0 ? _handleClearBeatMapCache : null,
@@ -617,7 +619,7 @@ class _StorageManagementScreenState
                     title: 'Color Cache',
                     subtitle: 'Cached theme colors from album art',
                     size: _colorCacheSize,
-                    icon: Icons.palette_rounded,
+                    icon: AppIcons.palette,
                     color: AppTokens.danger,
                     onClear:
                         _colorCacheSize > 0 ? _handleClearColorCache : null,
@@ -626,7 +628,7 @@ class _StorageManagementScreenState
                     title: 'Lyrics Cache',
                     subtitle: 'Cached lyrics availability and text',
                     size: _lyricsCacheSize,
-                    icon: Icons.lyrics_rounded,
+                    icon: AppIcons.lyrics,
                     color: AppTokens.info,
                     onClear:
                         _lyricsCacheSize > 0 ? _handleClearLyricsCache : null,
@@ -635,7 +637,7 @@ class _StorageManagementScreenState
                     title: 'Blurred Cache',
                     subtitle: 'Pre-generated blurred backgrounds',
                     size: _blurredCacheSize,
-                    icon: Icons.blur_on_rounded,
+                    icon: AppIcons.blur,
                     color: AppTokens.info,
                     onClear:
                         _blurredCacheSize > 0 ? _handleClearBlurredCache : null,
@@ -656,8 +658,8 @@ class _StorageManagementScreenState
                       'Permanently delete all data and reset app',
                       style: TextStyle(color: AppTokens.danger),
                     ),
-                    leading: const Icon(
-                      Icons.delete_forever_rounded,
+                    leading: const AppIcon(
+                      AppIcons.deleteForever,
                       color: AppTokens.danger,
                       size: 32,
                     ),
@@ -681,7 +683,7 @@ class _StorageManagementScreenState
     required String title,
     required String subtitle,
     required int size,
-    required IconData icon,
+    required AppIconData icon,
     required Color color,
     VoidCallback? onClear,
     bool isDestructive = false,
@@ -701,7 +703,7 @@ class _StorageManagementScreenState
                     color: color.withValues(alpha: 0.1),
                     borderRadius: AppTokens.brSm,
                   ),
-                  child: Icon(icon, color: color, size: 28),
+                  child: AppIcon(icon, color: color, size: 28),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -742,7 +744,7 @@ class _StorageManagementScreenState
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: onClear,
-                  icon: const Icon(Icons.delete_outline_rounded),
+                  icon: const AppIcon(AppIcons.delete),
                   label: const Text('Clear'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTokens.surface(2),

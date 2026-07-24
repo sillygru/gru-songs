@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_tokens.dart';
 import 'press_highlight.dart';
+import '../tokens/app_icons.dart';
+import 'app_icon.dart';
 
 /// The one list row in the app — the counterpart to the player's
 /// [PlayerTrackRow], with the same anatomy so a song in a library list and a
@@ -139,7 +141,7 @@ class AppListRow extends StatelessWidget {
 /// Tinted icon badge for the leading slot — replaces the hand-rolled
 /// `Container` + `BoxDecoration` + `Icon` blocks scattered across the app.
 class AppRowIcon extends StatelessWidget {
-  final IconData icon;
+  final AppIconData icon;
   final Color? color;
   final double size;
 
@@ -161,7 +163,7 @@ class AppRowIcon extends StatelessWidget {
         color: tint.withValues(alpha: AppTokens.accentWashAlpha),
         borderRadius: AppTokens.brSm,
       ),
-      child: Icon(icon, color: tint, size: size * 0.5),
+      child: AppIcon(icon, color: tint, size: size * 0.5),
     );
   }
 }

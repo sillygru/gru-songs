@@ -5,15 +5,22 @@ import 'press_highlight.dart';
 
 /// The one raised surface in the app.
 ///
-/// Depth comes from a lighter fill and nothing else — no border, no shadow, no
-/// elevation. Nothing outside this file may build its own card fill, and a
-/// surface never goes inside another surface: a row inside a group gets a fill
-/// *change*, not a card of its own.
+/// Depth comes from a lighter fill *and a soft shadow* — never a border, never
+/// Material elevation. A [raised] surface lifts off the canvas; a [well] one
+/// sinks into it (darker, no shadow). Nothing outside this file may build its
+/// own card fill, and a surface never goes inside another surface: a row inside
+/// a group gets a fill *change*, not a card of its own — which is also what
+/// keeps shadows from ever stacking.
 class AppSurface extends StatelessWidget {
   final Widget child;
 
   /// 1 = resting, 2 = selected / pressed / emphasised.
   final int level;
+
+  /// Which layer this surface lives on — drives both fill and shadow. Defaults
+  /// to [AppDepth.raised]: a card that lifts. Pass [AppDepth.well] for a sunk,
+  /// recessed field, or [AppDepth.floating] for chrome that hovers over content.
+  final AppDepth depth;
 
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry? margin;
@@ -37,6 +44,7 @@ class AppSurface extends StatelessWidget {
     super.key,
     required this.child,
     this.level = 1,
+    this.depth = AppDepth.raised,
     this.padding = const EdgeInsets.all(AppTokens.s4),
     this.margin,
     this.borderRadius,
@@ -51,8 +59,12 @@ class AppSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = borderRadius ?? AppTokens.brMd;
 
-    Color fill = transparent ? Colors.transparent : AppTokens.surface(level);
-    if (accentTint != null) {
+    Color fill = transparent
+        ? Colors.transparent
+        : depth == AppDepth.well
+            ? AppTokens.wellFill
+            : AppTokens.surface(level);
+    if (accentTint != null && !transparent) {
       fill = Color.alphaBlend(
         accentTint!.withValues(alpha: AppTokens.accentWashAlpha),
         fill,
@@ -62,7 +74,11 @@ class AppSurface extends StatelessWidget {
     Widget content = Container(
       padding: padding,
       clipBehavior: clipContent ? Clip.antiAlias : Clip.none,
-      decoration: BoxDecoration(color: fill, borderRadius: radius),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: radius,
+        boxShadow: transparent ? null : AppTokens.shadowFor(depth),
+      ),
       child: child,
     );
 

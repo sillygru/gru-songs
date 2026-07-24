@@ -6,6 +6,7 @@ import '../../providers/providers.dart';
 import '../components/app_feedback.dart';
 import '../components/app_sheet.dart';
 import 'folder_picker.dart';
+import '../tokens/app_icons.dart';
 
 /// [folderFullPath] is the absolute path of the folder the row stands for — the
 /// library tree is not always rooted at the first configured music folder, so a
@@ -20,7 +21,7 @@ void showFolderOptionsMenu(BuildContext context, WidgetRef ref,
         mainAxisSize: MainAxisSize.min,
         children: [
           AppSheetAction(
-            icon: Icons.drive_file_move_outlined,
+            icon: AppIcons.folderMove,
             label: 'Move Folder',
             onTap: () async {
               if (kDebugMode) {

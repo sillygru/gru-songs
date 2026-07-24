@@ -16,6 +16,8 @@ import '../components/app_dialog.dart';
 import '../components/app_feedback.dart';
 import '../components/pressable.dart';
 import '../routes/app_page_route.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class BulkSelectionBar extends ConsumerWidget {
   const BulkSelectionBar({super.key});
@@ -112,7 +114,7 @@ class BulkSelectionBar extends ConsumerWidget {
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.close_rounded),
+                  icon: const AppIcon(AppIcons.close),
                   tooltip: 'Done',
                   onPressed: () =>
                       ref.read(selectionProvider.notifier).exitSelectionMode(),
@@ -168,8 +170,7 @@ class BulkSelectionBar extends ConsumerWidget {
     final allFavorited = songs.every((s) => userData.isFavorite(s.filename));
 
     return _ActionButton(
-      icon:
-          allFavorited ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+      icon: allFavorited ? AppIcons.favorite : AppIcons.favorite,
       label: allFavorited ? 'Unfavorite' : 'Favorite',
       color: allFavorited ? AppTokens.danger : null,
       onTap: () {
@@ -192,7 +193,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildPlaylistButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.playlist_add_rounded,
+      icon: AppIcons.playlistAdd,
       label: 'Playlist',
       onTap: () {
         if (!context.mounted) return;
@@ -234,7 +235,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildShareButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.ios_share_rounded,
+      icon: AppIcons.share,
       label: 'Share',
       onTap: () {
         if (!context.mounted) return;
@@ -251,7 +252,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildMetadataButton(BuildContext context, WidgetRef ref,
       List<Song> songs, int count, bool isCurrentlyPlaying) {
     return _ActionButton(
-      icon: Icons.edit_rounded,
+      icon: AppIcons.edit,
       label: 'Metadata',
       onTap: isCurrentlyPlaying
           ? null
@@ -268,7 +269,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildHideButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.visibility_off_rounded,
+      icon: AppIcons.visibilityOff,
       label: 'Hide',
       onTap: () async {
         final confirmed = await showAppConfirm(
@@ -292,7 +293,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildDeleteButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.delete_outline_rounded,
+      icon: AppIcons.delete,
       label: 'Delete',
       color: AppTokens.danger,
       onTap: () async {
@@ -315,7 +316,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildPlayNextButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.queue_music_rounded,
+      icon: AppIcons.queue,
       label: 'Play Next',
       onTap: () {
         if (!context.mounted) return;
@@ -338,7 +339,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildMoveToFolderButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.drive_file_move_rounded,
+      icon: AppIcons.folderMove,
       label: 'Move',
       onTap: () async {
         if (kDebugMode) {
@@ -400,7 +401,7 @@ class BulkSelectionBar extends ConsumerWidget {
         songs.every((s) => userData.isSuggestLess(s.filename));
 
     return _ActionButton(
-      icon: Icons.heart_broken_rounded,
+      icon: AppIcons.heartBroken,
       label: allSuggestLess ? 'Suggest More' : 'Suggest Less',
       color: allSuggestLess ? AppTokens.fgTertiary : null,
       onTap: () {
@@ -423,7 +424,7 @@ class BulkSelectionBar extends ConsumerWidget {
   Widget _buildAddToNewPlaylistButton(
       BuildContext context, WidgetRef ref, List<Song> songs, int count) {
     return _ActionButton(
-      icon: Icons.playlist_add_circle_outlined,
+      icon: AppIcons.playlistAdd,
       label: 'New Playlist',
       onTap: () async {
         final filenames = songs.map((s) => s.filename).toList();
@@ -454,7 +455,7 @@ class BulkSelectionBar extends ConsumerWidget {
 }
 
 class _ActionButton extends StatelessWidget {
-  final IconData icon;
+  final AppIconData icon;
   final String label;
   final VoidCallback? onTap;
   final Color? color;
@@ -491,7 +492,7 @@ class _ActionButton extends StatelessWidget {
                 color: AppTokens.surface(1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 22, color: tint),
+              child: AppIcon(icon, size: 22, color: tint),
             ),
             const SizedBox(height: AppTokens.s1 + 2),
             Text(

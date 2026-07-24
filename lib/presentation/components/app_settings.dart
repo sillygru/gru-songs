@@ -4,6 +4,8 @@ import '../tokens/app_tokens.dart';
 import 'app_list_row.dart';
 import 'app_section_header.dart';
 import 'app_surface.dart';
+import 'app_icon.dart';
+import '../tokens/app_icons.dart';
 
 /// The settings vocabulary, in one place.
 ///
@@ -13,7 +15,7 @@ import 'app_surface.dart';
 /// settings are.
 class AppSettingsGroup extends StatelessWidget {
   final String label;
-  final IconData? icon;
+  final AppIconData? icon;
   final List<Widget> children;
 
   const AppSettingsGroup({
@@ -46,7 +48,7 @@ class AppSettingsGroup extends StatelessWidget {
 
 /// A settings row that navigates somewhere or performs an action.
 class AppSettingsTile extends StatelessWidget {
-  final IconData icon;
+  final AppIconData icon;
   final String title;
   final String? subtitle;
   final VoidCallback? onTap;
@@ -81,8 +83,8 @@ class AppSettingsTile extends StatelessWidget {
       trailing: trailing ??
           (onTap == null
               ? null
-              : Icon(
-                  Icons.chevron_right_rounded,
+              : AppIcon(
+                  AppIcons.chevronRight,
                   size: 20,
                   color: AppTokens.fgTertiary,
                 )),
@@ -92,7 +94,7 @@ class AppSettingsTile extends StatelessWidget {
 
 /// A boolean setting.
 class AppSettingsSwitch extends StatelessWidget {
-  final IconData icon;
+  final AppIconData icon;
   final String title;
   final String? subtitle;
   final bool value;
@@ -124,7 +126,7 @@ class AppSettingsSwitch extends StatelessWidget {
 
 /// A numeric setting with a live value label above its track.
 class AppSettingsSlider extends StatelessWidget {
-  final IconData icon;
+  final AppIconData icon;
   final String title;
   final String valueLabel;
   final double value;
@@ -163,7 +165,7 @@ class AppSettingsSlider extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: AppTokens.fgSecondary),
+              AppIcon(icon, size: 18, color: AppTokens.fgSecondary),
               const SizedBox(width: AppTokens.s3),
               Expanded(
                 child: Text(title, style: AppTokens.rowTitle(context)),

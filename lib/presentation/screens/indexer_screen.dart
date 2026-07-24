@@ -8,6 +8,8 @@ import '../../providers/settings_provider.dart';
 import '../widgets/indexer_choice_dialog.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 class IndexerScreen extends ConsumerStatefulWidget {
   const IndexerScreen({super.key});
@@ -39,10 +41,10 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
         children: [
           _buildSettingsGroup(
             title: 'Indexer Settings',
-            icon: Icons.manage_search_rounded,
+            icon: AppIcons.manageSearch,
             children: [
               SwitchListTile(
-                secondary: const Icon(Icons.content_copy_outlined),
+                secondary: const AppIcon(AppIcons.copy),
                 title: const Text('Prevent Duplicate Tracks'),
                 subtitle: const Text(
                   'Hide songs with the same filename across folders',
@@ -51,7 +53,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                 onChanged: (val) => notifier.setPreventDuplicateTracks(val),
               ),
               SwitchListTile(
-                secondary: const Icon(Icons.person_add_alt_1_outlined),
+                secondary: const AppIcon(AppIcons.personAdd),
                 title: const Text('Extract Featured Artists'),
                 subtitle: const Text(
                   'Move "ft./feat." artists from title to artist field',
@@ -63,11 +65,11 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
           ),
           _buildSettingsGroup(
             title: 'Database Operations',
-            icon: Icons.storage_rounded,
+            icon: AppIcons.storage,
             children: [
               _buildOperationTile(
                 id: 'optimize_databases',
-                icon: Icons.storage_rounded,
+                icon: AppIcons.storage,
                 warningMessage:
                     'This operation requires an app restart to apply changes.',
               ),
@@ -75,15 +77,15 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
           ),
           _buildSettingsGroup(
             title: 'Cover & Search',
-            icon: Icons.image_search_rounded,
+            icon: AppIcons.imageSearch,
             children: [
               _buildOperationTile(
                 id: 'rebuild_cover_caches',
-                icon: Icons.image_rounded,
+                icon: AppIcons.image,
               ),
               _buildOperationTile(
                 id: 'rebuild_search_indexes',
-                icon: Icons.search_rounded,
+                icon: AppIcons.search,
                 warningMessage:
                     'You may need to restart the app for search index changes to fully apply.',
               ),
@@ -91,33 +93,33 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
           ),
           _buildSettingsGroup(
             title: 'Content Caches',
-            icon: Icons.collections_bookmark_rounded,
+            icon: AppIcons.collectionsBookmark,
             children: [
               _buildOperationTile(
                 id: 'rebuild_lyrics_cache',
-                icon: Icons.lyrics_rounded,
+                icon: AppIcons.lyrics,
               ),
               _buildOperationTile(
                 id: 'rebuild_waveform_cache',
-                icon: Icons.graphic_eq_rounded,
+                icon: AppIcons.graphicEq,
               ),
               _buildOperationTile(
                 id: 'rebuild_color_cache',
-                icon: Icons.palette_rounded,
+                icon: AppIcons.palette,
               ),
               _buildOperationTile(
                 id: 'rebuild_blurred_cache',
-                icon: Icons.blur_on_rounded,
+                icon: AppIcons.blur,
               ),
             ],
           ),
           _buildSettingsGroup(
             title: 'Recommendations',
-            icon: Icons.auto_awesome_rounded,
+            icon: AppIcons.autoAwesome,
             children: [
               _buildOperationTile(
                 id: 'rebuild_recommendations',
-                icon: Icons.auto_awesome_rounded,
+                icon: AppIcons.autoAwesome,
               ),
             ],
           ),
@@ -130,7 +132,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
   Widget _buildSettingsGroup({
     required String title,
     required List<Widget> children,
-    required IconData icon,
+    required AppIconData icon,
   }) {
     final theme = Theme.of(context);
     final List<Widget> childrenWithDividers = [];
@@ -156,7 +158,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
           padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
           child: Row(
             children: [
-              Icon(icon, size: 16, color: theme.colorScheme.primary),
+              AppIcon(icon, size: 16, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text(
                 title.toUpperCase(),
@@ -183,7 +185,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
 
   Widget _buildOperationTile({
     required String id,
-    required IconData icon,
+    required AppIconData icon,
     String? warningMessage,
   }) {
     final operation = ref.watch(indexerProvider).operations[id];
@@ -234,7 +236,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     }
 
     return ListTile(
-      leading: Icon(
+      leading: AppIcon(
         icon,
         color: iconColor,
       ),
@@ -272,7 +274,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
       ),
       trailing: isRunning
           ? IconButton(
-              icon: const Icon(Icons.stop_rounded, color: AppTokens.danger),
+              icon: const AppIcon(AppIcons.stop, color: AppTokens.danger),
               onPressed: () => _cancelOperation(),
             )
           : operation.failedCount > 0 && !isRunning
@@ -296,10 +298,10 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Icon(Icons.chevron_right, size: 20),
+                    const AppIcon(AppIcons.chevronRight, size: 20),
                   ],
                 )
-              : const Icon(Icons.chevron_right, size: 20),
+              : const AppIcon(AppIcons.chevronRight, size: 20),
       onTap: isRunning
           ? null
           : () => _handleOperationTap(operation, warningMessage),
@@ -399,8 +401,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.warning_amber_rounded,
+                      AppIcon(
+                        AppIcons.warning,
                         color: AppTokens.warning,
                         size: 20,
                       ),
@@ -525,7 +527,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.restart_alt, color: AppTokens.info, size: 48),
+        icon: const AppIcon(AppIcons.refresh, color: AppTokens.info, size: 48),
         title: const Text('Restart Required'),
         content: const Text(
           'The operation has been completed successfully.\n\n'
@@ -548,8 +550,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        icon:
-            const Icon(Icons.error_outline, color: AppTokens.danger, size: 48),
+        icon: const AppIcon(AppIcons.error, color: AppTokens.danger, size: 48),
         title: Text('${operation.failedCount} Failed Items'),
         content: SizedBox(
           width: double.maxFinite,
@@ -623,8 +624,8 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded,
-            color: AppTokens.warning, size: 48),
+        icon:
+            const AppIcon(AppIcons.warning, color: AppTokens.warning, size: 48),
         title: Text('$operationName Warnings'),
         content: SizedBox(
           width: double.maxFinite,

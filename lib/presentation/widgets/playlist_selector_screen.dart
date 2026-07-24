@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
+import '../tokens/app_icons.dart';
 
 void showPlaylistSelector(
     BuildContext context, WidgetRef ref, String songFilename) {
@@ -105,7 +107,7 @@ class _PlaylistSelectorDialogState
             shrinkWrap: true,
             children: [
               ListTile(
-                leading: const Icon(Icons.add),
+                leading: const AppIcon(AppIcons.add),
                 title: const Text('New Playlist'),
                 onTap: () {
                   _showNewPlaylistDialog(context, ref, widget.songFilenames);
@@ -114,7 +116,8 @@ class _PlaylistSelectorDialogState
               const Divider(),
               CheckboxListTile(
                 title: const Text('Favorites'),
-                secondary: const Icon(Icons.favorite, color: AppTokens.danger),
+                secondary:
+                    const AppIcon(AppIcons.favorite, color: AppTokens.danger),
                 tristate: true,
                 value: _isFavorite,
                 onChanged: (val) {
@@ -138,7 +141,7 @@ class _PlaylistSelectorDialogState
                 return CheckboxListTile(
                   title: Text(playlist.name),
                   subtitle: Text('${playlist.songs.length} songs'),
-                  secondary: const Icon(Icons.queue_music),
+                  secondary: const AppIcon(AppIcons.queue),
                   tristate: widget.songFilenames.length > 1,
                   value: widget.songFilenames.length > 1
                       ? (allIn && isSelected
