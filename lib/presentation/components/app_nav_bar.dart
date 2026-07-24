@@ -39,24 +39,32 @@ class AppNavBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accent = AppTokens.accentOf(context, ref);
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return SizedBox(
-      height: 64,
-      child: Row(
+      height: 64 + bottomInset,
+      child: Column(
         children: [
-          for (var i = 0; i < items.length; i++)
-            Expanded(
-              child: Pressable(
-                haptic: PressHaptic.selection,
-                spring: AppTokens.springSnappy,
-                onTap: () => onSelected(i),
-                child: _NavDestination(
-                  item: items[i],
-                  selected: i == selectedIndex,
-                  accent: accent,
-                ),
-              ),
+          Expanded(
+            child: Row(
+              children: [
+                for (var i = 0; i < items.length; i++)
+                  Expanded(
+                    child: Pressable(
+                      haptic: PressHaptic.selection,
+                      spring: AppTokens.springSnappy,
+                      onTap: () => onSelected(i),
+                      child: _NavDestination(
+                        item: items[i],
+                        selected: i == selectedIndex,
+                        accent: accent,
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
+          SizedBox(height: bottomInset),
         ],
       ),
     );
