@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wispie/services/storage_service.dart';
@@ -45,8 +47,15 @@ void main() {
 
     group('importScannerSettings', () {
       test('imports scanner settings correctly', () async {
+        // A real directory: folder paths are now checked against the
+        // filesystem, because an archive from another device can name folders
+        // that don't exist here.
+        final musicDir =
+            await Directory.systemTemp.createTemp('wispie_music_import_');
+        addTearDown(() => musicDir.delete(recursive: true));
+
         final settings = {
-          'music_folders_list': ['/music'],
+          'music_folders_list': [musicDir.path],
           'excluded_folders': ['/music/excluded'],
           'last_library_folder': '/music',
           'minimum_file_size_bytes': 102400,
@@ -57,12 +66,40 @@ void main() {
         await storageService.importScannerSettings(settings);
 
         final prefs = await SharedPreferences.getInstance();
-        expect(prefs.getStringList('music_folders_list'), ['/music']);
+        expect(prefs.getStringList('music_folders_list'), [musicDir.path]);
         expect(prefs.getStringList('excluded_folders'), ['/music/excluded']);
         expect(prefs.getString('last_library_folder'), '/music');
         expect(prefs.getInt('minimum_file_size_bytes'), 102400);
         expect(prefs.getInt('minimum_track_duration_ms'), 10000);
         expect(prefs.getBool('include_videos'), true);
+      });
+
+      test('drops folders that do not exist on this device', () async {
+        final musicDir =
+            await Directory.systemTemp.createTemp('wispie_music_import_');
+        addTearDown(() => musicDir.delete(recursive: true));
+
+        await storageService.importScannerSettings({
+          'music_folders_list': [
+            musicDir.path,
+            '/from/the/old/phone',
+          ],
+        });
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getStringList('music_folders_list'), [musicDir.path]);
+      });
+
+      test('keeps the existing folders when none of the imported ones exist',
+          () async {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList('music_folders_list', ['/already/here']);
+
+        await storageService.importScannerSettings({
+          'music_folders_list': ['/from/the/old/phone'],
+        });
+
+        expect(prefs.getStringList('music_folders_list'), ['/already/here']);
       });
     });
 

@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:crypto/crypto.dart';
 import '../models/song.dart';
+import '../services/cover_refresh_service.dart';
 import '../services/database_service.dart';
+import '../services/library_repair_service.dart';
 import '../services/scanner_service.dart';
 import '../services/waveform_service.dart';
 import '../services/color_extraction_service.dart';
@@ -87,6 +86,10 @@ class IndexerOperation {
       processedCount > 0 && processedCount == totalCount && totalCount > 0;
   bool get isDatabaseOperation => id == 'optimize_databases';
   bool get isRecommendationOperation => id == 'rebuild_recommendations';
+
+  /// Repair isn't a cache to fill, so it has no "just the missing ones" mode —
+  /// it always looks at every row.
+  bool get isRepairOperation => id == 'repair_library_links';
 }
 
 /// State for all indexer operations
@@ -152,6 +155,15 @@ class IndexerNotifier extends Notifier<IndexerState> {
         processedCount: -1,
         isBlocking: true,
         requiresRestart: true,
+      ),
+      'repair_library_links': const IndexerOperation(
+        id: 'repair_library_links',
+        name: 'Repair Library Links',
+        description:
+            'Re-link album art and file paths after a restore or new device',
+        processedCount: -1,
+        isBlocking: true,
+        requiresRestart: false,
       ),
       'rebuild_cover_caches': const IndexerOperation(
         id: 'rebuild_cover_caches',
@@ -379,7 +391,9 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
     // Calculate target count based on force parameter
     int targetCount = operation.totalCount;
-    if (!force && !operation.isDatabaseOperation) {
+    if (!force &&
+        !operation.isDatabaseOperation &&
+        !operation.isRepairOperation) {
       targetCount = operation.totalCount - operation.processedCount;
       if (targetCount < 0) targetCount = 0;
     }
@@ -447,6 +461,15 @@ class IndexerNotifier extends Notifier<IndexerState> {
     }
   }
 
+  /// Re-reads the library after an operation wrote to the `song` table.
+  ///
+  /// Without this the rows are correct on disk but the in-memory list every
+  /// tile renders from still holds the pre-operation values, so a rebuild that
+  /// worked perfectly looks like it did nothing until the app is restarted.
+  void _invalidateLibrary() {
+    ref.invalidate(songsProvider);
+  }
+
   void _updateFailedItems(String id, List<String> failedItems) {
     final operations = Map<String, IndexerOperation>.from(state.operations);
     final op = operations[id];
@@ -470,6 +493,8 @@ class IndexerNotifier extends Notifier<IndexerState> {
         return await _optimizeDatabases();
       case 'optimize_user_data_db':
         return await _optimizeDatabases();
+      case 'repair_library_links':
+        return await _repairLibraryLinks();
       case 'rebuild_cover_caches':
         return await _rebuildCoverCaches(songs, force: force);
       case 'rebuild_search_indexes':
@@ -487,6 +512,35 @@ class IndexerNotifier extends Notifier<IndexerState> {
       default:
         return const IndexerResult(
             success: false, message: 'Unknown operation');
+    }
+  }
+
+  Future<IndexerResult> _repairLibraryLinks() async {
+    try {
+      final total = await DatabaseService.instance.getSongCount();
+      final report = await LibraryRepairService.instance.repairLibrary(
+        onProgress: (progress, _) {
+          _updateProgress(
+              'repair_library_links', (progress * total).round(), total);
+        },
+      );
+
+      _invalidateLibrary();
+
+      final warnings = report.pruningSkipped
+          ? ['Skipped removing missing tracks — music folders were unreadable']
+          : null;
+
+      return IndexerResult(
+        success: true,
+        message: report.summary,
+        warnings: warnings,
+      );
+    } catch (e) {
+      return IndexerResult(
+        success: false,
+        message: 'Error repairing library links: $e',
+      );
     }
   }
 
@@ -542,24 +596,15 @@ class IndexerNotifier extends Notifier<IndexerState> {
     // Pre-calculate target count by checking which songs don't have cached covers
     int targetCount = songs.length;
     if (!force) {
-      final supportDir = await getApplicationSupportDirectory();
-      final coversDir = Directory('${supportDir.path}/extracted_covers');
+      final coversDir = await ScannerService.coversDirectory();
       int missingCount = 0;
       for (final song in songs) {
         final file = File(song.url);
         if (await file.exists()) {
-          final hash = sha1.convert(utf8.encode(song.filename)).toString();
           bool hasCover = false;
-          for (final ext in [
-            '.jpg',
-            '.png',
-            '.jpeg',
-            '.webp',
-            '.bmp',
-            '_ffmpeg.jpg'
-          ]) {
-            final cachedFile = File('${coversDir.path}/$hash$ext');
-            if (await hasValidCache(cachedFile)) {
+          for (final cachedPath in ScannerService.coverCandidatePaths(
+              coversDir.path, song.filename)) {
+            if (await hasValidCache(File(cachedPath))) {
               hasCover = true;
               break;
             }
@@ -597,9 +642,10 @@ class IndexerNotifier extends Notifier<IndexerState> {
       if (_currentCancelToken?.isCancelled ?? false) break;
 
       try {
-        final hasResolvedCover = coverMap.containsKey(song.url);
+        // Absent means the rebuild couldn't resolve one, which is not the same
+        // as there being none — leave the row's existing cover alone.
         final newCoverUrl = coverMap[song.url];
-        if (hasResolvedCover && newCoverUrl != song.coverUrl) {
+        if (newCoverUrl != null && newCoverUrl != song.coverUrl) {
           updatedSongs.add(Song(
             title: song.title,
             artist: song.artist,
@@ -623,6 +669,20 @@ class IndexerNotifier extends Notifier<IndexerState> {
     if (updatedSongs.isNotEmpty) {
       await DatabaseService.instance.insertSongsBatch(updatedSongs);
     }
+
+    // A forced rebuild is the user saying "try everything again", so the
+    // record of past failures has to go with it — otherwise the lazy
+    // extraction path stays suppressed for exactly the songs the isolate
+    // couldn't handle (videos, and anything only FFmpeg can read).
+    final touched = force
+        ? songs.map((s) => s.filename).toList()
+        : updatedSongs.map((s) => s.filename).toList();
+    if (touched.isNotEmpty) {
+      await DatabaseService.instance.clearCoverMisses(touched);
+      CoverRefreshService.instance.forgetMisses(touched);
+    }
+
+    _invalidateLibrary();
 
     _updateFailedItems('rebuild_cover_caches', failedItems);
 

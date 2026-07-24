@@ -171,11 +171,7 @@ class FileManagerService {
       }
 
       // 2. Rebuild the cover cache for this specific song from the actual file
-      final supportDir = await getApplicationSupportDirectory();
-      final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
-      if (!await coversDir.exists()) {
-        await coversDir.create(recursive: true);
-      }
+      final coversDir = await ScannerService.coversDirectory();
 
       final filename = p.basename(song.url);
       final hash = sha1.convert(utf8.encode(filename)).toString();

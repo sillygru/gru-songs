@@ -510,26 +510,34 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         uniqueSongs = uniqueSongs.map(_extractFeatFromSong).toList();
       }
 
-      // Preserve createdEpochSec and songDateEpochSec from existing songs.
+      // Carry forward what a scan can't re-derive: when a song was added, and
+      // any cover a previous pass extracted. Matched by filename as well as
+      // path, since the row these will be written over is keyed by filename —
+      // a file that moved folders would otherwise look brand new and lose both.
       if (existingSongs != null) {
-        final existingByUrl = {
-          for (final s in existingSongs) s.url: s,
-        };
+        final existingByUrl = <String, Song>{};
+        final existingByFilename = <String, Song>{};
+        for (final s in existingSongs) {
+          existingByUrl[s.url] = s;
+          existingByFilename[s.filename] = s;
+        }
         uniqueSongs = uniqueSongs.map((s) {
-          final existing = existingByUrl[s.url];
+          final existing =
+              existingByUrl[s.url] ?? existingByFilename[s.filename];
           if (existing == null) return s;
           final needsCreated = existing.createdEpochSec != null &&
               s.createdEpochSec != existing.createdEpochSec;
           final needsSongDate = existing.songDateEpochSec != null &&
               s.songDateEpochSec != existing.songDateEpochSec;
-          if (!needsCreated && !needsSongDate) return s;
+          final needsCover = s.coverUrl == null && existing.coverUrl != null;
+          if (!needsCreated && !needsSongDate && !needsCover) return s;
           return Song(
             title: s.title,
             artist: s.artist,
             album: s.album,
             filename: s.filename,
             url: s.url,
-            coverUrl: s.coverUrl,
+            coverUrl: s.coverUrl ?? existing.coverUrl,
             hasLyrics: s.hasLyrics,
             playCount: s.playCount,
             duration: s.duration,

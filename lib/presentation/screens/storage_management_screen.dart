@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/library_repair_service.dart';
 import '../../services/storage_analysis_service.dart';
 import '../../providers/setup_provider.dart';
 import '../../providers/providers.dart';
@@ -222,6 +223,39 @@ class _StorageManagementScreenState
       if (mounted) {
         setState(() => _isClearing = false);
         appSnack(context, 'Error clearing database: $e');
+      }
+    }
+  }
+
+  Future<void> _handleRepairLibrary() async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Repair Library Links?',
+      content:
+          'This re-links cached album art and file paths to where they actually '
+          'are on this device.\n\n'
+          'Tracks whose files are no longer here will be removed from the '
+          'library. Favourites, playlists and play counts are kept, and '
+          'reattach automatically if those files come back.',
+      confirmText: 'Repair',
+      confirmColor: AppTokens.success,
+    );
+
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isClearing = true);
+
+    try {
+      final report = await LibraryRepairService.instance.repairLibrary();
+      ref.invalidate(songsProvider);
+      await _loadSizes();
+      if (mounted) {
+        setState(() => _isClearing = false);
+        appSnack(context, report.summary);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isClearing = false);
+        appSnack(context, 'Error repairing library: $e');
       }
     }
   }
@@ -553,6 +587,7 @@ class _StorageManagementScreenState
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  _buildRepairCard(),
                   _buildStorageCard(
                     title: 'Database',
                     subtitle: 'User data, statistics, and settings',
@@ -676,6 +711,73 @@ class _StorageManagementScreenState
                 ],
               ),
             ),
+    );
+  }
+
+  /// Sits above the clear buttons on purpose: someone whose artwork vanished
+  /// after moving devices comes here to clear something, and repairing the
+  /// links is both what they actually want and the non-destructive option.
+  Widget _buildRepairCard() {
+    return AppSurface(
+      padding: EdgeInsets.zero,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTokens.success.withValues(alpha: 0.1),
+                    borderRadius: AppTokens.brSm,
+                  ),
+                  child: const AppIcon(AppIcons.linkOff,
+                      color: AppTokens.success, size: 28),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Repair Library Links',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Missing album art after a restore or a new phone? '
+                        'This re-links artwork and file paths.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppTokens.s4),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _handleRepairLibrary,
+                icon: const AppIcon(AppIcons.refresh),
+                label: const Text('Repair'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTokens.surface(2),
+                  foregroundColor: AppTokens.fgPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -60,7 +60,7 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
       _looksLikeSongFile(widget.filename!) &&
       // A recycled tile would otherwise re-enqueue a song we already know has
       // no art, on every rebuild.
-      !CoverRefreshService.instance.isKnownMiss(widget.filename!);
+      !CoverRefreshService.instance.isSuppressed(widget.filename!);
 
   void _scheduleLazyRefresh() {
     if (_refreshFuture != null || !_canAttemptLazyRefresh) return;
@@ -123,14 +123,11 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
         path = imageUrl;
       }
 
-      final file = File(path);
-      if (!file.existsSync()) {
-        _scheduleLazyRefresh();
-        return widget.placeholder ?? _buildPlaceholder();
-      }
-
+      // No existsSync() pre-check: it ran synchronously on the UI thread for
+      // every build of every tile, and errorBuilder below already handles a
+      // missing file identically.
       content = Image.file(
-        file,
+        File(path),
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
@@ -153,7 +150,9 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
       );
     } else {
       content = Image.network(
-        widget.url,
+        // The resolved URL, not widget.url — otherwise a cover the lazy
+        // refresh just found is thrown away on this branch.
+        imageUrl,
         width: widget.width,
         height: widget.height,
         fit: widget.fit,

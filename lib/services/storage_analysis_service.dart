@@ -1,9 +1,12 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'color_extraction_service.dart';
+import 'cover_refresh_service.dart';
+import 'database_service.dart';
 
 class StorageAnalysisService {
   static final StorageAnalysisService instance = StorageAnalysisService._();
@@ -234,7 +237,13 @@ class StorageAnalysisService {
     }
   }
 
-  /// Clears only the covers cache
+  /// Clears the covers cache, and everything that points into it.
+  ///
+  /// Deleting the files alone is what made this look like a no-op: every row
+  /// kept its `cover_url`, so the UI went on asking for paths that were now
+  /// holes, and `cover_miss` went on suppressing re-extraction for songs the
+  /// user was explicitly asking to redo. The paths have to become null for the
+  /// lazy extraction path to pick them back up.
   Future<void> clearCoversCache() async {
     try {
       final supportDir = await getApplicationSupportDirectory();
@@ -242,9 +251,26 @@ class StorageAnalysisService {
       if (await coversDir.exists()) {
         await coversDir.delete(recursive: true);
       }
+      await coversDir.create(recursive: true);
+
+      await DatabaseService.instance.clearCoverUrls();
+      await DatabaseService.instance.clearAllCoverMisses();
+      CoverRefreshService.instance.invalidateMisses();
+      _clearDecodedImageCache();
     } catch (e) {
       debugPrint('Error clearing covers cache: $e');
       rethrow;
+    }
+  }
+
+  /// Drops decoded bitmaps so freshly re-extracted covers aren't masked by the
+  /// old ones still held against the same paths.
+  void _clearDecodedImageCache() {
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+    } catch (_) {
+      // No binding (tests) — nothing decoded to drop.
     }
   }
 

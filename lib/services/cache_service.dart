@@ -131,6 +131,12 @@ class CacheService {
     }
   }
 
+  /// Deletes cached derivatives no song in [songs] refers to any more.
+  ///
+  /// Must never run while the library's cover paths are untrustworthy — after a
+  /// restore, before [LibraryRepairService] has re-linked them — because the
+  /// keep-set is built from `song.coverUrl`. Rows pointing into another
+  /// device's paths would make every real cover on this one look orphaned.
   Future<void> pruneStaleSongCaches(List<Song> songs) async {
     await init();
     if (songs.isEmpty) return;

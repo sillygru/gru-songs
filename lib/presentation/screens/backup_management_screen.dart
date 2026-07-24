@@ -9,6 +9,7 @@ import '../../services/database_service.dart';
 import '../../services/import_options.dart';
 import '../../services/storage_service.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
+import '../../presentation/widgets/import_progress_dialog.dart';
 import '../../presentation/widgets/backup_options_dialog.dart';
 import '../../providers/providers.dart';
 import '../components/app_surface.dart';
@@ -159,6 +160,14 @@ class _BackupManagementScreenState
               const Text('• All your favorites and playlists'),
               const Text('• All your hidden songs and preferences'),
               const Text('• All your current settings and state'),
+              const Text('• Your scanned song library'),
+              const SizedBox(height: 8),
+              const Text(
+                'Album art and file paths are re-linked to this device '
+                'automatically after the restore. Tracks in the backup whose '
+                'files are not on this device are removed from the library.',
+                style: TextStyle(fontSize: 13),
+              ),
               const SizedBox(height: 12),
               const Text(
                 'YOUR CURRENT DATA WILL BE PERMANENTLY LOST!',
@@ -189,30 +198,31 @@ class _BackupManagementScreenState
       if (confirmed != true) return;
     }
 
+    final progress = ValueNotifier<ImportProgress>(
+      const ImportProgress(progress: 0, label: 'Restoring data…'),
+    );
+
     if (mounted) {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Restoring data...'),
-            ],
-          ),
-        ),
+        builder: (context) => ImportProgressDialog(progress: progress),
       );
     }
 
     try {
-      await BackupService.instance
-          .restoreFromBackup(backupInfo, options: importOptions);
+      await BackupService.instance.restoreFromBackup(
+        backupInfo,
+        options: importOptions,
+        onProgress: (value, label) =>
+            progress.value = ImportProgress(progress: value, label: label),
+      );
 
       final songs = await DatabaseService.instance.getAllSongs();
       await ref.read(audioPlayerManagerProvider).init(songs);
 
       await ref.read(userDataProvider.notifier).refresh();
+      ref.invalidate(songsProvider);
       await ref.read(songsProvider.notifier).refreshPlayCounts();
 
       if (mounted) {

@@ -80,6 +80,14 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
             icon: AppIcons.imageSearch,
             children: [
               _buildOperationTile(
+                id: 'repair_library_links',
+                icon: AppIcons.linkOff,
+                warningMessage:
+                    'Tracks whose files are no longer on this device will be '
+                    'removed from the library. Favourites, playlists and play '
+                    'counts are kept and reattach if the files come back.',
+              ),
+              _buildOperationTile(
                 id: 'rebuild_cover_caches',
                 icon: AppIcons.image,
               ),
@@ -352,7 +360,9 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     }
 
     // If operation is fully cached with no failures, show simple choice
-    if (operation.isFullyCached && !operation.isDatabaseOperation) {
+    if (operation.isFullyCached &&
+        !operation.isDatabaseOperation &&
+        !operation.isRepairOperation) {
       final forceRebuild = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -380,7 +390,9 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
     }
 
     // For database or recommendation operations, just show cancel/do-it dialog
-    if (operation.isDatabaseOperation || operation.isRecommendationOperation) {
+    if (operation.isDatabaseOperation ||
+        operation.isRecommendationOperation ||
+        operation.isRepairOperation) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(

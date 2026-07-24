@@ -709,8 +709,34 @@ class StorageService {
   }
 
   Future<void> importScannerSettings(Map<String, dynamic> settings) async {
-    await _importSettingsSubset(settings, _scannerSettingsKeys);
-    if (settings.containsKey('music_folders_list')) {
+    // Folder paths are the one scanner setting that describes a filesystem
+    // rather than a preference, so they don't necessarily survive the trip to
+    // another device. Importing dead ones points the scanner at nothing.
+    final filtered = Map<String, dynamic>.from(settings);
+    if (filtered['music_folders_list'] is List) {
+      final incoming = (filtered['music_folders_list'] as List).cast<String>();
+      final reachable = <String>[];
+      for (final entry in incoming) {
+        final record = _decodeFolderRecord(entry);
+        final path = record['path'];
+        if (path == null || path.isEmpty) continue;
+        if (await Directory(path).exists()) reachable.add(entry);
+      }
+
+      if (reachable.isEmpty && incoming.isNotEmpty) {
+        // Every folder in the archive is elsewhere on this device. Whatever is
+        // configured here already is better than nothing at all.
+        debugPrint(
+            'Ignoring imported music folders: none exist on this device');
+        filtered.remove('music_folders_list');
+      } else {
+        filtered['music_folders_list'] = reachable;
+      }
+    }
+
+    await _importSettingsSubset(filtered, _scannerSettingsKeys);
+    if (filtered.containsKey('music_folders_list')) {
+      _cachedMusicFolders = null;
       await CacheService.instance.markLibraryChanged();
     }
   }

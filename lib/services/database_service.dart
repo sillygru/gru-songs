@@ -757,30 +757,70 @@ class DatabaseService {
   // SONG QUERIES
   // ==========================================================================
 
-  Future<void> insertSongsBatch(List<Song> songs) async {
+  /// Upserts library rows, keyed by [Song.filename].
+  ///
+  /// With [preserveCoverUrl] — the default — a null incoming `cover_url` leaves
+  /// whatever the row already had. That guard is deliberately at this level
+  /// rather than in each caller: a scan that couldn't read a file, a cover
+  /// rebuild that couldn't resolve one, and an import carrying another device's
+  /// rows all produce nulls, and any one of them silently erasing working
+  /// artwork is the bug this exists to make unrepresentable. `created_epoch_sec`
+  /// is protected the same way so "date added" survives a rescan.
+  ///
+  /// Only [LibraryRepairService] passes false, because clearing a `cover_url`
+  /// that no longer resolves is exactly its job — a null there is a considered
+  /// decision, not a failure to look.
+  Future<void> insertSongsBatch(
+    List<Song> songs, {
+    bool preserveCoverUrl = true,
+  }) async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return;
 
     await _userDataDatabase!.transaction((txn) async {
       final batch = txn.batch();
       for (final song in songs) {
-        batch.insert(
-          'song',
-          {
-            'filename': song.filename,
-            'title': song.title,
-            'artist': song.artist,
-            'album': song.album,
-            'url': song.url,
-            'cover_url': song.coverUrl,
-            'has_lyrics': song.hasLyrics ? 1 : 0,
-            'play_count': song.playCount,
-            'duration_ms': song.duration?.inMilliseconds,
-            'mtime': song.mtime,
-            'created_epoch_sec': song.createdEpochSec,
-            'song_date_epoch_sec': song.songDateEpochSec,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
+        final values = <String, Object?>{
+          'filename': song.filename,
+          'title': song.title,
+          'artist': song.artist,
+          'album': song.album,
+          'url': song.url,
+          'cover_url': song.coverUrl,
+          'has_lyrics': song.hasLyrics ? 1 : 0,
+          'play_count': song.playCount,
+          'duration_ms': song.duration?.inMilliseconds,
+          'mtime': song.mtime,
+          'created_epoch_sec': song.createdEpochSec,
+          'song_date_epoch_sec': song.songDateEpochSec,
+        };
+
+        if (!preserveCoverUrl) {
+          batch.insert('song', values,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+          continue;
+        }
+
+        final columns = values.keys.toList();
+        final placeholders = List.filled(columns.length, '?').join(', ');
+        final assignments = <String>[];
+        for (final column in columns) {
+          if (column == 'filename') continue;
+          if (column == 'cover_url' || column == 'created_epoch_sec') {
+            // COALESCE order differs on purpose: a new cover wins over the old
+            // one, but the earliest known "date added" wins over a later scan.
+            assignments.add(column == 'cover_url'
+                ? 'cover_url = COALESCE(excluded.cover_url, song.cover_url)'
+                : 'created_epoch_sec = COALESCE(song.created_epoch_sec, excluded.created_epoch_sec)');
+            continue;
+          }
+          assignments.add('$column = excluded.$column');
+        }
+
+        batch.rawInsert(
+          'INSERT INTO song (${columns.join(', ')}) VALUES ($placeholders) '
+          'ON CONFLICT(filename) DO UPDATE SET ${assignments.join(', ')}',
+          columns.map((c) => values[c]).toList(),
         );
       }
       await batch.commit(noResult: true);
@@ -820,6 +860,66 @@ class DatabaseService {
     if (_userDataDatabase == null) return;
     await _userDataDatabase!
         .delete('cover_miss', where: 'filename = ?', whereArgs: [filename]);
+  }
+
+  /// Forgets the negative cache entirely.
+  ///
+  /// Every entry records "this file had no art" as observed on some device at
+  /// some time. After a restore or a cover-cache wipe none of that is still
+  /// trustworthy, and re-probing is precisely the behaviour we want back.
+  Future<void> clearAllCoverMisses() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    await _userDataDatabase!.delete('cover_miss');
+  }
+
+  Future<void> clearCoverMisses(Iterable<String> filenames) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    final list = filenames.toList();
+    if (list.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final chunk in _chunked(list)) {
+        final placeholders = List.filled(chunk.length, '?').join(', ');
+        await txn.delete('cover_miss',
+            where: 'filename IN ($placeholders)', whereArgs: chunk);
+      }
+    });
+  }
+
+  /// Drops every cached cover path without touching the files.
+  ///
+  /// Pairs with deleting the cover directory: leaving the paths behind is what
+  /// makes a "clear cover cache" look like it did nothing, because every row
+  /// still points at a hole instead of being null enough for the lazy
+  /// extraction path to take over.
+  Future<int> clearCoverUrls() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return 0;
+    return _userDataDatabase!.rawUpdate(
+        'UPDATE song SET cover_url = NULL WHERE cover_url IS NOT NULL');
+  }
+
+  Future<void> deleteSongsByFilenames(Iterable<String> filenames) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return;
+    final list = filenames.toList();
+    if (list.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final chunk in _chunked(list)) {
+        final placeholders = List.filled(chunk.length, '?').join(', ');
+        await txn.delete('song',
+            where: 'filename IN ($placeholders)', whereArgs: chunk);
+      }
+    });
+  }
+
+  /// SQLite caps a statement at 999 variables by default; stay well under it.
+  static Iterable<List<String>> _chunked(List<String> values,
+      {int size = 500}) sync* {
+    for (var i = 0; i < values.length; i += size) {
+      yield values.sublist(i, min(i + size, values.length));
+    }
   }
 
   Future<List<Song>> getAllSongs() async {

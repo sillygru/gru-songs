@@ -11,6 +11,7 @@ import 'backup_manifest.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
 import 'import_options.dart';
+import 'library_repair_service.dart';
 import '../models/song.dart';
 import '../data/repositories/search_index_repository.dart';
 
@@ -665,9 +666,13 @@ class BackupService {
     String? statsDbPath,
     String? dataDbPath,
     required ImportOptions options,
+    List<Song>? preImportSongs,
+    bool replacedDatabaseFiles = false,
+    void Function(double progress, String label)? onProgress,
   }) async {
     final categories = options.categories;
     final storage = StorageService();
+    List<Song>? importedRows;
 
     if (options.hasDatabaseCategories) {
       if (statsDbPath != null && dataDbPath != null) {
@@ -687,8 +692,11 @@ class BackupService {
       if (await songsFile.exists()) {
         final data = decodeJson(await songsFile.readAsString());
         if (data is List) {
-          final songs = data.map((json) => Song.fromJson(json)).toList();
-          await DatabaseService.instance.insertSongsBatch(songs);
+          // Staged rather than written: these rows describe the device the
+          // archive came from, so their file and cover paths are claims to be
+          // checked, not facts. The repair pass below is the only thing that
+          // writes the `song` table on an import path.
+          importedRows = data.map((json) => Song.fromJson(json)).toList();
         }
       }
     }
@@ -749,19 +757,41 @@ class BackupService {
         await restoreArtifact(artifact, importPath);
       }
     }
+
+    // Last, so it sees the restored music folders and any covers the archive
+    // brought with it. Without this the library table describes the old device
+    // and nothing downstream ever notices.
+    if (replacedDatabaseFiles || importedRows != null) {
+      await LibraryRepairService.instance.repairLibrary(
+        preImportSongs: preImportSongs,
+        importedRows: importedRows,
+        onProgress: onProgress,
+      );
+    }
   }
 
   /// Imports a previously validated archive, then removes the extracted copy.
   Future<void> performImport({
     required Map<String, dynamic> validation,
     required ImportOptions options,
+    void Function(double progress, String label)? onProgress,
   }) async {
     try {
+      // Nothing is replaced wholesale on this path, but imported rows still
+      // overwrite locally-scanned ones by filename, so the local view of where
+      // files and covers are has to be preserved across the merge.
+      final preImportSongs =
+          options.categories.contains(ImportDataCategory.songs)
+              ? await DatabaseService.instance.getAllSongs()
+              : null;
+
       await _applyImport(
         importPath: validation['importPath'] as String,
         statsDbPath: validation['statsDbPath'] as String?,
         dataDbPath: validation['dataDbPath'] as String?,
         options: options,
+        preImportSongs: preImportSongs,
+        onProgress: onProgress,
       );
       await _invalidateSearchIndexIfStale(options);
     } finally {
@@ -788,8 +818,11 @@ class BackupService {
     }
   }
 
-  Future<void> restoreFromBackup(BackupInfo backupInfo,
-      {ImportOptions? options}) async {
+  Future<void> restoreFromBackup(
+    BackupInfo backupInfo, {
+    ImportOptions? options,
+    void Function(double progress, String label)? onProgress,
+  }) async {
     final importOptions = options ?? ImportOptions.defaultImport;
 
     try {
@@ -823,8 +856,26 @@ class BackupService {
         // Wholesale file replacement only makes sense when the archive
         // actually carries databases; otherwise fall through and restore the
         // JSON/settings/cache content as usual.
+        var replacedDatabaseFiles = false;
+        List<Song>? preImportSongs;
+
         if (importOptions.restoreDatabases &&
             (foundStatsDb != null || foundDataDb != null)) {
+          // The library table rides inside wispie_data.db and is about to be
+          // overwritten by the archive's copy, taking this device's file paths
+          // and extracted covers with it. No import category covers `song`, so
+          // nothing else would preserve them — snapshot before the swap.
+          if (foundDataDb != null) {
+            try {
+              preImportSongs = await DatabaseService.instance.getAllSongs();
+              replacedDatabaseFiles = true;
+            } catch (e) {
+              debugPrint('Could not snapshot library before restore: $e');
+              // Repair still runs; it just has less to merge against.
+              replacedDatabaseFiles = true;
+            }
+          }
+
           await DatabaseService.instance.close();
           const dbSuffixes = ['', '-journal', '-wal', '-shm'];
           for (final suffix in dbSuffixes) {
@@ -841,12 +892,18 @@ class BackupService {
 
           if (foundStatsDb != null) {
             await foundStatsDb.copy(p.join(appDir.path, statsDbName));
-            statsDbPath = p.join(appDir.path, statsDbName);
           }
           if (foundDataDb != null) {
             await foundDataDb.copy(p.join(appDir.path, dataDbName));
-            dataDbPath = p.join(appDir.path, dataDbName);
           }
+
+          // statsDbPath/dataDbPath deliberately keep pointing at the extracted
+          // copies rather than the files we just wrote. The category import
+          // below opens them as a second connection, and pointing it at the
+          // live database means opening the file DatabaseService already holds
+          // — which deadlocks the moment either side starts a transaction. The
+          // extracted copies are byte-identical, so the import reads the same
+          // rows from a file nothing else has open.
 
           await DatabaseService.instance.init();
         }
@@ -856,6 +913,9 @@ class BackupService {
           statsDbPath: statsDbPath,
           dataDbPath: dataDbPath,
           options: importOptions,
+          preImportSongs: preImportSongs,
+          replacedDatabaseFiles: replacedDatabaseFiles,
+          onProgress: onProgress,
         );
 
         await _invalidateSearchIndexIfStale(importOptions);

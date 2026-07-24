@@ -116,9 +116,49 @@ class ScannerService {
     '.3gp',
   ];
 
+  /// Whether [path] is a media file the library would index.
+  static bool isSupportedMediaPath(String path) =>
+      _supportedExtensions.contains(p.extension(path).toLowerCase());
+
   static bool _isVideoFile(String path) {
     final ext = p.extension(path).toLowerCase();
     return Song.videoExtensions.contains(ext);
+  }
+
+  /// Suffixes a cached cover can carry, in preference order.
+  ///
+  /// `_ffmpeg.jpg` belongs here as much as the plain extensions do: it is where
+  /// the FFmpeg fallback writes, and any probe that omits it decides a song has
+  /// no cached cover when it plainly does — then re-extracts, or worse, records
+  /// the absence.
+  static const List<String> coverExtensionCandidates = [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.bmp',
+    '_ffmpeg.jpg',
+  ];
+
+  /// The one directory cached covers live in, created if missing.
+  static Future<Directory> coversDirectory() async {
+    final supportDir = await getApplicationSupportDirectory();
+    final dir = Directory(p.join(supportDir.path, 'extracted_covers'));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  /// Every path a cached cover for [filename] could occupy, given a covers
+  /// directory of [coversDirPath].
+  static List<String> coverCandidatePaths(
+      String coversDirPath, String filename) {
+    final key = coverKeyForFilename(filename);
+    return [
+      for (final ext in coverExtensionCandidates)
+        p.join(coversDirPath, '$key$ext'),
+    ];
   }
 
   static Future<bool> _isValidCoverFile(
@@ -206,15 +246,9 @@ class ScannerService {
         // Check if a cached cover already exists (may have been created by a
         // parallel path we aren't aware of).
         String? existing;
-        for (final ext in [
-          '.jpg',
-          '.png',
-          '.jpeg',
-          '.webp',
-          '.bmp',
-          '_ffmpeg.jpg'
-        ]) {
-          final candidate = File(p.join(coversDir.path, '$hash$ext'));
+        for (final candidatePath
+            in coverCandidatePaths(coversDir.path, file.path)) {
+          final candidate = File(candidatePath);
           if (await _isValidCoverFile(candidate, requireDecodable: true)) {
             existing = candidate.path;
             break;
@@ -412,6 +446,8 @@ class ScannerService {
     void Function(double progress)? onProgress,
     void Function(List<Song>)? onComplete,
     bool fastMode = false,
+    bool includeVideos = true,
+    int minimumFileSizeBytes = 0,
   }) async {
     // Check for all files access permission
     if (Platform.isAndroid) {
@@ -484,6 +520,8 @@ class ScannerService {
       playCounts: effectivePlayCounts,
       sendPort: receivePort.sendPort,
       fastMode: fastMode,
+      includeVideos: includeVideos,
+      minimumFileSizeBytes: minimumFileSizeBytes,
     );
 
     await Isolate.spawn(_isolateScan, params);
@@ -799,17 +837,20 @@ class ScannerService {
     return null;
   }
 
-  Future<Map<String, String?>> rebuildCoverCache(
+  /// Re-derives cover art for [songs], keyed by [Song.url].
+  ///
+  /// A song only appears in the result when a cover was actually resolved.
+  /// Absence means "couldn't tell" — an unmounted card, an unreadable file — and
+  /// callers must leave whatever cover the row already has alone. Returning a
+  /// null for those cases is what let a forced rebuild erase working artwork.
+  Future<Map<String, String>> rebuildCoverCache(
     List<Song> songs, {
     void Function(double progress)? onProgress,
     bool force = false,
   }) async {
     final supportDir = await getApplicationSupportDirectory();
-    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+    final coversDir = await coversDirectory();
 
-    if (!await coversDir.exists()) {
-      await coversDir.create(recursive: true);
-    }
     final lockDir = Directory(p.join(supportDir.path, 'file_locks'));
     if (!await lockDir.exists()) {
       await lockDir.create(recursive: true);
@@ -828,7 +869,7 @@ class ScannerService {
     }
 
     // Process audio files in isolate (fast)
-    final coverResults = <String, String?>{};
+    final coverResults = <String, String>{};
     if (otherSongs.isNotEmpty) {
       final receivePort = ReceivePort();
       await Isolate.spawn(
@@ -841,13 +882,13 @@ class ScannerService {
             force: force,
           ));
 
-      final completer = Completer<Map<String, String?>>();
+      final completer = Completer<Map<String, String>>();
       receivePort.listen((message) {
         if (message is double) {
           onProgress?.call(message * 0.7); // Audio files get 70% of progress
         } else if (message is Map) {
           receivePort.close();
-          completer.complete(Map<String, String?>.from(message));
+          completer.complete(Map<String, String>.from(message));
         } else {
           receivePort.close();
           completer.completeError(message);
@@ -873,15 +914,9 @@ class ScannerService {
 
         // Check existing cache first
         String? existing;
-        for (final ext in [
-          '.jpg',
-          '.png',
-          '.jpeg',
-          '.webp',
-          '.bmp',
-          '_ffmpeg.jpg'
-        ]) {
-          final candidate = File(p.join(coversDir.path, '$hash$ext'));
+        for (final candidatePath
+            in coverCandidatePaths(coversDir.path, file.path)) {
+          final candidate = File(candidatePath);
           if (await _isValidCoverFile(candidate, requireDecodable: true)) {
             existing = candidate.path;
             break;
@@ -897,7 +932,10 @@ class ScannerService {
             outputPath: outputPath,
             ffmpeg: ffmpeg,
           );
-          coverResults[song.url] = result;
+          // A failed frame grab says nothing about the cover the row already
+          // has; fall back to whatever was cached rather than reporting none.
+          final resolved = result ?? existing;
+          if (resolved != null) coverResults[song.url] = resolved;
         }
       }
     }
@@ -908,7 +946,7 @@ class ScannerService {
   static Future<void> _isolateRebuildCovers(_RebuildParams params) async {
     final coversDir = Directory(params.coversDirPath);
     final folderCoverCache = <String, String?>{};
-    final coverResults = <String, String?>{};
+    final coverResults = <String, String>{};
 
     for (int i = 0; i < params.songs.length; i++) {
       final song = params.songs[i];
@@ -923,8 +961,9 @@ class ScannerService {
 
           // Check if already exists - unless force is true
           if (!params.force) {
-            for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
-              final cachedFile = File(p.join(coversDir.path, '$hash$ext'));
+            for (final cachedPath
+                in coverCandidatePaths(coversDir.path, file.path)) {
+              final cachedFile = File(cachedPath);
               if (await _isValidCoverFile(cachedFile)) {
                 resolvedCoverUrl = cachedFile.path;
                 break;
@@ -970,9 +1009,14 @@ class ScannerService {
         } finally {
           await _releaseLock(lockHandle);
         }
-      }
 
-      coverResults[song.url] = resolvedCoverUrl;
+        // Only a real resolution is reported. Staying silent for a song we
+        // couldn't extract from — and for every song whose file wasn't there to
+        // read — is what stops a rebuild from erasing covers it never examined.
+        if (resolvedCoverUrl != null) {
+          coverResults[song.url] = resolvedCoverUrl;
+        }
+      }
 
       if (i % 10 == 0) {
         params.sendPort.send((i + 1) / params.songs.length);
@@ -1001,10 +1045,18 @@ class ScannerService {
   static Future<void> _isolateScan(_ScanParams params) async {
     final coversDir = Directory(params.coversDirPath);
 
-    // Create a lookup map for existing songs
-    final Map<String, Song> existingSongsMap = params.existingSongs != null
-        ? {for (var s in params.existingSongs!) s.url: s}
-        : {};
+    // Existing songs are looked up two ways on purpose. The path is the precise
+    // match, but the `song` table's primary key is the basename — so a file
+    // that merely moved between folders misses a path-only lookup, is treated
+    // as brand new, and then overwrites the row it should have matched. Falling
+    // back to the basename makes reconciliation agree with the write that
+    // follows it.
+    final Map<String, Song> existingByUrl = {};
+    final Map<String, Song> existingByFilename = {};
+    for (final song in params.existingSongs ?? const <Song>[]) {
+      existingByUrl[song.url] = song;
+      existingByFilename[song.filename] = song;
+    }
 
     // Convert excluded folders to a set for faster lookup
     final excludedSet = params.excludedFolders.toSet();
@@ -1080,7 +1132,8 @@ class ScannerService {
         }
 
         // Check if we can reuse existing song data
-        final existingSong = existingSongsMap[file.path];
+        final existingSong = existingByUrl[file.path] ??
+            existingByFilename[p.basename(file.path)];
         if (existingSong != null &&
             existingSong.mtime != null &&
             (existingSong.mtime! - currentMtime).abs() < 2.0) {
@@ -1094,7 +1147,9 @@ class ScannerService {
             artist: existingSong.artist,
             album: existingSong.album,
             filename: existingSong.filename,
-            url: existingSong.url,
+            // The file we just walked to is where it is now; a row matched by
+            // basename may still carry the folder it used to be in.
+            url: file.path,
             coverUrl: existingSong.coverUrl,
             hasLyrics: existingSong.hasLyrics,
             playCount: updatedPlayCount,
@@ -1104,19 +1159,26 @@ class ScannerService {
             songDateEpochSec: existingSong.songDateEpochSec,
           ));
         } else if (params.fastMode) {
+          // Fast mode reads no metadata and extracts no art, so it has nothing
+          // better to offer than what a previous pass already found. Anything
+          // it doesn't carry forward here is simply lost — this branch also
+          // runs for songs that merely had their mtime nudged.
           songs.add(Song(
-            title: p.basenameWithoutExtension(file.path),
-            artist: 'Unknown Artist',
-            album: 'Unknown Album',
+            title: existingSong?.title ?? p.basenameWithoutExtension(file.path),
+            artist: existingSong?.artist ?? 'Unknown Artist',
+            album: existingSong?.album ?? 'Unknown Album',
             filename: p.basename(file.path),
             url: file.path,
-            coverUrl: null,
-            hasLyrics: false,
-            playCount: 0,
-            duration: null,
+            coverUrl: existingSong?.coverUrl,
+            hasLyrics: existingSong?.hasLyrics ?? false,
+            playCount: params.playCounts[p.basename(file.path)] ??
+                existingSong?.playCount ??
+                0,
+            duration: existingSong?.duration,
             mtime: currentMtime,
-            createdEpochSec: DateTime.now().millisecondsSinceEpoch / 1000.0,
-            songDateEpochSec: null,
+            createdEpochSec: existingSong?.createdEpochSec ??
+                DateTime.now().millisecondsSinceEpoch / 1000.0,
+            songDateEpochSec: existingSong?.songDateEpochSec,
           ));
         } else {
           RandomAccessFile? lockHandle;
@@ -1185,8 +1247,8 @@ class ScannerService {
     final hash = coverKeyForFilename(filename);
 
     // Check for valid cache first
-    for (final ext in ['.jpg', '.png', '.jpeg', '.webp', '.bmp']) {
-      final cachedFile = File(p.join(coversDir.path, '$hash$ext'));
+    for (final cachedPath in coverCandidatePaths(coversDir.path, filename)) {
+      final cachedFile = File(cachedPath);
       if (await _isValidCoverFile(cachedFile, requireDecodable: isVideo)) {
         coverUrl = cachedFile.path;
         break;

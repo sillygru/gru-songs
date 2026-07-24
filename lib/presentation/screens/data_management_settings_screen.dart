@@ -5,6 +5,7 @@ import '../../providers/providers.dart';
 import '../../services/backup_service.dart';
 import '../../services/import_options.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
+import '../../presentation/widgets/import_progress_dialog.dart';
 import 'namida_import_screen.dart';
 import 'backup_management_screen.dart';
 import 'storage_management_screen.dart';
@@ -431,18 +432,26 @@ class _DataManagementSettingsScreenState
         return;
       }
 
+      final progress = ValueNotifier<ImportProgress>(
+        const ImportProgress(progress: 0, label: 'Importing…'),
+      );
+
       if (mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) =>
-              const Center(child: CircularProgressIndicator()),
+          builder: (context) => ImportProgressDialog(
+            progress: progress,
+            title: 'Importing data',
+          ),
         );
       }
 
       await BackupService.instance.performImport(
         validation: validation,
         options: importOptions,
+        onProgress: (value, label) =>
+            progress.value = ImportProgress(progress: value, label: label),
       );
 
       if (mounted) {

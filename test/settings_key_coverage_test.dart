@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wispie/services/import_options.dart';
@@ -71,7 +73,10 @@ void main() {
 
 Object _sampleValue(String key) {
   switch (key) {
+    // Imported folder paths are checked against the filesystem, so this one
+    // has to name somewhere that actually exists.
     case 'music_folders_list':
+      return <String>[Directory.systemTemp.path];
     case 'excluded_folders':
     case 'auto_backup_content_types':
       return <String>['sample'];

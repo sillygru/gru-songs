@@ -168,8 +168,10 @@ class DatabaseOptimizerService {
                 progress + (0.8 * (1 / totalSteps)));
             int coversUpdated = 0;
             final updatedSongs = songs.map((song) {
+              // A song missing from the map is one the rebuild couldn't read,
+              // not one without art — its existing cover stands.
               final newCoverUrl = coverMap[song.url];
-              if (newCoverUrl != song.coverUrl) {
+              if (newCoverUrl != null && newCoverUrl != song.coverUrl) {
                 coversUpdated++;
                 return Song(
                   title: song.title,
