@@ -16,6 +16,12 @@ typedef AppIconData = List<List<dynamic>>;
 /// a deliberate, bespoke identity rather than stock Material. Emphasis (a
 /// "heavier" selected state) comes from [AppIcon.strokeWidth], not a separate
 /// filled weight — the free set is stroke-only.
+///
+/// **Prefer open glyphs over enclosed ones.** Hugeicons draws its `…Circle` /
+/// `…Square` variants right out to the edge of the 24-unit box while an open
+/// glyph sits well inside it, so an enclosed icon reads two sizes larger than
+/// its neighbours on the same list. Reach for an enclosed variant only where
+/// the enclosure carries the meaning ([checkCircle], [playCircle], [info]).
 abstract final class AppIcons {
   static const AppIconData play = HugeIcons.strokeRoundedPlay;
   static const AppIconData pause = HugeIcons.strokeRoundedPause;
@@ -36,11 +42,23 @@ abstract final class AppIcons {
   static const AppIconData playlistRemove =
       HugeIcons.strokeRoundedPlayListRemove;
   static const AppIconData musicNote = HugeIcons.strokeRoundedMusicNote01;
-  static const AppIconData musicOff = HugeIcons.strokeRoundedMusicNoteSquare01;
+  // Used for "no songs found" empty states, so it wants to read as *absence* —
+  // a plain note in a square (now [library]) said the opposite.
+  static const AppIconData musicOff = HugeIcons.strokeRoundedFolderOff;
   static const AppIconData album = HugeIcons.strokeRoundedAlbum02;
-  static const AppIconData library = HugeIcons.strokeRoundedLibrary;
+  // A music note enclosed in a rounded square. This drives the Library nav tab,
+  // the Library settings group, the library screen and the scan banner, so it
+  // has to say "your music" at both tab and inline size — the book-shaped
+  // glyphs it used before said "reading".
+  //
+  // One of the few enclosed glyphs kept on purpose (see the note above): the
+  // enclosure is what distinguishes it from [musicNote], which is the bare
+  // note.
+  static const AppIconData library = HugeIcons.strokeRoundedMusicNoteSquare01;
   static const AppIconData libraryAdd = HugeIcons.strokeRoundedPlayListAdd;
-  static const AppIconData videoLibrary = HugeIcons.strokeRoundedLibrary;
+  // Only used for the "Include Videos" filter, so it wants to read as video
+  // rather than as a second library.
+  static const AppIconData videoLibrary = HugeIcons.strokeRoundedVideo01;
   static const AppIconData movie = HugeIcons.strokeRoundedVideo01;
   static const AppIconData collectionsBookmark =
       HugeIcons.strokeRoundedBookmark02;
@@ -69,7 +87,9 @@ abstract final class AppIcons {
   static const AppIconData arrowUp = HugeIcons.strokeRoundedArrowUp01;
   static const AppIconData refresh = HugeIcons.strokeRoundedRefresh;
   static const AppIconData restore = HugeIcons.strokeRoundedArrowTurnBackward;
-  static const AppIconData favorite = HugeIcons.strokeRoundedFavouriteCircle;
+  // Bare heart, not FavouriteCircle: the enclosed variant filled its badge edge
+  // to edge and was visibly the largest thing in the drawer.
+  static const AppIconData favorite = HugeIcons.strokeRoundedFavourite;
   static const AppIconData heartBroken = HugeIcons.strokeRoundedHeartbreak;
   static const AppIconData thumbDown = HugeIcons.strokeRoundedThumbsDown;
   static const AppIconData star = HugeIcons.strokeRoundedStar;
@@ -133,7 +153,9 @@ abstract final class AppIcons {
   static const AppIconData touchApp = HugeIcons.strokeRoundedTap01;
   static const AppIconData flashOn = HugeIcons.strokeRoundedFlash;
   static const AppIconData videocamOff = HugeIcons.strokeRoundedVideoOff;
-  static const AppIconData misc = HugeIcons.strokeRoundedSetting06;
+  // Setting06 is a hexagon crossed by a slash — it reads as "prohibited", not
+  // "miscellaneous".
+  static const AppIconData misc = HugeIcons.strokeRoundedSetting07;
   static const AppIconData photoSize = HugeIcons.strokeRoundedImageCrop;
   static const AppIconData image = HugeIcons.strokeRoundedImage01;
   static const AppIconData lyrics = HugeIcons.strokeRoundedTextAlignLeft01;

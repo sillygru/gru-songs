@@ -71,12 +71,16 @@ class AppSettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent =
-        isDanger ? AppTokens.danger : Theme.of(context).colorScheme.primary;
-
     return AppListRow(
       dense: true,
-      leading: AppRowIcon(icon: icon, color: accent, size: 40),
+      // A destructive row overrides the accent with danger — there the colour
+      // is the warning, not the theme. With no plate behind the glyph, colour
+      // is the only thing marking it out.
+      leading: AppRowIcon(
+        icon: icon,
+        color: isDanger ? AppTokens.danger : null,
+        size: 40,
+      ),
       title: title,
       subtitle: subtitle,
       onTap: onTap,
@@ -85,7 +89,7 @@ class AppSettingsTile extends StatelessWidget {
               ? null
               : AppIcon(
                   AppIcons.chevronRight,
-                  size: 20,
+                  size: AppTokens.iconSm,
                   color: AppTokens.fgTertiary,
                 )),
     );
@@ -111,11 +115,11 @@ class AppSettingsSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-
     return AppListRow(
       dense: true,
-      leading: AppRowIcon(icon: icon, color: accent, size: 40),
+      // The switch itself carries the on/off state, so the glyph is not marked
+      // active — it would double up on it.
+      leading: AppRowIcon(icon: icon, size: 40),
       title: title,
       subtitle: subtitle,
       onTap: onChanged == null ? null : () => onChanged!(!value),
@@ -174,7 +178,7 @@ class AppSettingsSlider extends StatelessWidget {
                 valueLabel,
                 style: AppTokens.meta(context).copyWith(
                   color: accent,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],

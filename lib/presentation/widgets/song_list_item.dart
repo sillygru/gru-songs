@@ -255,7 +255,7 @@ class _Actions extends ConsumerWidget {
               '${song.playCount}',
               style: AppTokens.meta(context).copyWith(
                 fontSize: 10,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 color: accent,
               ),
             ),

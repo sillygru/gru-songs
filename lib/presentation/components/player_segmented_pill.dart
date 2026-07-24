@@ -69,7 +69,7 @@ class PlayerSegmentedPill extends StatelessWidget {
                                 letterSpacing: 0.3,
                                 fontWeight: FontWeight.lerp(
                                   FontWeight.w500,
-                                  FontWeight.w800,
+                                  FontWeight.w700,
                                   emphasis,
                                 ),
                                 color: Color.lerp(

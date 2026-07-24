@@ -6,6 +6,7 @@ import '../../providers/providers.dart';
 import '../components/song_actions.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_icon.dart';
+import '../components/app_list_row.dart';
 import '../tokens/app_icons.dart';
 
 void showSongOptionsMenu(
@@ -212,6 +213,12 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     await songActionDelete(widget.parentContext, ref, song);
   }
 
+  /// A leaf action inside one of the submenus.
+  ///
+  /// This menu used to hand-roll its rows — its own [ListTile], its own icon
+  /// plate at its own size, its own type. It now goes through [AppListRow] like
+  /// every other list in the app, so the leading-slot geometry and the type
+  /// ramp stay in one place.
   Widget _submenuEntry({
     required AppIconData icon,
     required String label,
@@ -219,25 +226,21 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     required VoidCallback onTap,
     Color? iconColor,
   }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+    return AppListRow(
       dense: true,
-      leading: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: (iconColor ?? Theme.of(context).colorScheme.primary)
-              .withValues(alpha: 0.15),
-          borderRadius: AppTokens.brSm,
-        ),
-        child: AppIcon(icon, size: 18, color: iconColor),
-      ),
-      title: Text(label),
-      subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      leading: AppRowIcon(icon: icon, color: iconColor, size: 40),
+      title: label,
+      subtitle: subtitle,
       onTap: onTap,
     );
   }
 
+  /// One of the four top-level groups.
+  ///
+  /// The card behind it stays a neutral fill. Washing the whole card in the
+  /// accent turned every group into a coloured slab and left the destructive
+  /// one indistinguishable at a glance — now only its glyph is red, which is
+  /// the one thing that needs to catch the eye.
   Widget _sectionCard({
     required AppIconData icon,
     required String title,
@@ -245,60 +248,23 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
     required VoidCallback onTap,
     Color? accent,
   }) {
-    final color = accent ?? Theme.of(context).colorScheme.primary;
-    return Material(
-      color: color.withValues(alpha: 0.08),
-      borderRadius: AppTokens.brSm,
-      child: InkWell(
-        borderRadius: AppTokens.brSm,
+    // Flat fill rather than an [AppSurface]: these cards already sit inside the
+    // floating menu, and a raised shadow on each one would stack against the
+    // menu's own.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppTokens.surface(1),
+        borderRadius: AppTokens.brMd,
+      ),
+      child: AppListRow(
+        leading: AppRowIcon(icon: icon, color: accent),
+        title: title,
+        subtitle: subtitle,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.2),
-                  borderRadius: AppTokens.brSm,
-                ),
-                child: AppIcon(icon, size: 18, color: color),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurfaceVariant
-                            .withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              AppIcon(
-                AppIcons.chevronRight,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurfaceVariant
-                    .withValues(alpha: 0.8),
-              ),
-            ],
-          ),
+        trailing: const AppIcon(
+          AppIcons.chevronRight,
+          size: AppTokens.iconSm,
+          color: AppTokens.fgTertiary,
         ),
       ),
     );
@@ -321,7 +287,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
             subtitle: 'Queue, playlist, and share actions',
             onTap: () => _goTo(_SongMenuView.playback),
           ),
-        if (hasSongActions) const SizedBox(height: 8),
+        if (hasSongActions) const SizedBox(height: AppTokens.s2),
         if (hasSongActions)
           _sectionCard(
             icon: AppIcons.folder,
@@ -329,17 +295,17 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
             subtitle: 'Move song and edit metadata',
             onTap: () => _goTo(_SongMenuView.library),
           ),
-        if (hasSongActions) const SizedBox(height: 8),
+        if (hasSongActions) const SizedBox(height: AppTokens.s2),
         _sectionCard(
           icon: AppIcons.favorite,
           title: 'Personalize',
           subtitle: 'Favorite and recommendation settings',
           onTap: () => _goTo(_SongMenuView.personalize),
-          accent: isFavorite
-              ? AppTokens.danger
-              : Theme.of(context).colorScheme.secondary,
+          // Red only while the song *is* favourited — otherwise the glyph takes
+          // the cover accent like the rest.
+          accent: isFavorite ? AppTokens.danger : null,
         ),
-        if (hasSongActions) const SizedBox(height: 8),
+        if (hasSongActions) const SizedBox(height: AppTokens.s2),
         if (hasSongActions)
           _sectionCard(
             icon: AppIcons.delete,
@@ -567,10 +533,11 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
           AppTokens.surface(2),
           theme.scaffoldBackgroundColor,
         ),
-        // The options popup is the top-most floating plane — lift it clearly
-        // off the dimmed page.
-        elevation: 16,
-        shadowColor: const Color(0x73000000),
+        // The options popup is the top-most floating plane — lift it off the
+        // dimmed page, but no harder than the dialog theme lifts its own, or it
+        // reads as a heavier design language than the rest of the app.
+        elevation: 8,
+        shadowColor: const Color(0x4D000000),
         borderRadius: AppTokens.brLg,
         clipBehavior: Clip.antiAlias,
         child: Builder(
@@ -600,9 +567,8 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
+                            style: AppTokens.paneTitle(context)
+                                .copyWith(fontSize: 16),
                           ),
                           const SizedBox(height: 2),
                           Text(

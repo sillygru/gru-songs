@@ -412,7 +412,7 @@ class _ResultRow extends StatelessWidget {
         label,
         style: TextStyle(
           fontSize: 10,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0.6,
           color: color,
         ),

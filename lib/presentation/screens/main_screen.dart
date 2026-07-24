@@ -86,7 +86,10 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   bool _isDraggingDrawer = false;
 
-  static const double _bottomDockBaseHeight = 88.0;
+  /// The nav bar is 64 high plus whatever safe-area strip it paints itself, so
+  /// this only needs a little slack above it — it used to carry the gap the
+  /// floating dock left on either side of its inset.
+  static const double _bottomDockBaseHeight = 72.0;
 
   // Gesture detection for drawer
   static const double _edgeDragWidth = 60.0;
@@ -387,29 +390,26 @@ class _MainScreenState extends ConsumerState<MainScreen>
                   ),
                 );
               },
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: AppTokens.s2),
-                child: AppNavBar(
-                  selectedIndex: _selectedIndex,
-                  onSelected: _onTabSelected,
-                  items: const [
-                    AppNavItem(
-                      icon: AppIcons.home,
-                      selectedIcon: AppIcons.home,
-                      label: 'Home',
-                    ),
-                    AppNavItem(
-                      icon: AppIcons.library,
-                      selectedIcon: AppIcons.library,
-                      label: 'Library',
-                    ),
-                    AppNavItem(
-                      icon: AppIcons.person,
-                      selectedIcon: AppIcons.person,
-                      label: 'Profile',
-                    ),
-                  ],
-                ),
+              child: AppNavBar(
+                selectedIndex: _selectedIndex,
+                onSelected: _onTabSelected,
+                items: const [
+                  AppNavItem(
+                    icon: AppIcons.home,
+                    selectedIcon: AppIcons.home,
+                    label: 'Home',
+                  ),
+                  AppNavItem(
+                    icon: AppIcons.library,
+                    selectedIcon: AppIcons.library,
+                    label: 'Library',
+                  ),
+                  AppNavItem(
+                    icon: AppIcons.person,
+                    selectedIcon: AppIcons.person,
+                    label: 'Profile',
+                  ),
+                ],
               ),
             ),
     );

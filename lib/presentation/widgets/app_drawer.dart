@@ -138,7 +138,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             icon: AppIcons.favorite,
                             label: 'Favorites',
                             subtitle: 'Your liked tracks',
-                            color: AppTokens.danger,
                             onTap: () async {
                               final songs =
                                   await ref.read(songsProvider.future);
@@ -159,21 +158,18 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             icon: AppIcons.queue,
                             label: 'Playlists',
                             subtitle: 'Curated sets',
-                            color: accent,
                             onTap: () => _navigateTo(const PlaylistsScreen()),
                           ),
                           _buildNavItem(
                             icon: AppIcons.album,
                             label: 'Albums',
                             subtitle: 'Browse releases',
-                            color: accent,
                             onTap: () => _navigateTo(const AlbumsScreen()),
                           ),
                           _buildNavItem(
                             icon: AppIcons.person,
                             label: 'Artists',
                             subtitle: 'Jump by artist',
-                            color: accent,
                             onTap: () => _navigateTo(const ArtistsScreen()),
                           ),
                           const AppSectionHeader(
@@ -189,14 +185,12 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             icon: AppIcons.clock,
                             label: 'Song History',
                             subtitle: 'What has been playing',
-                            color: accent,
                             onTap: () => _navigateTo(const PlayHistoryScreen()),
                           ),
                           _buildNavItem(
                             icon: AppIcons.queuePlayNext,
                             label: 'Session History',
                             subtitle: 'Previous listening sessions',
-                            color: accent,
                             onTap: () =>
                                 _navigateTo(const SessionHistoryScreen()),
                           ),
@@ -204,7 +198,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             icon: AppIcons.queue,
                             label: 'Queue History',
                             subtitle: 'Past queues and order',
-                            color: accent,
                             onTap: _openQueueHistory,
                           ),
                           const AppSectionHeader(
@@ -220,7 +213,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             icon: AppIcons.bedtime,
                             label: 'Sleep Timer',
                             subtitle: 'Stop playback gracefully',
-                            color: accent,
                             onTap: () => _navigateTo(const SleepTimerScreen()),
                           ),
                           const AppSectionHeader(
@@ -236,7 +228,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                             icon: AppIcons.settings,
                             label: 'Settings',
                             subtitle: 'Tune the app',
-                            color: accent,
                             onTap: () => _navigateTo(const SettingsScreen()),
                             showBadge: updateAvailable,
                           ),
@@ -303,11 +294,13 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     );
   }
 
+  /// Glyphs here all carry the cover accent — these rows are destinations, so
+  /// none of them is ever "active", and a uniform tint is the point rather than
+  /// a signal. The red dot is the one thing that means something.
   Widget _buildNavItem({
     required AppIconData icon,
     required String label,
     required String subtitle,
-    required Color color,
     required VoidCallback? onTap,
     bool showBadge = false,
   }) {
@@ -318,7 +311,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       leading: Stack(
         clipBehavior: Clip.none,
         children: [
-          AppRowIcon(icon: icon, color: color),
+          AppRowIcon(icon: icon),
           if (showBadge)
             Positioned(
               right: 4,
@@ -327,7 +320,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                 width: 8,
                 height: 8,
                 decoration: const BoxDecoration(
-                  color: AppTokens.danger,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -336,7 +328,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       ),
       trailing: AppIcon(
         AppIcons.chevronRight,
-        size: 20,
+        size: AppTokens.iconSm,
         color: AppTokens.fgTertiary,
       ),
     );
@@ -462,10 +454,11 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
             subtitle: subtitle,
             accent: accent,
             isActive: _mode == modeValue,
-            leading: AppRowIcon(icon: icon, color: accent),
+            leading: AppRowIcon(icon: icon, active: _mode == modeValue),
             onTap: () => setState(() => _mode = modeValue),
             trailing: _mode == modeValue
-                ? AppIcon(AppIcons.checkCircle, color: accent, size: 20)
+                ? AppIcon(AppIcons.checkCircle,
+                    color: accent, size: AppTokens.iconSm)
                 : null,
           ),
       ],
@@ -506,7 +499,7 @@ class _SleepTimerScreenState extends ConsumerState<SleepTimerScreen> {
                 valueLabel,
                 style: AppTokens.meta(context).copyWith(
                   color: accent,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],

@@ -20,10 +20,7 @@ class MergedSongsScreen extends ConsumerWidget {
     final songsAsync = ref.watch(songsProvider);
 
     return AmbientScaffold(
-      appBar: AppBar(
-        title: const Text('Merged Songs',
-            style: TextStyle(fontWeight: FontWeight.w900)),
-      ),
+      appBar: AppBar(title: const Text('Merged Songs')),
       body: songsAsync.when(
         data: (songs) => _buildContent(context, ref, userData, songs),
         loading: () => const Center(child: CircularProgressIndicator()),

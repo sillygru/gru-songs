@@ -177,7 +177,7 @@ class PlayerTrackRow extends StatelessWidget {
                 '${index! + 1}',
                 style: const TextStyle(
                   fontSize: 10,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
               ),

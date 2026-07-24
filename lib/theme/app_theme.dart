@@ -100,35 +100,40 @@ class AppTheme {
       scaffoldBackgroundColor: background,
       splashFactory: InkSparkle.splashFactory,
 
+      // The ramp is pitched to the icon set. Hugeicons stroke-rounded is an
+      // even hairline, and next to w800/w900 type at -0.8 tracking it read as
+      // anemic — two products on one row. w700 is the heaviest rung a stroke
+      // icon can stand beside, and tracking stays near -0.2/-0.3 so headings
+      // keep the icons' open, airy spacing rather than fighting it.
       textTheme: const TextTheme(
         headlineLarge: TextStyle(
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.8,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
           fontSize: 32,
         ),
         headlineMedium: TextStyle(
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.6,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
           fontSize: 28,
         ),
         headlineSmall: TextStyle(
           fontWeight: FontWeight.w700,
-          letterSpacing: -0.5,
+          letterSpacing: -0.3,
           fontSize: 26,
         ),
         titleLarge: TextStyle(
           fontWeight: FontWeight.w700,
-          letterSpacing: -0.4,
+          letterSpacing: -0.3,
           fontSize: 20,
         ),
         titleMedium: TextStyle(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.3,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.2,
           fontSize: 16,
         ),
         bodyMedium: TextStyle(
           fontWeight: FontWeight.w500,
-          letterSpacing: -0.1,
+          letterSpacing: 0,
           fontSize: 14,
         ),
         bodySmall: TextStyle(
@@ -147,7 +152,7 @@ class AppTheme {
         titleTextStyle: TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: 24,
-          letterSpacing: -0.4,
+          letterSpacing: -0.3,
           color: Colors.white,
         ),
       ),
@@ -174,15 +179,15 @@ class AppTheme {
         iconColor: onSurfaceVariant,
         textColor: Colors.white,
         titleTextStyle: const TextStyle(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           fontSize: 16,
-          letterSpacing: -0.3,
+          letterSpacing: -0.2,
           color: Colors.white,
         ),
         subtitleTextStyle: TextStyle(
           fontWeight: FontWeight.w500,
           fontSize: 13,
-          letterSpacing: -0.1,
+          letterSpacing: 0,
           color: onSurfaceVariant,
         ),
         selectedColor: seed,
@@ -202,19 +207,19 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         // A dialog is the top-most L2 plane — let it cast a soft shadow so it
         // clearly floats above the scrim.
-        elevation: 12,
-        shadowColor: const Color(0x66000000),
+        elevation: 8,
+        shadowColor: const Color(0x4D000000),
         shape: RoundedRectangleBorder(borderRadius: AppTokens.brLg),
         titleTextStyle: const TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: 20,
-          letterSpacing: -0.4,
+          letterSpacing: -0.3,
           color: Colors.white,
         ),
         contentTextStyle: TextStyle(
           fontWeight: FontWeight.w500,
           fontSize: 14,
-          letterSpacing: -0.1,
+          letterSpacing: 0,
           color: onSurfaceVariant,
         ),
       ),
@@ -241,9 +246,9 @@ class AppTheme {
           background,
         ),
         contentTextStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 14,
-          letterSpacing: -0.2,
+          letterSpacing: 0,
           color: Colors.white,
         ),
         actionTextColor: seed,
@@ -258,7 +263,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: AppTokens.brMd),
         textStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 14,
           color: Colors.white,
         ),
@@ -288,9 +293,9 @@ class AppTheme {
           ),
           shape: RoundedRectangleBorder(borderRadius: AppTokens.brPill),
           textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             fontSize: 14,
-            letterSpacing: -0.2,
+            letterSpacing: -0.1,
           ),
         ),
       ),
@@ -304,9 +309,9 @@ class AppTheme {
           ),
           shape: RoundedRectangleBorder(borderRadius: AppTokens.brPill),
           textStyle: const TextStyle(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             fontSize: 14,
-            letterSpacing: -0.2,
+            letterSpacing: -0.1,
           ),
         ),
       ),
@@ -323,9 +328,9 @@ class AppTheme {
           ),
           shape: RoundedRectangleBorder(borderRadius: AppTokens.brPill),
           textStyle: const TextStyle(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             fontSize: 14,
-            letterSpacing: -0.2,
+            letterSpacing: -0.1,
           ),
         ),
       ),
@@ -388,13 +393,13 @@ class AppTheme {
         ),
         shape: RoundedRectangleBorder(borderRadius: AppTokens.brPill),
         labelStyle: const TextStyle(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           fontSize: 13,
-          letterSpacing: -0.2,
+          letterSpacing: -0.1,
           color: Colors.white,
         ),
         secondaryLabelStyle: TextStyle(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           fontSize: 13,
           color: seed,
         ),
@@ -461,14 +466,14 @@ class AppTheme {
             Colors.white.withValues(alpha: AppTokens.aTertiary),
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         labelStyle: const TextStyle(
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w700,
           fontSize: 15,
-          letterSpacing: -0.4,
+          letterSpacing: -0.2,
         ),
         unselectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 15,
-          letterSpacing: -0.4,
+          letterSpacing: -0.2,
         ),
       ),
 
@@ -483,7 +488,7 @@ class AppTheme {
         height: 64,
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
-            size: 24,
+            size: AppTokens.iconMd,
             color: states.contains(WidgetState.selected)
                 ? seed
                 : Colors.white.withValues(alpha: AppTokens.aTertiary),
@@ -492,8 +497,8 @@ class AppTheme {
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.1,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
             color: states.contains(WidgetState.selected)
                 ? seed
                 : Colors.white.withValues(alpha: AppTokens.aTertiary),
@@ -514,13 +519,16 @@ class AppTheme {
           borderRadius: AppTokens.brSm,
         ),
         textStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 12,
           color: Colors.white,
         ),
       ),
 
-      iconTheme: const IconThemeData(color: Colors.white, size: 24),
+      iconTheme: const IconThemeData(
+        color: Colors.white,
+        size: AppTokens.iconMd,
+      ),
 
       splashColor: Colors.white.withValues(alpha: 0.04),
       highlightColor: Colors.white.withValues(alpha: 0.04),

@@ -83,27 +83,30 @@ class PlayerTokens {
         : Colors.white;
   }
 
-  // Type ramp — derived from the app text theme so the house style
-  // (w900 headings, negative letter spacing) carries into the player.
+  // Type ramp — derived from the app text theme so the house style carries into
+  // the player. The ramp tops out at w700: the app's icon set is a hairline
+  // stroke, and type heavier than that made the glyphs beside it look unfinished.
+  // Tracking stays gentle for the same reason — the icons are open and airy, so
+  // tightly-tracked headings read as a different design system.
   static TextStyle paneTitle(BuildContext context) =>
       (Theme.of(context).textTheme.titleLarge ?? const TextStyle()).copyWith(
-        fontWeight: FontWeight.w900,
+        fontWeight: FontWeight.w700,
         fontSize: 20,
-        letterSpacing: -0.6,
+        letterSpacing: -0.3,
         color: Colors.white,
       );
 
   static TextStyle trackTitle(BuildContext context) => const TextStyle(
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w600,
         fontSize: 16,
-        letterSpacing: -0.4,
+        letterSpacing: -0.2,
         color: Colors.white,
       );
 
   static TextStyle trackSubtitle(BuildContext context) => TextStyle(
         fontWeight: FontWeight.w500,
         fontSize: 13,
-        letterSpacing: -0.1,
+        letterSpacing: 0,
         color: Colors.white.withValues(alpha: aSecondary),
       );
 
@@ -114,8 +117,11 @@ class PlayerTokens {
         color: Colors.white.withValues(alpha: aTertiary),
       );
 
+  // Small-caps group label. Keeps its wide positive tracking — at 11px in caps
+  // that spacing is what makes it legible, and it is the one place in the ramp
+  // where letter-spacing works *with* the icons' openness.
   static TextStyle sectionLabel(BuildContext context) => TextStyle(
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         fontSize: 11,
         letterSpacing: 1.2,
         color: Colors.white.withValues(alpha: aTertiary),

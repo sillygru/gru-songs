@@ -64,7 +64,7 @@ class AppChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 letterSpacing: -0.1,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 color: fg,
               ),
             ),

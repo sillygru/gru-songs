@@ -57,7 +57,7 @@ class SettingsScreen extends ConsumerWidget {
             label: 'Data',
             children: [
               AppSettingsTile(
-                icon: AppIcons.restore,
+                icon: AppIcons.storage,
                 title: 'Data Management',
                 subtitle: 'Backup, restore, storage, optimize',
                 onTap: () =>

@@ -11,7 +11,7 @@ import 'app_icon.dart';
 ///
 /// Active state is an accent wash plus an accent title. Never an outline.
 class AppListRow extends StatelessWidget {
-  /// Artwork, icon badge or collage. Sized by the caller; [AppRowIcon] and
+  /// Artwork, icon or collage. Sized by the caller; [AppRowIcon] and
   /// [AppRowArt] cover the common cases.
   final Widget? leading;
 
@@ -138,32 +138,66 @@ class AppListRow extends StatelessWidget {
   }
 }
 
-/// Tinted icon badge for the leading slot — replaces the hand-rolled
-/// `Container` + `BoxDecoration` + `Icon` blocks scattered across the app.
+/// Icon for a row's leading slot — replaces the hand-rolled `Container` +
+/// `BoxDecoration` + `Icon` blocks scattered across the app.
+///
+/// **A bare glyph, with no plate behind it.** It used to sit on a filled
+/// rounded square, and at row size that plate boxed the glyph in: every row
+/// looked like it was holding a button rather than showing an icon, and the
+/// frame made each glyph's own proportions (a full-bleed circle next to a small
+/// open mark) read as inconsistent sizing. Alignment now comes from the fixed
+/// slot width instead, so icon rows still line up with [AppRowArt] rows.
+///
+/// The glyph carries the theme accent — the colour pulled from the current
+/// cover — so rows pick up the artwork the way the rest of the app does. Pass
+/// [color] for the rare row whose meaning is a colour (destructive →
+/// [AppTokens.danger]).
 class AppRowIcon extends StatelessWidget {
   final AppIconData icon;
+
+  /// Semantic override, replacing the theme accent. Use only where the colour
+  /// carries meaning, not for decoration.
   final Color? color;
+
+  /// Whether this row is selected / currently in effect. Draws a heavier stroke;
+  /// the row's own [AppListRow.isActive] wash carries the rest.
+  final bool active;
+
+  /// Width of the leading slot. The glyph is centred inside it.
   final double size;
 
   const AppRowIcon({
     super.key,
     required this.icon,
     this.color,
-    this.size = AppTokens.artSize,
+    this.active = false,
+    this.size = _slotSize,
   });
+
+  static const double _slotSize = 44;
+
+  /// Glyph size as a fraction of the slot. Larger than it was on a plate — with
+  /// no fill to give the slot a shape, the glyph alone has to hold the row.
+  static const double _glyphRatio = 0.58;
 
   @override
   Widget build(BuildContext context) {
+    // `colorScheme.primary` is the cover-derived accent — AppTheme seeds it
+    // from the current artwork — so this needs no ref and restyles itself as
+    // tracks change.
     final tint = color ?? Theme.of(context).colorScheme.primary;
 
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: tint.withValues(alpha: AppTokens.accentWashAlpha),
-        borderRadius: AppTokens.brSm,
+      child: Center(
+        child: AppIcon(
+          icon,
+          color: tint,
+          size: size * _glyphRatio,
+          strokeWidth: active ? AppTokens.iconStrokeEmphasis : null,
+        ),
       ),
-      child: AppIcon(icon, color: tint, size: size * 0.5),
     );
   }
 }

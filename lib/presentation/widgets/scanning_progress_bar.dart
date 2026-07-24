@@ -42,8 +42,8 @@ class ScanningProgressBar extends ConsumerWidget {
           Text(
             'Scanning Library',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
                 ),
           ),
           const SizedBox(height: 12),

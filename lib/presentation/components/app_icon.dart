@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import '../tokens/app_icons.dart';
+import '../tokens/app_tokens.dart';
 
 /// Renders an [AppIconData] (a Hugeicons SVG glyph) with the ergonomics of
 /// Flutter's [Icon]: size and colour fall back to the ambient [IconTheme], so
@@ -13,7 +14,11 @@ import '../tokens/app_icons.dart';
 ///
 /// [strokeWidth] is the app's emphasis lever: a selected or active glyph asks
 /// for a heavier stroke so icon weight echoes the layered-depth language, the
-/// same way a raised surface reads heavier than the canvas.
+/// same way a raised surface reads heavier than the canvas. It defaults to
+/// [AppTokens.iconStroke] rather than the glyph's baked-in hairline — that
+/// default is what keeps every icon in the app on one weight, and what pairs
+/// them with the type ramp. Pass [AppTokens.iconStrokeEmphasis] for active
+/// states.
 class AppIcon extends StatelessWidget {
   final AppIconData icon;
   final double? size;
@@ -40,9 +45,9 @@ class AppIcon extends StatelessWidget {
         : base.withValues(alpha: (base.a * opacity).clamp(0.0, 1.0));
     return HugeIcon(
       icon: icon,
-      size: size ?? iconTheme.size ?? 24,
+      size: size ?? iconTheme.size ?? AppTokens.iconMd,
       color: resolvedColor,
-      strokeWidth: strokeWidth,
+      strokeWidth: strokeWidth ?? AppTokens.iconStroke,
     );
   }
 }

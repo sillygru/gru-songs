@@ -104,6 +104,21 @@ class AppTokens {
         foregroundColor: fgPrimary,
       );
 
+  // ------------------------------------------------------------ icon language
+  // The icon set is stroke-only, so stroke weight is the emphasis lever that
+  // fill weight would be elsewhere. Two rungs, pitched against the type ramp: a
+  // resting glyph carries the optical weight of w600 body text, a selected one
+  // of w700. Below ~1.8 a hairline glyph reads as unfinished next to any text
+  // heavier than w500 — which is exactly how the icon set landed at first.
+  static const double iconStroke = 1.8;
+  static const double iconStrokeEmphasis = 2.2;
+
+  /// Icon sizes. Three rungs, replacing the ad-hoc 15/18/20/24/26 that used to
+  /// be chosen per call site.
+  static const double iconSm = 18; // inline, trailing chevrons, chips
+  static const double iconMd = 22; // rows, buttons, nav — the default
+  static const double iconLg = 26; // headers, empty states
+
   // --------------------------------------------------------- depth ladder
   // The flat tonal ladder above says "how light"; this says "how far off the
   // page". Every surface in the app maps to exactly one of these layers, and
@@ -119,7 +134,7 @@ class AppTokens {
 
   /// A recessed well is *darker* than the canvas — a black wash, not a white
   /// one — so it reads as sunk in rather than lifted.
-  static const double wellAlpha = 0.22;
+  static const double wellAlpha = 0.16;
   static Color get wellFill => Colors.black.withValues(alpha: wellAlpha);
 
   /// Raised and floating fills lighten the surface; the shadow does the lifting.
@@ -131,16 +146,20 @@ class AppTokens {
 
   /// Soft, wide, low-opacity — two stacked shadows (a broad ambient one and a
   /// tighter contact one) so the edge reads without a hard drop line.
+  ///
+  /// Deliberately restrained. A heavy drop shadow belongs to the same chunky
+  /// language as w900 type; against a hairline icon set it reads as a different
+  /// product bolted on. The shadow should be felt, not seen.
   static const List<BoxShadow> shadowRaised = [
     BoxShadow(
-      color: Color(0x40000000),
-      blurRadius: 18,
-      offset: Offset(0, 8),
+      color: Color(0x33000000),
+      blurRadius: 14,
+      offset: Offset(0, 6),
       spreadRadius: -6,
     ),
     BoxShadow(
-      color: Color(0x24000000),
-      blurRadius: 6,
+      color: Color(0x1F000000),
+      blurRadius: 5,
       offset: Offset(0, 2),
       spreadRadius: -2,
     ),
@@ -149,15 +168,15 @@ class AppTokens {
   /// Larger and softer — for the L2 plane that floats over everything.
   static const List<BoxShadow> shadowFloating = [
     BoxShadow(
-      color: Color(0x59000000),
-      blurRadius: 32,
-      offset: Offset(0, 16),
+      color: Color(0x40000000),
+      blurRadius: 24,
+      offset: Offset(0, 12),
       spreadRadius: -8,
     ),
     BoxShadow(
-      color: Color(0x30000000),
-      blurRadius: 10,
-      offset: Offset(0, 4),
+      color: Color(0x26000000),
+      blurRadius: 8,
+      offset: Offset(0, 3),
       spreadRadius: -3,
     ),
   ];
@@ -217,10 +236,15 @@ class AppTokens {
   // -------------------------------------------------------------- type ramp
   /// Large screen title — the app's loudest text, used once per screen. Calmer
   /// than a display face (w700, gentle tracking): refined, not shouting.
+  ///
+  /// The whole ramp is pitched one step lighter than it once was, and tracking
+  /// is much less negative. Near-black type at tight tracking sat beside a
+  /// hairline icon like two different products; w700 is the heaviest rung the
+  /// icon set can hold its own against.
   static TextStyle screenTitle(BuildContext context) => const TextStyle(
         fontWeight: FontWeight.w700,
         fontSize: 26,
-        letterSpacing: -0.5,
+        letterSpacing: -0.3,
         color: Colors.white,
       );
 
@@ -245,17 +269,17 @@ class AppTokens {
 
   /// The number in a stat tile.
   static TextStyle stat(BuildContext context) => const TextStyle(
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         fontSize: 22,
-        letterSpacing: -0.5,
+        letterSpacing: -0.3,
         color: Colors.white,
       );
 
   /// Title under a media card in a carousel or grid.
   static TextStyle cardTitle(BuildContext context) => const TextStyle(
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         fontSize: 15,
-        letterSpacing: -0.3,
+        letterSpacing: -0.2,
         color: Colors.white,
       );
 
