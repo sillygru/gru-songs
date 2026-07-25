@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/audio_player_manager.dart';
+import '../../services/power_state_service.dart';
 import '../../services/screen_wake_lock_service.dart';
 import '../../theme/app_theme.dart';
 import '../components/player_segmented_pill.dart';
@@ -81,6 +82,12 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   bool _wakeLockHeld = false;
   double _dismissDrag = 0;
 
+  /// Mirrors the OS "remove animations" accessibility switch. When it is on,
+  /// every self-driven animation on this screen stops — the beat motion, the
+  /// mote field and the backdrop spin — regardless of what the appearance
+  /// settings say. The user has already told the system what they want.
+  bool _reduceMotion = false;
+
   /// Guards against a slow analysis landing after the user has skipped on.
   String? _beatMapFilename;
   int _beatMapToken = 0;
@@ -99,6 +106,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     final manager = ref.read(audioPlayerManagerProvider);
     _motion = PlayerMotionController(player: manager.player)..attach(this);
     manager.currentSongNotifier.addListener(_onSongChanged);
+    PowerStateService.instance.powerSave.addListener(_syncMotionSettings);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -115,6 +123,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
         .read(audioPlayerManagerProvider)
         .currentSongNotifier
         .removeListener(_onSongChanged);
+    PowerStateService.instance.powerSave.removeListener(_syncMotionSettings);
     _motion.dispose();
     _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
@@ -122,6 +131,19 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     _nowPlayingVisible.dispose();
     _releaseWakeLock();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (reduceMotion == _reduceMotion) return;
+    _reduceMotion = reduceMotion;
+    // Deferred: this runs inside the build phase, and the motion setters notify
+    // the painters listening to them.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncMotionSettings();
+    });
   }
 
   @override
@@ -166,8 +188,10 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   void _syncMotionSettings() {
     final settings = ref.read(settingsProvider);
     _motion
-      ..enabled = settings.beatReactiveCoverEnabled ||
-          settings.beatReactiveParticlesEnabled
+      ..powerSave = PowerStateService.instance.powerSave.value
+      ..enabled = !_reduceMotion &&
+          (settings.beatReactiveCoverEnabled ||
+              settings.beatReactiveParticlesEnabled)
       ..intensity = settings.playerMotionIntensity
       ..customIntensity = settings.playerMotionCustomIntensity
       ..latencyMs = settings.playerMotionLatencyMs;
@@ -300,9 +324,10 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   }
 
   Widget _buildBody(BuildContext context, Song song, Color accent) {
-    final showParticles = ref
-        .watch(settingsProvider.select((s) => s.beatReactiveParticlesEnabled));
-    final showGlow =
+    final showParticles = !_reduceMotion &&
+        ref.watch(
+            settingsProvider.select((s) => s.beatReactiveParticlesEnabled));
+    final showGlow = !_reduceMotion &&
         ref.watch(settingsProvider.select((s) => s.beatReactiveCoverEnabled));
 
     return Stack(
@@ -310,7 +335,11 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
       children: [
         // Backdrop — built outside the PageView so swiping never re-blurs it.
         Positioned.fill(
-          child: _PlayerBackdrop(song: song, accent: accent),
+          child: _PlayerBackdrop(
+            song: song,
+            accent: accent,
+            allowSpin: !_reduceMotion,
+          ),
         ),
         // Above the backdrop but below the content column, so the glow bleeds
         // across the whole screen while the pill, title and dock stay crisp on
@@ -450,33 +479,52 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
 /// Cover-derived backdrop shared by all three panes. The accent scrim is driven
 /// through [SmoothColorBuilder] so palette changes between tracks crossfade
 /// instead of snapping.
-class _PlayerBackdrop extends StatelessWidget {
+class _PlayerBackdrop extends ConsumerWidget {
   final Song song;
   final Color accent;
 
-  const _PlayerBackdrop({required this.song, required this.accent});
+  /// False when the OS has asked for less motion. The spin is decoration; it is
+  /// the first thing to go.
+  final bool allowSpin;
+
+  const _PlayerBackdrop({
+    required this.song,
+    required this.accent,
+    required this.allowSpin,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SmoothColorBuilder(
       targetColor: accent,
       builder: (context, color) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            BlurredBackground(
-              url: song.coverUrl ?? '',
-              filename: song.filename,
-              slowSpin: true,
-              gradientColors: [
-                Color.alphaBlend(
-                  color.withValues(alpha: 0.22),
-                  Colors.black.withValues(alpha: 0.62),
+        final gradientColors = [
+          Color.alphaBlend(
+            color.withValues(alpha: 0.22),
+            Colors.black.withValues(alpha: 0.62),
+          ),
+          Colors.black.withValues(alpha: 0.92),
+        ];
+        // The spin follows playback rather than running forever. Rotating and
+        // scaling a full-screen image repaints the whole backdrop every frame,
+        // and a paused player left it doing that indefinitely with nothing to
+        // be in time with.
+        return ValueListenableBuilder<bool>(
+          valueListenable:
+              ref.watch(audioPlayerManagerProvider).playingNotifier,
+          builder: (context, playing, _) {
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                BlurredBackground(
+                  url: song.coverUrl ?? '',
+                  filename: song.filename,
+                  slowSpin: playing && allowSpin,
+                  gradientColors: gradientColors,
                 ),
-                Colors.black.withValues(alpha: 0.92),
               ],
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -510,31 +558,36 @@ class _TransportDock extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          StreamBuilder<Duration?>(
-            stream: player.durationStream,
-            initialData: player.duration,
-            builder: (context, snapshot) {
-              final total = snapshot.data ?? song.duration ?? Duration.zero;
+          // The seek bar follows the playhead several times a second, and it
+          // sits in the same layer as the backdrop, the glow and the mote
+          // field. Its own boundary keeps those out of its repaints.
+          RepaintBoundary(
+            child: StreamBuilder<Duration?>(
+              stream: player.durationStream,
+              initialData: player.duration,
+              builder: (context, snapshot) {
+                final total = snapshot.data ?? song.duration ?? Duration.zero;
 
-              if (showWaveform) {
-                return WaveformProgressBar(
-                  key: ValueKey('waveform_${song.filename}'),
-                  filename: song.filename,
-                  path: song.url,
-                  progress: player.position,
+                if (showWaveform) {
+                  return WaveformProgressBar(
+                    key: ValueKey('waveform_${song.filename}'),
+                    filename: song.filename,
+                    path: song.url,
+                    progress: player.position,
+                    total: total,
+                    positionStream: player.positionStream,
+                    onSeek: player.seek,
+                  );
+                }
+
+                return BasicProgressBar(
+                  key: ValueKey('basic_${song.filename}'),
+                  player: player,
                   total: total,
-                  positionStream: player.positionStream,
                   onSeek: player.seek,
                 );
-              }
-
-              return BasicProgressBar(
-                key: ValueKey('basic_${song.filename}'),
-                player: player,
-                total: total,
-                onSeek: player.seek,
-              );
-            },
+              },
+            ),
           ),
           const SizedBox(height: PlayerTokens.s1),
           _buildControls(context, ref, audioManager, player),

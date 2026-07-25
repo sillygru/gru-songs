@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,9 +55,29 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   List<LyricLine>? _lyrics;
   bool _loading = true;
+  bool _hasSynced = false;
   String? _loadedFilename;
 
-  int _activeIndex = -1;
+  /// The playhead is followed off a subscription rather than a `StreamBuilder`
+  /// around the list.
+  ///
+  /// `positionStream` emits about five times a second for as long as anything is
+  /// playing, and wrapping the `ListView` in it rebuilt every lyric in the song —
+  /// on every screen this pane is alive behind, whether or not anything visible
+  /// had changed. What the list actually depends on is the *active line*, which
+  /// changes every few seconds. Splitting the two means the ticks land on three
+  /// small notifiers and the list rebuilds when the singing moves on.
+  final ValueNotifier<int> _activeLine = ValueNotifier(-1);
+
+  /// Index the gap loader is inserted before, or -1 when it is hidden. Changes
+  /// once per instrumental break.
+  final ValueNotifier<int> _gapSlot = ValueNotifier(-1);
+
+  /// The loader's fill. This is the one thing here that genuinely wants every
+  /// tick, so it is scoped to the loader widget alone.
+  final ValueNotifier<double> _gapProgress = ValueNotifier(0);
+
+  StreamSubscription<Duration>? _positionSub;
   DateTime? _lastManualScroll;
 
   /// Set while we drive the scroll ourselves, so our own motion is not
@@ -69,6 +91,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   void initState() {
     super.initState();
     _scrollController.addListener(_onUserScroll);
+    _positionSub = ref
+        .read(audioPlayerManagerProvider)
+        .player
+        .positionStream
+        .listen(_onPosition);
     _load();
   }
 
@@ -80,9 +107,36 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   @override
   void dispose() {
+    _positionSub?.cancel();
     _scrollController.removeListener(_onUserScroll);
     _scrollController.dispose();
+    _activeLine.dispose();
+    _gapSlot.dispose();
+    _gapProgress.dispose();
     super.dispose();
+  }
+
+  /// Turns a playhead tick into the three things the pane actually renders from.
+  /// Runs off the widget tree entirely: nothing here rebuilds unless one of the
+  /// values changed.
+  void _onPosition(Duration position) {
+    final lyrics = _lyrics;
+    if (lyrics == null || lyrics.isEmpty || !_hasSynced) return;
+
+    final active = _activeIndexFor(lyrics, position);
+    if (active != _activeLine.value) {
+      _activeLine.value = active;
+      if (active >= 0) _maybeAutoScroll(active);
+    }
+
+    final gap = computeLyricsGapLoaderState(
+      lyrics: lyrics,
+      position: position,
+      delay: _gapLoaderDelay,
+      minimumWindow: _minimumGapLoaderWindow,
+    );
+    _gapSlot.value = gap.shouldShow ? gap.insertBeforeLyricIndex : -1;
+    _gapProgress.value = gap.progress;
   }
 
   void _onUserScroll() {
@@ -99,10 +153,13 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     setState(() {
       _loading = true;
       _lyrics = null;
-      _activeIndex = -1;
+      _hasSynced = false;
       _loadedFilename = filename;
       _lineKeys.clear();
     });
+    _activeLine.value = -1;
+    _gapSlot.value = -1;
+    _gapProgress.value = 0;
 
     // The repository caches to disk, so re-entering the pane is cheap.
     final content = await ref.read(songRepositoryProvider).getLyrics(
@@ -111,12 +168,19 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
     if (!mounted || _loadedFilename != filename) return;
 
+    final parsed = (content == null || content.trim().isEmpty)
+        ? const <LyricLine>[]
+        : LyricLine.parse(content);
+
     setState(() {
-      _lyrics = (content == null || content.trim().isEmpty)
-          ? const []
-          : LyricLine.parse(content);
+      _lyrics = parsed;
+      _hasSynced = parsed.any((l) => l.isSynced);
       _loading = false;
     });
+
+    // Land on the right line straight away rather than waiting for the next
+    // playhead tick.
+    _onPosition(ref.read(audioPlayerManagerProvider).player.position);
   }
 
   /// Looks lyrics up on LRCLIB and writes the chosen result into the file.
@@ -252,28 +316,15 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     final player = ref.watch(audioPlayerManagerProvider).player;
     final settings = ref.watch(settingsProvider);
     final blurEnabled = settings.lyricsBlurOverlayEnabled;
-    final hasSynced = lyrics.any((l) => l.isSynced);
+    final hasSynced = _hasSynced;
 
-    return StreamBuilder<Duration>(
-      stream: player.positionStream,
-      initialData: player.position,
-      builder: (context, snapshot) {
-        final position = snapshot.data ?? Duration.zero;
-        final active = hasSynced ? _activeIndexFor(lyrics, position) : -1;
-
-        if (active != _activeIndex) {
-          _activeIndex = active;
-          if (active >= 0) _maybeAutoScroll(active);
-        }
-
-        final gap = hasSynced
-            ? computeLyricsGapLoaderState(
-                lyrics: lyrics,
-                position: position,
-                delay: _gapLoaderDelay,
-                minimumWindow: _minimumGapLoaderWindow,
-              )
-            : LyricsGapLoaderState.hidden;
+    // Rebuilds when the singing moves on or a gap opens — not on every tick of
+    // the playhead.
+    return ListenableBuilder(
+      listenable: Listenable.merge([_activeLine, _gapSlot]),
+      builder: (context, _) {
+        final active = _activeLine.value;
+        final gapSlot = _gapSlot.value;
 
         return ListView.builder(
           controller: _scrollController,
@@ -311,7 +362,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
               ),
             );
 
-            if (gap.shouldShow && gap.insertBeforeLyricIndex == index) {
+            if (gapSlot == index) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -320,9 +371,14 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
                       horizontal: PlayerTokens.s5,
                       vertical: PlayerTokens.s3,
                     ),
-                    child: LyricsGapLoader(
-                      progress: gap.progress,
-                      accent: widget.accent,
+                    // The only thing in the pane that follows the playhead
+                    // continuously, and it rebuilds nothing but itself.
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _gapProgress,
+                      builder: (context, progress, _) => LyricsGapLoader(
+                        progress: progress,
+                        accent: widget.accent,
+                      ),
                     ),
                   ),
                   lyricWidget,

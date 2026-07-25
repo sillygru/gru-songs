@@ -352,4 +352,65 @@ void main() {
       expect(second, 3000);
     });
   });
+
+  group('frame cap', () {
+    late PlayerMotionController controller;
+    late int frames;
+
+    /// One second of ticks at [hz], as the ticker would deliver them.
+    void tickFor({required int hz}) {
+      for (var i = 1; i <= hz; i++) {
+        controller.debugRawTick(
+          Duration(microseconds: (i * 1e6 ~/ hz)),
+        );
+      }
+    }
+
+    setUp(() {
+      frames = 0;
+      controller = PlayerMotionController.forTesting()
+        ..addListener(() => frames++);
+    });
+
+    tearDown(() => controller.dispose());
+
+    test('a 120 Hz display still only emits about 60 frames a second', () {
+      tickFor(hz: 120);
+
+      expect(frames, closeTo(60, 1));
+    });
+
+    test('a 60 Hz display is not thinned out', () {
+      tickFor(hz: 60);
+
+      expect(frames, 60);
+    });
+
+    test('power save halves it again', () {
+      controller.powerSave = true;
+      frames = 0; // The setter itself notifies, which is not a frame.
+
+      tickFor(hz: 120);
+
+      expect(frames, closeTo(30, 1));
+    });
+
+    test('power save thins the field without emptying it', () {
+      controller.intensity = PlayerMotionIntensity.bold;
+      final full = controller.spec.particleCount;
+
+      controller.powerSave = true;
+
+      expect(controller.spec.particleCount, lessThan(full));
+      expect(controller.spec.particleCount, greaterThan(0));
+    });
+
+    test('the clock keeps real time across skipped frames', () {
+      tickFor(hz: 120);
+
+      // Skipping a notification must not skip time: the particle simulation
+      // integrates against this, so a slow clock is a slow field.
+      expect(controller.elapsed.inMilliseconds, closeTo(1000, 1));
+    });
+  });
 }

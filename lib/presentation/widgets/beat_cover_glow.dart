@@ -62,6 +62,19 @@ class _CoverGlowPainter extends CustomPainter {
   final GlobalKey shellKey;
   final Color accent;
 
+  /// Quantisation step for the glow's *geometry*.
+  ///
+  /// A mask blur is cached by the engine against the exact shape and sigma it
+  /// was asked for, so a radius that slides continuously with the envelope makes
+  /// every single frame a cache miss and a fresh full-size blur. Snapping the
+  /// radius to 32 steps means a punch reuses a handful of blurs on its way up
+  /// and the same handful on its way down.
+  ///
+  /// Only the geometry is snapped. Alpha still tracks the envelope exactly, and
+  /// brightness is what the eye reads in a soft halo — the flare swells as
+  /// smoothly as before.
+  static const double _glowQuantum = 1 / 32;
+
   final Paint _paint = Paint();
 
   _CoverGlowPainter({
@@ -90,7 +103,8 @@ class _CoverGlowPainter extends CustomPainter {
 
     // Same recipe the BoxShadow inside the cover used, so only the clipping
     // changed and not the look.
-    final blurRadius = 18 + 42 * glow;
+    final shape = (glow / _glowQuantum).round() * _glowQuantum;
+    final blurRadius = 18 + 42 * shape;
     _paint
       ..color = accent.withValues(alpha: 0.34 * glow * visible * visible)
       ..maskFilter = MaskFilter.blur(
@@ -100,7 +114,7 @@ class _CoverGlowPainter extends CustomPainter {
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        rect.inflate(6 * glow),
+        rect.inflate(6 * shape),
         const Radius.circular(PlayerTokens.rLg),
       ),
       _paint,

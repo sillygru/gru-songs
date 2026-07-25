@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,10 +36,39 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
   bool _hasSynced = false;
   String? _loadedFilename;
 
+  /// The line currently being sung.
+  ///
+  /// Resolved from a playhead subscription rather than a `StreamBuilder`: the
+  /// stream ticks about five times a second and the line changes every few
+  /// seconds, so building off the stream directly laid out the text — and ran
+  /// the switcher's whole subtree — dozens of times per line for one visible
+  /// change.
+  final ValueNotifier<String> _line = ValueNotifier('');
+
+  StreamSubscription<Duration>? _positionSub;
+
   @override
   void initState() {
     super.initState();
+    _positionSub = ref
+        .read(audioPlayerManagerProvider)
+        .player
+        .positionStream
+        .listen(_onPosition);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    _line.dispose();
+    super.dispose();
+  }
+
+  void _onPosition(Duration position) {
+    if (!_hasSynced) return;
+    final active = _activeIndexFor(position);
+    _line.value = active >= 0 ? _lines[active].text.trim() : '';
   }
 
   @override
@@ -65,6 +96,9 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
       _lines = parsed;
       _hasSynced = parsed.any((l) => l.isSynced);
     });
+
+    _line.value = '';
+    _onPosition(ref.read(audioPlayerManagerProvider).player.position);
   }
 
   int _activeIndexFor(Duration position) {
@@ -84,20 +118,13 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
   Widget build(BuildContext context) {
     if (!_hasSynced) return const SizedBox.shrink();
 
-    final player = ref.watch(audioPlayerManagerProvider).player;
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: PlayerTokens.s5),
       child: SizedBox(
         height: 24,
-        child: StreamBuilder<Duration>(
-          stream: player.positionStream,
-          initialData: player.position,
-          builder: (context, snapshot) {
-            final position = snapshot.data ?? Duration.zero;
-            final active = _activeIndexFor(position);
-            final text = active >= 0 ? _lines[active].text.trim() : '';
-
+        child: ValueListenableBuilder<String>(
+          valueListenable: _line,
+          builder: (context, text, _) {
             return AnimatedSwitcher(
               duration: PlayerTokens.dBase,
               switchInCurve: PlayerTokens.cStandard,

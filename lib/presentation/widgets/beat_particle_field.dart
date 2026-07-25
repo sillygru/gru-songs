@@ -815,12 +815,23 @@ class _ParticlePainter extends CustomPainter {
     _coolTint = hsl.withHue((hsl.hue - 22 + 360) % 360).toColor();
   }
 
+  /// Below this depth a mote's halo lands under half a percent of alpha, which
+  /// is nothing on screen and a full extra blended circle per mote per frame in
+  /// the raster. The near motes — the ones the halo was drawn for — keep it.
+  static const double _haloDepthFloor = 0.35;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
 
     final frame = controller.frame;
     final spec = controller.spec;
+
+    // Nothing to draw, and nothing worth simulating either: at zero motes or
+    // zero opacity the whole field is invisible, so skip the integration step
+    // as well as the draws.
+    if (spec.particleCount == 0 || spec.particleOpacity < 0.01) return;
+
     final seconds = controller.elapsed.inMicroseconds / 1e6;
 
     system.update(
@@ -870,8 +881,10 @@ class _ParticlePainter extends CustomPainter {
           .clamp(0.0, 1.0);
       if (alpha < 0.01) continue;
 
-      _haloPaint.color = accent.withValues(alpha: alpha * 0.16);
-      canvas.drawCircle(position, radius * 2.6, _haloPaint);
+      if (particle.depth > _haloDepthFloor) {
+        _haloPaint.color = accent.withValues(alpha: alpha * 0.16);
+        canvas.drawCircle(position, radius * 2.6, _haloPaint);
+      }
 
       if (flare > 0.08) {
         // Thrown along this mote's own axis, so a flare is a scatter of little

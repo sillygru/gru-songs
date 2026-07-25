@@ -213,6 +213,14 @@ class MotionIntensitySpec {
     return _lerpSpec(_bold, _max, (t - 0.75) / 0.25);
   }
 
+  /// The same gesture, dialled down for a device the OS says is short on power.
+  ///
+  /// Interpolating toward [_min] rather than swapping in a fixed spec keeps the
+  /// user's own setting audible in the result: a bold player still reads bolder
+  /// than a subtle one in power-save mode, just cheaper. Roughly halves the mote
+  /// count, which is where the per-frame cost lives.
+  MotionIntensitySpec dimmed() => _lerpSpec(this, _min, 0.6);
+
   static MotionIntensitySpec _lerpSpec(
       MotionIntensitySpec a, MotionIntensitySpec b, double t) {
     return MotionIntensitySpec(
@@ -304,6 +312,21 @@ class PlayerMotionController extends ChangeNotifier {
   /// well under a second.
   static const double _easeFactor = 0.15;
 
+  /// Shortest gap between two emitted frames, at normal power and in power-save.
+  ///
+  /// The ticker fires at the display refresh rate, which is 120 Hz on a good
+  /// share of current phones. Everything beat-reactive on the screen — cover,
+  /// glow and the whole particle field — repaints off this one notifier, so an
+  /// uncapped controller pays for all of that twice over on exactly the devices
+  /// whose batteries are already working hardest. 60 Hz is the floor of what
+  /// reads as smooth for motion this small.
+  ///
+  /// Only the *notification* is skipped. [_elapsed] still advances on every
+  /// tick, because the particle simulation integrates real elapsed seconds and
+  /// dropping time would slow the field down rather than just redraw it less.
+  static const Duration _frameInterval = Duration(microseconds: 16667);
+  static const Duration _powerSaveFrameInterval = Duration(microseconds: 33333);
+
   Ticker? _ticker;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<PlayerState>? _stateSub;
@@ -318,7 +341,14 @@ class PlayerMotionController extends ChangeNotifier {
   bool _enabled = true;
   bool _playing = false;
   bool _appActive = true;
+  bool _powerSave = false;
   int _latencyMs = 0;
+
+  Duration _minFrameInterval = _frameInterval;
+
+  /// [_elapsed] at the last emitted frame, or null when the ticker has just
+  /// started and the next tick should be emitted immediately.
+  Duration? _lastEmitted;
 
   /// How much of the beat-driven motion is faded in, 0..1.
   ///
@@ -408,9 +438,10 @@ class PlayerMotionController extends ChangeNotifier {
   }
 
   void _applySpec() {
-    _spec = _intensityEnum == PlayerMotionIntensity.custom
+    final base = _intensityEnum == PlayerMotionIntensity.custom
         ? MotionIntensitySpec.custom(_customIntensity)
         : MotionIntensitySpec.of(_intensityEnum);
+    _spec = _powerSave ? base.dimmed() : base;
     notifyListeners();
   }
 
@@ -433,6 +464,16 @@ class PlayerMotionController extends ChangeNotifier {
     if (_appActive == value) return;
     _appActive = value;
     _syncTicker();
+  }
+
+  /// Follows the OS power-save / Low Power Mode flag. Halves the frame rate and
+  /// thins the motion rather than stopping it, so the screen still answers the
+  /// music on a phone the user is trying to nurse through the evening.
+  set powerSave(bool value) {
+    if (_powerSave == value) return;
+    _powerSave = value;
+    _minFrameInterval = value ? _powerSaveFrameInterval : _frameInterval;
+    _applySpec();
   }
 
   void _onPlayerState(PlayerState state) {
@@ -489,6 +530,7 @@ class PlayerMotionController extends ChangeNotifier {
       _elapsedBase = _elapsed;
       // Settle to rest rather than freezing mid-punch.
       _frame = BeatFrame.idle;
+      _lastEmitted = null;
       notifyListeners();
     }
   }
@@ -497,10 +539,26 @@ class PlayerMotionController extends ChangeNotifier {
     final previous = _elapsed;
     _elapsed = _elapsedBase + elapsed;
 
+    // Advanced on every tick, not every emitted frame: this is a fade measured
+    // in wall-clock milliseconds, and it has to finish on time whatever rate
+    // the screen happens to be redrawing at.
     if (_gridBlend < 1) {
       final deltaMs = (_elapsed - previous).inMicroseconds / 1000;
       _gridBlend = (_gridBlend + deltaMs / _gridBlendMs).clamp(0.0, 1.0);
     }
+
+    final last = _lastEmitted;
+    if (last != null) {
+      // Emit when this tick lands closer to the target interval than the next
+      // one would. The half-tick tolerance is what makes an exactly-60 Hz
+      // display pass through untouched: its ticks arrive a fraction *under*
+      // 16.667 ms, and a plain `< interval` test would drop every third frame
+      // on the very hardware the cap is meant to leave alone.
+      if ((_elapsed - last) + (_elapsed - previous) ~/ 2 < _minFrameInterval) {
+        return;
+      }
+    }
+    _lastEmitted = _elapsed;
 
     _frame = computeFrame(_visualPositionMs()).scaleBeat(_gridBlend);
     notifyListeners();
@@ -515,6 +573,13 @@ class PlayerMotionController extends ChangeNotifier {
     _frame = computeFrame(positionMs);
     notifyListeners();
   }
+
+  /// Feeds the real ticker path, frame cap included, so a test can drive the
+  /// controller at a display refresh rate and count what actually comes out.
+  /// [debugTick] deliberately bypasses the cap — it stands in for a frame
+  /// rather than for the ticker.
+  @visibleForTesting
+  void debugRawTick(Duration elapsed) => _onTick(elapsed);
 
   @visibleForTesting
   void debugSetAnchor(Duration position) {

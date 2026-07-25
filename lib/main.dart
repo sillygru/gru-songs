@@ -15,6 +15,7 @@ import 'providers/providers.dart';
 import 'services/cache_service.dart';
 import 'services/storage_service.dart';
 import 'services/database_service.dart';
+import 'services/power_state_service.dart';
 import 'services/color_extraction_service.dart';
 import 'services/update_service.dart';
 import 'presentation/widgets/update_available_dialog.dart';
@@ -32,6 +33,10 @@ Future<void> main() async {
 
   PaintingBinding.instance.imageCache.maximumSize = 250;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 40 * 1024 * 1024;
+
+  // Not awaited: nothing blocks on it, and a platform without the channel just
+  // leaves it reporting "not saving power" forever.
+  unawaited(PowerStateService.instance.initialize());
 
   final storage = StorageService();
   bool isSetupComplete = await storage.getIsSetupComplete();

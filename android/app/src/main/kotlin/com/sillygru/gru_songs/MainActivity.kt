@@ -22,6 +22,7 @@ class MainActivity : AudioServiceActivity() {
     private val requestPickTree = 9001
     private var pendingResult: MethodChannel.Result? = null
     private lateinit var volumeMonitorPlugin: VolumeMonitorPlugin
+    private lateinit var powerStatePlugin: PowerStatePlugin
 
     /**
      * Handlers that stream whole audio files run here instead of on the platform
@@ -73,6 +74,10 @@ class MainActivity : AudioServiceActivity() {
         // Initialize volume monitor plugin
         volumeMonitorPlugin = VolumeMonitorPlugin()
         volumeMonitorPlugin.initialize(flutterEngine, this)
+
+        // Battery saver state, used to thin out the player's animation
+        powerStatePlugin = PowerStatePlugin()
+        powerStatePlugin.initialize(flutterEngine, this)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
@@ -506,6 +511,9 @@ class MainActivity : AudioServiceActivity() {
         super.onDestroy()
         if (::volumeMonitorPlugin.isInitialized) {
             volumeMonitorPlugin.cleanup()
+        }
+        if (::powerStatePlugin.isInitialized) {
+            powerStatePlugin.cleanup()
         }
     }
 }

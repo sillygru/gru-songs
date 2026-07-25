@@ -586,53 +586,81 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // ==================== FADE AND GAP LOGIC ====================
 
+  /// Whether anything the playhead listener does can actually happen.
+  ///
+  /// Fades and gaps are both off by default, and for a user who leaves them
+  /// that way the listener below was a callback several times a second, for the
+  /// whole of every track, that could only ever fall through its own guards —
+  /// including while the app is in the background with the screen off.
+  bool _needsPositionListener(SettingsState? settings) =>
+      settings != null &&
+      (settings.fadeOutDuration > 0 || settings.delayDuration > 0);
+
+  /// Attaches or detaches the playhead listener to match the current settings.
+  /// Called once the settings cache is populated, and again whenever it
+  /// changes.
+  void _syncPositionListener() {
+    final needed = _needsPositionListener(_cachedSettings);
+    if (needed == (_positionSubscription != null)) return;
+
+    if (needed) {
+      _positionSubscription = _player.positionStream.listen(_onFadePosition);
+    } else {
+      _positionSubscription?.cancel();
+      _positionSubscription = null;
+      // Nothing is left to finish a fade that is already under way, so put the
+      // volume back rather than leaving the track quiet forever.
+      if (_isFadingOut) _cancelTransitions();
+    }
+  }
+
+  void _onFadePosition(Duration position) {
+    if (_ref == null) return;
+    // Use the cached settings populated by the settingsProvider listener
+    // (set up in _initVolumeMonitoring). positionStream fires many times
+    // per second, so avoid a Riverpod lookup per tick.
+    final settings = _cachedSettings;
+    if (settings == null) return;
+
+    final totalDuration = _player.duration;
+    if (totalDuration == null) return;
+
+    // Minimum 30 second song for any transitions
+    if (totalDuration.inSeconds < 30) return;
+
+    final remaining = totalDuration - position;
+
+    // Handle gap mode - pause before end, resume after delay
+    if (settings.delayDuration > 0 &&
+        !_isInGap &&
+        _player.playing &&
+        _gapTimer == null) {
+      _handleGapTrigger(
+        remaining: remaining,
+        delayDuration: settings.delayDuration,
+      );
+    }
+
+    // Handle fade out trigger
+    if (settings.fadeOutDuration > 0 &&
+        _player.playing &&
+        !_isFadingOut &&
+        remaining.inMilliseconds <= settings.fadeOutDuration * 1000 &&
+        remaining.inMilliseconds > 0) {
+      _startFadeOut(settings.fadeOutDuration);
+    }
+
+    // Reset fade if user seeks back. The +500 ms hysteresis matches the
+    // original duplicate listener that lived in _initStatsListeners.
+    if (_isFadingOut) {
+      final fadeOutMs = settings.fadeOutDuration * 1000;
+      if (fadeOutMs > 0 && remaining.inMilliseconds > fadeOutMs + 500) {
+        _cancelTransitions();
+      }
+    }
+  }
+
   void _initFadingListeners() {
-    _positionSubscription = _player.positionStream.listen((position) {
-      if (_ref == null) return;
-      // Use the cached settings populated by the settingsProvider listener
-      // (set up in _initVolumeMonitoring). positionStream fires many times
-      // per second, so avoid a Riverpod lookup per tick.
-      final settings = _cachedSettings;
-      if (settings == null) return;
-
-      final totalDuration = _player.duration;
-      if (totalDuration == null) return;
-
-      // Minimum 30 second song for any transitions
-      if (totalDuration.inSeconds < 30) return;
-
-      final remaining = totalDuration - position;
-
-      // Handle gap mode - pause before end, resume after delay
-      if (settings.delayDuration > 0 &&
-          !_isInGap &&
-          _player.playing &&
-          _gapTimer == null) {
-        _handleGapTrigger(
-          remaining: remaining,
-          delayDuration: settings.delayDuration,
-        );
-      }
-
-      // Handle fade out trigger
-      if (settings.fadeOutDuration > 0 &&
-          _player.playing &&
-          !_isFadingOut &&
-          remaining.inMilliseconds <= settings.fadeOutDuration * 1000 &&
-          remaining.inMilliseconds > 0) {
-        _startFadeOut(settings.fadeOutDuration);
-      }
-
-      // Reset fade if user seeks back. The +500 ms hysteresis matches the
-      // original duplicate listener that lived in _initStatsListeners.
-      if (_isFadingOut) {
-        final fadeOutMs = settings.fadeOutDuration * 1000;
-        if (fadeOutMs > 0 && remaining.inMilliseconds > fadeOutMs + 500) {
-          _cancelTransitions();
-        }
-      }
-    });
-
     _sequenceSubscription =
         _track(_player.sequenceStateStream.listen((state) async {
       if (_ref == null) return;
@@ -768,6 +796,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       _ref!.listen(settingsProvider, (previous, next) {
         _cachedSettings = next;
+        _syncPositionListener();
         if (previous?.autoPauseOnVolumeZero != next.autoPauseOnVolumeZero) {
           _volumeMonitorService
               ?.setAutoPauseEnabled(next.autoPauseOnVolumeZero);
@@ -776,6 +805,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
       final initialSettings = _ref!.read(settingsProvider);
       _cachedSettings = initialSettings;
+      _syncPositionListener();
       _volumeMonitorService?.setAutoPauseEnabled(
         initialSettings.autoPauseOnVolumeZero,
       );
@@ -1135,7 +1165,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     _statsService.setBackground(isBackground);
 
+    final wasBackground = _isBackground;
     _appLifecycleState = state;
+
+    // Pick the prefetching back up for whatever ended up playing while nobody
+    // was looking, so opening the player still finds a beat map and a palette
+    // waiting.
+    if (wasBackground && !isBackground) {
+      _warmBeatAnalysis(currentSongNotifier.value);
+      final index = _player.currentIndex;
+      if (index != null) _warmThemePalettesAroundIndex(index);
+    }
   }
 
   void onMemoryPressure() {
@@ -1149,6 +1189,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // ==================== STATS & SHUFFLE ====================
 
   void _preExtractNextColor() {
+    // Same reasoning as _warmThemePalettesAroundIndex: a head start on a theme
+    // nobody is looking at is just a cover decode charged to the battery.
+    if (_isBackground) return;
+
     final currentIndex = _player.currentIndex;
     if (currentIndex == null || _effectiveQueue.isEmpty) return;
 
@@ -1164,6 +1208,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     }
   }
 
+  /// Whether the app is out of sight. Anything that exists only to have a
+  /// visual ready sooner can wait for [didChangeAppLifecycleState] to bring it
+  /// back.
+  bool get _isBackground => _appLifecycleState != AppLifecycleState.resumed;
+
   /// Kicks off beat analysis for the track that just started and the one after
   /// it.
   ///
@@ -1176,6 +1225,13 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   /// every track change is cheap after the first pass through a library.
   void _warmBeatAnalysis(Song? current) {
     if (_ref == null) return;
+
+    // Beat analysis decodes the whole track to PCM and runs an FFT over it. In
+    // the background that is minutes of CPU per track — with the screen off —
+    // for a grid that only drives the player's motion. Nothing is lost by
+    // waiting: the player screen analyses on demand when it opens, and the
+    // resume path below re-warms whatever is playing then.
+    if (_isBackground) return;
 
     final settings = _ref!.read(settingsProvider);
     if (!settings.beatReactiveCoverEnabled &&
@@ -1210,6 +1266,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   void _warmThemePalettesAroundIndex(int centerIndex, {int radius = 1}) {
     if (_effectiveQueue.isEmpty) return;
+    // Purely a head start on the theme for tracks either side of this one. The
+    // track actually playing is extracted separately, so skipping this in the
+    // background costs nothing but a decode the user cannot see.
+    if (_isBackground) return;
 
     for (int offset = -radius; offset <= radius; offset++) {
       final index = centerIndex + offset;

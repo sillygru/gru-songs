@@ -418,6 +418,20 @@ class _CoverStage extends ConsumerWidget {
               filename: song.filename,
               width: size,
               height: size,
+              // Decoded at the size it is actually drawn at.
+              //
+              // This is the one cover in the app big enough to miss
+              // AlbumArtImage's small-image fallback, so without a cap a
+              // 3000x3000 embedded JPEG was decoded in full — 36 MB of bitmap
+              // for a box a few hundred points wide, which on its own comes
+              // close to the whole image cache budget and evicts every list
+              // thumbnail with it.
+              //
+              // Width only: passing both dimensions resizes to exactly those
+              // numbers, which would squash a non-square cover in the
+              // sourceAspect mode below.
+              memCacheWidth:
+                  (size * MediaQuery.devicePixelRatioOf(context)).round(),
               // autoFit crops to a square; sourceAspect keeps the original ratio.
               fit: coverSizing == PlayerCoverSizingMode.autoFit
                   ? BoxFit.cover
@@ -629,8 +643,6 @@ class _VideoSurfaceState extends State<_VideoSurface>
       _applyPlayState();
     });
 
-    _syncTimer = Timer.periodic(_syncInterval, (_) => _syncToAudio());
-
     await _applyPlayState();
 
     if (mounted) {
@@ -653,6 +665,8 @@ class _VideoSurfaceState extends State<_VideoSurface>
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
 
+    _syncSyncTimer();
+
     final player = widget.audioManager.player;
     final shouldPlay = player.playing && _appResumed && _visible;
 
@@ -664,6 +678,24 @@ class _VideoSurfaceState extends State<_VideoSurface>
     if (resync) await _seekTo(player.position);
     if (_controller != controller) return;
     if (!controller.value.isPlaying) await controller.play();
+  }
+
+  /// Runs the drift check only while there is a video on screen to drift.
+  ///
+  /// [_syncToAudio] already bailed out when the app was backgrounded or the
+  /// pane swiped away, but a timer that fires every second to decide it has
+  /// nothing to do is still a wakeup every second — for as long as a video
+  /// track plays with the screen off.
+  void _syncSyncTimer() {
+    final wanted = _controller != null && _appResumed && _visible;
+    if (wanted == (_syncTimer != null)) return;
+
+    if (wanted) {
+      _syncTimer = Timer.periodic(_syncInterval, (_) => _syncToAudio());
+    } else {
+      _syncTimer?.cancel();
+      _syncTimer = null;
+    }
   }
 
   Future<void> _syncToAudio() async {

@@ -27,6 +27,15 @@ class BlurredBackground extends StatefulWidget {
 class _BlurredBackgroundState extends State<BlurredBackground>
     with SingleTickerProviderStateMixin {
   File? _blurFile;
+
+  /// Whether [_blurFile] is actually on disk.
+  ///
+  /// Kept as a field rather than re-checked in `build`: the only thing that
+  /// creates or removes this file is [_updateBlurFile], which already knows the
+  /// answer, and asking the filesystem instead put a synchronous stat on the UI
+  /// thread of every single build of a full-screen background.
+  bool _blurFileExists = false;
+
   int _requestToken = 0;
   late AnimationController _spinController;
 
@@ -66,6 +75,7 @@ class _BlurredBackgroundState extends State<BlurredBackground>
 
   Future<void> _updateBlurFile() async {
     _blurFile = null;
+    _blurFileExists = false;
 
     final filename = widget.filename;
     if (filename == null) {
@@ -79,6 +89,7 @@ class _BlurredBackgroundState extends State<BlurredBackground>
 
     _blurFile = blurFile;
     if (await blurFile.exists()) {
+      _blurFileExists = true;
       if (mounted) setState(() {});
       return;
     }
@@ -108,12 +119,12 @@ class _BlurredBackgroundState extends State<BlurredBackground>
     if (success && await blurFile.exists()) {
       setState(() {
         _blurFile = blurFile;
+        _blurFileExists = true;
       });
     }
   }
 
-  bool get _hasBlurredBackground =>
-      _blurFile != null && _blurFile!.existsSync();
+  bool get _hasBlurredBackground => _blurFile != null && _blurFileExists;
 
   String _normalizeFilePath(String path) {
     if (path.startsWith('file://')) {

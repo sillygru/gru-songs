@@ -208,22 +208,39 @@ class SleepTimerService {
     _elapsedTimeStopwatch = Stopwatch()..start();
     final targetDuration = Duration(minutes: minutes);
 
-    // Use a periodic timer to check elapsed time
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_elapsedTimeStopwatch == null) return;
-
-      final elapsed = _elapsedTimeStopwatch!.elapsed;
-      if (elapsed >= targetDuration) {
-        _timer?.cancel();
+    // One timer for the whole countdown rather than a tick a second.
+    //
+    // A one-second periodic timer woke the CPU 3,600 times for an hour-long
+    // sleep timer, every one of them only to compare two durations — with the
+    // screen off, on a device the user has deliberately left playing overnight.
+    // Nothing watches the intermediate values: `remainingMinutes` is computed
+    // from `_startTime` on demand.
+    //
+    // The stopwatch stays as the source of truth. A timer can fire late (the
+    // process was suspended, the device dozed), never early, but re-arming on
+    // the remainder if it somehow does is a cheap guarantee that the timer
+    // never shuts playback down ahead of time.
+    void arm(Duration delay) {
+      _timer = Timer(delay, () {
         _timer = null;
+        final stopwatch = _elapsedTimeStopwatch;
+        if (stopwatch == null) return;
+
+        final remaining = targetDuration - stopwatch.elapsed;
+        if (remaining > Duration.zero) {
+          arm(remaining);
+          return;
+        }
 
         if (letCurrentFinish) {
           _enableStopAtEndOfSong(audioManager);
         } else {
           _performShutdown(audioManager);
         }
-      }
-    });
+      });
+    }
+
+    arm(targetDuration);
   }
 
   /// Enables the "stop at end of song" logic

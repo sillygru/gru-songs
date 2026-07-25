@@ -274,23 +274,28 @@ class _NowPlayingContent extends ConsumerWidget {
             left: 0,
             right: 0,
             bottom: 0,
-            child: StreamBuilder<Duration>(
-              stream: player.positionStream,
-              builder: (context, snapshot) {
-                final position = snapshot.data ?? Duration.zero;
-                final duration = player.duration ?? Duration.zero;
-                final progress = duration.inMilliseconds > 0
-                    ? position.inMilliseconds / duration.inMilliseconds
-                    : 0.0;
-                return LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  minHeight: compact ? 2.5 : 3,
-                  backgroundColor: Colors.white.withValues(alpha: 0.08),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).colorScheme.primary,
-                  ),
-                );
-              },
+            // Boundaried: this repaints five times a second on every screen in
+            // the app, and without a layer of its own each of those repaints
+            // dirtied the whole bar — including the backdrop blur behind it.
+            child: RepaintBoundary(
+              child: StreamBuilder<Duration>(
+                stream: player.positionStream,
+                builder: (context, snapshot) {
+                  final position = snapshot.data ?? Duration.zero;
+                  final duration = player.duration ?? Duration.zero;
+                  final progress = duration.inMilliseconds > 0
+                      ? position.inMilliseconds / duration.inMilliseconds
+                      : 0.0;
+                  return LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    minHeight: compact ? 2.5 : 3,
+                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Theme.of(context).colorScheme.primary,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],

@@ -7,6 +7,7 @@ import CommonCrypto
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private let folderAccessManager = IOSFolderAccessManager()
+  private var powerStateMonitor: PowerStateMonitor?
 
   override func application(
     _ application: UIApplication,
@@ -30,9 +31,70 @@ import CommonCrypto
       mediaChannel.setMethodCallHandler { [weak self] call, result in
         self?.handleMediaAccess(call, result: result)
       }
+
+      powerStateMonitor = PowerStateMonitor(binaryMessenger: controller.binaryMessenger)
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+}
+
+/// Serves Low Power Mode over `gru_songs/power` (current value) and
+/// `gru_songs/power_events` (changes), matching the Android PowerStatePlugin.
+///
+/// The app uses this to thin out the player's animation — fewer motes, half the
+/// frame rate — when the system says the user is trying to make the battery
+/// last.
+private final class PowerStateMonitor: NSObject, FlutterStreamHandler {
+  private var eventSink: FlutterEventSink?
+
+  init(binaryMessenger: FlutterBinaryMessenger) {
+    super.init()
+
+    let methodChannel = FlutterMethodChannel(
+      name: "gru_songs/power",
+      binaryMessenger: binaryMessenger
+    )
+    methodChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "isPowerSaveMode":
+        result(ProcessInfo.processInfo.isLowPowerModeEnabled)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    let eventChannel = FlutterEventChannel(
+      name: "gru_songs/power_events",
+      binaryMessenger: binaryMessenger
+    )
+    eventChannel.setStreamHandler(self)
+  }
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    eventSink = events
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(powerStateChanged),
+      name: .NSProcessInfoPowerStateDidChange,
+      object: nil
+    )
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    NotificationCenter.default.removeObserver(self, name: .NSProcessInfoPowerStateDidChange, object: nil)
+    eventSink = nil
+    return nil
+  }
+
+  @objc private func powerStateChanged() {
+    let enabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+    // The notification arrives on an arbitrary thread; sinks must be called on
+    // the platform thread.
+    DispatchQueue.main.async { [weak self] in
+      self?.eventSink?(enabled)
+    }
   }
 }
 
