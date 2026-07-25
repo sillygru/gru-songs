@@ -18,6 +18,7 @@ import '../components/app_feedback.dart';
 import '../components/app_list_row.dart';
 import '../components/app_media_card.dart';
 import '../components/app_screen_header.dart';
+import '../components/scroll_chrome.dart';
 import '../components/app_segmented_tabs.dart';
 import '../components/app_sheet.dart';
 import '../routes/app_page_route.dart';
@@ -38,36 +39,8 @@ class LibraryScreen extends ConsumerStatefulWidget {
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  static const double _bottomDockDragDistance = 88.0;
-
-  bool _isScrolled = false;
-
-  bool _handleScrollNotification(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) {
-      return false;
-    }
-
-    final scrolled = notification.metrics.pixels > 0;
-    if (scrolled != _isScrolled) {
-      setState(() => _isScrolled = scrolled);
-    }
-
-    if (notification is ScrollUpdateNotification &&
-        notification.dragDetails != null) {
-      final delta = notification.scrollDelta ?? 0;
-      if (delta != 0) {
-        ref.read(bottomDockVisibilityProvider.notifier).updateFromDrag(
-              scrollDelta: delta,
-              dragDistanceForFullToggle: _bottomDockDragDistance,
-            );
-      }
-    } else if (notification is ScrollEndNotification) {
-      ref.read(bottomDockVisibilityProvider.notifier).settle();
-    }
-    return false;
-  }
-
+class _LibraryScreenState extends ConsumerState<LibraryScreen>
+    with ScrollChromeMixin {
   @override
   Widget build(BuildContext context) {
     final songsAsyncValue = ref.watch(songsProvider);
@@ -143,6 +116,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         backgroundColor: Colors.transparent,
         body: NestedScrollView(
           controller: widget.scrollController,
+          // Required for the header's snap to work over the tab body —
+          // without it the outer scroll won't float the sliver back in.
+          floatHeaderSlivers: true,
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
               AppSliverHeader(
@@ -417,7 +393,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     if (isRoot) {
       return NotificationListener<ScrollNotification>(
-        onNotification: _handleScrollNotification,
+        onNotification: handleScrollNotification,
         child: ListView.builder(
           itemCount: itemCount,
           padding: const EdgeInsets.only(
@@ -429,13 +405,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     } else {
       return AmbientScaffold(
         body: NotificationListener<ScrollNotification>(
-          onNotification: _handleScrollNotification,
+          onNotification: handleScrollNotification,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
               AppSliverHeader(
                 title: widget.relativePath ?? 'Library',
-                isScrolled: _isScrolled,
+                isScrolled: isScrolled,
                 large: false,
                 floating: true,
                 snap: true,
@@ -538,7 +514,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
 
     return NotificationListener<ScrollNotification>(
-      onNotification: _handleScrollNotification,
+      onNotification: handleScrollNotification,
       child: GridView.builder(
         padding: const EdgeInsets.fromLTRB(
           AppTokens.s4,

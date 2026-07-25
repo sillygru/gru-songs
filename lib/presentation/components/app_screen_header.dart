@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/settings_provider.dart';
 import '../tokens/app_tokens.dart';
 
 /// The scrolling header for the top-level screens.
@@ -17,6 +18,10 @@ class AppSliverHeader extends ConsumerWidget {
   final List<Widget> actions;
   final PreferredSizeWidget? bottom;
 
+  /// Defaults hide the header on the way down and snap it back on a short
+  /// scroll up — the same bargain the bottom dock makes. A pinned header eats
+  /// the top of every list forever; pass `pinned: true` only where the header
+  /// carries controls the screen can't be used without.
   final bool pinned;
   final bool floating;
   final bool snap;
@@ -31,9 +36,9 @@ class AppSliverHeader extends ConsumerWidget {
     this.isScrolled = false,
     this.actions = const [],
     this.bottom,
-    this.pinned = true,
-    this.floating = false,
-    this.snap = false,
+    this.pinned = false,
+    this.floating = true,
+    this.snap = true,
     this.large = true,
   });
 
@@ -42,30 +47,42 @@ class AppSliverHeader extends ConsumerWidget {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
     // No glass: when the content scrolls under the header, a solid, ambient-
-    // matching scrim eases in so the title stays legible. It fades from clear
-    // at the top to the scaffold colour at the bottom — depth from a gradient,
-    // never a blur panel.
-    final Widget? scrim = isScrolled
-        ? IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    scaffoldBg.withValues(alpha: 0.0),
-                    scaffoldBg.withValues(alpha: 0.92),
-                  ],
-                ),
-              ),
+    // matching backdrop eases in so the title stays legible. It holds nearly
+    // full opacity across the header and only feathers out in the last sliver
+    // of height, so nothing reads through behind the title — depth from a
+    // gradient, never a blur panel.
+    final Widget scrim = IgnorePointer(
+      child: AnimatedOpacity(
+        opacity: isScrolled ? 1 : 0,
+        duration: AppTokens.dFast,
+        curve: AppTokens.cStandard,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                scaffoldBg.withValues(alpha: 0.94),
+                scaffoldBg.withValues(alpha: 0.94),
+                scaffoldBg.withValues(alpha: 0.0),
+              ],
+              stops: const [0.0, 0.82, 1.0],
             ),
-          )
-        : null;
+          ),
+        ),
+      ),
+    );
+
+    // One preference governs both bars: with auto-hide off, the header stays
+    // put exactly as it used to.
+    final autoHide = ref.watch(
+      settingsProvider.select((s) => s.autoHideBottomBarOnScroll),
+    );
 
     return SliverAppBar(
-      pinned: pinned,
-      floating: floating,
-      snap: snap,
+      pinned: pinned || !autoHide,
+      floating: floating && autoHide,
+      snap: snap && autoHide,
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,

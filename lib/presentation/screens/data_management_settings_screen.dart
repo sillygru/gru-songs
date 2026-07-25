@@ -9,13 +9,17 @@ import '../../presentation/widgets/import_progress_dialog.dart';
 import 'namida_import_screen.dart';
 import 'backup_management_screen.dart';
 import 'storage_management_screen.dart';
-import '../components/app_surface.dart';
+import '../components/app_screen_header.dart';
+import '../components/app_settings.dart';
 import '../components/app_feedback.dart';
-import '../components/app_icon.dart';
+import '../routes/app_page_route.dart';
 import '../tokens/app_icons.dart';
 
 class DataManagementSettingsScreen extends ConsumerStatefulWidget {
-  const DataManagementSettingsScreen({super.key});
+  /// Row to reveal when opened from settings search.
+  final String? highlightId;
+
+  const DataManagementSettingsScreen({super.key, this.highlightId});
 
   @override
   ConsumerState<DataManagementSettingsScreen> createState() =>
@@ -27,17 +31,16 @@ class _DataManagementSettingsScreenState
   @override
   Widget build(BuildContext context) {
     return AmbientScaffold(
-      appBar: AppBar(
-        title: const Text("Data Management"),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      appBar: const AppTopBar(title: 'Data Management'),
+      body: AppSettingsList(
+        highlightId: widget.highlightId,
         children: [
-          _buildSettingsGroup(
-            title: 'Backup & Restore',
+          AppSettingsGroup(
+            label: 'Backup & Restore',
             icon: AppIcons.cloudUpload,
             children: [
-              _buildListTile(
+              AppSettingsTile(
+                searchId: 'data.export',
                 icon: AppIcons.upload,
                 title: 'Export App Data',
                 subtitle: 'Backup your stats, favorites, and playlists',
@@ -50,65 +53,48 @@ class _DataManagementSettingsScreenState
                     await BackupService.instance
                         .exportUserData(options: options);
                   } catch (e) {
-                    if (mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text("Export failed: $e")),
-                      );
-                    }
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('Export failed: $e')),
+                    );
                   }
                 },
               ),
-              _buildListTile(
+              AppSettingsTile(
+                searchId: 'data.import',
                 icon: AppIcons.download,
                 title: 'Import App Data',
                 subtitle: 'Restore data from a backup (replaces all)',
                 onTap: () => _handleImport(),
               ),
-              _buildListTile(
+              AppSettingsTile(
+                searchId: 'data.namida',
                 icon: AppIcons.download,
                 title: 'Import from Namida',
                 subtitle: 'Import playlists and favorites from Namida',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const NamidaImportScreen()),
-                  );
-                },
+                onTap: () => context.pushApp(const NamidaImportScreen()),
               ),
-              _buildListTile(
+              AppSettingsTile(
+                searchId: 'data.backups',
                 icon: AppIcons.cloudUpload,
                 title: 'Manage Backups',
                 subtitle: 'Create, restore, and manage app backups',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const BackupManagementScreen()),
-                  );
-                },
+                onTap: () => context.pushApp(const BackupManagementScreen()),
               ),
             ],
           ),
-          _buildSettingsGroup(
-            title: 'Storage',
+          AppSettingsGroup(
+            label: 'Storage',
             icon: AppIcons.storage,
             children: [
-              _buildListTile(
+              AppSettingsTile(
+                searchId: 'data.storage',
                 icon: AppIcons.storage,
                 title: 'Manage Storage',
                 subtitle: 'Disk usage and data management',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const StorageManagementScreen()),
-                  );
-                },
+                onTap: () => context.pushApp(const StorageManagementScreen()),
               ),
             ],
           ),
-          const SizedBox(height: 32),
         ],
       ),
     );
@@ -304,78 +290,6 @@ class _DataManagementSettingsScreenState
       onChanged: onChanged,
       contentPadding: EdgeInsets.zero,
       controlAffinity: ListTileControlAffinity.leading,
-    );
-  }
-
-  Widget _buildSettingsGroup({
-    required String title,
-    required List<Widget> children,
-    required AppIconData icon,
-  }) {
-    final theme = Theme.of(context);
-    final List<Widget> childrenWithDividers = [];
-
-    for (int i = 0; i < children.length; i++) {
-      childrenWithDividers.add(children[i]);
-      if (i < children.length - 1) {
-        childrenWithDividers.add(
-          Divider(
-            height: 1,
-            indent: 56,
-            endIndent: 16,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        );
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Row(
-            children: [
-              AppIcon(icon, size: 16, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                title.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-        AppSurface(
-          padding: EdgeInsets.zero,
-          clipContent: true,
-          child: Column(
-            children: childrenWithDividers,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildListTile({
-    required AppIconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading:
-          AppIcon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: subtitle != null
-          ? Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)
-          : null,
-      trailing: const AppIcon(AppIcons.chevronRight, size: 20),
-      onTap: onTap,
     );
   }
 

@@ -240,18 +240,34 @@ class BottomDockVisibilityState {
 }
 
 class BottomDockVisibilityNotifier extends Notifier<BottomDockVisibilityState> {
+  /// Getting the bar *out of the way* should take deliberate downward travel —
+  /// otherwise it flickers away on the smallest nudge.
+  static const double hideDragDistance = 110.0;
+
+  /// Getting it *back* should not. Reaching for the nav bar is an intentional
+  /// act, and the old symmetric distance meant half a screen of upward drag
+  /// before it reappeared. A short flick up now brings it most of the way home.
+  static const double revealDragDistance = 36.0;
+
+  /// True when the last motion we saw was upward (revealing).
+  bool _revealing = false;
+
   @override
   BottomDockVisibilityState build() => const BottomDockVisibilityState();
 
-  void updateFromDrag({
-    required double scrollDelta,
-    required double dragDistanceForFullToggle,
-  }) {
-    if (dragDistanceForFullToggle <= 0) return;
+  void updateFromDrag({required double scrollDelta}) {
+    if (scrollDelta == 0) return;
+
+    _revealing = scrollDelta < 0;
+    final distance = _revealing ? revealDragDistance : hideDragDistance;
 
     final nextVisibility =
-        (state.visibility - (scrollDelta / dragDistanceForFullToggle))
-            .clamp(0.0, 1.0);
+        (state.visibility - (scrollDelta / distance)).clamp(0.0, 1.0);
+
+    // Already pinned at the end it's heading for — every further pixel of the
+    // same scroll would otherwise republish identical state and rebuild the
+    // shell on every frame.
+    if (nextVisibility == state.visibility && state.isDragging) return;
 
     state = state.copyWith(
       visibility: nextVisibility,
@@ -259,14 +275,20 @@ class BottomDockVisibilityNotifier extends Notifier<BottomDockVisibilityState> {
     );
   }
 
+  /// Asymmetric on purpose: upward intent nearly always wins. Once the finger
+  /// leaves, a barely-started reveal completes, while a barely-started hide
+  /// springs back.
   void settle() {
-    state = state.copyWith(
-      visibility: state.visibility >= 0.5 ? 1.0 : 0.0,
-      isDragging: false,
-    );
+    final target = _revealing
+        ? (state.visibility > 0.15 ? 1.0 : 0.0)
+        : (state.visibility < 0.4 ? 0.0 : 1.0);
+
+    state = state.copyWith(visibility: target, isDragging: false);
   }
 
   void show() {
+    _revealing = true;
+    if (state.visibility == 1 && !state.isDragging) return;
     state = const BottomDockVisibilityState(visibility: 1, isDragging: false);
   }
 }

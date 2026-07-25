@@ -7,7 +7,10 @@ import '../components/app_settings.dart';
 import '../tokens/app_icons.dart';
 
 class PlaybackSettingsScreen extends ConsumerStatefulWidget {
-  const PlaybackSettingsScreen({super.key});
+  /// Row to reveal when opened from settings search.
+  final String? highlightId;
+
+  const PlaybackSettingsScreen({super.key, this.highlightId});
 
   @override
   ConsumerState<PlaybackSettingsScreen> createState() =>
@@ -30,6 +33,7 @@ class _PlaybackSettingsScreenState
     return AmbientScaffold(
       appBar: const AppTopBar(title: 'Playback'),
       body: AppSettingsList(
+        highlightId: widget.highlightId,
         children: [
           AppSettingsGroup(
             label: 'Audio',
@@ -37,6 +41,7 @@ class _PlaybackSettingsScreenState
             children: [
               AppSettingsSwitch(
                 icon: AppIcons.volumeOff,
+                searchId: 'playback.auto_pause_mute',
                 title: 'Auto-Pause on Mute',
                 subtitle: 'Pause playback when volume reaches 0',
                 value: settings.autoPauseOnVolumeZero,
@@ -44,6 +49,7 @@ class _PlaybackSettingsScreenState
               ),
               AppSettingsSwitch(
                 icon: AppIcons.volumeUp,
+                searchId: 'playback.auto_resume_unmute',
                 title: 'Auto-Resume on Unmute',
                 subtitle: 'Resume playback when volume is restored',
                 value: settings.autoResumeOnVolumeRestore,
@@ -51,6 +57,7 @@ class _PlaybackSettingsScreenState
               ),
               AppSettingsSwitch(
                 icon: AppIcons.screenLock,
+                searchId: 'playback.keep_screen_awake',
                 title: 'Keep Screen Awake on Lyrics',
                 subtitle: 'Prevent sleep while the lyrics pane is open',
                 value: settings.keepScreenAwakeOnLyrics,
@@ -64,6 +71,7 @@ class _PlaybackSettingsScreenState
             children: [
               AppSettingsSlider(
                 icon: AppIcons.hourglass,
+                searchId: 'playback.gap',
                 title: isFadeMode ? 'Gap / Delay (off)' : 'Gap / Delay',
                 valueLabel: '${settings.delayDuration.toStringAsFixed(1)}s',
                 value: settings.delayDuration,
@@ -74,6 +82,7 @@ class _PlaybackSettingsScreenState
               ),
               AppSettingsSlider(
                 icon: AppIcons.volumeDown,
+                searchId: 'playback.fade_out',
                 title: isGapMode ? 'Fade Out (off)' : 'Fade Out',
                 valueLabel: '${settings.fadeOutDuration.toStringAsFixed(1)}s',
                 value: settings.fadeOutDuration,
@@ -84,6 +93,7 @@ class _PlaybackSettingsScreenState
               ),
               AppSettingsSlider(
                 icon: AppIcons.volumeUp,
+                searchId: 'playback.fade_in',
                 title: isGapMode ? 'Fade In (off)' : 'Fade In',
                 valueLabel: '${settings.fadeInDuration.toStringAsFixed(1)}s',
                 value: settings.fadeInDuration,
@@ -100,6 +110,7 @@ class _PlaybackSettingsScreenState
             children: [
               AppSettingsSlider(
                 icon: AppIcons.play,
+                searchId: 'playback.fade_play',
                 title: 'Fade on Play',
                 valueLabel: _fadeLabel(settings.playFadeDuration),
                 value: settings.playFadeDuration,
@@ -110,6 +121,7 @@ class _PlaybackSettingsScreenState
               ),
               AppSettingsSlider(
                 icon: AppIcons.pause,
+                searchId: 'playback.fade_pause',
                 title: 'Fade on Pause',
                 valueLabel: _fadeLabel(settings.pauseFadeDuration),
                 value: settings.pauseFadeDuration,

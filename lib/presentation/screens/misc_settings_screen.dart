@@ -14,7 +14,10 @@ import '../components/app_icon.dart';
 import '../tokens/app_icons.dart';
 
 class MiscSettingsScreen extends ConsumerStatefulWidget {
-  const MiscSettingsScreen({super.key});
+  /// Row to reveal when opened from settings search.
+  final String? highlightId;
+
+  const MiscSettingsScreen({super.key, this.highlightId});
 
   @override
   ConsumerState<MiscSettingsScreen> createState() => _MiscSettingsScreenState();
@@ -44,6 +47,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
     return AmbientScaffold(
       appBar: const AppTopBar(title: 'Misc'),
       body: AppSettingsList(
+        highlightId: widget.highlightId,
         children: [
           AppSettingsGroup(
             label: 'Privacy',
@@ -51,6 +55,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
             children: [
               AppSettingsSwitch(
                 icon: AppIcons.analytics,
+                searchId: 'misc.telemetry',
                 title: 'Telemetry',
                 subtitle:
                     'Anonymous usage stats. No personal data is collected.',
@@ -65,6 +70,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
             icon: AppIcons.cloudUpload,
             children: [
               _dropdownRow(
+                searchId: 'misc.auto_backup',
                 icon: AppIcons.cloudUpload,
                 title: 'Auto Backup',
                 subtitle: 'How often a backup is taken',
@@ -81,6 +87,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
               ),
               _contentTypeRow(context, ref),
               _dropdownRow(
+                searchId: 'misc.auto_delete_backups',
                 icon: AppIcons.delete,
                 title: 'Auto-Delete Old Backups',
                 subtitle: 'Discard backups older than this',
@@ -106,6 +113,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
                     ref.read(storageServiceProvider).getPullToRefreshEnabled(),
                 builder: (context, snapshot) => AppSettingsSwitch(
                   icon: AppIcons.touchApp,
+                  searchId: 'misc.pull_to_refresh',
                   title: 'Pull to Refresh',
                   subtitle: 'Swipe down to refresh the library',
                   value: snapshot.data ?? true,
@@ -127,14 +135,17 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
   Widget _contentTypeRow(BuildContext context, WidgetRef ref) {
     final accent = AppTokens.accentOf(context, ref);
 
-    return AppListRow(
-      dense: true,
-      leading: AppRowIcon(icon: AppIcons.tune, color: accent, size: 40),
-      title: 'Auto Backup Content',
-      subtitle: 'What data is included in automatic backups',
-      trailing: AppIcon(AppIcons.chevronRight,
-          color: Theme.of(context).colorScheme.onSurfaceVariant),
-      onTap: () => _configureAutoContent(context),
+    return AppSettingsAnchor(
+      id: 'misc.auto_backup_content',
+      child: AppListRow(
+        dense: true,
+        leading: AppRowIcon(icon: AppIcons.tune, color: accent, size: 40),
+        title: 'Auto Backup Content',
+        subtitle: 'What data is included in automatic backups',
+        trailing: AppIcon(AppIcons.chevronRight,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
+        onTap: () => _configureAutoContent(context),
+      ),
     );
   }
 
@@ -161,6 +172,7 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
   }
 
   Widget _dropdownRow({
+    required String searchId,
     required AppIconData icon,
     required String title,
     required String subtitle,
@@ -170,23 +182,26 @@ class _MiscSettingsScreenState extends ConsumerState<MiscSettingsScreen> {
   }) {
     final accent = AppTokens.accentOf(context, ref);
 
-    return AppListRow(
-      dense: true,
-      leading: AppRowIcon(icon: icon, color: accent, size: 40),
-      title: title,
-      subtitle: subtitle,
-      trailing: DropdownButton<int>(
-        value: value,
-        underline: const SizedBox.shrink(),
-        borderRadius: AppTokens.brMd,
-        style: AppTokens.rowSubtitle(context).copyWith(color: Colors.white),
-        items: options.entries
-            .map((entry) =>
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)))
-            .toList(),
-        onChanged: (val) {
-          if (val != null) onChanged(val);
-        },
+    return AppSettingsAnchor(
+      id: searchId,
+      child: AppListRow(
+        dense: true,
+        leading: AppRowIcon(icon: icon, color: accent, size: 40),
+        title: title,
+        subtitle: subtitle,
+        trailing: DropdownButton<int>(
+          value: value,
+          underline: const SizedBox.shrink(),
+          borderRadius: AppTokens.brMd,
+          style: AppTokens.rowSubtitle(context).copyWith(color: Colors.white),
+          items: options.entries
+              .map((entry) =>
+                  DropdownMenuItem(value: entry.key, child: Text(entry.value)))
+              .toList(),
+          onChanged: (val) {
+            if (val != null) onChanged(val);
+          },
+        ),
       ),
     );
   }

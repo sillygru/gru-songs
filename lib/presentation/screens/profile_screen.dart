@@ -10,6 +10,7 @@ import '../components/app_dialog.dart';
 import '../components/app_feedback.dart';
 import '../components/app_list_row.dart';
 import '../components/app_screen_header.dart';
+import '../components/scroll_chrome.dart';
 import '../components/app_section_header.dart';
 import '../components/app_surface.dart';
 import '../routes/app_page_route.dart';
@@ -29,39 +30,11 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  static const double _bottomDockDragDistance = 88.0;
-
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with ScrollChromeMixin {
   String _appVersion = '';
   ShufflePersonality? _pendingPersonality;
   bool _hasPersonalityChanges = false;
-  bool _isScrolled = false;
-
-  bool _handleScrollNotification(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) {
-      return false;
-    }
-
-    final scrolled = notification.metrics.pixels > 0;
-    if (scrolled != _isScrolled) {
-      setState(() => _isScrolled = scrolled);
-    }
-
-    if (notification is ScrollUpdateNotification &&
-        notification.dragDetails != null) {
-      final delta = notification.scrollDelta ?? 0;
-      if (delta != 0) {
-        ref.read(bottomDockVisibilityProvider.notifier).updateFromDrag(
-              scrollDelta: delta,
-              dragDistanceForFullToggle: _bottomDockDragDistance,
-            );
-      }
-    } else if (notification is ScrollEndNotification) {
-      ref.read(bottomDockVisibilityProvider.notifier).settle();
-    }
-    return false;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -111,12 +84,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         onRefresh: () =>
             ref.read(userDataProvider.notifier).refresh(force: true),
         child: NotificationListener<ScrollNotification>(
-          onNotification: _handleScrollNotification,
+          onNotification: handleScrollNotification,
           child: CustomScrollView(
             controller: widget.scrollController,
             physics: const BouncingScrollPhysics(),
             slivers: [
-              AppSliverHeader(title: 'Profile', isScrolled: _isScrolled),
+              AppSliverHeader(title: 'Profile', isScrolled: isScrolled),
 
               // Identity — a plain avatar and name, sitting on the background
               // rather than on a gradient banner.
