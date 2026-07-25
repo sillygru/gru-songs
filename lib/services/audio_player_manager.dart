@@ -1235,7 +1235,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     final settings = _ref!.read(settingsProvider);
     if (!settings.beatReactiveCoverEnabled &&
-        !settings.beatReactiveParticlesEnabled) {
+        !settings.beatReactiveParticlesEnabled &&
+        settings.visualizerMode != VisualizerMode.synced) {
       return;
     }
 

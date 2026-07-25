@@ -49,11 +49,14 @@ class _SelectSongsScreenState extends ConsumerState<SelectSongsScreen> {
   Widget build(BuildContext context) {
     final sortOrder = ref.watch(settingsProvider).sortOrder;
     final userData = ref.watch(userDataProvider);
+    final lastPlayedAsync = ref.watch(lastPlayedTimestampsProvider);
+    final lastPlayedTimestamps = lastPlayedAsync.asData?.value ?? const {};
 
     final sortedSongs = LibraryLogic.sortSongs(
       widget.songs,
       sortOrder,
       userData: userData,
+      lastPlayedTimestamps: lastPlayedTimestamps,
     );
 
     final filteredSongs = _searchQuery.isEmpty

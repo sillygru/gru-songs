@@ -21,6 +21,7 @@ import '../services/update_service.dart';
 import '../services/library_logic.dart';
 import '../services/lrclib_service.dart';
 import '../domain/services/search_service.dart';
+import '../presentation/widgets/spectrum_controller.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
 import 'user_data_provider.dart';
@@ -361,6 +362,35 @@ final beatAnalysisServiceProvider = Provider<BeatAnalysisService>((ref) {
   final service = BeatAnalysisService(CacheService.instance);
   ref.onDispose(() => service.dispose());
   return service;
+});
+
+/// The one controller behind every [AudioVisualizer] in the app.
+///
+/// Created eagerly with the provider but inert until a visualiser listens to
+/// it, so an app with no bars on screen pays nothing for this.
+final spectrumControllerProvider = Provider<SpectrumController>((ref) {
+  final manager = ref.read(audioPlayerManagerProvider);
+  final controller = SpectrumController(
+    player: manager.player,
+    currentSong: manager.currentSongNotifier,
+    beatAnalysis: ref.read(beatAnalysisServiceProvider),
+  );
+
+  final settings = ref.read(settingsProvider);
+  controller
+    ..mode = settings.visualizerMode
+    ..latencyMs = settings.playerMotionLatencyMs;
+
+  // Pushed in rather than watched, so a settings change retunes the live
+  // controller instead of replacing it and dropping every listener.
+  ref.listen<SettingsState>(settingsProvider, (previous, next) {
+    controller
+      ..mode = next.visualizerMode
+      ..latencyMs = next.playerMotionLatencyMs;
+  });
+
+  ref.onDispose(controller.dispose);
+  return controller;
 });
 
 final songRepositoryProvider = Provider<SongRepository>((ref) {
@@ -1382,6 +1412,11 @@ final playCountsProvider = Provider<Map<String, int>>((ref) {
   }
 
   return const {};
+});
+
+final lastPlayedTimestampsProvider = FutureProvider<Map<String, double>>((ref) async {
+  ref.watch(songsProvider);
+  return DatabaseService.instance.getLastPlayedTimestamps();
 });
 
 /// Folder the library tree is rooted at, resolved from the configured music

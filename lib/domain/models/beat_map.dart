@@ -27,7 +27,7 @@ class BeatMap {
   /// Bumped whenever the analysis algorithm changes in a way that makes old
   /// cached maps wrong. [fromJson] rejects anything that does not match, so a
   /// bump silently re-analyses everyone's library instead of showing stale data.
-  static const int currentVersion = 2;
+  static const int currentVersion = 3;
 
   /// Rate at which [bands] is sampled. Envelopes are interpolated between
   /// samples at render time, so this can stay well below the display refresh.
@@ -78,6 +78,11 @@ class BeatMap {
   }
 
   bool get hasBeats => beatsMs.isNotEmpty;
+
+  /// Whether the band envelopes are usable. A track can have these without a
+  /// beat grid — ambient and spoken word land there — which is enough to drive
+  /// the visualiser bars even when nothing can drive a pulse.
+  bool get hasBands => bands.isNotEmpty;
 
   int get bandFrameCount => bands.length ~/ BeatBand.values.length;
 

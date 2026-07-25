@@ -104,9 +104,9 @@ class _CoverGlowPainter extends CustomPainter {
     // Same recipe the BoxShadow inside the cover used, so only the clipping
     // changed and not the look.
     final shape = (glow / _glowQuantum).round() * _glowQuantum;
-    final blurRadius = 18 + 42 * shape;
+    final blurRadius = 15 + 36 * shape;
     _paint
-      ..color = accent.withValues(alpha: 0.34 * glow * visible * visible)
+      ..color = accent.withValues(alpha: 0.29 * glow * visible * visible)
       ..maskFilter = MaskFilter.blur(
         BlurStyle.normal,
         Shadow.convertRadiusToSigma(blurRadius),
@@ -114,7 +114,7 @@ class _CoverGlowPainter extends CustomPainter {
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        rect.inflate(6 * shape),
+        rect.inflate(5 * shape),
         const Radius.circular(PlayerTokens.rLg),
       ),
       _paint,

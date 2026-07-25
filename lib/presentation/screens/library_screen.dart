@@ -51,6 +51,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     final sortOrder = settings.sortOrder;
     final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
     final playCounts = ref.watch(playCountsProvider);
+    final lastPlayedAsync = ref.watch(lastPlayedTimestampsProvider);
+    final lastPlayedTimestamps = lastPlayedAsync.asData?.value ?? const {};
     final isRoot = widget.relativePath == null;
 
     // The folder tab needs both the library and the folder it is rooted at, so
@@ -75,6 +77,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
               audioManager,
               sortOrder,
               shuffleConfig,
+              lastPlayedTimestamps,
               playCounts,
             );
           },
@@ -185,6 +188,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     AudioPlayerManager audioManager,
     SongSortOrder sortOrder,
     ShuffleConfig shuffleConfig,
+    Map<String, double> lastPlayedTimestamps,
     Map<String, int> playCounts,
   ) {
     final currentFullPath = widget.relativePath == null
@@ -198,6 +202,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       userData: userData,
       shuffleConfig: shuffleConfig,
       playCounts: playCounts,
+      lastPlayedTimestamps: lastPlayedTimestamps,
     );
 
     final sortedSubFolders = content.subFolders;

@@ -96,7 +96,7 @@ class SongListItem extends ConsumerWidget {
               currentSong: currentSong,
               accent: accent,
               audioManager: audioManager,
-              visualizerEnabled: settings.visualizerEnabled,
+              visualizerMode: settings.visualizerMode,
             ),
             subtitleWidget: Row(
               children: [
@@ -142,7 +142,7 @@ class _Artwork extends StatelessWidget {
   final Song? currentSong;
   final Color accent;
   final AudioPlayerManager audioManager;
-  final bool visualizerEnabled;
+  final VisualizerMode visualizerMode;
 
   const _Artwork({
     required this.song,
@@ -152,7 +152,7 @@ class _Artwork extends StatelessWidget {
     required this.currentSong,
     required this.accent,
     required this.audioManager,
-    required this.visualizerEnabled,
+    required this.visualizerMode,
   });
 
   @override
@@ -207,12 +207,13 @@ class _Artwork extends StatelessWidget {
                     borderRadius: AppTokens.brSm,
                   ),
                   child: Center(
-                    child: visualizerEnabled
-                        ? const AudioVisualizer(
+                    child: visualizerMode != VisualizerMode.off
+                        ? AudioVisualizer(
                             color: Colors.white,
                             width: 22,
                             height: 22,
                             isPlaying: true,
+                            mode: visualizerMode,
                           )
                         : const AppIcon(AppIcons.graphicEq,
                             color: Colors.white, size: 22),

@@ -103,6 +103,7 @@ class LibraryLogic {
     UserDataState? userData,
     ShuffleConfig? shuffleConfig,
     Map<String, int>? playCounts,
+    Map<String, double>? lastPlayedTimestamps,
   }) {
     final sorted = List<Song>.from(songs);
 
@@ -229,6 +230,21 @@ class LibraryLogic {
           return songDateB.compareTo(songDateA); // Newest release first
         });
         break;
+
+      case SongSortOrder.recentlyPlayed:
+        sorted.sort((a, b) {
+          final lastPlayedA = lastPlayedTimestamps?[a.filename];
+          final lastPlayedB = lastPlayedTimestamps?[b.filename];
+
+          if (lastPlayedA != null && lastPlayedB != null) {
+            return lastPlayedB.compareTo(lastPlayedA);
+          }
+          if (lastPlayedA != null) return -1;
+          if (lastPlayedB != null) return 1;
+
+          return lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!);
+        });
+        break;
     }
 
     return sorted;
@@ -241,6 +257,7 @@ class LibraryLogic {
     UserDataState? userData,
     ShuffleConfig? shuffleConfig,
     Map<String, int>? playCounts,
+    Map<String, double>? lastPlayedTimestamps,
   }) {
     // Filter songs in the current path (or subpaths)
 
@@ -282,6 +299,7 @@ class LibraryLogic {
       userData: userData,
       shuffleConfig: shuffleConfig,
       playCounts: playCounts,
+      lastPlayedTimestamps: lastPlayedTimestamps,
     );
 
     return LibraryFolderContent(

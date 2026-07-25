@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'album_art_image.dart';
+import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../routes/player_route.dart';
@@ -70,7 +71,7 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
             child: _NowPlayingContent(
               metadata: metadata,
               player: player,
-              settingsEnabled: settings.visualizerEnabled,
+              visualizerMode: settings.visualizerMode,
               isBarVisible: isBarVisible,
               theme: theme,
               isDesktopOrTablet: isDesktop || isIPad,
@@ -87,7 +88,7 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
 class _NowPlayingContent extends ConsumerWidget {
   final MediaItem metadata;
   final AudioPlayer player;
-  final bool settingsEnabled;
+  final VisualizerMode visualizerMode;
   final bool isBarVisible;
   final ThemeData theme;
   final bool isDesktopOrTablet;
@@ -97,7 +98,7 @@ class _NowPlayingContent extends ConsumerWidget {
   const _NowPlayingContent({
     required this.metadata,
     required this.player,
-    required this.settingsEnabled,
+    required this.visualizerMode,
     required this.isBarVisible,
     required this.theme,
     required this.isDesktopOrTablet,
@@ -151,12 +152,13 @@ class _NowPlayingContent extends ConsumerWidget {
                                 child: Container(
                                   color: Colors.black.withValues(alpha: 0.28),
                                   child: Center(
-                                    child: settingsEnabled
+                                    child: visualizerMode != VisualizerMode.off
                                         ? AudioVisualizer(
                                             width: compact ? 18 : 22,
                                             height: compact ? 18 : 22,
                                             color: Colors.white,
                                             isPlaying: true,
+                                            mode: visualizerMode,
                                           )
                                         : AppIcon(
                                             AppIcons.graphicEq,

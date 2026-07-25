@@ -41,6 +41,8 @@ class SongListScreen extends ConsumerWidget {
     final userData = ref.watch(userDataProvider);
     final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
     final playCounts = ref.watch(playCountsProvider);
+    final lastPlayedAsync = ref.watch(lastPlayedTimestampsProvider);
+    final lastPlayedTimestamps = lastPlayedAsync.asData?.value ?? const {};
 
     final sortedSongs = LibraryLogic.sortSongs(
       songs,
@@ -48,6 +50,7 @@ class SongListScreen extends ConsumerWidget {
       userData: userData,
       shuffleConfig: shuffleConfig,
       playCounts: playCounts,
+      lastPlayedTimestamps: lastPlayedTimestamps,
     );
 
     final isPlaylist = playlistId != null;

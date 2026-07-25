@@ -321,6 +321,8 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
     final audioManager = ref.watch(audioPlayerManagerProvider);
     final animatedWave =
         ref.watch(settingsProvider.select((s) => s.animatedSoundWaveEnabled));
+    final visualizerMode =
+        ref.watch(settingsProvider.select((s) => s.visualizerMode));
 
     return ValueListenableBuilder<List<QueueItem>>(
       valueListenable: audioManager.queueNotifier,
@@ -400,7 +402,10 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
                                       song: current.song,
                                       accent: widget.accent,
                                       isCurrent: true,
-                                      showAnimatedWave: animatedWave && playing,
+                                      showAnimatedWave: animatedWave &&
+                                          playing &&
+                                          visualizerMode != VisualizerMode.off,
+                                      visualizerMode: visualizerMode,
                                       onIndicatorTap: () {
                                         HapticFeedback.selectionClick();
                                         audioManager.togglePlayPause();

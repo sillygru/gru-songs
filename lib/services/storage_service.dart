@@ -505,6 +505,7 @@ class StorageService {
     'is_setup_complete_v2',
     'sort_order',
     'visualizer_enabled',
+    'visualizer_mode',
     'auto_hide_bottom_bar_on_scroll',
     'pull_to_refresh_enabled',
     'telemetry_enabled',
@@ -657,6 +658,7 @@ class StorageService {
   static const List<String> _uiSettingsKeys = [
     'sort_order',
     'visualizer_enabled',
+    'visualizer_mode',
     'auto_hide_bottom_bar_on_scroll',
     'show_song_duration',
     'animated_sound_wave_enabled',

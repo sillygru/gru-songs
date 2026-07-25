@@ -742,9 +742,18 @@ Uint8List _packBands(List<Float32List> bands, int frameCount, int sampleRate) {
     var level = 0.0;
     for (var i = 0; i < frameCount; i++) {
       final value = source[i];
-      // Asymmetric one-pole: rises quickly so a hit registers, falls slowly so
-      // the motion it drives glides instead of snapping back.
-      final coefficient = value > level ? 0.5 : 0.12;
+      // A peak follower: instant rise, exponential fall. What is stored is the
+      // envelope the audio actually has, and consumers apply whatever
+      // ballistics they want on top.
+      //
+      // The old release of 0.12 per frame is a 180ms fall at this frame rate,
+      // and stacking a render-side fall on top of it put half the kicks in a
+      // dense track below the threshold of visible motion — measured on real
+      // audio, not a click track. 0.5 is a ~30ms fall: still enough of a
+      // low-pass to keep the decimation to [BeatMap.bandFps] below from
+      // aliasing a transient to the wrong frame, without smoothing the
+      // transient away.
+      final coefficient = value > level ? 1.0 : 0.5;
       level += (value - level) * coefficient;
       out[i] = level;
     }

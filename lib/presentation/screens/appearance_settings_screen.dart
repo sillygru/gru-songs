@@ -57,13 +57,42 @@ class _AppearanceSettingsScreenState
             label: 'Display',
             icon: AppIcons.viewList,
             children: [
-              AppSettingsSwitch(
-                icon: AppIcons.waves,
-                searchId: 'appearance.visualizer',
-                title: 'Audio Visualizer',
-                subtitle: 'Show animated wave while playing',
-                value: settings.visualizerEnabled,
-                onChanged: notifier.setVisualizerEnabled,
+              AppSettingsAnchor(
+                id: 'appearance.visualizer',
+                child: AppListRow(
+                  dense: true,
+                  leading: AppRowIcon(
+                    icon: AppIcons.waves,
+                    color: accent,
+                    size: 40,
+                  ),
+                  title: 'Audio Visualizer',
+                  subtitle: 'Bars over the artwork while playing — synced '
+                      'follows the song, bass on the left',
+                  trailing: DropdownButton<VisualizerMode>(
+                    value: settings.visualizerMode,
+                    underline: const SizedBox.shrink(),
+                    borderRadius: AppTokens.brMd,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      notifier.setVisualizerMode(value);
+                    },
+                    items: const [
+                      DropdownMenuItem(
+                        value: VisualizerMode.off,
+                        child: Text('Off'),
+                      ),
+                      DropdownMenuItem(
+                        value: VisualizerMode.classic,
+                        child: Text('Classic'),
+                      ),
+                      DropdownMenuItem(
+                        value: VisualizerMode.synced,
+                        child: Text('Synced'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               AppSettingsSwitch(
                 icon: AppIcons.graphicEq,

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wispie/models/song.dart';
 import 'package:wispie/providers/settings_provider.dart';
 
 void main() {
@@ -19,7 +20,10 @@ void main() {
 
       expect(updatedState.autoPauseOnVolumeZero, false);
       expect(updatedState.autoResumeOnVolumeRestore, false);
-      expect(updatedState.visualizerEnabled, true); // Should remain unchanged
+      expect(
+        updatedState.visualizerMode,
+        VisualizerMode.synced,
+      ); // Should remain unchanged
       expect(updatedState.telemetryEnabled, true); // Should remain unchanged
     });
 

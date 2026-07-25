@@ -8,11 +8,28 @@ enum SongSortOrder {
   playCount,
   recommended,
   songDate,
+  recentlyPlayed,
 }
 
 enum PlayerCoverSizingMode {
   autoFit,
   sourceAspect,
+}
+
+/// What the four-bar audio visualiser does while a song plays.
+///
+/// Persisted by index, so only ever append to this list.
+enum VisualizerMode {
+  /// A static icon instead of bars.
+  off,
+
+  /// Bars walk toward random targets. Decorative — it looks like music without
+  /// having anything to do with the music.
+  classic,
+
+  /// Bars follow the track's own frequency bands at the playhead, low to high,
+  /// left to right, from the precomputed beat map.
+  synced,
 }
 
 /// How strongly the player screen reacts to the beat. Scales cover pulse

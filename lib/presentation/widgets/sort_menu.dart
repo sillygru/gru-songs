@@ -52,6 +52,11 @@ class SortMenu extends ConsumerWidget {
           child: const Text('Most Played'),
         ),
         CheckedPopupMenuItem(
+          value: SongSortOrder.recentlyPlayed,
+          checked: sortOrder == SongSortOrder.recentlyPlayed,
+          child: const Text('Recently Played'),
+        ),
+        CheckedPopupMenuItem(
           value: SongSortOrder.recommended,
           checked: sortOrder == SongSortOrder.recommended,
           child: const Text('Recommended'),

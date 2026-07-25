@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../models/song.dart';
+import '../tokens/app_icons.dart';
 import '../tokens/player_tokens.dart';
+import 'app_icon.dart';
 import '../widgets/album_art_image.dart' show StaticAlbumArtImage;
 import '../widgets/audio_visualizer.dart';
 import '../widgets/duration_display.dart' show DurationFormatter;
@@ -25,6 +27,7 @@ class PlayerTrackRow extends StatelessWidget {
 
   /// Shows the animated bars on the current row (settings.animatedSoundWaveEnabled).
   final bool showAnimatedWave;
+  final VisualizerMode visualizerMode;
 
   /// Trailing slot — a reorder drag handle, an overflow button, or nothing.
   final Widget? trailing;
@@ -41,6 +44,7 @@ class PlayerTrackRow extends StatelessWidget {
     this.onTap,
     this.onIndicatorTap,
     this.showAnimatedWave = false,
+    this.visualizerMode = VisualizerMode.synced,
     this.trailing,
     this.index,
   });
@@ -136,14 +140,15 @@ class PlayerTrackRow extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.42),
                   child: Center(
                     child: showAnimatedWave
-                        ? const AudioVisualizer(
+                        ? AudioVisualizer(
                             width: 18,
                             height: 18,
                             color: Colors.white,
                             isPlaying: true,
+                            mode: visualizerMode,
                           )
-                        : const Icon(
-                            Icons.graphic_eq_rounded,
+                        : const AppIcon(
+                            AppIcons.graphicEq,
                             size: 18,
                             color: Colors.white,
                           ),

@@ -243,9 +243,9 @@ final List<SettingsDestination> settingsRegistry = [
     anchorId: 'appearance.visualizer',
     icon: AppIcons.waves,
     title: 'Audio Visualizer',
-    subtitle: 'Show animated wave while playing',
+    subtitle: 'Off, classic bars, or bars synced to the song',
     breadcrumb: 'Settings › Appearance › Display',
-    keywords: const ['wave', 'animation', 'spectrum'],
+    keywords: const ['wave', 'animation', 'spectrum', 'bars', 'sync', 'bass'],
     open: () =>
         const AppearanceSettingsScreen(highlightId: 'appearance.visualizer'),
   ),

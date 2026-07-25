@@ -1920,6 +1920,22 @@ class DatabaseService {
     }
   }
 
+  Future<Map<String, double>> getLastPlayedTimestamps() async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return {};
+    try {
+      final results = await _statsDatabase!.rawQuery(
+          'SELECT song_filename, MAX(timestamp) as last_played FROM playevent WHERE play_ratio > 0.25 GROUP BY song_filename');
+      return {
+        for (var r in results)
+          r['song_filename'] as String: r['last_played'] as double,
+      };
+    } catch (e) {
+      debugPrint('Error fetching last played timestamps: $e');
+      return {};
+    }
+  }
+
   Future<Map<String, ({int count, double avgRatio})>> getSkipStats() async {
     await _ensureInitialized();
     if (_statsDatabase == null) return {};

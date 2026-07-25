@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../domain/models/beat_map.dart';
+import '../../domain/services/playhead_clock.dart';
 import '../../models/song.dart';
 
 /// One frame of beat-derived motion, recomputed each display refresh.
@@ -138,60 +139,60 @@ class MotionIntensitySpec {
   });
 
   static const _subtle = MotionIntensitySpec(
-    coverPunch: 0.035,
-    coverBreath: 0.010,
-    coverLift: 2.0,
-    coverSway: 0.0035,
-    particleCount: 28,
-    particleImpulse: 0.55,
-    particleOpacity: 0.30,
-    particleDrift: 0.75,
+    coverPunch: 0.030,
+    coverBreath: 0.009,
+    coverLift: 1.7,
+    coverSway: 0.0030,
+    particleCount: 24,
+    particleImpulse: 0.47,
+    particleOpacity: 0.26,
+    particleDrift: 0.64,
   );
 
   static const _balanced = MotionIntensitySpec(
-    coverPunch: 0.058,
-    coverBreath: 0.014,
-    coverLift: 3.2,
-    coverSway: 0.0055,
-    particleCount: 38,
-    particleImpulse: 0.90,
-    particleOpacity: 0.39,
-    particleDrift: 0.94,
+    coverPunch: 0.049,
+    coverBreath: 0.012,
+    coverLift: 2.7,
+    coverSway: 0.0047,
+    particleCount: 32,
+    particleImpulse: 0.77,
+    particleOpacity: 0.33,
+    particleDrift: 0.80,
   );
 
   static const _bold = MotionIntensitySpec(
-    coverPunch: 0.092,
-    coverBreath: 0.021,
-    coverLift: 5.2,
-    coverSway: 0.0092,
-    particleCount: 52,
-    particleImpulse: 1.50,
-    particleOpacity: 0.50,
-    particleDrift: 1.25,
+    coverPunch: 0.078,
+    coverBreath: 0.018,
+    coverLift: 4.4,
+    coverSway: 0.0078,
+    particleCount: 44,
+    particleImpulse: 1.28,
+    particleOpacity: 0.43,
+    particleDrift: 1.06,
   );
 
   /// Floor of the custom slider range — half of [subtle].
   static const _min = MotionIntensitySpec(
-    coverPunch: 0.018,
+    coverPunch: 0.015,
     coverBreath: 0.005,
-    coverLift: 1.0,
-    coverSway: 0.0018,
-    particleCount: 14,
-    particleImpulse: 0.28,
-    particleOpacity: 0.15,
-    particleDrift: 0.38,
+    coverLift: 0.9,
+    coverSway: 0.0015,
+    particleCount: 12,
+    particleImpulse: 0.24,
+    particleOpacity: 0.13,
+    particleDrift: 0.32,
   );
 
   /// Ceiling of the custom slider range — roughly 1.4x [bold].
   static const _max = MotionIntensitySpec(
-    coverPunch: 0.13,
-    coverBreath: 0.029,
-    coverLift: 7.3,
-    coverSway: 0.013,
-    particleCount: 74,
-    particleImpulse: 2.1,
-    particleOpacity: 0.70,
-    particleDrift: 1.75,
+    coverPunch: 0.109,
+    coverBreath: 0.025,
+    coverLift: 6.2,
+    coverSway: 0.011,
+    particleCount: 62,
+    particleImpulse: 1.79,
+    particleOpacity: 0.60,
+    particleDrift: 1.48,
   );
 
   static MotionIntensitySpec of(PlayerMotionIntensity intensity) {
@@ -303,15 +304,6 @@ class PlayerMotionController extends ChangeNotifier {
   static const double _offbeatSlowPeriodMs = 500;
   static const double _offbeatFastPeriodMs = 375;
 
-  /// Beyond this the clock has been seeked or the track changed, so snap
-  /// instead of easing.
-  static const int _snapThresholdMs = 250;
-
-  /// Fraction of the remaining error corrected per position update. Small
-  /// enough that ordinary jitter is invisible, large enough to converge in
-  /// well under a second.
-  static const double _easeFactor = 0.15;
-
   /// Shortest gap between two emitted frames, at normal power and in power-save.
   ///
   /// The ticker fires at the display refresh rate, which is 120 Hz on a good
@@ -339,10 +331,12 @@ class PlayerMotionController extends ChangeNotifier {
       MotionIntensitySpec.of(PlayerMotionIntensity.subtle);
 
   bool _enabled = true;
-  bool _playing = false;
   bool _appActive = true;
   bool _powerSave = false;
-  int _latencyMs = 0;
+
+  /// Shared with every other beat-reactive surface, so the cover, the particle
+  /// field and the visualiser bars cannot disagree about where "now" is.
+  final PlayheadClock _clock = PlayheadClock();
 
   Duration _minFrameInterval = _frameInterval;
 
@@ -359,12 +353,6 @@ class PlayerMotionController extends ChangeNotifier {
   /// anything driving frames by hand) always sees the grid at full strength.
   double _gridBlend = 1;
 
-  /// Anchor for the playhead clock, kept because `player.position` jitters
-  /// enough between platform updates to make a beat-locked animation visibly
-  /// stutter.
-  Duration _anchorPosition = Duration.zero;
-  int _anchorWallMs = 0;
-
   /// Normalisation so a full-strength beat peaks at exactly 1.0.
   ///
   /// Depends on the decay, which now moves with the tempo, so it cannot be a
@@ -377,9 +365,9 @@ class PlayerMotionController extends ChangeNotifier {
   /// Follows [player]'s clock. The player itself is not retained — only its
   /// streams matter here, and they are cancelled on dispose.
   PlayerMotionController({required AudioPlayer player}) {
-    _anchorWallMs = DateTime.now().millisecondsSinceEpoch;
-    _anchorPosition = player.position;
-    _playing = player.playing;
+    _clock
+      ..reset(player.position)
+      ..playing = player.playing;
 
     _positionSub = player.positionStream.listen(_onPosition);
     _stateSub = player.playerStateStream.listen(_onPlayerState);
@@ -446,12 +434,8 @@ class PlayerMotionController extends ChangeNotifier {
   }
 
   /// Visual offset in milliseconds, compensating audio output latency.
-  ///
-  /// Wired to a user setting because the correct value is not a property of the
-  /// app: wired headphones need ~50 ms while Bluetooth routinely needs 150–250 ms,
-  /// and a fixed constant would leave those users with a permanently
-  /// out-of-time pulse and no way to fix it.
-  set latencyMs(int value) => _latencyMs = value;
+  /// See [PlayheadClock.latencyMs].
+  set latencyMs(int value) => _clock.latencyMs = value;
 
   set enabled(bool value) {
     if (_enabled == value) return;
@@ -478,50 +462,21 @@ class PlayerMotionController extends ChangeNotifier {
 
   void _onPlayerState(PlayerState state) {
     final playing = state.playing;
-    if (_playing != playing) {
-      // Re-anchor across the transition so the clock does not jump by however
-      // long the player sat paused.
-      _anchorPosition = _predictedPosition();
-      _anchorWallMs = DateTime.now().millisecondsSinceEpoch;
-      _playing = playing;
+    if (_clock.playing != playing) {
+      _clock.playing = playing;
       _syncTicker();
     }
   }
 
-  void _onPosition(Duration position) {
-    final predicted = _predictedPosition();
-    final driftMs = position.inMilliseconds - predicted.inMilliseconds;
+  void _onPosition(Duration position) => _clock.onPosition(position);
 
-    if (driftMs.abs() > _snapThresholdMs) {
-      // A seek or a track change: snapping is correct, and easing across it
-      // would drag the pulse through positions the listener never heard.
-      _anchorPosition = position;
-    } else {
-      _anchorPosition = predicted +
-          Duration(
-            milliseconds: (driftMs * _easeFactor).round(),
-          );
-    }
-    _anchorWallMs = DateTime.now().millisecondsSinceEpoch;
-  }
-
-  Duration _predictedPosition() {
-    if (!_playing) return _anchorPosition;
-    final elapsed = DateTime.now().millisecondsSinceEpoch - _anchorWallMs;
-    return _anchorPosition + Duration(milliseconds: elapsed);
-  }
-
-  /// The position the listener is currently *hearing*, which trails the decoder
-  /// by the output latency.
-  double _visualPositionMs() {
-    return _predictedPosition().inMilliseconds.toDouble() - _latencyMs;
-  }
+  double _visualPositionMs() => _clock.visualPositionMs;
 
   void _syncTicker() {
     final ticker = _ticker;
     if (ticker == null) return;
 
-    final shouldRun = _enabled && _playing && _appActive;
+    final shouldRun = _enabled && _clock.playing && _appActive;
     if (shouldRun && !ticker.isActive) {
       ticker.start();
     } else if (!shouldRun && ticker.isActive) {
@@ -582,11 +537,7 @@ class PlayerMotionController extends ChangeNotifier {
   void debugRawTick(Duration elapsed) => _onTick(elapsed);
 
   @visibleForTesting
-  void debugSetAnchor(Duration position) {
-    _anchorPosition = position;
-    _anchorWallMs = DateTime.now().millisecondsSinceEpoch;
-    _playing = false;
-  }
+  void debugSetAnchor(Duration position) => _clock.reset(position);
 
   @visibleForTesting
   void debugOnPosition(Duration position) => _onPosition(position);
@@ -598,7 +549,7 @@ class PlayerMotionController extends ChangeNotifier {
       _onPlayerState(PlayerState(playing, ProcessingState.ready));
 
   @visibleForTesting
-  int debugPredictedMs() => _predictedPosition().inMilliseconds;
+  int debugPredictedMs() => _clock.predicted.inMilliseconds;
 
   @visibleForTesting
   double debugVisualPositionMs() => _visualPositionMs();

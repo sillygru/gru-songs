@@ -5,7 +5,7 @@ import '../models/quick_action_config.dart';
 import '../services/telemetry_service.dart';
 
 class SettingsState {
-  final bool visualizerEnabled;
+  final VisualizerMode visualizerMode;
   final bool autoHideBottomBarOnScroll;
   final bool telemetryEnabled;
   final bool autoPauseOnVolumeZero;
@@ -42,7 +42,7 @@ class SettingsState {
   final bool showForYou;
 
   SettingsState({
-    this.visualizerEnabled = true,
+    this.visualizerMode = VisualizerMode.synced,
     this.autoHideBottomBarOnScroll = true,
     this.telemetryEnabled = true,
     this.autoPauseOnVolumeZero = true,
@@ -80,7 +80,7 @@ class SettingsState {
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
-    bool? visualizerEnabled,
+    VisualizerMode? visualizerMode,
     bool? autoHideBottomBarOnScroll,
     bool? telemetryEnabled,
     bool? autoPauseOnVolumeZero,
@@ -117,7 +117,7 @@ class SettingsState {
     bool? showForYou,
   }) {
     return SettingsState(
-      visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
+      visualizerMode: visualizerMode ?? this.visualizerMode,
       autoHideBottomBarOnScroll:
           autoHideBottomBarOnScroll ?? this.autoHideBottomBarOnScroll,
       telemetryEnabled: telemetryEnabled ?? this.telemetryEnabled,
@@ -175,6 +175,7 @@ class SettingsState {
 
 class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyVisualizerEnabled = 'visualizer_enabled';
+  static const _keyVisualizerMode = 'visualizer_mode';
   static const _keyAutoHideBottomBarOnScroll = 'auto_hide_bottom_bar_on_scroll';
   static const _keyTelemetryEnabled = 'telemetry_enabled';
   static const _keyAutoPauseOnVolumeZero = 'auto_pause_on_volume_zero';
@@ -227,7 +228,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     final coverSizingModeIndex = prefs.getInt(_keyCoverSizingMode);
     final motionIntensityIndex = prefs.getInt(_keyPlayerMotionIntensity);
     state = SettingsState(
-      visualizerEnabled: prefs.getBool(_keyVisualizerEnabled) ?? true,
+      visualizerMode: _readVisualizerMode(prefs),
       autoHideBottomBarOnScroll:
           prefs.getBool(_keyAutoHideBottomBarOnScroll) ?? true,
       telemetryEnabled: prefs.getBool(_keyTelemetryEnabled) ?? true,
@@ -341,10 +342,23 @@ class SettingsNotifier extends Notifier<SettingsState> {
     await prefs.setInt(_keySortOrder, order.index);
   }
 
-  Future<void> setVisualizerEnabled(bool enabled) async {
-    state = state.copyWith(visualizerEnabled: enabled);
+  Future<void> setVisualizerMode(VisualizerMode mode) async {
+    state = state.copyWith(visualizerMode: mode);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyVisualizerEnabled, enabled);
+    await prefs.setInt(_keyVisualizerMode, mode.index);
+  }
+
+  /// The visualiser was a bool switch before it grew a synced mode. Anyone who
+  /// had it off stays off; everyone else lands on synced, which is what the
+  /// switch was promising in the first place.
+  static VisualizerMode _readVisualizerMode(SharedPreferences prefs) {
+    final index = prefs.getInt(_keyVisualizerMode);
+    if (index != null && index >= 0 && index < VisualizerMode.values.length) {
+      return VisualizerMode.values[index];
+    }
+    final legacy = prefs.getBool(_keyVisualizerEnabled);
+    if (legacy == false) return VisualizerMode.off;
+    return VisualizerMode.synced;
   }
 
   Future<void> setAutoHideBottomBarOnScroll(bool enabled) async {
