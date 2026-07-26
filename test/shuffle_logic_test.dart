@@ -1,256 +1,361 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wispie/models/song.dart';
-import 'package:wispie/models/queue_item.dart';
+import 'package:wispie/domain/services/shuffle_selector.dart';
+import 'package:wispie/domain/services/song_affinity_service.dart';
 import 'package:wispie/models/shuffle_config.dart';
-import 'package:wispie/domain/services/shuffle_weight_service.dart';
+
+SongAffinity _affinity({
+  double affinity = 0.5,
+  double saturation = 0.0,
+  double skipRate = 0.0,
+  int playCount = 5,
+}) =>
+    SongAffinity(
+      affinity: affinity,
+      recentSaturation: saturation,
+      completionRate: 1.0 - skipRate,
+      skipRate: skipRate,
+      playCount: playCount,
+      lastPlayedAt: null,
+    );
+
+ShuffleCandidate<String> _candidate(
+  String name, {
+  double affinity = 0.5,
+  double saturation = 0.0,
+  double skipRate = 0.0,
+  int playCount = 5,
+  String artist = 'Artist',
+  String album = 'Album',
+  bool isFavorite = false,
+  bool isSuggestLess = false,
+  bool isInPlaylist = false,
+  int? historyIndex,
+}) =>
+    ShuffleCandidate<String>(
+      payload: name,
+      artist: artist,
+      album: album,
+      affinity: _affinity(
+        affinity: affinity,
+        saturation: saturation,
+        skipRate: skipRate,
+        playCount: playCount,
+      ),
+      isFavorite: isFavorite,
+      isSuggestLess: isSuggestLess,
+      isInPlaylist: isInPlaylist,
+      historyIndex: historyIndex,
+    );
 
 void main() {
-  group('Shuffle Logic Tests', () {
-    final song1 = Song(
-        title: 'Test Song 1',
-        artist: 'Test Artist',
-        album: 'Test Album',
-        filename: 's1.mp3',
-        url: '');
+  final defaults = ShuffleWeights.forPersonality(const ShuffleConfig());
 
-    final songOther = Song(
-        title: 'Other',
-        artist: 'Other Artist',
-        album: 'Other Album',
-        filename: 'other.mp3',
-        url: '');
-
-    final item1 = QueueItem(song: song1);
-    final itemOther = QueueItem(song: songOther);
-
-    test('Anti-repeat penalty reduces weight for recently played songs', () {
-      final config = const ShuffleConfig(
-        antiRepeatEnabled: true,
-        historyLimit: 200,
-      );
-
-      // historyIndex 0 = most recent -> 95% penalty in non-consistent mode
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
-        historyIndex: 0,
-      );
-      // 1.0 * (1.0 - 0.95) = 0.05
-      expect(weight, closeTo(0.05, 0.0001));
+  group('scoreCandidate', () {
+    test('a loved song outscores an indifferent one', () {
+      final loved = scoreCandidate(_candidate('a', affinity: 0.95), defaults);
+      final meh = scoreCandidate(_candidate('b', affinity: 0.1), defaults);
+      expect(loved, greaterThan(meh));
     });
 
-    test('Anti-repeat penalty is less severe for older history entries', () {
-      final config = const ShuffleConfig(
-        antiRepeatEnabled: true,
-        historyLimit: 200,
-      );
-
-      // historyIndex 59 -> 50% penalty (non-consistent)
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
-        historyIndex: 59,
-      );
-      // 1.0 * (1.0 - 0.50) = 0.50
-      expect(weight, closeTo(0.50, 0.0001));
+    test('favorites are boosted in the default personality', () {
+      // The old engine gated the favorite boost behind custom mode, so this
+      // was a no-op in three of the four personalities.
+      final favorite =
+          scoreCandidate(_candidate('a', isFavorite: true), defaults);
+      final plain = scoreCandidate(_candidate('b'), defaults);
+      expect(favorite, greaterThan(plain));
     });
 
-    test('High play ratio (>0.9) increases anti-repeat penalty', () {
-      final config = const ShuffleConfig(
-        antiRepeatEnabled: true,
-        historyLimit: 200,
-      );
-
-      // historyIndex 10 -> 90% penalty * 1.2 = 108% clamped to 95%
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
-        historyIndex: 10,
-        playRatioInHistory: 0.95,
-      );
-      // 1.0 * (1.0 - 0.95) = 0.05
-      expect(weight, closeTo(0.05, 0.0001));
+    test('favorites are boosted in every personality', () {
+      for (final personality in ShufflePersonality.values) {
+        final weights = ShuffleWeights.forPersonality(
+          ShuffleConfig(personality: personality),
+        );
+        final favorite =
+            scoreCandidate(_candidate('a', isFavorite: true), weights);
+        final plain = scoreCandidate(_candidate('b'), weights);
+        expect(favorite, greaterThan(plain), reason: '$personality');
+      }
     });
 
-    test('Custom mode favorite boost increases weight', () {
-      final config = const ShuffleConfig(
-        personality: ShufflePersonality.custom,
-        favoritesWeight: 20, // +20% boost
-      );
-
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: true,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
-      );
-      // 1.0 * (1.0 + 20/100) = 1.2
-      expect(weight, closeTo(1.2, 0.0001));
+    test('"suggest less" pushes a song down', () {
+      final suppressed =
+          scoreCandidate(_candidate('a', isSuggestLess: true), defaults);
+      final plain = scoreCandidate(_candidate('b'), defaults);
+      expect(suppressed, lessThan(plain));
     });
 
-    test('Custom mode suggest-less penalty decreases weight', () {
-      final config = const ShuffleConfig(
-        personality: ShufflePersonality.custom,
-        suggestLessWeight: 80, // -80% = 0.2 multiplier
-      );
+    test('heavy listening raises a song rather than penalizing it', () {
+      // Directly inverts the old playCount/maxPlayCount penalty, which made
+      // the most-played songs the least likely to be chosen.
+      final wellLoved = scoreCandidate(
+          _candidate('a', affinity: 1.0, playCount: 200), defaults);
+      final barelyTouched = scoreCandidate(
+          _candidate('b', affinity: 0.05, playCount: 1), defaults);
+      expect(wellLoved, greaterThan(barelyTouched));
+    });
 
-      // suggestLessWeight = 80 -> suggestLessPenalty = -80/100 = -0.8
-      // weight *= (1.0 + (-0.8)) = 0.2
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
+    test('anti-repeat is strongest for the song just played', () {
+      final justPlayed =
+          scoreCandidate(_candidate('a', historyIndex: 0), defaults);
+      final middling =
+          scoreCandidate(_candidate('b', historyIndex: 100), defaults);
+      final absent = scoreCandidate(_candidate('c'), defaults);
+
+      expect(justPlayed, lessThan(middling));
+      expect(middling, lessThan(absent));
+    });
+
+    test('anti-repeat fades to nothing at the edge of the history window', () {
+      final atEdge =
+          scoreCandidate(_candidate('a', historyIndex: 199), defaults);
+      final outside = scoreCandidate(_candidate('b'), defaults);
+      expect(atEdge, closeTo(outside, outside * 0.02));
+    });
+
+    test('anti-repeat scales with the configured history limit', () {
+      // A hardcoded bucket ladder ignored historyLimit entirely.
+      final short =
+          ShuffleWeights.forPersonality(const ShuffleConfig(historyLimit: 20));
+      final long =
+          ShuffleWeights.forPersonality(const ShuffleConfig(historyLimit: 400));
+
+      final atTen = _candidate('a', historyIndex: 10);
+      expect(scoreCandidate(atTen, short),
+          greaterThan(scoreCandidate(atTen, long)));
+    });
+
+    test('disabling anti-repeat removes the recency penalty', () {
+      final weights = ShuffleWeights.forPersonality(
+          const ShuffleConfig(antiRepeatEnabled: false));
+      expect(scoreCandidate(_candidate('a', historyIndex: 0), weights),
+          scoreCandidate(_candidate('b'), weights));
+    });
+
+    test('burnout damps a song hammered this week', () {
+      final binged = scoreCandidate(
+          _candidate('a', affinity: 0.9, saturation: 3.0), defaults);
+      final steady = scoreCandidate(_candidate('b', affinity: 0.9), defaults);
+      expect(binged, lessThan(steady));
+    });
+
+    test('burnout damps but never buries', () {
+      final binged = scoreCandidate(
+          _candidate('a', affinity: 1.0, saturation: 5.0), defaults);
+      final disliked = scoreCandidate(_candidate('b', affinity: 0.0), defaults);
+      expect(binged, greaterThan(disliked));
+    });
+
+    test('a habitually skipped song is pushed down', () {
+      final skipped = scoreCandidate(
+          _candidate('a', affinity: 0.6, skipRate: 0.9), defaults);
+      final kept = scoreCandidate(_candidate('b', affinity: 0.6), defaults);
+      expect(skipped, lessThan(kept));
+    });
+
+    test('every score stays strictly positive so nothing is unreachable', () {
+      final worst = _candidate(
+        'a',
+        affinity: 0.0,
+        skipRate: 1.0,
+        saturation: 10.0,
+        playCount: 500,
         isSuggestLess: true,
-        playCount: 0,
-        maxPlayCount: 0,
-      );
-      expect(weight, closeTo(0.2, 0.0001));
-    });
-
-    test('Custom mode skip boost: low skip ratio (<0.3) increases weight', () {
-      final config = const ShuffleConfig(
-        personality: ShufflePersonality.custom,
-      );
-
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
-        skipCount: 5,
-        skipAvgRatio: 0.1,
-      );
-      // 1.0 * 1.2 = 1.2
-      expect(weight, closeTo(1.2, 0.0001));
-    });
-
-    test('Custom mode skip penalty: high skip ratio (>0.7) decreases weight',
-        () {
-      final config = const ShuffleConfig(
-        personality: ShufflePersonality.custom,
-      );
-
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
-        skipCount: 3,
-        skipAvgRatio: 0.9,
-      );
-      // 1.0 * 0.5 = 0.5
-      expect(weight, closeTo(0.5, 0.0001));
-    });
-
-    test('Streak breaker penalizes same artist', () {
-      final songA = Song(
-          title: 'A',
-          artist: 'Same Artist',
-          album: 'Album X',
-          filename: 'a.mp3',
-          url: '');
-      final songB = Song(
-          title: 'B',
-          artist: 'Same Artist',
-          album: 'Album Y',
-          filename: 'b.mp3',
-          url: '');
-      final itemA = QueueItem(song: songA);
-      final itemB = QueueItem(song: songB);
-
-      final config = const ShuffleConfig(
-        streakBreakerEnabled: true,
-      );
-
-      final weight = calculateWeight(
-        item: itemA,
-        prev: itemB,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
-      );
-      // Same artist -> 0.1
-      expect(weight, closeTo(0.1, 0.0001));
-    });
-
-    test('Lowest weight is clamped to 0.01', () {
-      final config = const ShuffleConfig(
-        antiRepeatEnabled: true,
-        streakBreakerEnabled: true,
-        historyLimit: 200,
-      );
-
-      // historyIndex 0 + same artist should produce very low weight
-      final weight = calculateWeight(
-        item: item1,
-        prev: itemOther,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 0,
-        maxPlayCount: 0,
         historyIndex: 0,
       );
-      expect(weight, greaterThanOrEqualTo(0.01));
+      final score = scoreCandidate(worst, defaults);
+      expect(score, greaterThan(0.0));
+      expect(score, isNot(isNaN));
+    });
+  });
+
+  group('selectSeed', () {
+    test('returns null only for an empty pool', () {
+      expect(selectSeed(<ShuffleCandidate<String>>[], defaults), isNull);
+      expect(selectSeed([_candidate('a')], defaults)?.payload, 'a');
     });
 
-    test('Play count penalty reduces weight for frequently played songs', () {
-      final config = const ShuffleConfig(
-        antiRepeatEnabled: false,
-        streakBreakerEnabled: false,
-      );
+    /// Fraction of seed draws that landed on 'loved'.
+    double lovedShare(
+      List<ShuffleCandidate<String>> candidates,
+      ShuffleWeights weights, {
+      int trials = 10000,
+      int seed = 7,
+    }) {
+      final rng = Random(seed);
+      var hits = 0;
+      for (var i = 0; i < trials; i++) {
+        if (selectSeed(candidates, weights, random: rng)!.payload == 'loved') {
+          hits++;
+        }
+      }
+      return hits / trials;
+    }
 
-      // maxPlayCount = 100, playCount = 80 -> ratio = 0.8
-      // penalty = 0.8 * 0.3 = 0.24
-      // weight = 1.0 * (1.0 - 0.24) = 0.76
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 80,
-        maxPlayCount: 100,
-      );
-      expect(weight, closeTo(0.76, 0.0001));
+    /// One clear favourite among 49 songs the listener has heard but is
+    /// lukewarm on — the shape of a real library after 140 hours.
+    List<ShuffleCandidate<String>> library() => [
+          _candidate('loved', affinity: 1.0, playCount: 100),
+          for (var i = 0; i < 49; i++)
+            _candidate('filler$i', affinity: 0.1, playCount: 5),
+        ];
+
+    test('is biased toward songs the listener actually likes', () {
+      // The regression guard for the headline bug: the shuffle button used to
+      // pick its opening song with a uniform nextInt, ignoring all weighting.
+      // Uniform would be 1/50 = 2%.
+      expect(lovedShare(library(), defaults), greaterThan(0.15));
     });
 
-    test('No play count penalty in consistent mode', () {
-      final config = const ShuffleConfig(
-        personality: ShufflePersonality.consistent,
-        antiRepeatEnabled: false,
-        streakBreakerEnabled: false,
+    test('consistent concentrates on the favourite harder than explorer', () {
+      final consistent = ShuffleWeights.forPersonality(
+          const ShuffleConfig(personality: ShufflePersonality.consistent));
+      final explorer = ShuffleWeights.forPersonality(
+          const ShuffleConfig(personality: ShufflePersonality.explorer));
+
+      final consistentShare = lovedShare(library(), consistent);
+      final defaultShare = lovedShare(library(), defaults);
+      final explorerShare = lovedShare(library(), explorer);
+
+      expect(consistentShare, greaterThan(defaultShare));
+      expect(defaultShare, greaterThan(explorerShare));
+    });
+
+    test('never-played songs still get real discovery weight', () {
+      // Novelty is a feature, not leakage: a library of untouched songs should
+      // not be crowded out by the one song with history.
+      final candidates = [
+        _candidate('loved', affinity: 1.0, playCount: 100),
+        for (var i = 0; i < 49; i++)
+          _candidate('fresh$i', affinity: 0.0, playCount: 0),
+      ];
+
+      final share = lovedShare(candidates, defaults);
+      expect(share, greaterThan(0.03));
+      expect(share, lessThan(0.5));
+    });
+
+    test('still reaches the tail of the library eventually', () {
+      final candidates = [
+        _candidate('loved', affinity: 1.0),
+        for (var i = 0; i < 20; i++) _candidate('tail$i', affinity: 0.0),
+      ];
+
+      final rng = Random(11);
+      final seen = <String>{};
+      for (var i = 0; i < 5000; i++) {
+        seen.add(selectSeed(candidates, defaults, random: rng)!.payload);
+      }
+      expect(seen.length, greaterThan(1));
+    });
+  });
+
+  group('orderQueue', () {
+    test('returns every candidate exactly once', () {
+      final candidates = [
+        for (var i = 0; i < 60; i++) _candidate('s$i', artist: 'Artist$i'),
+      ];
+      final ordered = orderQueue(candidates, defaults, random: Random(3));
+
+      expect(ordered.length, candidates.length);
+      expect(ordered.map((c) => c.payload).toSet().length, candidates.length);
+    });
+
+    test('handles trivial pools without touching the RNG', () {
+      expect(orderQueue(<ShuffleCandidate<String>>[], defaults), isEmpty);
+      expect(orderQueue([_candidate('a')], defaults).single.payload, 'a');
+    });
+
+    test('front-loads high-affinity songs on average', () {
+      final candidates = [
+        for (var i = 0; i < 25; i++)
+          _candidate('loved$i', affinity: 1.0, artist: 'A$i'),
+        for (var i = 0; i < 25; i++)
+          _candidate('meh$i', affinity: 0.02, artist: 'B$i'),
+      ];
+
+      final rng = Random(5);
+      var lovedInFirstTen = 0;
+      const runs = 200;
+      for (var r = 0; r < runs; r++) {
+        final ordered = orderQueue(candidates, defaults, random: rng);
+        lovedInFirstTen +=
+            ordered.take(10).where((c) => c.payload.startsWith('loved')).length;
+      }
+
+      // Chance would be 5 of 10.
+      expect(lovedInFirstTen / runs, greaterThan(7.0));
+    });
+
+    test('spaces out songs by the same artist', () {
+      // Two artists only, so a naive weighted shuffle interleaves them
+      // arbitrarily and frequently produces adjacent pairs.
+      final candidates = [
+        for (var i = 0; i < 20; i++)
+          _candidate('a$i', artist: 'Artist A', album: 'Album A$i'),
+        for (var i = 0; i < 20; i++)
+          _candidate('b$i', artist: 'Artist B', album: 'Album B$i'),
+      ];
+
+      final ordered = orderQueue(candidates, defaults, random: Random(9));
+
+      var adjacentSameArtist = 0;
+      for (var i = 1; i < ordered.length; i++) {
+        if (ordered[i].artist == ordered[i - 1].artist) adjacentSameArtist++;
+      }
+
+      // Perfect alternation is impossible at the tail, but back-to-back pairs
+      // should be rare rather than routine.
+      expect(adjacentSameArtist, lessThan(8));
+    });
+
+    test('untagged artists are not treated as one giant artist run', () {
+      final candidates = [
+        for (var i = 0; i < 30; i++) _candidate('s$i', artist: '', album: ''),
+      ];
+      // Must terminate and keep everything despite every artist "matching".
+      final ordered = orderQueue(candidates, defaults, random: Random(4));
+      expect(ordered.length, 30);
+    });
+
+    test('a single-artist library still returns a full queue', () {
+      final candidates = [
+        for (var i = 0; i < 15; i++)
+          _candidate('s$i', artist: 'Only One', album: 'Only Album'),
+      ];
+      final ordered = orderQueue(candidates, defaults, random: Random(6));
+      expect(ordered.length, 15);
+    });
+
+    test('disabling the streak breaker turns spacing off', () {
+      final weights = ShuffleWeights.forPersonality(
+          const ShuffleConfig(streakBreakerEnabled: false));
+      expect(weights.artistSpacing, 0);
+      expect(weights.albumSpacing, 0);
+
+      final candidates = [
+        for (var i = 0; i < 10; i++) _candidate('s$i', artist: 'Same'),
+      ];
+      expect(orderQueue(candidates, weights, random: Random(2)).length, 10);
+    });
+
+    test('the outgoing song seeds artist spacing for the new queue', () {
+      final candidates = [
+        _candidate('same1', artist: 'Current Artist'),
+        _candidate('same2', artist: 'Current Artist'),
+        for (var i = 0; i < 10; i++) _candidate('other$i', artist: 'Other $i'),
+      ];
+
+      final ordered = orderQueue(
+        candidates,
+        defaults,
+        random: Random(13),
+        lastArtist: 'Current Artist',
       );
 
-      final weight = calculateWeight(
-        item: item1,
-        config: config,
-        isFavorite: false,
-        isSuggestLess: false,
-        playCount: 80,
-        maxPlayCount: 100,
-      );
-      // Consistent mode skips the play count penalty -> weight stays 1.0
-      expect(weight, closeTo(1.0, 0.0001));
+      expect(ordered.first.artist, isNot('Current Artist'));
     });
   });
 }

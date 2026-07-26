@@ -450,7 +450,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ref.watch(audioPlayerManagerProvider).shuffleStateNotifier.value;
           final playCounts = ref.watch(playCountsProvider);
           final lastPlayedAsync = ref.watch(lastPlayedTimestampsProvider);
-          final lastPlayedTimestamps = lastPlayedAsync.asData?.value ?? const {};
+          final lastPlayedTimestamps =
+              lastPlayedAsync.asData?.value ?? const {};
+
+          final affinities = ref.watch(songAffinitiesProvider).asData?.value;
 
           final sortedSongs = LibraryLogic.sortSongs(
             songs,
@@ -459,6 +462,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             shuffleConfig: shuffleState.config,
             playCounts: playCounts,
             lastPlayedTimestamps: lastPlayedTimestamps,
+            affinities: affinities,
           );
 
           final topRecommendations = ref.watch(recommendationsProvider);

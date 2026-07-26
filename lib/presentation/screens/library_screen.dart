@@ -203,6 +203,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       shuffleConfig: shuffleConfig,
       playCounts: playCounts,
       lastPlayedTimestamps: lastPlayedTimestamps,
+      affinities: ref.watch(songAffinitiesProvider).asData?.value,
     );
 
     final sortedSubFolders = content.subFolders;

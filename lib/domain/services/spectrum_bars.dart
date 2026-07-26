@@ -5,7 +5,7 @@ import '../models/beat_map.dart';
 /// The frame math behind the four-bar audio visualiser.
 ///
 /// Pure, so the ballistics can be tested directly rather than inferred from a
-/// screenshot — the same reason `shuffle_weight_service.dart` is pure.
+/// screenshot — the same reason `shuffle_selector.dart` is pure.
 ///
 /// One bar per [BeatBand], left to right: bass, low-mid, mid, air. The band
 /// envelopes come out of the offline analysis already normalised against each

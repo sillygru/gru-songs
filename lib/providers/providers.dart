@@ -21,6 +21,7 @@ import '../services/update_service.dart';
 import '../services/library_logic.dart';
 import '../services/lrclib_service.dart';
 import '../domain/services/search_service.dart';
+import '../domain/services/song_affinity_service.dart';
 import '../presentation/widgets/spectrum_controller.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
@@ -1414,9 +1415,34 @@ final playCountsProvider = Provider<Map<String, int>>((ref) {
   return const {};
 });
 
-final lastPlayedTimestampsProvider = FutureProvider<Map<String, double>>((ref) async {
+final lastPlayedTimestampsProvider =
+    FutureProvider<Map<String, double>>((ref) async {
   ref.watch(songsProvider);
   return DatabaseService.instance.getLastPlayedTimestamps();
+});
+
+/// Per-song taste scores, the same model the shuffle engine picks from.
+///
+/// Exposed so the library's "Recommended" sort ranks by exactly what shuffle
+/// plays — the two used to run separate, disagreeing scoring functions.
+final songAffinitiesProvider =
+    FutureProvider<Map<String, SongAffinity>>((ref) async {
+  ref.watch(songsProvider);
+  final userData = ref.watch(userDataProvider);
+
+  final events = await DatabaseService.instance.getAffinityEvents();
+  return computeAffinities(
+    events: [
+      for (final e in events)
+        PlayEventRecord(
+          filename: e.filename,
+          timestamp: e.timestamp,
+          playRatio: e.playRatio,
+        ),
+    ],
+    now: DateTime.now(),
+    favorites: userData.favorites.toSet(),
+  );
 });
 
 /// Folder the library tree is rooted at, resolved from the configured music

@@ -11,7 +11,8 @@ import '../models/song.dart';
 import '../models/queue_item.dart';
 import '../models/queue_snapshot.dart';
 import '../models/shuffle_config.dart';
-import '../domain/services/shuffle_weight_service.dart';
+import '../domain/services/shuffle_selector.dart';
+import '../domain/services/song_affinity_service.dart';
 import '../domain/services/queue_ops.dart' as queue_ops;
 import 'stats_service.dart';
 import 'storage_service.dart';
@@ -68,6 +69,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Set<String> _favoriteKeys = const <String>{};
   Set<String> _suggestLessKeys = const <String>{};
   Set<String> _hiddenKeys = const <String>{};
+  // Songs belonging to at least one user playlist, for `playlistSongsWeight`.
+  Set<String> _playlistKeys = const <String>{};
 
   // Merged song groups for shuffle weighting
   Map<String, List<String>> _mergedGroups = {};
@@ -77,9 +80,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   // Shuffle state
   ShuffleState _shuffleState = const ShuffleState();
 
-  // Cache DB query results across rapid shuffle calls
-  Map<String, int>? _cachedPlayCounts;
-  Map<String, ({int count, double avgRatio})>? _cachedSkipStats;
+  // Cache DB query results and the derived affinity model across rapid
+  // shuffle calls. Cleared by _invalidateShuffleCache() whenever user data
+  // changes, since favorites feed the affinity floor.
+  Map<String, SongAffinity>? _cachedAffinities;
   List<
       ({
         String filename,
@@ -229,10 +233,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         _hiddenKeys.contains(p.basename(lower));
   }
 
+  bool _isInPlaylist(String filename) {
+    final lower = filename.toLowerCase();
+    return _playlistKeys.contains(lower) ||
+        _playlistKeys.contains(p.basename(lower));
+  }
+
   void setUserData({
     List<String>? favorites,
     List<String>? suggestLess,
     List<String>? hidden,
+    List<String>? playlistSongs,
     Map<String, List<String>>? mergedGroups,
   }) {
     if (favorites != null) {
@@ -244,6 +255,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (hidden != null) {
       _hiddenKeys = _buildFilenameKeys(hidden);
     }
+    if (playlistSongs != null) {
+      _playlistKeys = _buildFilenameKeys(playlistSongs);
+    }
     if (mergedGroups != null) {
       _mergedGroups = mergedGroups;
       _filenameToGroupId = _buildFilenameToGroupId(mergedGroups);
@@ -252,8 +266,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _invalidateShuffleCache() {
-    _cachedPlayCounts = null;
-    _cachedSkipStats = null;
+    _cachedAffinities = null;
     _cachedPlayHistory = null;
     _shuffleCacheTimestamp = null;
   }
@@ -1802,12 +1815,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _isRestrictedToOriginal = isRestricted;
     _currentPlaylistId = null;
 
-    final randomIdx = Random().nextInt(songs.length);
-    final selectedItem = _originalQueue[randomIdx];
+    // Pick the opening song from the same weighted distribution as the rest of
+    // the queue. This used to be a uniform Random().nextInt over the whole
+    // library, which meant the one song the listener actually hears on pressing
+    // shuffle ignored every personality and weighting setting.
+    final selectedItem = await _selectSeedItem(_originalQueue);
 
     // Build shuffled effective queue for the selected song
     final otherItems = List<QueueItem>.from(_originalQueue)
-      ..removeAt(randomIdx);
+      ..removeWhere((item) => item.queueId == selectedItem.queueId);
     final shuffledOthers = await _weightedShuffle(
       otherItems,
       lastItem: selectedItem,
@@ -2116,53 +2132,70 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return [...known, ...unknown];
   }
 
-  Future<List<QueueItem>> _weightedShuffle(
-    List<QueueItem> items, {
-    QueueItem? lastItem,
-  }) async {
-    if (items.isEmpty) return [];
-
+  /// Loads (and caches) the listening model shuffle scores against.
+  ///
+  /// The affinity map is keyed by filename — the primary key for all user data
+  /// — and is rebuilt whenever the cache expires or user data changes, since
+  /// favorites feed the affinity floor.
+  Future<
+      ({
+        Map<String, SongAffinity> affinities,
+        Map<String, int> historyIndex,
+      })> _loadShuffleModel() async {
     final now = DateTime.now();
     final cacheValid = _shuffleCacheTimestamp != null &&
         now.difference(_shuffleCacheTimestamp!) < _shuffleCacheDuration;
 
-    if (!cacheValid || _cachedPlayCounts == null) {
+    if (!cacheValid || _cachedAffinities == null) {
       final results = await Future.wait([
-        DatabaseService.instance.getPlayCounts(),
-        DatabaseService.instance.getSkipStats(),
+        DatabaseService.instance.getAffinityEvents(),
         DatabaseService.instance
             .getPlayHistory(limit: _shuffleState.config.historyLimit),
       ]);
-      _cachedPlayCounts = results[0] as Map<String, int>;
-      _cachedSkipStats =
-          results[1] as Map<String, ({int count, double avgRatio})>;
-      _cachedPlayHistory = results[2] as List<
+
+      final events = results[0]
+          as List<({String filename, double timestamp, double playRatio})>;
+      _cachedPlayHistory = results[1] as List<
           ({
             String filename,
             double timestamp,
             double playRatio,
             String eventType
           })>;
+
+      _cachedAffinities = computeAffinities(
+        events: [
+          for (final e in events)
+            PlayEventRecord(
+              filename: e.filename,
+              timestamp: e.timestamp,
+              playRatio: e.playRatio,
+            ),
+        ],
+        now: now,
+        favorites: _favoriteKeys,
+      );
       _shuffleCacheTimestamp = now;
     }
 
-    final playCounts = _cachedPlayCounts!;
-    final skipStats = _cachedSkipStats!;
+    // Position in recent history, 0 = most recently played. First occurrence
+    // wins, so a song's *latest* play is what anti-repeat measures.
+    final historyIndex = <String, int>{};
     final playHistory = _cachedPlayHistory!;
-
-    // Build O(1) lookup tables for play history. The naive implementation
-    // scanned playHistory for every item on every weight iteration, leading
-    // to O(N * historySize) per pass.
-    final historyIndexByFilename = <String, int>{};
-    final playRatioByFilename = <String, double>{};
     for (int i = 0; i < playHistory.length; i++) {
-      final entry = playHistory[i];
-      // First occurrence wins (smallest index), which is what the original
-      // linear scan captured.
-      historyIndexByFilename.putIfAbsent(entry.filename, () => i);
-      playRatioByFilename.putIfAbsent(entry.filename, () => entry.playRatio);
+      historyIndex.putIfAbsent(playHistory[i].filename, () => i);
     }
 
+    return (affinities: _cachedAffinities!, historyIndex: historyIndex);
+  }
+
+  /// Groups queue items into shuffle candidates, collapsing merged songs into
+  /// a single candidate so a merge group competes as one song, not several.
+  List<ShuffleCandidate<_VirtualShuffleItem>> _buildCandidates(
+    List<QueueItem> items,
+    Map<String, SongAffinity> affinities,
+    Map<String, int> historyIndex,
+  ) {
     final Map<String, List<QueueItem>> mergeGroups = {};
     final List<QueueItem> standaloneItems = [];
 
@@ -2175,105 +2208,139 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    final virtualItems = <_VirtualShuffleItem>[];
+    final virtualItems = <_VirtualShuffleItem>[
+      for (final item in standaloneItems)
+        _VirtualShuffleItem(
+          type: _VirtualItemType.standalone,
+          items: [item],
+          representative: item,
+        ),
+      for (final entry in mergeGroups.entries)
+        _VirtualShuffleItem(
+          type: _VirtualItemType.mergeGroup,
+          items: entry.value,
+          representative: entry.value.first,
+          groupId: entry.key,
+        ),
+    ];
 
-    for (final item in standaloneItems) {
-      virtualItems.add(_VirtualShuffleItem(
-        type: _VirtualItemType.standalone,
-        items: [item],
-        representative: item,
-      ));
-    }
-
-    for (final entry in mergeGroups.entries) {
-      virtualItems.add(_VirtualShuffleItem(
-        type: _VirtualItemType.mergeGroup,
-        items: entry.value,
-        representative: entry.value.first,
-        groupId: entry.key,
-      ));
-    }
-
-    int maxPlayCount = 0;
-    if (playCounts.isNotEmpty) {
-      maxPlayCount = playCounts.values.fold(0, max);
-    }
-
-    final result = <QueueItem>[];
-    final remaining = List<_VirtualShuffleItem>.from(virtualItems);
-    _VirtualShuffleItem? prev = lastItem != null
-        ? _createVirtualItemFromQueueItem(lastItem, mergeGroups)
-        : null;
-
-    while (remaining.isNotEmpty) {
-      final weights = remaining
-          .map((item) => _calculateVirtualWeight(
-                item,
-                prev,
-                playCounts,
-                skipStats,
-                maxPlayCount,
-                historyIndexByFilename,
-                playRatioByFilename,
-              ))
-          .toList();
-
-      final totalWeight = weights.fold(0.0, (a, b) => a + b);
-      if (totalWeight <= 0) {
-        remaining.shuffle();
-        for (final virtualItem in remaining) {
-          final selected = _selectSongFromVirtualItem(virtualItem);
-          if (selected != null) {
-            result.add(selected);
-          }
-        }
-        break;
-      }
-
-      double randomValue = Random().nextDouble() * totalWeight;
-      int selectedIdx = -1;
-      double cumulative = 0.0;
-      for (int i = 0; i < weights.length; i++) {
-        cumulative += weights[i];
-        if (randomValue <= cumulative) {
-          selectedIdx = i;
-          break;
-        }
-      }
-      if (selectedIdx == -1) selectedIdx = remaining.length - 1;
-
-      final selectedVirtual = remaining[selectedIdx];
-      final selectedSong = _selectSongFromVirtualItem(selectedVirtual);
-
-      if (selectedSong != null) {
-        result.add(selectedSong);
-        prev = selectedVirtual;
-      }
-
-      remaining.removeAt(selectedIdx);
-    }
-
-    return result;
+    return [
+      for (final virtual in virtualItems)
+        _toCandidate(virtual, affinities, historyIndex),
+    ];
   }
 
-  _VirtualShuffleItem? _createVirtualItemFromQueueItem(
-    QueueItem item,
-    Map<String, List<QueueItem>> mergeGroups,
+  /// Collapses a candidate (possibly a merge group) into the signals scoring
+  /// needs. Merge groups take the strongest signal across their members —
+  /// liking one version of a song means liking the group.
+  ShuffleCandidate<_VirtualShuffleItem> _toCandidate(
+    _VirtualShuffleItem virtual,
+    Map<String, SongAffinity> affinities,
+    Map<String, int> historyIndex,
   ) {
-    final groupId = _getMergedGroupId(item.song.filename);
-    if (groupId != null && mergeGroups.containsKey(groupId)) {
-      return _VirtualShuffleItem(
-        type: _VirtualItemType.mergeGroup,
-        items: mergeGroups[groupId]!,
-        representative: item,
-        groupId: groupId,
+    final representative = virtual.representative;
+
+    if (virtual.type == _VirtualItemType.standalone) {
+      final filename = representative.song.filename;
+      return ShuffleCandidate(
+        payload: virtual,
+        artist: representative.song.artist,
+        album: representative.song.album,
+        affinity: affinities[filename] ?? SongAffinity.unknown,
+        isFavorite: _isFavorite(filename),
+        isSuggestLess: _isSuggestLess(filename),
+        isInPlaylist: _isInPlaylist(filename),
+        historyIndex: historyIndex[filename],
       );
     }
-    return _VirtualShuffleItem(
-      type: _VirtualItemType.standalone,
-      items: [item],
-      representative: item,
+
+    var best = SongAffinity.unknown;
+    var isFavorite = false;
+    var isSuggestLess = false;
+    var isInPlaylist = false;
+    int? bestHistoryIndex;
+    var totalPlayCount = 0;
+
+    for (final queueItem in virtual.items) {
+      final filename = queueItem.song.filename;
+      final affinity = affinities[filename];
+
+      if (affinity != null) {
+        totalPlayCount += affinity.playCount;
+        if (affinity.affinity > best.affinity) best = affinity;
+      }
+
+      if (_isFavorite(filename)) isFavorite = true;
+      if (_isSuggestLess(filename)) isSuggestLess = true;
+      if (_isInPlaylist(filename)) isInPlaylist = true;
+
+      final idx = historyIndex[filename];
+      if (idx != null && (bestHistoryIndex == null || idx < bestHistoryIndex)) {
+        bestHistoryIndex = idx;
+      }
+    }
+
+    return ShuffleCandidate(
+      payload: virtual,
+      artist: representative.song.artist,
+      album: representative.song.album,
+      // Play counts sum across the group so novelty sees the group as one
+      // song that has been played as often as all its versions combined.
+      affinity: SongAffinity(
+        affinity: best.affinity,
+        recentSaturation: best.recentSaturation,
+        completionRate: best.completionRate,
+        skipRate: best.skipRate,
+        playCount: totalPlayCount,
+        lastPlayedAt: best.lastPlayedAt,
+      ),
+      isFavorite: isFavorite,
+      isSuggestLess: isSuggestLess,
+      isInPlaylist: isInPlaylist,
+      historyIndex: bestHistoryIndex,
     );
+  }
+
+  /// Chooses the song shuffle opens with, weighted by listening affinity.
+  ///
+  /// Falls back to a uniform pick only if scoring somehow yields nothing, so
+  /// pressing shuffle can never fail to start playback.
+  Future<QueueItem> _selectSeedItem(List<QueueItem> items) async {
+    final model = await _loadShuffleModel();
+    final weights = ShuffleWeights.forPersonality(_shuffleState.config);
+    final candidates =
+        _buildCandidates(items, model.affinities, model.historyIndex);
+
+    final seed = selectSeed(candidates, weights);
+    final selected =
+        seed == null ? null : _selectSongFromVirtualItem(seed.payload);
+    return selected ?? items[Random().nextInt(items.length)];
+  }
+
+  Future<List<QueueItem>> _weightedShuffle(
+    List<QueueItem> items, {
+    QueueItem? lastItem,
+  }) async {
+    if (items.isEmpty) return [];
+
+    final model = await _loadShuffleModel();
+    final weights = ShuffleWeights.forPersonality(_shuffleState.config);
+    final candidates =
+        _buildCandidates(items, model.affinities, model.historyIndex);
+
+    final ordered = orderQueue(
+      candidates,
+      weights,
+      lastArtist: lastItem?.song.artist,
+      lastAlbum: lastItem?.song.album,
+    );
+
+    final result = <QueueItem>[];
+    for (final candidate in ordered) {
+      final selected = _selectSongFromVirtualItem(candidate.payload);
+      if (selected != null) result.add(selected);
+    }
+    return result;
   }
 
   String? _getMergedGroupId(String filename) {
@@ -2310,97 +2377,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
     return virtualItem.items.last;
-  }
-
-  double _calculateVirtualWeight(
-    _VirtualShuffleItem item,
-    _VirtualShuffleItem? prev,
-    Map<String, int> playCounts,
-    Map<String, ({int count, double avgRatio})> skipStats,
-    int maxPlayCount,
-    Map<String, int> historyIndexByFilename,
-    Map<String, double> playRatioByFilename,
-  ) {
-    final representative = item.representative;
-    final config = _shuffleState.config;
-
-    final bool isCustomMode = config.personality == ShufflePersonality.custom;
-
-    // Compute merge-group aggregates, or use single-item values directly.
-    int groupPlayCount;
-    bool isFavorite;
-    bool isSuggestLess;
-    int? historyIndex;
-    double? playRatioInHistory;
-    int? skipCount;
-    double? skipAvgRatio;
-
-    if (item.type == _VirtualItemType.mergeGroup) {
-      groupPlayCount = 0;
-      isFavorite = false;
-      isSuggestLess = false;
-      double totalSkipRatio = 0.0;
-      int skipItems = 0;
-
-      int? bestHistoryIndex;
-
-      for (final queueItem in item.items) {
-        groupPlayCount += playCounts[queueItem.song.filename] ?? 0;
-
-        if (_isFavorite(queueItem.song.filename)) isFavorite = true;
-        if (_isSuggestLess(queueItem.song.filename)) isSuggestLess = true;
-
-        final idx = historyIndexByFilename[queueItem.song.filename];
-        if (idx != null &&
-            (bestHistoryIndex == null || idx < bestHistoryIndex)) {
-          bestHistoryIndex = idx;
-          playRatioInHistory = playRatioByFilename[queueItem.song.filename];
-        }
-
-        if (isCustomMode) {
-          final ss = skipStats[queueItem.song.filename];
-          if (ss != null && ss.count > 0) {
-            totalSkipRatio += ss.avgRatio;
-            skipItems++;
-          }
-        }
-      }
-
-      historyIndex = bestHistoryIndex;
-
-      if (isCustomMode && skipItems > 0) {
-        skipCount = skipItems;
-        skipAvgRatio = totalSkipRatio / skipItems;
-      }
-    } else {
-      groupPlayCount = playCounts[representative.song.filename] ?? 0;
-      isFavorite = _isFavorite(representative.song.filename);
-      isSuggestLess = _isSuggestLess(representative.song.filename);
-      historyIndex = historyIndexByFilename[representative.song.filename];
-      playRatioInHistory = playRatioByFilename[representative.song.filename];
-
-      if (isCustomMode) {
-        final ss = skipStats[representative.song.filename];
-        if (ss != null && ss.count > 0) {
-          skipCount = ss.count;
-          skipAvgRatio = ss.avgRatio;
-        }
-      }
-    }
-
-    return calculateWeight(
-      item: representative,
-      prev: prev?.representative,
-      config: config,
-      isFavorite: isFavorite,
-      isSuggestLess: isSuggestLess,
-      playCount: groupPlayCount,
-      maxPlayCount: maxPlayCount,
-      historyIndex: historyIndex,
-      playRatioInHistory: playRatioInHistory,
-      skipCount: skipCount,
-      skipAvgRatio: skipAvgRatio,
-    );
   }
 
   Future<void> _rebuildQueue({

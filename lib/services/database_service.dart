@@ -1936,6 +1936,53 @@ class DatabaseService {
     }
   }
 
+  /// Raw play events for affinity scoring, newest first.
+  ///
+  /// Unlike [getPlayHistory] this is not capped at a small recent window — the
+  /// affinity model needs the whole decay horizon to tell a song someone still
+  /// loves from one they burned out on a year ago. Events older than
+  /// [sinceDays] contribute so little after decay that fetching them is waste.
+  Future<List<({String filename, double timestamp, double playRatio})>>
+      getAffinityEvents({int sinceDays = 365}) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return [];
+    try {
+      final cutoff = DateTime.now()
+              .subtract(Duration(days: sinceDays))
+              .millisecondsSinceEpoch /
+          1000.0;
+      final results = await _statsDatabase!.rawQuery(
+        'SELECT song_filename, timestamp, play_ratio, duration_played, total_length '
+        'FROM playevent WHERE timestamp >= ? ORDER BY timestamp DESC',
+        [cutoff],
+      );
+
+      final events =
+          <({String filename, double timestamp, double playRatio})>[];
+      for (final r in results) {
+        final filename = r['song_filename'] as String?;
+        final timestamp = (r['timestamp'] as num?)?.toDouble();
+        if (filename == null || timestamp == null) continue;
+
+        // Same fallback as getPlayHistory: older rows can predate play_ratio.
+        final duration = (r['duration_played'] as num?)?.toDouble() ?? 0.0;
+        final totalLength = (r['total_length'] as num?)?.toDouble() ?? 0.0;
+        final playRatio = (r['play_ratio'] as num?)?.toDouble() ??
+            (totalLength > 0 ? duration / totalLength : 0.0);
+
+        events.add((
+          filename: filename,
+          timestamp: timestamp,
+          playRatio: playRatio,
+        ));
+      }
+      return events;
+    } catch (e) {
+      debugPrint('Error fetching affinity events: $e');
+      return [];
+    }
+  }
+
   Future<Map<String, ({int count, double avgRatio})>> getSkipStats() async {
     await _ensureInitialized();
     if (_statsDatabase == null) return {};

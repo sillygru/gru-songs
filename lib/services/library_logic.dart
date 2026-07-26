@@ -1,7 +1,8 @@
-import 'dart:math';
 import 'package:path/path.dart' as p;
 import '../models/song.dart';
 import '../models/shuffle_config.dart';
+import '../domain/services/shuffle_selector.dart';
+import '../domain/services/song_affinity_service.dart';
 import '../providers/user_data_provider.dart';
 
 class LibraryFolderContent {
@@ -104,6 +105,7 @@ class LibraryLogic {
     ShuffleConfig? shuffleConfig,
     Map<String, int>? playCounts,
     Map<String, double>? lastPlayedTimestamps,
+    Map<String, SongAffinity>? affinities,
   }) {
     final sorted = List<Song>.from(songs);
 
@@ -167,7 +169,9 @@ class LibraryLogic {
         break;
 
       case SongSortOrder.recommended:
-        if (userData == null || shuffleConfig == null) {
+        // Ranks by the same affinity model and personality weights the shuffle
+        // engine draws from, so "Recommended" and shuffle agree about taste.
+        if (userData == null || shuffleConfig == null || affinities == null) {
           sorted.sort((a, b) {
             final titleA = lowerTitle[a.filename]!;
             final titleB = lowerTitle[b.filename]!;
@@ -176,51 +180,30 @@ class LibraryLogic {
           break;
         }
 
-        int maxPlayCount = 0;
-        if (playCounts != null && playCounts.isNotEmpty) {
-          maxPlayCount = playCounts.values.fold(0, max);
-        }
+        final weights = ShuffleWeights.forPersonality(shuffleConfig);
 
-        double calculateScore(Song song) {
-          double weight = 1.0;
-          final count = playCounts?[song.filename] ?? 0;
+        // Score once per song rather than inside the comparator, which would
+        // recompute it O(N log N) times.
+        final scores = <String, double>{
+          for (final song in sorted)
+            song.filename: scoreCandidate(
+              ShuffleCandidate<Song>(
+                payload: song,
+                artist: song.artist,
+                album: song.album,
+                affinity: affinities[song.filename] ?? SongAffinity.unknown,
+                isFavorite: userData.isFavorite(song.filename),
+                isSuggestLess: userData.isSuggestLess(song.filename),
+              ),
+              weights,
+            ),
+        };
 
-          if (userData.isFavorite(song.filename)) {
-            if (shuffleConfig.personality == ShufflePersonality.consistent) {
-              weight *= 1.4;
-            } else if (shuffleConfig.personality ==
-                ShufflePersonality.explorer) {
-              weight *= 1.12;
-            } else {
-              weight *= shuffleConfig.favoriteMultiplier;
-            }
-          }
-
-          if (userData.isSuggestLess(song.filename)) {
-            weight *= 0.2;
-          }
-
-          if (shuffleConfig.personality == ShufflePersonality.explorer) {
-            if (count == 0) {
-              weight *= 1.2;
-            }
-          } else if (shuffleConfig.personality ==
-              ShufflePersonality.consistent) {
-            int threshold = 10;
-            if (maxPlayCount < 10) {
-              threshold = max(1, (maxPlayCount * 0.7).floor());
-            } else if (maxPlayCount < 20) {
-              threshold = 5;
-            }
-            if (count >= threshold && count > 0) {
-              weight *= 1.3;
-            }
-          }
-
-          return weight;
-        }
-
-        sorted.sort((a, b) => calculateScore(b).compareTo(calculateScore(a)));
+        sorted.sort((a, b) {
+          final compare = scores[b.filename]!.compareTo(scores[a.filename]!);
+          if (compare != 0) return compare;
+          return lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!);
+        });
         break;
 
       case SongSortOrder.songDate:
@@ -258,6 +241,7 @@ class LibraryLogic {
     ShuffleConfig? shuffleConfig,
     Map<String, int>? playCounts,
     Map<String, double>? lastPlayedTimestamps,
+    Map<String, SongAffinity>? affinities,
   }) {
     // Filter songs in the current path (or subpaths)
 
@@ -300,6 +284,7 @@ class LibraryLogic {
       shuffleConfig: shuffleConfig,
       playCounts: playCounts,
       lastPlayedTimestamps: lastPlayedTimestamps,
+      affinities: affinities,
     );
 
     return LibraryFolderContent(

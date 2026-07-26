@@ -252,10 +252,20 @@ class UserDataNotifier extends Notifier<UserDataState> {
   }
 
   void _updateManager() {
+    // Recommendation playlists are generated from listening data, so feeding
+    // them back into shuffle weighting would amplify the engine's own output.
+    // Only hand over playlists the listener actually built.
+    final playlistSongs = <String>{
+      for (final playlist in state.playlists)
+        if (!playlist.isRecommendation)
+          for (final song in playlist.songs) song.songFilename,
+    }.toList();
+
     ref.read(audioPlayerManagerProvider).setUserData(
           favorites: state.favorites,
           suggestLess: state.suggestLess,
           hidden: state.hidden,
+          playlistSongs: playlistSongs,
           mergedGroups: state.mergedGroups,
         );
   }

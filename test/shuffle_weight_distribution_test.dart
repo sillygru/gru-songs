@@ -1,148 +1,242 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:wispie/models/song.dart';
-import 'package:wispie/models/queue_item.dart';
-import 'package:wispie/models/shuffle_config.dart';
-import 'package:wispie/domain/services/shuffle_weight_service.dart';
 import 'dart:math';
 
-List<QueueItem> weightedShuffle(List<QueueItem> items, ShuffleState state,
-    List<String> favs, List<String> sl, Random random,
-    {QueueItem? lastItem, bool debug = false}) {
-  if (items.isEmpty) return [];
-  final result = <QueueItem>[];
-  final remaining = List<QueueItem>.from(items);
-  QueueItem? prev = lastItem;
+import 'package:flutter_test/flutter_test.dart';
+import 'package:wispie/domain/services/shuffle_selector.dart';
+import 'package:wispie/domain/services/song_affinity_service.dart';
+import 'package:wispie/models/shuffle_config.dart';
 
-  final config = state.config;
-  final isCustomMode = config.personality == ShufflePersonality.custom;
+/// End-to-end distribution checks over a synthetic library shaped like a real
+/// one: a long tail of songs the listener rarely touches, a mid band they play
+/// occasionally, and a small set they genuinely love.
+///
+/// These run the real pipeline — raw play events through [computeAffinities]
+/// and on into [selectSeed] / [orderQueue] — rather than hand-built scores, so
+/// they catch a regression anywhere along it.
 
-  int iteration = 0;
-  while (remaining.isNotEmpty) {
-    final weights = remaining.map((item) {
-      final isFav = favs.contains(item.song.filename);
-      final isSl = sl.contains(item.song.filename);
-      return calculateWeight(
-        item: item,
-        prev: prev,
-        config: config,
-        isFavorite: isFav,
-        isSuggestLess: isSl,
-        playCount: 0,
-        maxPlayCount: 0,
-        skipCount: isCustomMode ? 0 : null,
-        skipAvgRatio: isCustomMode ? 0.5 : null,
-      );
-    }).toList();
-    final totalWeight = weights.fold(0.0, (a, b) => a + b);
+final _now = DateTime.utc(2026, 1, 1);
 
-    if (debug && iteration == 0) {
-      debugPrint('Items: ${remaining.map((e) => e.song.filename).toList()}');
-      debugPrint('Weights: $weights');
-      debugPrint('Total Weight: $totalWeight');
-    }
+double _daysAgo(num days) =>
+    _now.subtract(Duration(hours: (days * 24).round())).millisecondsSinceEpoch /
+    1000.0;
 
-    double randomValue = random.nextDouble() * totalWeight;
-    if (debug && iteration == 0) {
-      debugPrint('Random Value: $randomValue');
+const int _lovedCount = 20;
+const int _midCount = 80;
+const int _tailCount = 400;
+
+String _loved(int i) => 'loved$i.mp3';
+String _mid(int i) => 'mid$i.mp3';
+String _tail(int i) => 'tail$i.mp3';
+
+/// ~500 songs and a few thousand play events, in the spirit of a library with
+/// 140 hours behind it.
+List<PlayEventRecord> _history() {
+  final rng = Random(42);
+  final events = <PlayEventRecord>[];
+
+  // Loved: played often and recently, nearly always to completion.
+  for (var i = 0; i < _lovedCount; i++) {
+    for (var p = 0; p < 60; p++) {
+      events.add(PlayEventRecord(
+        filename: _loved(i),
+        timestamp: _daysAgo(rng.nextDouble() * 120),
+        playRatio: 0.9 + rng.nextDouble() * 0.1,
+      ));
     }
-    int selectedIdx = -1;
-    double cumulativeWeight = 0.0;
-    for (int i = 0; i < weights.length; i++) {
-      cumulativeWeight += weights[i];
-      if (randomValue <= cumulativeWeight) {
-        selectedIdx = i;
-        break;
-      }
-    }
-    if (selectedIdx == -1) selectedIdx = remaining.length - 1;
-    if (debug && iteration == 0) {
-      debugPrint(
-          'Selected Index: $selectedIdx (${remaining[selectedIdx].song.filename})');
-    }
-    final selected = remaining.removeAt(selectedIdx);
-    result.add(selected);
-    prev = selected;
-    iteration++;
   }
-  return result;
+
+  // Mid: occasional, mixed completion.
+  for (var i = 0; i < _midCount; i++) {
+    for (var p = 0; p < 8; p++) {
+      events.add(PlayEventRecord(
+        filename: _mid(i),
+        timestamp: _daysAgo(rng.nextDouble() * 300),
+        playRatio: 0.3 + rng.nextDouble() * 0.6,
+      ));
+    }
+  }
+
+  // Tail: tried once or twice long ago, usually abandoned immediately.
+  for (var i = 0; i < _tailCount; i++) {
+    for (var p = 0; p < 2; p++) {
+      events.add(PlayEventRecord(
+        filename: _tail(i),
+        timestamp: _daysAgo(200 + rng.nextDouble() * 150),
+        playRatio: rng.nextDouble() * 0.08,
+      ));
+    }
+  }
+
+  return events;
+}
+
+List<ShuffleCandidate<String>> _candidates(
+  Map<String, SongAffinity> affinities, {
+  Set<String> favorites = const {},
+}) {
+  final all = <String>[
+    for (var i = 0; i < _lovedCount; i++) _loved(i),
+    for (var i = 0; i < _midCount; i++) _mid(i),
+    for (var i = 0; i < _tailCount; i++) _tail(i),
+  ];
+
+  return [
+    for (final filename in all)
+      ShuffleCandidate<String>(
+        payload: filename,
+        artist: 'Artist ${filename.hashCode % 60}',
+        album: 'Album ${filename.hashCode % 120}',
+        affinity: affinities[filename] ?? SongAffinity.unknown,
+        isFavorite: favorites.contains(filename),
+      ),
+  ];
 }
 
 void main() {
-  test('Distribution test: Favorites should appear earlier more often', () {
-    final songs = List.generate(
-        20,
-        (i) => Song(
-            title: 'Song $i',
-            artist: 'Artist $i',
-            album: 'Album $i',
-            filename: 's$i.mp3',
-            url: ''));
-    final items = songs.map((s) => QueueItem(song: s)).toList();
-    final favorites = ['s0.mp3'];
+  final affinities = computeAffinities(events: _history(), now: _now);
+  final candidates = _candidates(affinities);
+  final total = _lovedCount + _midCount + _tailCount;
 
-    // Use custom mode with favoritesWeight to get weighted behavior
-    final state = ShuffleState(
-        config: const ShuffleConfig(
-      enabled: true,
-      personality: ShufflePersonality.custom,
-      favoritesWeight: 100, // 2x weight for favorites
-    ));
-
-    int s0FirstCount = 0;
-    const iterations = 2000;
-    final random = Random(42);
-
-    for (int i = 0; i < iterations; i++) {
-      final shuffled =
-          weightedShuffle(items, state, favorites, [], random, debug: i == 0);
-      if (shuffled.first.song.filename == 's0.mp3') {
-        s0FirstCount++;
+  /// Share of seed draws landing on the loved band.
+  double lovedSeedShare(ShuffleWeights weights, {int trials = 8000}) {
+    final rng = Random(99);
+    var hits = 0;
+    for (var i = 0; i < trials; i++) {
+      if (selectSeed(candidates, weights, random: rng)!
+          .payload
+          .startsWith('loved')) {
+        hits++;
       }
     }
+    return hits / trials;
+  }
 
-    // With 20 songs and 2x weight: expected ~ (2) / (2 + 19) = 2/21 ~= 9.5%
-    debugPrint(
-        's0 (favorite) appeared first $s0FirstCount times out of $iterations');
-    expect(s0FirstCount, greaterThan(120));
-    expect(s0FirstCount, lessThan(300));
+  group('affinity model over a realistic library', () {
+    test('separates the three listening bands', () {
+      expect(affinities[_loved(0)]!.affinity,
+          greaterThan(affinities[_mid(0)]!.affinity));
+      expect(affinities[_mid(0)]!.affinity,
+          greaterThan(affinities[_tail(0)]!.affinity));
+    });
+
+    test('the abandoned tail bottoms out', () {
+      final tailScores = [
+        for (var i = 0; i < _tailCount; i++) affinities[_tail(i)]!.affinity,
+      ];
+      expect(tailScores.every((s) => s < 0.05), isTrue);
+    });
   });
 
-  test('Distribution test: Suggest-less should appear later more often', () {
-    final songs = List.generate(
-        10,
-        (i) => Song(
-            title: 'Song $i',
-            artist: 'Artist $i',
-            album: 'Album $i',
-            filename: 's$i.mp3',
-            url: ''));
-    final items = songs.map((s) => QueueItem(song: s)).toList();
-    final suggestLess = ['s0.mp3'];
+  group('seed selection', () {
+    test('overwhelmingly beats the uniform pick it replaced', () {
+      // Uniform over 500 songs would give the 20 loved songs 4%.
+      final uniform = _lovedCount / total;
+      final share =
+          lovedSeedShare(ShuffleWeights.forPersonality(const ShuffleConfig()));
 
-    // Use custom mode with suggestLessWeight to get weighted behavior
-    // suggestLessWeight = 80 -> multiplier = 1.0 + (-80/100) = 0.2
-    final state = ShuffleState(
-        config: const ShuffleConfig(
-      enabled: true,
-      personality: ShufflePersonality.custom,
-      suggestLessWeight: 80, // 0.2x weight
-    ));
+      expect(share, greaterThan(uniform * 5));
+    });
 
-    int s0FirstCount = 0;
-    const iterations = 1000;
-    final random = Random(123);
+    test('personalities order the concentration as advertised', () {
+      final consistent = lovedSeedShare(ShuffleWeights.forPersonality(
+          const ShuffleConfig(personality: ShufflePersonality.consistent)));
+      final normal =
+          lovedSeedShare(ShuffleWeights.forPersonality(const ShuffleConfig()));
+      final explorer = lovedSeedShare(ShuffleWeights.forPersonality(
+          const ShuffleConfig(personality: ShufflePersonality.explorer)));
 
-    for (int i = 0; i < iterations; i++) {
-      final shuffled = weightedShuffle(items, state, [], suggestLess, random);
-      if (shuffled.first.song.filename == 's0.mp3') {
-        s0FirstCount++;
+      expect(consistent, greaterThan(normal));
+      expect(normal, greaterThan(explorer));
+    });
+
+    test('favorites lift a song out of the tail', () {
+      // A tail song the listener explicitly favorited should now outrank its
+      // untouched neighbours despite identical play history.
+      final withFavorite = computeAffinities(
+        events: _history(),
+        now: _now,
+        favorites: {_tail(0)},
+      );
+      final pool = _candidates(withFavorite, favorites: {_tail(0)});
+      final weights = ShuffleWeights.forPersonality(const ShuffleConfig());
+
+      final favoriteIndex = pool.indexWhere((c) => c.payload == _tail(0));
+      final neighbourIndex = pool.indexWhere((c) => c.payload == _tail(1));
+
+      expect(scoreCandidate(pool[favoriteIndex], weights),
+          greaterThan(scoreCandidate(pool[neighbourIndex], weights)));
+    });
+  });
+
+  group('queue ordering', () {
+    test('preserves the whole library exactly once', () {
+      final ordered = orderQueue(
+        candidates,
+        ShuffleWeights.forPersonality(const ShuffleConfig()),
+        random: Random(21),
+      );
+
+      expect(ordered.length, total);
+      expect(ordered.map((c) => c.payload).toSet().length, total);
+    });
+
+    test('front-loads the loved band', () {
+      final ordered = orderQueue(
+        candidates,
+        ShuffleWeights.forPersonality(const ShuffleConfig()),
+        random: Random(21),
+      );
+
+      final lovedInFirstFifty =
+          ordered.take(50).where((c) => c.payload.startsWith('loved')).length;
+
+      // Chance would place 20/500 * 50 = 2 of them in the opening fifty.
+      expect(lovedInFirstFifty, greaterThan(6));
+    });
+
+    test('keeps same-artist tracks apart in the opening stretch', () {
+      final ordered = orderQueue(
+        candidates,
+        ShuffleWeights.forPersonality(const ShuffleConfig()),
+        random: Random(21),
+      );
+
+      var adjacent = 0;
+      for (var i = 1; i < 100; i++) {
+        if (ordered[i].artist == ordered[i - 1].artist) adjacent++;
       }
-    }
+      expect(adjacent, lessThan(5));
+    });
 
-    // Expected probability ~ 0.2 / (0.2 + 9) = 0.2/9.2 ~= 2%
-    debugPrint(
-        's0 (suggest-less) appeared first $s0FirstCount times out of $iterations');
-    expect(s0FirstCount, lessThan(50));
+    test('a burnt-out song ranks below a steadily loved one', () {
+      // Same total plays; one crammed into the last two days, one spread out.
+      final events = <PlayEventRecord>[
+        for (var p = 0; p < 30; p++)
+          PlayEventRecord(
+            filename: 'binge.mp3',
+            timestamp: _daysAgo(p * 0.05),
+            playRatio: 1.0,
+          ),
+        for (var p = 0; p < 30; p++)
+          PlayEventRecord(
+            filename: 'steady.mp3',
+            timestamp: _daysAgo(p * 2.0),
+            playRatio: 1.0,
+          ),
+      ];
+
+      final model = computeAffinities(events: events, now: _now);
+      final weights = ShuffleWeights.forPersonality(const ShuffleConfig());
+
+      ShuffleCandidate<String> asCandidate(String name) =>
+          ShuffleCandidate<String>(
+            payload: name,
+            artist: name,
+            album: name,
+            affinity: model[name]!,
+          );
+
+      expect(scoreCandidate(asCandidate('binge.mp3'), weights),
+          lessThan(scoreCandidate(asCandidate('steady.mp3'), weights)));
+    });
   });
 }
