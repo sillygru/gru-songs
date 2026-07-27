@@ -159,6 +159,8 @@ abstract final class AppIcons {
   static const AppIconData photoSize = HugeIcons.strokeRoundedImageCrop;
   static const AppIconData image = HugeIcons.strokeRoundedImage01;
   static const AppIconData lyrics = HugeIcons.strokeRoundedTextAlignLeft01;
+  static const AppIconData subtitles = HugeIcons.strokeRoundedTextAlignLeft01;
+  static const AppIconData translate = HugeIcons.strokeRoundedTranslate;
   static const AppIconData mic = HugeIcons.strokeRoundedMic01;
   static const AppIconData disc = HugeIcons.strokeRoundedDisc;
 }

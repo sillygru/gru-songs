@@ -7,8 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../services/database_service.dart';
+import '../../../services/lingva_translate_service.dart';
 import '../../components/app_feedback.dart';
 import '../../dialogs/lyrics_search_sheet.dart';
+import '../../dialogs/lyrics_translation_sheet.dart';
 import '../../models/lyrics_gap_loader_state.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/lyrics_gap_loader.dart';
@@ -52,8 +55,13 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
+  final LingvaTranslateService _translateService = LingvaTranslateService();
 
   List<LyricLine>? _lyrics;
+  String? _rawLyricsContent;
+  List<LyricLine>? _translatedLyrics;
+  bool _translating = false;
+  bool _hasCachedTranslation = false;
   bool _loading = true;
   bool _hasSynced = false;
   String? _loadedFilename;
@@ -174,9 +182,46 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
     setState(() {
       _lyrics = parsed;
+      _rawLyricsContent = content;
+      _translatedLyrics = null;
+      _hasCachedTranslation = false;
       _hasSynced = parsed.any((l) => l.isSynced);
       _loading = false;
     });
+
+    if (parsed.isNotEmpty) {
+      final settings = ref.read(settingsProvider);
+      final cached = await DatabaseService.instance.getTranslatedLyrics(
+        filename,
+        settings.lyricsTargetLanguage,
+      );
+
+      if (!mounted || _loadedFilename != filename) return;
+
+      if (cached == '[SAME_LANG]') {
+        setState(() {
+          _translatedLyrics = null;
+          _hasCachedTranslation = false;
+        });
+      } else if (cached != null &&
+          cached.trim().isNotEmpty &&
+          cached.trim() != content?.trim()) {
+        setState(() {
+          _translatedLyrics = LyricLine.parse(cached);
+          _hasCachedTranslation = true;
+        });
+      } else {
+        if (cached != null && cached.trim() == content?.trim()) {
+          await DatabaseService.instance
+              .deleteTranslatedLyrics(filename, settings.lyricsTargetLanguage);
+        }
+        if (settings.lyricsAutoTranslate &&
+            content != null &&
+            content.trim().isNotEmpty) {
+          _performTranslation(settings.lyricsTargetLanguage);
+        }
+      }
+    }
 
     // Land on the right line straight away rather than waiting for the next
     // playhead tick.
@@ -197,6 +242,134 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     } catch (e) {
       if (mounted) {
         appSnack(context, 'Could not save lyrics: $e', tone: AppTone.danger);
+      }
+    }
+  }
+
+  Future<void> _openTranslationSheet() async {
+    final config = await showLyricsTranslationSheet(
+      context,
+      currentSongTitle: widget.song.title,
+      hasCachedTranslation: _hasCachedTranslation,
+    );
+
+    if (config == null || !mounted) return;
+
+    if (config.clearCache) {
+      await DatabaseService.instance
+          .deleteTranslatedLyrics(widget.song.filename);
+      setState(() {
+        _translatedLyrics = null;
+        _hasCachedTranslation = false;
+      });
+      if (mounted) {
+        appSnack(context, 'Cached translation cleared', tone: AppTone.info);
+      }
+      return;
+    }
+
+    if (config.translateNow) {
+      await _performTranslation(config.targetLanguage);
+    }
+  }
+
+  Future<void> _performTranslation(String targetLang) async {
+    final content = _rawLyricsContent;
+    if (content == null || content.trim().isEmpty) return;
+
+    final cached = await DatabaseService.instance.getTranslatedLyrics(
+      widget.song.filename,
+      targetLang,
+    );
+
+    if (cached == '[SAME_LANG]') {
+      if (!mounted) return;
+      setState(() {
+        _translatedLyrics = null;
+        _hasCachedTranslation = false;
+      });
+      return;
+    }
+
+    if (cached != null &&
+        cached.trim().isNotEmpty &&
+        cached.trim() != content.trim()) {
+      if (!mounted) return;
+      setState(() {
+        _translatedLyrics = LyricLine.parse(cached);
+        _hasCachedTranslation = true;
+      });
+      return;
+    }
+
+    if (_translateService.isAlreadyInTargetScript(content, targetLang)) {
+      await DatabaseService.instance.saveTranslatedLyrics(
+        widget.song.filename,
+        targetLang,
+        '[SAME_LANG]',
+      );
+      if (mounted) {
+        setState(() {
+          _translatedLyrics = null;
+          _hasCachedTranslation = false;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _translating = true;
+    });
+
+    try {
+      final response = await _translateService.translateLyrics(
+        lyrics: content,
+        targetLang: targetLang,
+      );
+
+      final detected = response.detectedSourceLang?.toLowerCase();
+      final target = targetLang.toLowerCase();
+
+      final isSameLang = detected != null &&
+          (detected == target || target.startsWith(detected));
+
+      if (isSameLang) {
+        await DatabaseService.instance.saveTranslatedLyrics(
+          widget.song.filename,
+          targetLang,
+          '[SAME_LANG]',
+        );
+
+        if (!mounted) return;
+        setState(() {
+          _translatedLyrics = null;
+          _hasCachedTranslation = false;
+        });
+        appSnack(context, 'Lyrics are already in target language',
+            tone: AppTone.info);
+      } else if (response.text.trim().isNotEmpty) {
+        await DatabaseService.instance.saveTranslatedLyrics(
+          widget.song.filename,
+          targetLang,
+          response.text,
+        );
+
+        if (!mounted) return;
+        setState(() {
+          _translatedLyrics = LyricLine.parse(response.text);
+          _hasCachedTranslation = true;
+        });
+        appSnack(context, 'Lyrics translated', tone: AppTone.success);
+      }
+    } catch (e) {
+      if (mounted) {
+        appSnack(context, 'Translation failed: $e', tone: AppTone.danger);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _translating = false;
+        });
       }
     }
   }
@@ -288,11 +461,34 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         Positioned(
           top: PlayerTokens.s1,
           right: PlayerTokens.s3,
-          child: IconButton(
-            icon: const Icon(Icons.travel_explore_rounded),
-            color: Colors.white.withValues(alpha: PlayerTokens.aSecondary),
-            tooltip: 'Find lyrics online',
-            onPressed: _findLyricsOnline,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: _translating
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        _hasCachedTranslation
+                            ? Icons.g_translate_rounded
+                            : Icons.translate_rounded,
+                      ),
+                color: _hasCachedTranslation
+                    ? widget.accent
+                    : Colors.white.withValues(alpha: PlayerTokens.aSecondary),
+                tooltip: 'Translate lyrics',
+                onPressed: _translating ? null : _openTranslationSheet,
+              ),
+              IconButton(
+                icon: const Icon(Icons.travel_explore_rounded),
+                color: Colors.white.withValues(alpha: PlayerTokens.aSecondary),
+                tooltip: 'Find lyrics online',
+                onPressed: _findLyricsOnline,
+              ),
+            ],
           ),
         ),
       ],
@@ -342,10 +538,18 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
             final line = lyrics[index];
             final key = _lineKeys.putIfAbsent(index, () => GlobalKey());
 
+            String? lineTranslation;
+            if (_translatedLyrics != null &&
+                index < _translatedLyrics!.length) {
+              lineTranslation = _translatedLyrics![index].text;
+            }
+
             final lyricWidget = KeyedSubtree(
               key: key,
               child: LyricsLine(
                 text: line.text,
+                translatedText: lineTranslation,
+                translationMode: settings.lyricsTranslationMode,
                 isActive: index == active,
                 isPlayed: active >= 0 && index <= active,
                 hasTime: line.isSynced,

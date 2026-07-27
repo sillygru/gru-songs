@@ -365,21 +365,24 @@ class ParticleSystem {
   double _flowTime = 0;
   double _beatKick = 0;
 
+  /// Smoothly tracked density multiplier driven by sound and beat energy.
+  double _soundDensity = 0;
+
   /// Output of the last [_sampleFlow]. Written rather than returned: this runs
   /// once per particle per frame, and a record would allocate on every call.
   double _flowVx = 0;
   double _flowVy = 0;
 
-  void _resize(int count) {
+  void _resize(int count, {bool isSoundBoosted = false}) {
     while (particles.length > count) {
       particles.removeLast();
     }
     while (particles.length < count) {
-      particles.add(_spawn());
+      particles.add(_spawn(isSoundBoosted: isSoundBoosted));
     }
   }
 
-  Particle _spawn() {
+  Particle _spawn({bool isSoundBoosted = false}) {
     // Squared distribution biases toward the far field, so the screen has a lot
     // of quiet depth and only a few bright foreground motes.
     final depth = math.pow(_random.nextDouble(), 2).toDouble();
@@ -412,7 +415,9 @@ class ParticleSystem {
       wobblePhase: _random.nextDouble() * math.pi * 2,
       splitAngle: _random.nextDouble() * math.pi * 2,
       bornAt: _now,
-      fadeInSeconds: 0.6 + _random.nextDouble() * 1.4,
+      fadeInSeconds: isSoundBoosted
+          ? 0.15 + _random.nextDouble() * 0.25
+          : 0.6 + _random.nextDouble() * 1.4,
       // Spread wide enough that the field renews a mote at a time instead of
       // turning over in one visible wave.
       lifeSeconds: 14 + _random.nextDouble() * 26,
@@ -484,10 +489,33 @@ class ParticleSystem {
     _now = elapsedSeconds;
     _air = frame.air;
     _aspect = aspect <= 0 ? 1 : aspect;
-    _resize(spec.particleCount);
 
     var dt =
         _lastElapsedSeconds < 0 ? 0.0 : elapsedSeconds - _lastElapsedSeconds;
+
+    // Dynamically increase particle density when synced with sound energy.
+    final double targetBoost;
+    if (frame.hasBeat) {
+      targetBoost = 0.35 +
+          0.40 *
+              math.max(
+                  frame.strength, (frame.bass + frame.mid).clamp(0.0, 1.0));
+    } else if (frame.air > 0.01 || frame.breath > 0.01) {
+      targetBoost = (0.25 * (frame.air + frame.breath)).clamp(0.0, 0.5);
+    } else {
+      targetBoost = 0.0;
+    }
+
+    if (dt > 0) {
+      final blend = 1 - math.exp(-dt / 0.5);
+      _soundDensity += (targetBoost - _soundDensity) * blend;
+    } else {
+      _soundDensity = targetBoost;
+    }
+
+    final targetCount = (spec.particleCount * (1.0 + _soundDensity)).round();
+    _resize(targetCount, isSoundBoosted: _soundDensity > 0.1);
+
     _lastElapsedSeconds = elapsedSeconds;
     if (dt <= 0) return;
     if (dt > _maxStepSeconds) dt = _maxStepSeconds;

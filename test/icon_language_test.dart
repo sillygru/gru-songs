@@ -19,6 +19,7 @@ void main() {
     'lib/presentation/components/player_segmented_pill.dart',
     'lib/presentation/components/player_glass_surface.dart',
     'lib/presentation/components/queue_cover_mosaic.dart',
+    'lib/presentation/dialogs/lyrics_translation_sheet.dart',
   };
 
   /// `Icons.x` but not `AppIcons.x` / `HugeIcons.x`.

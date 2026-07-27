@@ -93,7 +93,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   // Gesture detection for drawer
   static const double _edgeDragWidth = 60.0;
-  static const double _drawerWidthRatio = 0.32;
+  static const double _drawerWidthRatio = 0.48;
 
   // Track which screens have been built to enable lazy loading
   final Set<int> _builtScreens = {0};
@@ -312,8 +312,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
               AnimatedBuilder(
                 animation: _drawerController,
                 builder: (context, child) {
-                  final slideX =
-                      _drawerController.value * mediaQuery.size.width * 0.32;
+                  final slideX = _drawerController.value *
+                      mediaQuery.size.width *
+                      _drawerWidthRatio;
                   final showScrim = _isDrawerOpen ||
                       _isDraggingDrawer ||
                       _drawerController.isAnimating ||

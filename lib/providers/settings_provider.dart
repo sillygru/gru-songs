@@ -40,6 +40,9 @@ class SettingsState {
   final bool showQuickPicks;
   final bool showRecentQueues;
   final bool showForYou;
+  final String lyricsTargetLanguage;
+  final bool lyricsAutoTranslate;
+  final String lyricsTranslationMode;
 
   SettingsState({
     this.visualizerMode = VisualizerMode.synced,
@@ -77,6 +80,9 @@ class SettingsState {
     this.showQuickPicks = true,
     this.showRecentQueues = true,
     this.showForYou = true,
+    this.lyricsTargetLanguage = 'es',
+    this.lyricsAutoTranslate = false,
+    this.lyricsTranslationMode = 'subtext',
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -115,6 +121,9 @@ class SettingsState {
     bool? showQuickPicks,
     bool? showRecentQueues,
     bool? showForYou,
+    String? lyricsTargetLanguage,
+    bool? lyricsAutoTranslate,
+    String? lyricsTranslationMode,
   }) {
     return SettingsState(
       visualizerMode: visualizerMode ?? this.visualizerMode,
@@ -169,6 +178,10 @@ class SettingsState {
       showQuickPicks: showQuickPicks ?? this.showQuickPicks,
       showRecentQueues: showRecentQueues ?? this.showRecentQueues,
       showForYou: showForYou ?? this.showForYou,
+      lyricsTargetLanguage: lyricsTargetLanguage ?? this.lyricsTargetLanguage,
+      lyricsAutoTranslate: lyricsAutoTranslate ?? this.lyricsAutoTranslate,
+      lyricsTranslationMode:
+          lyricsTranslationMode ?? this.lyricsTranslationMode,
     );
   }
 }
@@ -212,6 +225,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyShowQuickPicks = 'show_quick_picks';
   static const _keyShowRecentQueues = 'show_recent_queues';
   static const _keyShowForYou = 'show_for_you';
+  static const _keyLyricsTargetLanguage = 'lyrics_target_language';
+  static const _keyLyricsAutoTranslate = 'lyrics_auto_translate';
+  static const _keyLyricsTranslationMode = 'lyrics_translation_mode';
   static const double maxDelayDuration = 12.0;
   static const int minMotionLatencyMs = -200;
   static const int maxMotionLatencyMs = 500;
@@ -287,6 +303,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
       showQuickPicks: prefs.getBool(_keyShowQuickPicks) ?? true,
       showRecentQueues: prefs.getBool(_keyShowRecentQueues) ?? true,
       showForYou: prefs.getBool(_keyShowForYou) ?? true,
+      lyricsTargetLanguage: prefs.getString(_keyLyricsTargetLanguage) ?? 'es',
+      lyricsAutoTranslate: prefs.getBool(_keyLyricsAutoTranslate) ?? false,
+      lyricsTranslationMode:
+          prefs.getString(_keyLyricsTranslationMode) ?? 'subtext',
     );
   }
 
@@ -298,6 +318,24 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(fadeOutDuration: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyFadeOutDuration, value);
+  }
+
+  Future<void> setLyricsTargetLanguage(String value) async {
+    state = state.copyWith(lyricsTargetLanguage: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyLyricsTargetLanguage, value);
+  }
+
+  Future<void> setLyricsAutoTranslate(bool value) async {
+    state = state.copyWith(lyricsAutoTranslate: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyLyricsAutoTranslate, value);
+  }
+
+  Future<void> setLyricsTranslationMode(String value) async {
+    state = state.copyWith(lyricsTranslationMode: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyLyricsTranslationMode, value);
   }
 
   Future<void> setFadeInDuration(double value) async {

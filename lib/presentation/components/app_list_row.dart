@@ -38,6 +38,15 @@ class AppListRow extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
+  /// Optional custom title widget (e.g. FittedBox for sidebars).
+  final Widget? titleWidget;
+
+  /// Max lines for title. Null allows unlimited lines (wrapping).
+  final int? titleMaxLines;
+
+  /// Max lines for subtitle. Null allows unlimited lines (wrapping).
+  final int? subtitleMaxLines;
+
   /// Tighter vertical rhythm, for dense settings lists.
   final bool dense;
 
@@ -45,6 +54,7 @@ class AppListRow extends StatelessWidget {
     super.key,
     this.leading,
     required this.title,
+    this.titleWidget,
     this.subtitle,
     this.subtitleWidget,
     this.trailing,
@@ -55,6 +65,8 @@ class AppListRow extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.dense = false,
+    this.titleMaxLines,
+    this.subtitleMaxLines,
   });
 
   @override
@@ -93,17 +105,19 @@ class AppListRow extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTokens.rowTitle(context).copyWith(
-                    color: titleColor,
-                    decoration:
-                        strikeThrough ? TextDecoration.lineThrough : null,
-                    decorationColor: titleColor,
-                  ),
-                ),
+                titleWidget ??
+                    Text(
+                      title,
+                      maxLines: titleMaxLines,
+                      overflow:
+                          titleMaxLines == null ? null : TextOverflow.ellipsis,
+                      style: AppTokens.rowTitle(context).copyWith(
+                        color: titleColor,
+                        decoration:
+                            strikeThrough ? TextDecoration.lineThrough : null,
+                        decorationColor: titleColor,
+                      ),
+                    ),
                 if (hasSubtitle) ...[
                   const SizedBox(height: 2),
                   DefaultTextStyle(
@@ -112,8 +126,10 @@ class AppListRow extends StatelessWidget {
                         isDimmed ? AppTokens.aTertiary : AppTokens.aSecondary,
                       ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: subtitleMaxLines,
+                    overflow: subtitleMaxLines == null
+                        ? TextOverflow.clip
+                        : TextOverflow.ellipsis,
                     child: subtitleWidget ?? Text(subtitle!),
                   ),
                 ],

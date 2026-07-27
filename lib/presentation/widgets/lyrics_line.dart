@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 class LyricsLine extends StatelessWidget {
   final String text;
+  final String? translatedText;
+  final String? translationMode;
   final bool isActive;
   final bool isPlayed;
   final double blurSigma;
@@ -16,6 +18,8 @@ class LyricsLine extends StatelessWidget {
   const LyricsLine({
     super.key,
     required this.text,
+    this.translatedText,
+    this.translationMode,
     required this.isActive,
     required this.isPlayed,
     required this.blurSigma,
@@ -29,10 +33,17 @@ class LyricsLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Constant font size and weight prevents jumpy layouts during line transitions
     final fontSize = inactiveFontSize;
     final baseOpacity = isPlayed ? 1.0 : 0.72;
     final resolvedBlurSigma = blurSigma < 0 ? 0.0 : blurSigma;
+    final showSubtext = translationMode == 'subtext' &&
+        translatedText != null &&
+        translatedText!.trim().isNotEmpty;
+    final isReplace = translationMode == 'replace' &&
+        translatedText != null &&
+        translatedText!.trim().isNotEmpty;
+
+    final primaryText = isReplace ? translatedText! : text;
 
     return RepaintBoundary(
       child: AnimatedContainer(
@@ -75,12 +86,36 @@ class LyricsLine extends StatelessWidget {
               child: FractionallySizedBox(
                 widthFactor: 0.92,
                 alignment: Alignment.centerLeft,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    text,
-                    textAlign: TextAlign.left,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        primaryText,
+                        textAlign: TextAlign.left,
+                      ),
+                    ),
+                    if (showSubtext) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        translatedText!,
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          fontSize: fontSize * 0.72,
+                          fontWeight: FontWeight.w400,
+                          color: isActive
+                              ? activeColor.withValues(alpha: 0.90)
+                              : Colors.white
+                                  .withValues(alpha: isPlayed ? 0.55 : 0.38),
+                          height: 1.2,
+                          letterSpacing: -0.2,
+                          shadows: null,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

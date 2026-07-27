@@ -310,6 +310,15 @@ class DatabaseService {
           updated_at REAL
         )
     ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS translated_lyrics (
+          filename TEXT,
+          target_lang TEXT,
+          translated_content TEXT,
+          updated_at REAL,
+          PRIMARY KEY (filename, target_lang)
+        )
+    ''');
 
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
     await _addColumnIfNotExists(
@@ -2685,6 +2694,13 @@ class DatabaseService {
       source TEXT,
       updated_at REAL
     )''',
+    'translated_lyrics': '''CREATE TABLE IF NOT EXISTS translated_lyrics (
+      filename TEXT,
+      target_lang TEXT,
+      translated_content TEXT,
+      updated_at REAL,
+      PRIMARY KEY (filename, target_lang)
+    )''',
   };
 
   /// Expected columns per table for ALTER TABLE ADD COLUMN operations.
@@ -2769,6 +2785,12 @@ class DatabaseService {
       'image_url': 'TEXT',
       'local_path': 'TEXT',
       'source': 'TEXT',
+      'updated_at': 'REAL',
+    },
+    'translated_lyrics': {
+      'filename': 'TEXT',
+      'target_lang': 'TEXT',
+      'translated_content': 'TEXT',
       'updated_at': 'REAL',
     },
   };
@@ -3348,6 +3370,56 @@ class DatabaseService {
   Future<void> clearAlbumArt() async {
     await _ensureInitialized();
     await _userDataDatabase!.delete('album_art');
+  }
+
+  Future<String?> getTranslatedLyrics(
+      String filename, String targetLang) async {
+    await _ensureInitialized();
+    final results = await _userDataDatabase!.query(
+      'translated_lyrics',
+      columns: ['translated_content'],
+      where: 'filename = ? AND target_lang = ?',
+      whereArgs: [filename, targetLang.toLowerCase()],
+      limit: 1,
+    );
+    if (results.isEmpty) return null;
+    return results.first['translated_content'] as String?;
+  }
+
+  Future<void> saveTranslatedLyrics(
+    String filename,
+    String targetLang,
+    String content,
+  ) async {
+    await _ensureInitialized();
+    await _userDataDatabase!.insert(
+      'translated_lyrics',
+      {
+        'filename': filename,
+        'target_lang': targetLang.toLowerCase(),
+        'translated_content': content,
+        'updated_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteTranslatedLyrics(String filename,
+      [String? targetLang]) async {
+    await _ensureInitialized();
+    if (targetLang != null) {
+      await _userDataDatabase!.delete(
+        'translated_lyrics',
+        where: 'filename = ? AND target_lang = ?',
+        whereArgs: [filename, targetLang.toLowerCase()],
+      );
+    } else {
+      await _userDataDatabase!.delete(
+        'translated_lyrics',
+        where: 'filename = ?',
+        whereArgs: [filename],
+      );
+    }
   }
 
   Future<void> close() async {

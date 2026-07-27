@@ -72,6 +72,7 @@ class SongListItem extends ConsumerWidget {
             isDimmed: isSuggestLess,
             strikeThrough: isSuggestLess,
             title: song.title,
+            titleMaxLines: 1,
             onTap: selectionState.isSelectionMode
                 ? () => ref
                     .read(selectionProvider.notifier)
