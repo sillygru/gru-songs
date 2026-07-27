@@ -377,7 +377,7 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
         _submenuEntry(
           icon: AppIcons.imageSearch,
           label: 'Fetch Missing Cover',
-          subtitle: 'Try searching Deezer and iTunes for cover art',
+          subtitle: 'Try searching Last.fm, Deezer and iTunes for cover art',
           onTap: () async {
             final song = widget.song;
             if (song == null) return;

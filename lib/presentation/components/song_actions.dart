@@ -338,24 +338,38 @@ Future<void> songActionFetchMissingCover(
 ) async {
   ScaffoldMessenger.of(host).showSnackBar(
     const SnackBar(
-      content: Text('Searching Deezer and iTunes for cover art...'),
+      content: Text('Searching Last.fm, Deezer and iTunes for cover art...'),
       duration: Duration(seconds: 2),
     ),
   );
 
   try {
-    final results =
-        await OnlineMetadataService.instance.searchParallelForSong(song);
-    OnlineSearchResult? match;
+    final onlineService = OnlineMetadataService.instance;
 
-    for (final res in results) {
-      if (res.coverUrl != null && res.coverUrl!.isNotEmpty) {
-        match = res;
-        break;
+    // Try Last.fm first (album page scrape)
+    String? coverUrl;
+    String? source;
+    final cleanArtist = OnlineMetadataService.cleanTag(song.artist);
+    final cleanAlbum = OnlineMetadataService.cleanTag(song.album);
+    if (cleanArtist != null && cleanAlbum != null) {
+      coverUrl = await onlineService.searchLastfmAlbumImage(cleanAlbum,
+          artistName: cleanArtist);
+      source = 'lastfm';
+    }
+
+    // Fallback to Deezer + iTunes parallel search
+    if (coverUrl == null || coverUrl.isEmpty) {
+      final results = await onlineService.searchParallelForSong(song);
+      for (final res in results) {
+        if (res.coverUrl != null && res.coverUrl!.isNotEmpty) {
+          coverUrl = res.coverUrl;
+          source = res.source;
+          break;
+        }
       }
     }
 
-    if (match == null || match.coverUrl == null) {
+    if (coverUrl == null || coverUrl.isEmpty) {
       if (!host.mounted) return;
       ScaffoldMessenger.of(host).showSnackBar(
         const SnackBar(content: Text('No missing cover art found online')),
@@ -363,9 +377,8 @@ Future<void> songActionFetchMissingCover(
       return;
     }
 
-    final localPath =
-        await OnlineMetadataService.instance.downloadAndCacheCover(
-      match.coverUrl!,
+    final localPath = await onlineService.downloadAndCacheCover(
+      coverUrl,
       song.filename,
     );
 
@@ -374,8 +387,7 @@ Future<void> songActionFetchMissingCover(
       if (!host.mounted) return;
       ScaffoldMessenger.of(host).showSnackBar(
         SnackBar(
-            content: Text(
-                'Updated cover art for "${song.title}" (${match.source})')),
+            content: Text('Updated cover art for "${song.title}" ($source)')),
       );
     } else if (host.mounted) {
       ScaffoldMessenger.of(host).showSnackBar(
@@ -979,15 +991,27 @@ Future<_SongSearchOutcome> _searchSingleSong(
         OnlineMetadataService.cleanTag(song.album) == null ? match.album : null;
 
     String? newCoverPath;
-    if ((song.coverUrl == null || song.coverUrl!.isEmpty) &&
-        match.coverUrl != null &&
-        match.coverUrl!.isNotEmpty) {
-      newCoverPath = await onlineService
-          .downloadAndCacheCover(match.coverUrl!, song.filename)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => null,
-          );
+    if (song.coverUrl == null || song.coverUrl!.isEmpty) {
+      String? coverUrl;
+      final cleanArtist = OnlineMetadataService.cleanTag(song.artist);
+      final cleanAlbum = OnlineMetadataService.cleanTag(song.album);
+      if (cleanArtist != null && cleanAlbum != null) {
+        coverUrl = await onlineService.searchLastfmAlbumImage(cleanAlbum,
+            artistName: cleanArtist);
+      }
+      if ((coverUrl == null || coverUrl.isEmpty) &&
+          match.coverUrl != null &&
+          match.coverUrl!.isNotEmpty) {
+        coverUrl = match.coverUrl;
+      }
+      if (coverUrl != null && coverUrl.isNotEmpty) {
+        newCoverPath = await onlineService
+            .downloadAndCacheCover(coverUrl, song.filename)
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () => null,
+            );
+      }
     }
 
     final hasChanges = newTitle != null ||
