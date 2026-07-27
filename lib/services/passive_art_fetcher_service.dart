@@ -131,8 +131,13 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
             continue;
           }
 
-          var imageUrl = await onlineService.searchITunesArtistImage(artist);
-          var source = 'itunes';
+          var imageUrl = await onlineService.searchLastfmArtistImage(artist);
+          var source = 'lastfm';
+
+          if (imageUrl == null || imageUrl.isEmpty) {
+            imageUrl = await onlineService.searchITunesArtistImage(artist);
+            source = 'itunes';
+          }
 
           if (imageUrl == null || imageUrl.isEmpty) {
             imageUrl = await onlineService.searchDeezerArtistImage(artist);
@@ -160,7 +165,7 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
               }
             }
           }
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 350));
         }
 
         // 2. Process priority album requests
@@ -184,9 +189,15 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
           }
 
           final saveKey = artist.isNotEmpty ? '$artist|$album' : album;
-          var imageUrl = await onlineService.searchITunesAlbumImage(album,
+          var imageUrl = await onlineService.searchLastfmAlbumImage(album,
               artistName: artist);
-          var source = 'itunes';
+          var source = 'lastfm';
+
+          if (imageUrl == null || imageUrl.isEmpty) {
+            imageUrl = await onlineService.searchITunesAlbumImage(album,
+                artistName: artist);
+            source = 'itunes';
+          }
 
           if (imageUrl == null || imageUrl.isEmpty) {
             imageUrl = await onlineService.searchDeezerAlbumImage(album,
@@ -251,8 +262,13 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
               continue;
             }
 
-            var imageUrl = await onlineService.searchITunesArtistImage(artist);
-            var source = 'itunes';
+            var imageUrl = await onlineService.searchLastfmArtistImage(artist);
+            var source = 'lastfm';
+
+            if (imageUrl == null || imageUrl.isEmpty) {
+              imageUrl = await onlineService.searchITunesArtistImage(artist);
+              source = 'itunes';
+            }
 
             if (imageUrl == null || imageUrl.isEmpty) {
               imageUrl = await onlineService.searchDeezerArtistImage(artist);
@@ -341,9 +357,15 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
 
               final saveKey = artist.isNotEmpty ? '$artist|$album' : album;
 
-              var imageUrl = await onlineService.searchITunesAlbumImage(album,
+              var imageUrl = await onlineService.searchLastfmAlbumImage(album,
                   artistName: artist);
-              var source = 'itunes';
+              var source = 'lastfm';
+
+              if (imageUrl == null || imageUrl.isEmpty) {
+                imageUrl = await onlineService.searchITunesAlbumImage(album,
+                    artistName: artist);
+                source = 'itunes';
+              }
 
               if (imageUrl == null || imageUrl.isEmpty) {
                 imageUrl = await onlineService.searchDeezerAlbumImage(album,

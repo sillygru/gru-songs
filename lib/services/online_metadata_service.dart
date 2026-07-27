@@ -25,12 +25,39 @@ class OnlineMetadataService {
 
   static const String _deezerHost = 'api.deezer.com';
   static const String _itunesHost = 'itunes.apple.com';
+  static const String _lastfmHost = 'www.last.fm';
   static const Duration _timeout = Duration(seconds: 8);
 
   static String? _userAgent;
 
   // Rate limiter for iTunes API: track last request time to enforce 3-second spacing in batch mode
   DateTime? _lastITunesRequest;
+
+  // Rate limiter for Last.fm scraping
+  DateTime? _lastLastfmRequest;
+  static const Duration _lastfmMinInterval = Duration(seconds: 1);
+
+  // Last.fm HTML scraping regexes (artist/album avatar images)
+  static final _lastfmAnyImageRegex = RegExp(
+    r'src\=\"(https:\/\/[^\"]*?lastfm[^\"]*?fastly[^\"]*?avatar[^\"]*?\/([a-f0-9]+))\"',
+  );
+  static final _lastfmOgImageRegex = RegExp(
+    r'<meta\s+property="og:image"\s+content="([^"]+)"',
+  );
+  static final _lastfmGifImageRegex = RegExp(
+    '${_lastfmAnyImageRegex.pattern}(?=[^>]*?alt="gif")',
+  );
+
+  static final Set<String> _lastfmDummyHashes = {
+    '2a96cbd8b46e442fc41c2b86b821562f',
+    'c6f59c1e5e7240a4c0d427abd71f3dbb',
+  };
+
+  static final List<RegExp> _lastfmRegexes = [
+    _lastfmGifImageRegex,
+    _lastfmOgImageRegex,
+    _lastfmAnyImageRegex,
+  ];
 
   static String? cleanTag(String? value) {
     final v = value?.trim() ?? '';
@@ -341,6 +368,76 @@ class OnlineMetadataService {
           return _upgradeITunesArtworkUrl(artwork);
         }
       }
+    }
+    return null;
+  }
+
+  /// Searches Last.fm by scraping HTML for an artist avatar image.
+  Future<String?> searchLastfmArtistImage(String artistName) async {
+    final clean = cleanTag(artistName);
+    if (clean == null) return null;
+    final encoded = Uri.encodeComponent(clean);
+    return _searchLastfmPage('/music/$encoded/+images');
+  }
+
+  /// Searches Last.fm by scraping HTML for an album cover image.
+  Future<String?> searchLastfmAlbumImage(String albumName,
+      {String? artistName}) async {
+    final cleanAlbum = cleanTag(albumName);
+    if (cleanAlbum == null) return null;
+    final cleanArtist = cleanTag(artistName);
+    if (cleanArtist == null) return null;
+    final encodedAlbum = Uri.encodeComponent(cleanAlbum);
+    final encodedArtist = Uri.encodeComponent(cleanArtist);
+    return _searchLastfmPage('/music/$encodedArtist/$encodedAlbum/+images');
+  }
+
+  /// Fetches a Last.fm page and extracts the best image URL from its HTML.
+  /// Tries GIF image, then og:image meta tag, then any avatar image.
+  Future<String?> _searchLastfmPage(String path) async {
+    final now = DateTime.now();
+    if (_lastLastfmRequest != null) {
+      final elapsed = now.difference(_lastLastfmRequest!);
+      if (elapsed < _lastfmMinInterval) {
+        await Future.delayed(_lastfmMinInterval - elapsed);
+      }
+    }
+    _lastLastfmRequest = DateTime.now();
+
+    final client = HttpClient();
+    try {
+      final uri = Uri.https(_lastfmHost, path);
+      final request = await client.getUrl(uri);
+      request.headers
+          .set(HttpHeaders.userAgentHeader, await _resolveUserAgent());
+
+      final response = await request.close().timeout(_timeout);
+      if (response.statusCode != HttpStatus.ok) {
+        await response.drain<void>();
+        return null;
+      }
+
+      final html = await response.transform(utf8.decoder).join();
+      return _extractLastfmImageUrl(html);
+    } catch (e) {
+      debugPrint('Last.fm scrape error for $path: $e');
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Runs the ordered regexes against [html] and validates the result.
+  String? _extractLastfmImageUrl(String html) {
+    for (final regex in _lastfmRegexes) {
+      final match = regex.firstMatch(html);
+      if (match == null) continue;
+      final url = match.group(1);
+      if (url == null || url.isEmpty) continue;
+
+      final isDummy =
+          _lastfmDummyHashes.any((hash) => url.endsWith('$hash.jpg'));
+      if (!isDummy) return url;
     }
     return null;
   }

@@ -45,6 +45,7 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
   String _sortBy = 'songs'; // 'songs', 'name', 'recent'
   String _searchQuery = '';
   bool _isSearching = false;
+  bool _hasTriggeredFetch = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -56,6 +57,15 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
   @override
   Widget build(BuildContext context) {
     final songsAsync = ref.watch(songsProvider);
+
+    final songsValue = songsAsync.value;
+    if (songsValue != null && !_hasTriggeredFetch) {
+      _hasTriggeredFetch = true;
+      final artistMap = LibraryLogic.groupByArtist(songsValue);
+      for (final artist in artistMap.keys) {
+        PassiveArtFetcherService.instance.fetchArtistArtIfNeeded(artist);
+      }
+    }
 
     return AmbientScaffold(
       appBar: AppBar(
@@ -262,14 +272,22 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
     final results = <Map<String, String>>[];
 
     try {
+      final lastfmImage = await onlineService.searchLastfmArtistImage(artist);
+      if (lastfmImage != null && lastfmImage.isNotEmpty) {
+        results.add({'url': lastfmImage, 'source': 'Last.fm'});
+      }
+
       final iTunesImage = await onlineService.searchITunesArtistImage(artist);
-      if (iTunesImage != null && iTunesImage.isNotEmpty) {
+      if (iTunesImage != null &&
+          iTunesImage.isNotEmpty &&
+          iTunesImage != lastfmImage) {
         results.add({'url': iTunesImage, 'source': 'iTunes'});
       }
 
       final deezerImage = await onlineService.searchDeezerArtistImage(artist);
       if (deezerImage != null &&
           deezerImage.isNotEmpty &&
+          deezerImage != lastfmImage &&
           deezerImage != iTunesImage) {
         results.add({'url': deezerImage, 'source': 'Deezer'});
       }

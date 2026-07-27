@@ -544,9 +544,17 @@ class SongListScreen extends ConsumerWidget {
     final results = <Map<String, String>>[];
 
     try {
+      final lastfmImage =
+          await onlineService.searchLastfmAlbumImage(album, artistName: artist);
+      if (lastfmImage != null && lastfmImage.isNotEmpty) {
+        results.add({'url': lastfmImage, 'source': 'Last.fm'});
+      }
+
       final iTunesImage =
           await onlineService.searchITunesAlbumImage(album, artistName: artist);
-      if (iTunesImage != null && iTunesImage.isNotEmpty) {
+      if (iTunesImage != null &&
+          iTunesImage.isNotEmpty &&
+          iTunesImage != lastfmImage) {
         results.add({'url': iTunesImage, 'source': 'iTunes'});
       }
 
@@ -554,6 +562,7 @@ class SongListScreen extends ConsumerWidget {
           await onlineService.searchDeezerAlbumImage(album, artistName: artist);
       if (deezerImage != null &&
           deezerImage.isNotEmpty &&
+          deezerImage != lastfmImage &&
           deezerImage != iTunesImage) {
         results.add({'url': deezerImage, 'source': 'Deezer'});
       }
