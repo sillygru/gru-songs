@@ -21,12 +21,20 @@ const Duration _durationExact = Duration(seconds: 2);
 ///
 /// Stable with respect to the incoming order, so an exact `/api/get` hit placed
 /// first stays ahead of an equally-scoring search result.
-List<LrclibResult> rankLrclibResults(List<LrclibResult> results, Song song) {
+List<LrclibResult> rankLrclibResults(
+  List<LrclibResult> results,
+  Song song, {
+  bool preferPlain = false,
+}) {
   final usable = results.where((r) => r.isUsable).toList();
 
   final scored = <({LrclibResult result, double score, int index})>[
     for (var i = 0; i < usable.length; i++)
-      (result: usable[i], score: scoreLrclibResult(usable[i], song), index: i),
+      (
+        result: usable[i],
+        score: scoreLrclibResult(usable[i], song, preferPlain: preferPlain),
+        index: i
+      ),
   ];
 
   scored.sort((a, b) {
@@ -37,9 +45,21 @@ List<LrclibResult> rankLrclibResults(List<LrclibResult> results, Song song) {
   return [for (final entry in scored) entry.result];
 }
 
-/// Higher is better. Roughly 0–100, but only the ordering is meaningful.
-double scoreLrclibResult(LrclibResult result, Song song) {
+/// Higher is better. Roughly 0–200, but only the ordering is meaningful.
+double scoreLrclibResult(
+  LrclibResult result,
+  Song song, {
+  bool preferPlain = false,
+}) {
   var score = 0.0;
+
+  // Prioritize synced lyrics (or plain lyrics if explicitly requested),
+  // ordered by closest duration match to the song.
+  if (preferPlain) {
+    if (result.hasPlain) score += 100;
+  } else {
+    if (result.hasSynced) score += 100;
+  }
 
   final local = song.duration;
   final remote = result.duration;
@@ -74,8 +94,6 @@ double scoreLrclibResult(LrclibResult result, Song song) {
   if (_normalize(result.albumName) == _normalize(song.album)) {
     score += 8;
   }
-
-  if (result.hasSynced) score += 12;
 
   // An instrumental record is a legitimate answer but a poor guess when the
   // user went looking for words, so it never outranks a real lyric sheet.

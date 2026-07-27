@@ -111,11 +111,17 @@ class FileManagerService {
 
   /// Updates lyrics for a song by embedding them into the audio file metadata.
   Future<void> updateLyrics(Song song, String lyricsContent) async {
+    return _serializeTagWrite(
+        () => _updateLyricsSerialized(song.url, lyricsContent));
+  }
+
+  Future<void> _updateLyricsSerialized(String fileUrl, String lyrics) async {
+    final lock = await _acquireExclusiveLock(fileUrl);
     try {
-      await _updateLyricsWithFFmpeg(song.url, lyricsContent);
-      debugPrint("Updated embedded lyrics for ${song.filename}");
-    } catch (e) {
-      throw Exception("Failed to update lyrics: $e");
+      await _updateLyricsWithFFmpeg(fileUrl, lyrics);
+      debugPrint("Updated embedded lyrics for $fileUrl");
+    } finally {
+      await _releaseLock(lock);
     }
   }
 

@@ -55,6 +55,7 @@ class LrclibService {
     Song song, {
     String? titleOverride,
     String? artistOverride,
+    bool preferPlain = false,
   }) async {
     final artist = cleanTag(artistOverride ?? song.artist) ?? '';
     final album = cleanTag(song.album);
@@ -93,7 +94,8 @@ class LrclibService {
       merged.putIfAbsent(result.id, () => result);
     }
 
-    return rankLrclibResults(merged.values.toList(), song);
+    return rankLrclibResults(merged.values.toList(), song,
+        preferPlain: preferPlain);
   }
 
   /// `/api/get` — the exact-match endpoint. Returns null on a 404

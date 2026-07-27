@@ -80,6 +80,7 @@ class _LyricsSearchSheetState extends ConsumerState<_LyricsSearchSheet> {
           widget.song,
           titleOverride: _titleController.text,
           artistOverride: _artistController.text,
+          preferPlain: _preferPlain,
         );
 
     if (!mounted || token != _searchToken) return;
@@ -171,8 +172,16 @@ class _LyricsSearchSheetState extends ConsumerState<_LyricsSearchSheet> {
                       child: _PlainToggle(
                         value: _preferPlain,
                         accent: accent,
-                        onChanged: (value) =>
-                            setState(() => _preferPlain = value),
+                        onChanged: (value) => setState(() {
+                          _preferPlain = value;
+                          if (_results != null) {
+                            _results = rankLrclibResults(
+                              _results!,
+                              widget.song,
+                              preferPlain: value,
+                            );
+                          }
+                        }),
                       ),
                     ),
                     const SizedBox(width: AppTokens.s3),

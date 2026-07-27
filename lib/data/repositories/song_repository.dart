@@ -104,6 +104,13 @@ class SongRepository {
     }
   }
 
+  /// Directly saves lyrics to the local lyrics cache.
+  Future<void> saveLyricsToCache(Song song, String? lyrics) async {
+    final normalizedLyrics =
+        (lyrics != null && lyrics.trim().isNotEmpty) ? lyrics : null;
+    await _writeLyricsCache(song, normalizedLyrics);
+  }
+
   Future<void> _writeLyricsCache(
     Song song,
     String? lyrics, {

@@ -198,19 +198,30 @@ class FFmpegService {
     required String? lyrics,
   }) async {
     final normalizedLyrics = lyrics?.trim() ?? '';
-    // Map both audio and video (attached picture/cover art) streams,
-    // copying them without re-encoding. We skip subtitle streams since
-    // they are not used.
+    final hasVideo = await hasVideoStream(inputPath);
+    final ext = p.extension(inputPath).toLowerCase();
+    final isMp3 = ext == '.mp3';
+
+    // Stream-copy audio and embedded cover art if present. Specifying attached_pic
+    // disposition prevents FFmpeg from failing when remuxing cover art into audio containers.
     final args = [
       '-y',
       '-i',
       inputPath,
       '-map',
       '0:a?',
-      '-map',
-      '0:v?',
+      if (hasVideo) ...[
+        '-map',
+        '0:v?',
+        '-disposition:v:0',
+        'attached_pic',
+      ],
       '-c',
       'copy',
+      if (isMp3) ...[
+        '-id3v2_version',
+        '3',
+      ],
       '-map_metadata',
       '0',
       '-metadata',
@@ -230,6 +241,33 @@ class FFmpegService {
     final outFile = File(outputPath);
     if (!await outFile.exists() || await outFile.length() == 0) {
       throw Exception('FFmpeg lyrics write produced empty output: $outputPath');
+    }
+  }
+
+  /// Checks if the file contains a video/artwork stream.
+  Future<bool> hasVideoStream(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists() || await file.length() == 0) return false;
+
+      final args = [
+        '-v',
+        'error',
+        '-select_streams',
+        'v',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ];
+      final session = await FFprobeKit.executeWithArguments(args);
+      final rc = await session.getReturnCode();
+      if (!ReturnCode.isSuccess(rc)) return false;
+      final output = await session.getOutput();
+      return output != null && output.trim().isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 

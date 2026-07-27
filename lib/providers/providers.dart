@@ -1156,10 +1156,18 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     final notifier = ref.read(metadataSaveProvider.notifier);
     notifier.start();
     try {
-      await ref
-          .read(fileManagerServiceProvider)
-          .updateLyrics(song, lyricsContent);
-      await ref.read(songRepositoryProvider).invalidateLyricsCache(song);
+      try {
+        await ref
+            .read(fileManagerServiceProvider)
+            .updateLyrics(song, lyricsContent);
+        await ref.read(songRepositoryProvider).invalidateLyricsCache(song);
+      } catch (e) {
+        debugPrint(
+            'File lyrics embedding failed, falling back to local cache: $e');
+        await ref
+            .read(songRepositoryProvider)
+            .saveLyricsToCache(song, lyricsContent);
+      }
 
       final updated = song.copyWith(
         hasLyrics: lyricsContent.trim().isNotEmpty,
