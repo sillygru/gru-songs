@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models/lrclib_result.dart';
+import '../../domain/services/lrclib_match.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../services/lrclib_service.dart';
