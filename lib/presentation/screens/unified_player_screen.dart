@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -178,6 +179,22 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     if (cached != null) {
       _motion.beatMap = cached;
       return;
+    }
+
+    final route = ModalRoute.of(context);
+    final animation = route?.animation;
+    if (animation != null && !animation.isCompleted) {
+      final completer = Completer<void>();
+      AnimationStatusListener? listener;
+      listener = (status) {
+        if (status == AnimationStatus.completed) {
+          animation.removeStatusListener(listener!);
+          if (!completer.isCompleted) completer.complete();
+        }
+      };
+      animation.addStatusListener(listener);
+      await completer.future;
+      if (!mounted || token != _beatMapToken) return;
     }
 
     final analyzed = await service.analyze(song.filename, song.url);

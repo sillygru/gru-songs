@@ -243,7 +243,7 @@ class ColorExtractionService {
 
   static Future<ExtractedPalette?> extractPalette(
     String? imagePath, {
-    bool useIsolate = false,
+    bool useIsolate = true,
   }) async {
     if (imagePath == null || imagePath.isEmpty) return null;
 
@@ -332,7 +332,7 @@ class ColorExtractionService {
 
   static Future<List<Swatch>?> _extractSwatches(
     File imageFile, {
-    bool useIsolate = false,
+    bool useIsolate = true,
   }) async {
     try {
       final bytes = await imageFile.readAsBytes();
@@ -504,7 +504,7 @@ class ColorExtractionService {
 
   static Future<Color?> extractColor(
     String? imagePath, {
-    bool useIsolate = false,
+    bool useIsolate = true,
   }) async {
     final palette = await extractPalette(imagePath, useIsolate: useIsolate);
     return palette?.color;

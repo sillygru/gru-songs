@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
 import 'cache_service.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,13 @@ class WaveformService {
   final CacheService _cacheService;
 
   WaveformService(this._cacheService);
+
+  /// Fast check if the waveform for [filename] is already cached on disk.
+  Future<bool> isWaveformCached(String filename) async {
+    if (filename.isEmpty) return false;
+    final cacheFile = await _cacheService.getWaveformCacheFile(filename);
+    return cacheFile.exists();
+  }
 
   Future<List<double>> getWaveform(String filename, String path) async {
     if (path.isEmpty || path.startsWith('http')) return [];
@@ -89,8 +97,9 @@ class WaveformService {
       final bytes = await file.readAsBytes();
       await file.delete();
 
-      // Extract peaks directly from raw PCM data
-      final samples = _extractPeaksFromPcm(bytes, targetSamples);
+      // Extract peaks off-main-thread via Isolate.run
+      final samples =
+          await Isolate.run(() => _extractPeaksFromPcm(bytes, targetSamples));
       return samples;
     } catch (e) {
       debugPrint('Error in direct waveform extraction: $e');
@@ -98,7 +107,7 @@ class WaveformService {
     }
   }
 
-  List<double> _extractPeaksFromPcm(Uint8List bytes, int targetSamples) {
+  static List<double> _extractPeaksFromPcm(Uint8List bytes, int targetSamples) {
     try {
       final floatData = Float32List.view(bytes.buffer);
       final samples = <double>[];
@@ -128,7 +137,7 @@ class WaveformService {
     }
   }
 
-  List<double> _generatePlaceholderSamples(int count) {
+  static List<double> _generatePlaceholderSamples(int count) {
     final samples = <double>[];
     final random = DateTime.now().millisecond;
     for (int i = 0; i < count; i++) {

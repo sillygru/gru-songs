@@ -48,6 +48,9 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   TextStyle? _labelStyle;
   String _formattedTotalTime = '0:00';
 
+  AnimationStatusListener? _routeStatusListener;
+  Animation<double>? _monitoredAnimation;
+
   @override
   void initState() {
     super.initState();
@@ -61,17 +64,28 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       parent: _barAnimationController,
       curve: Curves.easeOutCubic,
     );
-    _loadWaveform();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scheduleWaveformLoad();
+    });
     _subscribeToPositionStream();
   }
 
   @override
   void dispose() {
+    _cleanupRouteListener();
     _barAnimationController.dispose();
     _positionSubscription?.cancel();
     _positionNotifier.dispose();
     _dragPositionNotifier.dispose();
     super.dispose();
+  }
+
+  void _cleanupRouteListener() {
+    if (_routeStatusListener != null && _monitoredAnimation != null) {
+      _monitoredAnimation!.removeStatusListener(_routeStatusListener!);
+      _routeStatusListener = null;
+      _monitoredAnimation = null;
+    }
   }
 
   void _subscribeToPositionStream() {
@@ -104,7 +118,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
         _barAnimationController.reset();
       }
 
-      _loadWaveform();
+      _scheduleWaveformLoad();
     }
 
     if (oldWidget.total != widget.total) {
@@ -113,6 +127,42 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
 
     if (oldWidget.positionStream != widget.positionStream) {
       _subscribeToPositionStream();
+    }
+  }
+
+  Future<void> _scheduleWaveformLoad() async {
+    _cleanupRouteListener();
+    if (widget.filename.isEmpty || widget.path.isEmpty) return;
+
+    final currentFilename = widget.filename;
+    final waveformService = ref.read(waveformServiceProvider);
+
+    final isCached = await waveformService.isWaveformCached(currentFilename);
+    if (!mounted || widget.filename != currentFilename) return;
+
+    if (isCached) {
+      _loadWaveform();
+    } else {
+      final route = ModalRoute.of(context);
+      final animation = route?.animation;
+      if (animation != null && !animation.isCompleted) {
+        _monitoredAnimation = animation;
+        _routeStatusListener = (status) {
+          if (status == AnimationStatus.completed) {
+            _cleanupRouteListener();
+            if (mounted && widget.filename == currentFilename) {
+              _loadWaveform();
+            }
+          }
+        };
+        animation.addStatusListener(_routeStatusListener!);
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && widget.filename == currentFilename) {
+            _loadWaveform();
+          }
+        });
+      }
     }
   }
 

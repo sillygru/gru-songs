@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -29,11 +30,6 @@ class _BlurredBackgroundState extends State<BlurredBackground>
   File? _blurFile;
 
   /// Whether [_blurFile] is actually on disk.
-  ///
-  /// Kept as a field rather than re-checked in `build`: the only thing that
-  /// creates or removes this file is [_updateBlurFile], which already knows the
-  /// answer, and asking the filesystem instead put a synchronous stat on the UI
-  /// thread of every single build of a full-screen background.
   bool _blurFileExists = false;
 
   int _requestToken = 0;
@@ -49,16 +45,16 @@ class _BlurredBackgroundState extends State<BlurredBackground>
     if (widget.slowSpin) {
       _spinController.repeat();
     }
-    _updateBlurFile();
+    _loadBlurredImage();
   }
 
   @override
   void didUpdateWidget(BlurredBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.filename != oldWidget.filename || widget.url != oldWidget.url) {
-      _updateBlurFile();
+    if (oldWidget.url != widget.url || oldWidget.filename != widget.filename) {
+      _loadBlurredImage();
     }
-    if (widget.slowSpin != oldWidget.slowSpin) {
+    if (oldWidget.slowSpin != widget.slowSpin) {
       if (widget.slowSpin) {
         _spinController.repeat();
       } else {
@@ -73,7 +69,7 @@ class _BlurredBackgroundState extends State<BlurredBackground>
     super.dispose();
   }
 
-  Future<void> _updateBlurFile() async {
+  Future<void> _loadBlurredImage() async {
     _blurFile = null;
     _blurFileExists = false;
 
@@ -95,6 +91,23 @@ class _BlurredBackgroundState extends State<BlurredBackground>
     }
 
     if (mounted) setState(() {});
+    if (!mounted) return;
+
+    final route = ModalRoute.of(context);
+    final animation = route?.animation;
+    if (animation != null && !animation.isCompleted) {
+      final completer = Completer<void>();
+      AnimationStatusListener? listener;
+      listener = (status) {
+        if (status == AnimationStatus.completed) {
+          animation.removeStatusListener(listener!);
+          if (!completer.isCompleted) completer.complete();
+        }
+      };
+      animation.addStatusListener(listener);
+      await completer.future;
+      if (!mounted || token != _requestToken) return;
+    }
 
     var coverUrl = widget.url;
     final needsCoverRefresh = coverUrl.isEmpty ||
