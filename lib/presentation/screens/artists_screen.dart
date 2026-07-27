@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -310,6 +311,12 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
                 subtitle: const Text('Remove custom artwork'),
                 onTap: () => Navigator.pop(dialogContext, 'reset'),
               ),
+              ListTile(
+                leading: const AppIcon(AppIcons.image),
+                title: const Text('Choose Custom Image'),
+                subtitle: const Text('Select image from device storage'),
+                onTap: () => Navigator.pop(dialogContext, 'custom'),
+              ),
               if (results.isNotEmpty) const Divider(),
               ...results.map((res) => ListTile(
                     leading: Image.network(
@@ -347,6 +354,25 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
     if (selected == 'reset') {
       await ref.read(artistAlbumArtProvider.notifier).removeArtistArt(artist);
       if (context.mounted) appSnack(context, 'Reset to song cover grid');
+      return;
+    }
+
+    if (selected == 'custom') {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (picked != null && picked.files.single.path != null) {
+        final localPath = picked.files.single.path!;
+        await ref.read(artistAlbumArtProvider.notifier).setArtistArt(
+              artistName: artist,
+              localPath: localPath,
+              source: 'custom',
+            );
+        if (context.mounted) {
+          appSnack(context, 'Updated artwork for $artist');
+        }
+      }
       return;
     }
 

@@ -37,25 +37,35 @@ class OnlineMetadataService {
   DateTime? _lastLastfmRequest;
   static const Duration _lastfmMinInterval = Duration(seconds: 1);
 
-  // Last.fm HTML scraping regexes (artist/album avatar images)
+  // Last.fm HTML scraping regexes (artist/album images)
   static final _lastfmAnyImageRegex = RegExp(
-    r'src\=\"(https:\/\/[^\"]*?lastfm[^\"]*?fastly[^\"]*?avatar[^\"]*?\/([a-f0-9]+))\"',
+    r'src="([^"]*?lastfm[^"]*?fastly[^"]*?/i/u/[^/]+/([a-f0-9]+)[^"]*)"',
+    caseSensitive: false,
   );
   static final _lastfmOgImageRegex = RegExp(
-    r'<meta\s+property="og:image"\s+content="([^"]+)"',
+    r'<meta\s+[^>]*?property="og:image"\s+[^>]*?content="([^"]+)"',
+    caseSensitive: false,
+  );
+  static final _lastfmOgImageAltRegex = RegExp(
+    r'<meta\s+[^>]*?content="([^"]+)"\s+[^>]*?property="og:image"',
+    caseSensitive: false,
   );
   static final _lastfmGifImageRegex = RegExp(
-    '${_lastfmAnyImageRegex.pattern}(?=[^>]*?alt="gif")',
+    r'src="([^"]*?lastfm[^"]*?fastly[^"]*?/i/u/[^/]+/([a-f0-9]+)[^"]*)"(?=[^>]*?alt="gif")',
+    caseSensitive: false,
   );
 
   static final Set<String> _lastfmDummyHashes = {
     '2a96cbd8b46e442fc41c2b86b821562f',
     'c6f59c1e5e7240a4c0d427abd71f3dbb',
+    '8c82560e57b2707f670149fcd45b7c4e',
+    '4128a60920044723ba0790b513b2a068',
   };
 
   static final List<RegExp> _lastfmRegexes = [
     _lastfmGifImageRegex,
     _lastfmOgImageRegex,
+    _lastfmOgImageAltRegex,
     _lastfmAnyImageRegex,
   ];
 
@@ -376,8 +386,12 @@ class OnlineMetadataService {
   Future<String?> searchLastfmArtistImage(String artistName) async {
     final clean = cleanTag(artistName);
     if (clean == null) return null;
-    final encoded = Uri.encodeComponent(clean);
-    return _searchLastfmPage('/music/$encoded/+images');
+    final encoded = Uri.encodeComponent(clean).replaceAll('%20', '+');
+    final galleryResult = await _searchLastfmPage('/music/$encoded/+images');
+    if (galleryResult != null && galleryResult.isNotEmpty) {
+      return galleryResult;
+    }
+    return _searchLastfmPage('/music/$encoded');
   }
 
   /// Searches Last.fm by scraping HTML for an album cover image.
@@ -387,9 +401,15 @@ class OnlineMetadataService {
     if (cleanAlbum == null) return null;
     final cleanArtist = cleanTag(artistName);
     if (cleanArtist == null) return null;
-    final encodedAlbum = Uri.encodeComponent(cleanAlbum);
-    final encodedArtist = Uri.encodeComponent(cleanArtist);
-    return _searchLastfmPage('/music/$encodedArtist/$encodedAlbum/+images');
+    final encodedAlbum = Uri.encodeComponent(cleanAlbum).replaceAll('%20', '+');
+    final encodedArtist =
+        Uri.encodeComponent(cleanArtist).replaceAll('%20', '+');
+    final galleryResult =
+        await _searchLastfmPage('/music/$encodedArtist/$encodedAlbum/+images');
+    if (galleryResult != null && galleryResult.isNotEmpty) {
+      return galleryResult;
+    }
+    return _searchLastfmPage('/music/$encodedArtist/$encodedAlbum');
   }
 
   /// Fetches a Last.fm page and extracts the best image URL from its HTML.
@@ -435,11 +455,19 @@ class OnlineMetadataService {
       final url = match.group(1);
       if (url == null || url.isEmpty) continue;
 
-      final isDummy =
-          _lastfmDummyHashes.any((hash) => url.endsWith('$hash.jpg'));
-      if (!isDummy) return url;
+      final isDummy = _lastfmDummyHashes.any((hash) => url.contains(hash));
+      if (!isDummy) return _upgradeLastfmArtworkUrl(url);
     }
     return null;
+  }
+
+  /// Upgrades Last.fm low-res CDN segments to higher resolution
+  String _upgradeLastfmArtworkUrl(String url) {
+    return url
+        .replaceAll('/avatar170s/', '/300x300/')
+        .replaceAll('/174s/', '/300x300/')
+        .replaceAll('/64s/', '/300x300/')
+        .replaceAll('/300x300s/', '/300x300/');
   }
 
   /// Upgrades iTunes 100x100 artwork URL to 600x600 or 1000x1000

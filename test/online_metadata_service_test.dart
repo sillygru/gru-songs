@@ -29,6 +29,7 @@ void main() {
     test('cleanTag returns null for placeholders', () {
       expect(OnlineMetadataService.cleanTag('unknown title'), null);
       expect(OnlineMetadataService.cleanTag('Unknown Artist'), null);
+      expect(OnlineMetadataService.cleanTag('unknown album'), null);
       expect(OnlineMetadataService.cleanTag('unknown'), null);
       expect(OnlineMetadataService.cleanTag('Beach Weather'), 'Beach Weather');
     });

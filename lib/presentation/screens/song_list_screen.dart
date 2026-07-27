@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
@@ -439,14 +440,22 @@ class SongListScreen extends ConsumerWidget {
     final results = <Map<String, String>>[];
 
     try {
+      final lastfmImage = await onlineService.searchLastfmArtistImage(artist);
+      if (lastfmImage != null && lastfmImage.isNotEmpty) {
+        results.add({'url': lastfmImage, 'source': 'Last.fm'});
+      }
+
       final iTunesImage = await onlineService.searchITunesArtistImage(artist);
-      if (iTunesImage != null && iTunesImage.isNotEmpty) {
+      if (iTunesImage != null &&
+          iTunesImage.isNotEmpty &&
+          iTunesImage != lastfmImage) {
         results.add({'url': iTunesImage, 'source': 'iTunes'});
       }
 
       final deezerImage = await onlineService.searchDeezerArtistImage(artist);
       if (deezerImage != null &&
           deezerImage.isNotEmpty &&
+          deezerImage != lastfmImage &&
           deezerImage != iTunesImage) {
         results.add({'url': deezerImage, 'source': 'Deezer'});
       }
@@ -468,6 +477,12 @@ class SongListScreen extends ConsumerWidget {
                 title: const Text('Use Song Cover Grid'),
                 subtitle: const Text('Remove custom artwork'),
                 onTap: () => Navigator.pop(dialogContext, 'reset'),
+              ),
+              ListTile(
+                leading: const AppIcon(AppIcons.image),
+                title: const Text('Choose Custom Image'),
+                subtitle: const Text('Select image from device storage'),
+                onTap: () => Navigator.pop(dialogContext, 'custom'),
               ),
               if (results.isNotEmpty) const Divider(),
               ...results.map((res) => ListTile(
@@ -506,6 +521,25 @@ class SongListScreen extends ConsumerWidget {
     if (selected == 'reset') {
       await ref.read(artistAlbumArtProvider.notifier).removeArtistArt(artist);
       if (context.mounted) appSnack(context, 'Reset to song cover grid');
+      return;
+    }
+
+    if (selected == 'custom') {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (picked != null && picked.files.single.path != null) {
+        final localPath = picked.files.single.path!;
+        await ref.read(artistAlbumArtProvider.notifier).setArtistArt(
+              artistName: artist,
+              localPath: localPath,
+              source: 'custom',
+            );
+        if (context.mounted) {
+          appSnack(context, 'Updated artwork for $artist');
+        }
+      }
       return;
     }
 
@@ -585,6 +619,12 @@ class SongListScreen extends ConsumerWidget {
                 subtitle: const Text('Remove custom artwork'),
                 onTap: () => Navigator.pop(dialogContext, 'reset'),
               ),
+              ListTile(
+                leading: const AppIcon(AppIcons.image),
+                title: const Text('Choose Custom Image'),
+                subtitle: const Text('Select image from device storage'),
+                onTap: () => Navigator.pop(dialogContext, 'custom'),
+              ),
               if (results.isNotEmpty) const Divider(),
               ...results.map((res) => ListTile(
                     leading: Image.network(
@@ -624,6 +664,27 @@ class SongListScreen extends ConsumerWidget {
           .read(artistAlbumArtProvider.notifier)
           .removeAlbumArt(compositeKey);
       if (context.mounted) appSnack(context, 'Reset to song cover grid');
+      return;
+    }
+
+    if (selected == 'custom') {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (picked != null && picked.files.single.path != null) {
+        final localPath = picked.files.single.path!;
+        await ref.read(artistAlbumArtProvider.notifier).setAlbumArt(
+              albumKey: compositeKey,
+              albumName: album,
+              artistName: artist.isNotEmpty ? artist : null,
+              localPath: localPath,
+              source: 'custom',
+            );
+        if (context.mounted) {
+          appSnack(context, 'Updated artwork for $album');
+        }
+      }
       return;
     }
 

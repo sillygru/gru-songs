@@ -93,7 +93,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   // Gesture detection for drawer
   static const double _edgeDragWidth = 60.0;
-  static const double _drawerWidthRatio = 0.8;
+  static const double _drawerWidthRatio = 0.32;
 
   // Track which screens have been built to enable lazy loading
   final Set<int> _builtScreens = {0};
@@ -108,7 +108,11 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   Future<void> _closeDrawer() async {
     if (!_isDrawerOpen && !_drawerController.isAnimating) return;
-    await _drawerController.animateTo(0.0, curve: Curves.easeOutCubic);
+    await _drawerController.animateTo(
+      0.0,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutQuart,
+    );
     if (mounted) {
       setState(() {
         _isDrawerOpen = false;
@@ -133,7 +137,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   void _onHorizontalDragStart(DragStartDetails details) {
     if (_isDrawerOpen || details.globalPosition.dx <= _edgeDragWidth) {
-      _isDraggingDrawer = true;
+      setState(() {
+        _isDraggingDrawer = true;
+      });
       _drawerController.stop();
     }
   }
@@ -149,16 +155,41 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   void _onHorizontalDragEnd(DragEndDetails details) {
     if (!_isDraggingDrawer) return;
-    _isDraggingDrawer = false;
 
-    if (_drawerController.value > 0.45) {
-      setState(() => _isDrawerOpen = true);
-      _drawerController.animateTo(1.0, curve: Curves.easeOutCubic);
+    final vx = details.velocity.pixelsPerSecond.dx;
+
+    bool open;
+    if (vx.abs() > 250) {
+      open = vx > 0;
     } else {
-      _drawerController.animateTo(0.0, curve: Curves.easeOutCubic).then((_) {
-        if (mounted) setState(() => _isDrawerOpen = false);
-      });
+      open = _drawerController.value > 0.30;
     }
+
+    final target = open ? 1.0 : 0.0;
+    final remaining = (target - _drawerController.value).abs();
+
+    final velocityFraction = (vx.abs() / 1200).clamp(0.0, 1.0);
+    final baseDurationMs = (remaining * 200).round();
+    final durationMs = (baseDurationMs * (1.0 - 0.45 * velocityFraction))
+        .round()
+        .clamp(90, 200);
+
+    setState(() {
+      _isDraggingDrawer = false;
+      if (open) _isDrawerOpen = true;
+    });
+
+    _drawerController
+        .animateTo(
+      target,
+      duration: Duration(milliseconds: durationMs),
+      curve: Curves.easeOutQuart,
+    )
+        .then((_) {
+      if (mounted && !open) {
+        setState(() => _isDrawerOpen = false);
+      }
+    });
   }
 
   @override
@@ -166,7 +197,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
     super.initState();
     _drawerController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 200),
     );
     _scrollControllers = List.generate(3, (_) => ScrollController());
     WidgetsBinding.instance.addObserver(this);
@@ -261,24 +292,32 @@ class _MainScreenState extends ConsumerState<MainScreen>
           child: Stack(
             children: [
               // Drawer sits underneath the main content
-              if (_isDrawerOpen ||
-                  _isDraggingDrawer ||
-                  _drawerController.isAnimating)
-                Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _drawerController,
-                    builder: (context, child) => AppDrawer(
+              AnimatedBuilder(
+                animation: _drawerController,
+                builder: (context, child) {
+                  final shouldShow = _isDrawerOpen ||
+                      _isDraggingDrawer ||
+                      _drawerController.isAnimating ||
+                      _drawerController.value > 0;
+                  if (!shouldShow) return const SizedBox.shrink();
+                  return Positioned.fill(
+                    child: AppDrawer(
                       onClose: _closeDrawer,
                       drawerPosition: _drawerController.value,
                     ),
-                  ),
-                ),
+                  );
+                },
+              ),
               // Main content slides right to reveal the drawer
               AnimatedBuilder(
                 animation: _drawerController,
                 builder: (context, child) {
                   final slideX =
-                      _drawerController.value * mediaQuery.size.width * 0.8;
+                      _drawerController.value * mediaQuery.size.width * 0.32;
+                  final showScrim = _isDrawerOpen ||
+                      _isDraggingDrawer ||
+                      _drawerController.isAnimating ||
+                      _drawerController.value > 0;
                   return RepaintBoundary(
                     child: Transform.translate(
                       offset: Offset(slideX, 0),
@@ -286,9 +325,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
                         children: [
                           child!,
                           // Scrim dims the content when drawer is open
-                          if (_isDrawerOpen ||
-                              _isDraggingDrawer ||
-                              _drawerController.isAnimating)
+                          if (showScrim)
                             Positioned.fill(
                               child: GestureDetector(
                                 onTap: _closeDrawer,
