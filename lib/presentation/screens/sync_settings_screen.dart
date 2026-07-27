@@ -50,7 +50,9 @@ class _SyncSettingsScreenState extends ConsumerState<SyncSettingsScreen> {
               AppSettingsTile(
                 icon: AppIcons.cloudUpload,
                 title: 'Not signed in',
-                subtitle: 'Sign in to sync across devices',
+                subtitle: syncState.lastError != null
+                    ? syncState.lastError!
+                    : 'Sign in to sync across devices',
                 onTap: () => ref.read(syncProvider.notifier).signIn(),
               ),
             ],

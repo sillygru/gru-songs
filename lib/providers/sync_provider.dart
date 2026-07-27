@@ -59,7 +59,10 @@ class SyncNotifier extends Notifier<SyncState> {
         lastError: null,
       );
     } else {
-      state = state.copyWith(lastError: 'Sign in cancelled or failed');
+      final error = SyncService.instance.lastError;
+      state = state.copyWith(
+        lastError: error != null ? 'Sign-in failed: $error' : 'Sign-in failed',
+      );
     }
     return ok;
   }

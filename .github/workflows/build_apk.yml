@@ -30,7 +30,13 @@ jobs:
           EOF
 
       - name: Build release APK
-        run: flutter build apk --target-platform android-arm64 --dart-define=TELEMETRY_SECRET=${{ secrets.TELEMETRY_SECRET }}
+        env:
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TELEMETRY_SECRET: ${{ secrets.TELEMETRY_SECRET }}
+        run: >
+          flutter build apk --target-platform android-arm64
+          --dart-define=TELEMETRY_SECRET="$TELEMETRY_SECRET"
+          --dart-define=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET"
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4

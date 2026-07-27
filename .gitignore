@@ -66,3 +66,4 @@ android/build/reports/problems/problems-report.html
 /macos
 /temp
 /.opencode
+*.jks

@@ -14,7 +14,11 @@ class TelemetryService {
 
   static const String _projectId = 'wispie';
   static const String _baseUrl = 'https://api.gru0.dev/telemetry/api/v1/event';
-  static const String _secret = String.fromEnvironment('TELEMETRY_SECRET');
+  static final String _secret = (() {
+    const fromDefine = String.fromEnvironment('TELEMETRY_SECRET');
+    if (fromDefine.isNotEmpty) return fromDefine;
+    return Platform.environment['TELEMETRY_SECRET'] ?? '';
+  })();
 
   String? _uuid;
   PackageInfo? _packageInfo;

@@ -4,28 +4,23 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_service.dart';
+import 'google_oauth_service.dart';
 import 'storage_service.dart';
 
 class SyncService {
   static final SyncService instance = SyncService._internal();
   SyncService._internal();
 
-  GoogleSignIn? _googleSignIn;
-  GoogleSignInAccount? _account;
+  final GoogleOAuthService _oauth = GoogleOAuthService();
   bool _isSyncing = false;
   String? _deviceId;
   String? _deviceName;
 
-  static const String _driveScope =
-      'https://www.googleapis.com/auth/drive.appdata';
   static const String _filePrefix = 'wispie_sync_v1_';
-  static const String _webClientId =
-      '80722956975-ghsnp5ldk663u7m2vmg1e6e9ajfksp0k.apps.googleusercontent.com';
   static const List<String> _syncableSettingsKeys = [
     'theme_mode',
     'use_cover_color',
@@ -62,9 +57,10 @@ class SyncService {
     'auto_resume_on_volume_restore',
   ];
 
-  bool get isSignedIn => _account != null;
+  bool get isSignedIn => _oauth.isSignedIn;
   bool get isSyncing => _isSyncing;
-  String? get accountEmail => _account?.email;
+  String? get accountEmail => _oauth.accountEmail;
+  String? get lastError => _oauth.lastError;
   String get deviceId => _deviceId ?? 'unknown';
 
   Future<void> init() async {
@@ -76,42 +72,27 @@ class SyncService {
     }
 
     try {
-      _googleSignIn = GoogleSignIn(
-        scopes: [_driveScope],
-        clientId: _webClientId,
-      );
-      _account = await _googleSignIn!.signInSilently();
+      await _oauth.init();
     } catch (e) {
-      debugPrint('SyncService: silent sign-in failed: $e');
+      debugPrint('SyncService: OAuth init failed: $e');
     }
   }
 
   Future<bool> signIn() async {
-    try {
-      _googleSignIn ??=
-          GoogleSignIn(scopes: [_driveScope], clientId: _webClientId);
-      final account = await _googleSignIn!.signIn();
-      if (account == null) return false;
-      _account = account;
-      return true;
-    } catch (e) {
-      debugPrint('SyncService: sign-in failed: $e');
-      return false;
-    }
+    return await _oauth.signIn();
   }
 
   Future<void> signOut() async {
-    await _googleSignIn?.signOut();
-    _account = null;
+    await _oauth.signOut();
   }
 
   Future<bool> sync() async {
     if (_isSyncing) return false;
-    if (_account == null) return false;
+    if (!_oauth.isSignedIn) return false;
 
     _isSyncing = true;
     try {
-      final authHeaders = await _account!.authHeaders;
+      final authHeaders = await _oauth.authHeaders;
       final token = authHeaders['Authorization'];
       if (token == null) throw Exception('No auth token');
 
