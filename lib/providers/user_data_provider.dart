@@ -267,6 +267,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
           hidden: state.hidden,
           playlistSongs: playlistSongs,
           mergedGroups: state.mergedGroups,
+          mergedGroupPriorities: state.mergedGroupPriorities,
         );
   }
 
@@ -643,6 +644,23 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
   // --- Merged Songs Management ---
 
+  Map<String, List<String>> _sanitizeStateGroups(
+      Map<String, List<String>> groups, Map<String, String?> priorities) {
+    final cleaned = <String, List<String>>{};
+    final toRemove = <String>[];
+    for (final entry in groups.entries) {
+      if (entry.value.length < 2) {
+        toRemove.add(entry.key);
+      } else {
+        cleaned[entry.key] = entry.value;
+      }
+    }
+    for (final id in toRemove) {
+      priorities.remove(id);
+    }
+    return cleaned;
+  }
+
   /// Creates a new merge group with the given song filenames
   /// [priorityFilename] is the song to prioritize during shuffle
   Future<String> createMergedGroup(List<String> filenames,
@@ -659,10 +677,24 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final newGroups = Map<String, List<String>>.from(state.mergedGroups);
     final newPriorities =
         Map<String, String?>.from(state.mergedGroupPriorities);
+
+    for (final entry in newGroups.entries.toList()) {
+      final updatedList =
+          entry.value.where((f) => !filenames.contains(f)).toList();
+      newGroups[entry.key] = updatedList;
+      if (newPriorities[entry.key] != null &&
+          !updatedList.contains(newPriorities[entry.key]!)) {
+        newPriorities[entry.key] = null;
+      }
+    }
+
     newGroups[groupId] = filenames;
     newPriorities[groupId] = priorityFilename;
+
+    final cleaned = _sanitizeStateGroups(newGroups, newPriorities);
+
     state = state.copyWith(
-        mergedGroups: newGroups, mergedGroupPriorities: newPriorities);
+        mergedGroups: cleaned, mergedGroupPriorities: newPriorities);
     _updateManager();
 
     return groupId;
@@ -689,9 +721,28 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
     // Update state
     final newGroups = Map<String, List<String>>.from(state.mergedGroups);
+    final newPriorities =
+        Map<String, String?>.from(state.mergedGroupPriorities);
+
+    for (final entry in newGroups.entries.toList()) {
+      if (entry.key == groupId) continue;
+      final updatedList =
+          entry.value.where((f) => !filenames.contains(f)).toList();
+      newGroups[entry.key] = updatedList;
+      if (newPriorities[entry.key] != null &&
+          !updatedList.contains(newPriorities[entry.key]!)) {
+        newPriorities[entry.key] = null;
+      }
+    }
+
     final existing = newGroups[groupId] ?? [];
-    newGroups[groupId] = [...existing, ...filenames];
-    state = state.copyWith(mergedGroups: newGroups);
+    final combined = {...existing, ...filenames}.toList();
+    newGroups[groupId] = combined;
+
+    final cleaned = _sanitizeStateGroups(newGroups, newPriorities);
+
+    state = state.copyWith(
+        mergedGroups: cleaned, mergedGroupPriorities: newPriorities);
     _updateManager();
   }
 
@@ -702,28 +753,22 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final newGroups = Map<String, List<String>>.from(state.mergedGroups);
     final newPriorities =
         Map<String, String?>.from(state.mergedGroupPriorities);
-    String? groupToRemove;
-    for (final entry in newGroups.entries) {
+
+    for (final entry in newGroups.entries.toList()) {
       if (entry.value.contains(filename)) {
         final updatedList = entry.value.where((f) => f != filename).toList();
-        if (updatedList.length < 2) {
-          groupToRemove = entry.key;
-        } else {
-          newGroups[entry.key] = updatedList;
-          // If we removed the priority song, clear the priority
-          if (newPriorities[entry.key] == filename) {
-            newPriorities[entry.key] = null;
-          }
+        newGroups[entry.key] = updatedList;
+        if (newPriorities[entry.key] == filename) {
+          newPriorities[entry.key] = null;
         }
         break;
       }
     }
-    if (groupToRemove != null) {
-      newGroups.remove(groupToRemove);
-      newPriorities.remove(groupToRemove);
-    }
+
+    final cleaned = _sanitizeStateGroups(newGroups, newPriorities);
+
     state = state.copyWith(
-        mergedGroups: newGroups, mergedGroupPriorities: newPriorities);
+        mergedGroups: cleaned, mergedGroupPriorities: newPriorities);
     _updateManager();
   }
 

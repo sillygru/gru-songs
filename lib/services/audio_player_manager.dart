@@ -74,6 +74,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   // Merged song groups for shuffle weighting
   Map<String, List<String>> _mergedGroups = {};
+  Map<String, String?> _mergedGroupPriorities = {};
   // Filename -> groupId lookup, rebuilt on setUserData().
   Map<String, String> _filenameToGroupId = const <String, String>{};
 
@@ -245,6 +246,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     List<String>? hidden,
     List<String>? playlistSongs,
     Map<String, List<String>>? mergedGroups,
+    Map<String, String?>? mergedGroupPriorities,
   }) {
     if (favorites != null) {
       _favoriteKeys = _buildFilenameKeys(favorites);
@@ -261,6 +263,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     if (mergedGroups != null) {
       _mergedGroups = mergedGroups;
       _filenameToGroupId = _buildFilenameToGroupId(mergedGroups);
+    }
+    if (mergedGroupPriorities != null) {
+      _mergedGroupPriorities = mergedGroupPriorities;
     }
     _invalidateShuffleCache();
   }
@@ -2350,6 +2355,17 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   QueueItem? _selectSongFromVirtualItem(_VirtualShuffleItem virtualItem) {
     if (virtualItem.items.length == 1) {
       return virtualItem.items.first;
+    }
+
+    if (virtualItem.groupId != null) {
+      final priorityFilename = _mergedGroupPriorities[virtualItem.groupId];
+      if (priorityFilename != null) {
+        for (final item in virtualItem.items) {
+          if (item.song.filename == priorityFilename) {
+            return item;
+          }
+        }
+      }
     }
 
     final weights = virtualItem.items.map((item) {

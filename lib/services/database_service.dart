@@ -1573,10 +1573,12 @@ class DatabaseService {
       final result =
           <String, ({List<String> filenames, String? priorityFilename})>{};
       for (final entry in groups.entries) {
-        result[entry.key] = (
-          filenames: entry.value,
-          priorityFilename: groupPriorities[entry.key],
-        );
+        if (entry.value.length >= 2) {
+          result[entry.key] = (
+            filenames: entry.value,
+            priorityFilename: groupPriorities[entry.key],
+          );
+        }
       }
       return result;
     } catch (e) {
@@ -1710,6 +1712,7 @@ class DatabaseService {
             },
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
+      await _cleanupSingleSongGroups(txn);
     });
 
     debugPrint(
@@ -1736,6 +1739,7 @@ class DatabaseService {
             },
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
+      await _cleanupSingleSongGroups(txn);
     });
 
     debugPrint('Added ${filenames.length} songs to merged group $groupId');
@@ -1750,13 +1754,27 @@ class DatabaseService {
       await txn
           .delete('merged_song', where: 'filename = ?', whereArgs: [filename]);
 
-      // Clean up empty groups
-      await txn.delete('merged_song_group',
-          where:
-              'id NOT IN (SELECT DISTINCT group_id FROM merged_song WHERE group_id IS NOT NULL)');
+      await _cleanupSingleSongGroups(txn);
     });
 
     debugPrint('Removed $filename from merged group');
+  }
+
+  Future<void> _cleanupSingleSongGroups(Transaction txn) async {
+    final results = await txn.rawQuery('''
+      SELECT group_id, COUNT(*) as song_count
+      FROM merged_song
+      GROUP BY group_id
+      HAVING song_count < 2
+    ''');
+    for (final row in results) {
+      final groupId = row['group_id'] as String;
+      await txn.delete('merged_song', where: 'group_id = ?', whereArgs: [groupId]);
+      await txn.delete('merged_song_group', where: 'id = ?', whereArgs: [groupId]);
+    }
+    await txn.delete('merged_song_group',
+        where:
+            'id NOT IN (SELECT DISTINCT group_id FROM merged_song WHERE group_id IS NOT NULL)');
   }
 
   /// Deletes an entire merge group
