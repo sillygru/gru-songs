@@ -298,6 +298,17 @@ class CacheService {
         p.join(blurredDir.path, 'blurred_${_cacheKey(songFilename)}.jpg'));
   }
 
+  /// Deletes the blurred background cache for a single song so it is
+  /// regenerated on the next display.
+  Future<void> invalidateBlurredCache(String songFilename) async {
+    try {
+      final file = await getBlurredCacheFile(songFilename);
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // Best-effort: a stale blur is harmless.
+    }
+  }
+
   Future<int> getBlurredCacheCount() async {
     await init();
     final blurredDir = Directory(p.join(_v3Dir.path, 'blurred_cache'));

@@ -16,6 +16,7 @@ import '../services/beat_analysis_service.dart';
 import '../services/waveform_service.dart';
 import '../services/cache_service.dart';
 import '../services/color_extraction_service.dart';
+import '../services/cover_refresh_service.dart';
 import '../services/notification_cover_warmer.dart';
 import '../services/update_service.dart';
 import '../services/library_logic.dart';
@@ -1084,6 +1085,17 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         clearCoverUrl: newCoverPath == null,
         mtime: await _statMtime(song.url, song.mtime),
       );
+
+      // Evict the old cover from Flutter's decoded-image cache so the next
+      // `Image.file` with the same path reads the new bytes off disk.
+      // Only necessary when the path stays the same (re-extract in place).
+      if (song.coverUrl != null && song.coverUrl == newCoverPath) {
+        await CoverRefreshService.evictCoverFromImageCache(song.coverUrl!);
+      }
+
+      // Wipe the blurred background cache so the player re-renders the
+      // backdrop from the new artwork on the next display.
+      unawaited(CacheService.instance.invalidateBlurredCache(song.filename));
 
       // Before publishing, so the queue rebuild and the cover warmer both see
       // the new artwork rather than re-reading the crop of the old one.
