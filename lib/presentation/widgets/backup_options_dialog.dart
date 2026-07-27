@@ -48,6 +48,10 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
         return 'Color Cache';
       case BackupContentType.lyricsCache:
         return 'Lyrics Cache';
+      case BackupContentType.artistArtCache:
+        return 'Artist Art Cache';
+      case BackupContentType.albumArtCache:
+        return 'Album Art Cache';
     }
   }
 
@@ -71,6 +75,10 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
         return 'Color palettes';
       case BackupContentType.lyricsCache:
         return 'Cached lyrics';
+      case BackupContentType.artistArtCache:
+        return 'Cached artist images';
+      case BackupContentType.albumArtCache:
+        return 'Cached album images';
     }
   }
 
@@ -94,6 +102,10 @@ class _BackupOptionsDialogState extends State<BackupOptionsDialog> {
         return AppIcons.palette;
       case BackupContentType.lyricsCache:
         return AppIcons.lyrics;
+      case BackupContentType.artistArtCache:
+        return AppIcons.person;
+      case BackupContentType.albumArtCache:
+        return AppIcons.album;
     }
   }
 

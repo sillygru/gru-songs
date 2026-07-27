@@ -184,10 +184,8 @@ class _MergedSongsScreenState extends ConsumerState<MergedSongsScreen>
         final entry = userData.mergedGroups.entries.elementAt(index);
         final groupId = entry.key;
         final filenames = entry.value;
-        final groupSongs = filenames
-            .map((f) => songMap[f])
-            .whereType<Song>()
-            .toList();
+        final groupSongs =
+            filenames.map((f) => songMap[f]).whereType<Song>().toList();
 
         if (groupSongs.length < 2) return const SizedBox.shrink();
 
@@ -198,8 +196,7 @@ class _MergedSongsScreenState extends ConsumerState<MergedSongsScreen>
           songs: groupSongs,
           priorityFilename: priorityFilename,
           onSetPriority: (filename) async {
-            final newPriority =
-                priorityFilename == filename ? null : filename;
+            final newPriority = priorityFilename == filename ? null : filename;
             await ref
                 .read(userDataProvider.notifier)
                 .setMergedGroupPriority(groupId, newPriority);

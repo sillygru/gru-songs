@@ -320,13 +320,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _showArtistSongs(String artistName, List<SearchResult> results) {
     final songs = results.map((r) => r.song).toList();
-    context.pushApp(SongListScreen(title: artistName, songs: songs));
+    context.pushApp(SongListScreen(
+      title: artistName,
+      songs: songs,
+      isArtist: true,
+      artistName: artistName,
+    ));
   }
 
   void _showAlbumSongs(
       String albumName, String artistName, List<SearchResult> results) {
     final songs = results.map((r) => r.song).toList();
-    context.pushApp(SongListScreen(title: albumName, songs: songs));
+    context.pushApp(SongListScreen(
+      title: albumName,
+      songs: songs,
+      isAlbum: true,
+      albumName: albumName,
+      artistName: artistName,
+    ));
   }
 }
 

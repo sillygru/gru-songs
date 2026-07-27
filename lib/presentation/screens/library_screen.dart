@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../models/song.dart';
 import '../../models/shuffle_config.dart';
+import '../../providers/artist_album_art_provider.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/user_data_provider.dart';
@@ -462,6 +464,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           songsFor: (artist) => artistMap[artist] ?? const [],
           subtitleFor: collectionSummary,
           emptyTitle: 'No artists yet',
+          isArtist: true,
         );
       },
       loading: () => const AppLoading(),
@@ -486,6 +489,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           subtitleFor: (songs) =>
               '${songs.first.artist} · ${collectionSummary(songs)}',
           emptyTitle: 'No albums yet',
+          isAlbum: true,
         );
       },
       loading: () => const AppLoading(),
@@ -505,6 +509,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     required List<Song> Function(String) songsFor,
     required String Function(List<Song>) subtitleFor,
     required String emptyTitle,
+    bool isArtist = false,
+    bool isAlbum = false,
   }) {
     final entries = keys
         .map((key) => (key: key, songs: songsFor(key)))
@@ -518,6 +524,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         message: 'Scan a music folder to fill this out.',
       );
     }
+
+    final artState = ref.watch(artistAlbumArtProvider);
 
     return NotificationListener<ScrollNotification>(
       onNotification: handleScrollNotification,
@@ -537,14 +545,44 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         itemCount: entries.length,
         itemBuilder: (context, index) {
           final entry = entries[index];
+          final String? artistName = isArtist
+              ? entry.key
+              : (entry.songs.isNotEmpty ? entry.songs.first.artist : null);
+          final String? albumName = isAlbum ? entry.key : null;
+
+          final cachedArt = isArtist
+              ? artState.getArtistArt(artistName)
+              : (isAlbum
+                  ? artState.getAlbumArt(albumName, artistName: artistName)
+                  : null);
+          final hasImage = cachedArt != null && File(cachedArt).existsSync();
+
+          final Widget artworkWidget = hasImage
+              ? ClipRRect(
+                  borderRadius: AppTokens.brSm,
+                  child: Image.file(
+                    File(cachedArt),
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                )
+              : FolderGridImage(songs: entry.songs, isGridItem: true);
 
           return AppMediaCard(
             expand: true,
             title: entry.key,
             subtitle: subtitleFor(entry.songs),
-            artwork: FolderGridImage(songs: entry.songs, isGridItem: true),
+            artwork: artworkWidget,
             onTap: () => context.pushApp(
-              SongListScreen(title: entry.key, songs: entry.songs),
+              SongListScreen(
+                title: entry.key,
+                songs: entry.songs,
+                isArtist: isArtist,
+                isAlbum: isAlbum,
+                artistName: artistName,
+                albumName: albumName,
+              ),
             ),
           );
         },

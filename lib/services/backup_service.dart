@@ -44,6 +44,10 @@ class BackupOptions {
       contentTypes.contains(BackupContentType.colorCache);
   bool get includeLyricsCache =>
       contentTypes.contains(BackupContentType.lyricsCache);
+  bool get includeArtistArtCache =>
+      contentTypes.contains(BackupContentType.artistArtCache);
+  bool get includeAlbumArtCache =>
+      contentTypes.contains(BackupContentType.albumArtCache);
 }
 
 class BackupDiff {

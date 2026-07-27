@@ -18,6 +18,7 @@ import 'services/database_service.dart';
 import 'services/power_state_service.dart';
 import 'services/color_extraction_service.dart';
 import 'services/update_service.dart';
+import 'services/passive_art_fetcher_service.dart';
 import 'presentation/widgets/update_available_dialog.dart';
 import 'theme/app_theme.dart';
 
@@ -121,6 +122,7 @@ class _WispieAppState extends ConsumerState<WispieApp>
       unawaited(CacheService.instance.init());
       unawaited(ColorExtractionService.init());
       unawaited(CacheService.instance.scheduleStartupMaintenance());
+      PassiveArtFetcherService.instance.init(ref);
       unawaited(
         ref.read(updateCheckProvider.notifier).prime().then((_) {
           if (mounted) _checkAndShowUpdateDialog();

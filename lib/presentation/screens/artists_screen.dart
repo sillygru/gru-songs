@@ -1,9 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
+import '../../providers/artist_album_art_provider.dart';
 import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
+import '../../services/online_metadata_service.dart';
+import '../../services/passive_art_fetcher_service.dart';
 import '../widgets/folder_grid_image.dart';
 import '../widgets/duration_display.dart';
 import '../components/app_feedback.dart';
@@ -12,39 +16,22 @@ import '../components/app_sheet.dart';
 import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
+import '../components/song_actions.dart';
 import '../components/app_icon.dart';
 import '../tokens/app_icons.dart';
-
-/// Parses a multi-artist string and returns individual artist names.
-/// Handles formats like:
-/// - "Artist1, Artist2 & Artist3"
-/// - "Artist1 & Artist2"
-/// - "Artist1 and Artist2"
-List<String> _parseArtists(String artistField) {
-  if (artistField.isEmpty) return [];
-
-  // Split by common separators: comma, &, and the word " and " (case insensitive)
-  final parts = artistField
-      .split(RegExp(r',\s*|\s*&\s*|\s+and\s+', caseSensitive: false))
-      .map((part) => part.trim().toLowerCase())
-      .where((part) => part.isNotEmpty)
-      .toList();
-
-  return parts;
-}
 
 /// Returns true if [songArtist] matches [targetArtist] accounting for multi-artist strings.
 bool _artistMatches(String songArtist, String targetArtist) {
   if (songArtist.isEmpty && targetArtist.isEmpty) return true;
   if (songArtist.isEmpty || targetArtist.isEmpty) return false;
 
-  final parsedSongArtists = _parseArtists(songArtist);
-  if (parsedSongArtists.isEmpty) return false;
+  final parsedSongArtists = LibraryLogic.splitArtistNames(songArtist);
+  if (parsedSongArtists.isEmpty) {
+    return songArtist.trim().toLowerCase() == targetArtist.trim().toLowerCase();
+  }
 
-  final lowerTarget = targetArtist.toLowerCase();
-
-  // Check if any of the song's artists contain the target artist
-  return parsedSongArtists.any((artist) => artist.contains(lowerTarget));
+  final lowerTarget = targetArtist.trim().toLowerCase();
+  return parsedSongArtists.any((artist) => artist.toLowerCase() == lowerTarget);
 }
 
 class ArtistsScreen extends ConsumerStatefulWidget {
@@ -55,7 +42,7 @@ class ArtistsScreen extends ConsumerStatefulWidget {
 }
 
 class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
-  String _sortBy = 'name'; // 'name', 'songs', 'recent'
+  String _sortBy = 'songs'; // 'songs', 'name', 'recent'
   String _searchQuery = '';
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
@@ -177,37 +164,210 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
     required String artist,
     required List<Song> songs,
   }) {
-    return AppMediaCard(
-      expand: true,
-      title: artist,
-      subtitle: collectionSummary(songs),
-      artwork: FolderGridImage(songs: songs, isGridItem: true),
-      onTap: () {
-        final allSongs = ref.read(songsProvider).value ?? [];
-        final artistSongs = allSongs.where((s) {
-          final songArtist = s.artist.isEmpty ? 'Unknown Artist' : s.artist;
-          return _artistMatches(songArtist, artist);
-        }).toList();
-        context.pushApp(SongListScreen(title: artist, songs: artistSongs));
-      },
+    final cachedArt = ref.watch(artistAlbumArtProvider).getArtistArt(artist);
+    final hasImage = cachedArt != null && File(cachedArt).existsSync();
+
+    if (!hasImage) {
+      PassiveArtFetcherService.instance.fetchArtistArtIfNeeded(artist);
+    }
+
+    final Widget artworkWidget = hasImage
+        ? ClipRRect(
+            borderRadius: AppTokens.brSm,
+            child: Image.file(
+              File(cachedArt),
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          )
+        : FolderGridImage(songs: songs, isGridItem: true);
+
+    return GestureDetector(
+      onLongPress: () => _showArtistOptions(context, artist, songs),
+      child: AppMediaCard(
+        expand: true,
+        title: artist,
+        subtitle: collectionSummary(songs),
+        artwork: artworkWidget,
+        onTap: () {
+          final allSongs = ref.read(songsProvider).value ?? [];
+          final artistSongs = allSongs.where((s) {
+            final songArtist = s.artist.isEmpty ? 'Unknown Artist' : s.artist;
+            return _artistMatches(songArtist, artist);
+          }).toList();
+          context.pushApp(SongListScreen(
+            title: artist,
+            songs: artistSongs,
+            isArtist: true,
+            artistName: artist,
+          ));
+        },
+      ),
     );
+  }
+
+  void _showArtistOptions(
+      BuildContext context, String artist, List<Song> songs) {
+    showAppSheet(
+      context,
+      title: artist,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppSheetAction(
+            icon: AppIcons.manageSearch,
+            label: 'Fetch Missing Metadata',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              songActionFetchMissingMetadataForList(context, ref, songs);
+            },
+          ),
+          AppSheetAction(
+            icon: AppIcons.imageSearch,
+            label: 'Change Artist Artwork',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showChangeArtistArtworkDialog(context, artist, songs);
+            },
+          ),
+          AppSheetAction(
+            icon: AppIcons.play,
+            label: 'View Songs',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              final allSongs = ref.read(songsProvider).value ?? [];
+              final artistSongs = allSongs.where((s) {
+                final songArtist =
+                    s.artist.isEmpty ? 'Unknown Artist' : s.artist;
+                return _artistMatches(songArtist, artist);
+              }).toList();
+              context
+                  .pushApp(SongListScreen(title: artist, songs: artistSongs));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showChangeArtistArtworkDialog(
+    BuildContext context,
+    String artist,
+    List<Song> songs,
+  ) async {
+    appSnack(context, 'Searching online for $artist artwork...');
+    final onlineService = OnlineMetadataService.instance;
+
+    final results = <Map<String, String>>[];
+
+    try {
+      final iTunesImage = await onlineService.searchITunesArtistImage(artist);
+      if (iTunesImage != null && iTunesImage.isNotEmpty) {
+        results.add({'url': iTunesImage, 'source': 'iTunes'});
+      }
+
+      final deezerImage = await onlineService.searchDeezerArtistImage(artist);
+      if (deezerImage != null &&
+          deezerImage.isNotEmpty &&
+          deezerImage != iTunesImage) {
+        results.add({'url': deezerImage, 'source': 'Deezer'});
+      }
+    } catch (_) {}
+
+    if (!context.mounted) return;
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Select Artwork for $artist'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const AppIcon(AppIcons.musicNote),
+                title: const Text('Use Song Cover Grid'),
+                subtitle: const Text('Remove custom artwork'),
+                onTap: () => Navigator.pop(dialogContext, 'reset'),
+              ),
+              if (results.isNotEmpty) const Divider(),
+              ...results.map((res) => ListTile(
+                    leading: Image.network(
+                      res['url']!,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const AppIcon(AppIcons.image),
+                    ),
+                    title: Text('Artwork from ${res['source']}'),
+                    subtitle: Text(res['url']!,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.pop(dialogContext, res['url']),
+                  )),
+              if (results.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No online artwork options found'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selected == null) return;
+
+    if (selected == 'reset') {
+      await ref.read(artistAlbumArtProvider.notifier).removeArtistArt(artist);
+      if (context.mounted) appSnack(context, 'Reset to song cover grid');
+      return;
+    }
+
+    if (!context.mounted) return;
+    appSnack(context, 'Downloading artwork...');
+    final localPath = await onlineService.downloadAndCacheCover(
+      selected,
+      'artist_$artist',
+    );
+
+    if (localPath != null && context.mounted) {
+      await ref.read(artistAlbumArtProvider.notifier).setArtistArt(
+            artistName: artist,
+            localPath: localPath,
+            imageUrl: selected,
+            source: 'online',
+          );
+      if (!context.mounted) return;
+      appSnack(context, 'Updated artwork for $artist');
+    } else if (context.mounted) {
+      appSnack(context, 'Failed to download artwork');
+    }
   }
 
   List<String> _sortArtists(Map<String, List<Song>> artistMap) {
     final artists = artistMap.keys.toList();
 
     switch (_sortBy) {
+      case 'name':
+        artists.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        break;
       case 'songs':
+      default:
         artists.sort((a, b) {
           final countCompare =
               artistMap[b]!.length.compareTo(artistMap[a]!.length);
           if (countCompare != 0) return countCompare;
           return a.toLowerCase().compareTo(b.toLowerCase());
         });
-        break;
-      case 'name':
-      default:
-        artists.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
         break;
     }
 
@@ -221,8 +381,8 @@ class _ArtistsScreenState extends ConsumerState<ArtistsScreen> {
       builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _sortAction(sheetContext, 'name', AppIcons.sort, 'Name (A-Z)'),
           _sortAction(sheetContext, 'songs', AppIcons.musicNote, 'Most Songs'),
+          _sortAction(sheetContext, 'name', AppIcons.sort, 'Name (A-Z)'),
         ],
       ),
     );

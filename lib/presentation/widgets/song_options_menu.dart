@@ -375,6 +375,29 @@ class _SongOptionsPopupState extends ConsumerState<_SongOptionsPopup>
       key: const ValueKey(_SongMenuView.library),
       children: [
         _submenuEntry(
+          icon: AppIcons.imageSearch,
+          label: 'Fetch Missing Cover',
+          subtitle: 'Try searching Deezer and iTunes for cover art',
+          onTap: () async {
+            final song = widget.song;
+            if (song == null) return;
+            _closePopup();
+            await songActionFetchMissingCover(widget.parentContext, ref, song);
+          },
+        ),
+        _submenuEntry(
+          icon: AppIcons.manageSearch,
+          label: 'Fetch Missing Metadata',
+          subtitle: 'Search online for title, artist, album and cover',
+          onTap: () async {
+            final song = widget.song;
+            if (song == null) return;
+            _closePopup();
+            await songActionFetchMissingMetadata(
+                widget.parentContext, ref, song);
+          },
+        ),
+        _submenuEntry(
           icon: AppIcons.folderMove,
           label: 'Move to Folder',
           subtitle: 'Move this file to another folder',

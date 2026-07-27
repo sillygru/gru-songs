@@ -65,10 +65,10 @@ abstract final class AppIcons {
   static const AppIconData home = HugeIcons.strokeRoundedHome01;
   static const AppIconData person = HugeIcons.strokeRoundedUser;
   static const AppIconData personAdd = HugeIcons.strokeRoundedUserAdd01;
-  static const AppIconData search = HugeIcons.strokeRoundedSearch01;
+  static const AppIconData search = HugeIcons.strokeRoundedSearch02;
   static const AppIconData searchOff = HugeIcons.strokeRoundedSearchRemove;
   static const AppIconData manageSearch = HugeIcons.strokeRoundedSearchList01;
-  static const AppIconData imageSearch = HugeIcons.strokeRoundedSearch01;
+  static const AppIconData imageSearch = HugeIcons.strokeRoundedSearchVisual;
   static const AppIconData travelExplore = HugeIcons.strokeRoundedGlobalSearch;
   static const AppIconData explore = HugeIcons.strokeRoundedCompass;
   static const AppIconData settings = HugeIcons.strokeRoundedSettings01;

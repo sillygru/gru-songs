@@ -140,4 +140,119 @@ void main() {
       expect(content.subFolders, ['Rock']);
     });
   });
+
+  group('LibraryLogic.splitArtistNames', () {
+    test('splits artists by ampersand, comma, feat, ft, and, slash', () {
+      expect(LibraryLogic.splitArtistNames('Drake & 21 Savage'),
+          ['Drake', '21 Savage']);
+      expect(LibraryLogic.splitArtistNames('Kanye West ft. Rihanna'),
+          ['Kanye West', 'Rihanna']);
+      expect(LibraryLogic.splitArtistNames('Lady Gaga, Bruno Mars'),
+          ['Lady Gaga', 'Bruno Mars']);
+      expect(LibraryLogic.splitArtistNames('Artist 1 and Artist 2'),
+          ['Artist 1', 'Artist 2']);
+      expect(LibraryLogic.splitArtistNames('Artist 1 / Artist 2'),
+          ['Artist 1', 'Artist 2']);
+    });
+  });
+
+  group('LibraryLogic.groupByArtist', () {
+    test('puts multi-artist songs under each individual artist card', () {
+      final songs = [
+        const Song(
+          title: 'Collaboration',
+          artist: 'Artist A & Artist B',
+          album: 'Album 1',
+          filename: 'collab.mp3',
+          url: '/music/collab.mp3',
+        ),
+        const Song(
+          title: 'Solo A',
+          artist: 'Artist A',
+          album: 'Album 1',
+          filename: 'solo_a.mp3',
+          url: '/music/solo_a.mp3',
+        ),
+      ];
+
+      final grouped = LibraryLogic.groupByArtist(songs);
+
+      expect(grouped.keys, containsAll(['Artist A', 'Artist B']));
+      expect(grouped['Artist A']!.map((s) => s.filename),
+          containsAll(['collab.mp3', 'solo_a.mp3']));
+      expect(grouped['Artist B']!.map((s) => s.filename), ['collab.mp3']);
+    });
+  });
+
+  group('LibraryLogic.sortAlbumsByTrackCount', () {
+    test('sorts albums by most tracks first', () {
+      final albumMap = {
+        'Album Single': [
+          const Song(
+            title: 'Track 1',
+            artist: 'Artist',
+            album: 'Album Single',
+            filename: '1.mp3',
+            url: '/1.mp3',
+          ),
+        ],
+        'Album Big': [
+          const Song(
+            title: 'Track 1',
+            artist: 'Artist',
+            album: 'Album Big',
+            filename: '2.mp3',
+            url: '/2.mp3',
+          ),
+          const Song(
+            title: 'Track 2',
+            artist: 'Artist',
+            album: 'Album Big',
+            filename: '3.mp3',
+            url: '/3.mp3',
+          ),
+        ],
+      };
+
+      final sorted = LibraryLogic.sortAlbumsByTrackCount(albumMap);
+
+      expect(sorted, ['Album Big', 'Album Single']);
+    });
+  });
+
+  group('LibraryLogic.sortArtistsByTrackCount', () {
+    test('sorts artists by most tracks first', () {
+      final artistMap = {
+        'Artist Few': [
+          const Song(
+            title: 'Track 1',
+            artist: 'Artist Few',
+            album: 'Album',
+            filename: '1.mp3',
+            url: '/1.mp3',
+          ),
+        ],
+        'Artist Many': [
+          const Song(
+            title: 'Track 1',
+            artist: 'Artist Many',
+            album: 'Album',
+            filename: '2.mp3',
+            url: '/2.mp3',
+          ),
+          const Song(
+            title: 'Track 2',
+            artist: 'Artist Many',
+            album: 'Album',
+            filename: '3.mp3',
+            url: '/3.mp3',
+          ),
+        ],
+      };
+
+      final sorted = LibraryLogic.sortArtistsByTrackCount(artistMap);
+
+      expect(sorted, ['Artist Many', 'Artist Few']);
+    });
+  });
 }

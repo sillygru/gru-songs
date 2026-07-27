@@ -1,9 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
+import '../../providers/artist_album_art_provider.dart';
 import '../../providers/providers.dart';
 import '../../services/library_logic.dart';
+import '../../services/online_metadata_service.dart';
+import '../../services/passive_art_fetcher_service.dart';
 import '../widgets/folder_grid_image.dart';
 import '../widgets/duration_display.dart';
 import '../components/app_feedback.dart';
@@ -12,6 +16,7 @@ import '../components/app_sheet.dart';
 import '../routes/app_page_route.dart';
 import '../tokens/app_tokens.dart';
 import 'song_list_screen.dart';
+import '../components/song_actions.dart';
 import '../components/app_icon.dart';
 import '../tokens/app_icons.dart';
 
@@ -23,7 +28,7 @@ class AlbumsScreen extends ConsumerStatefulWidget {
 }
 
 class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
-  String _sortBy = 'name'; // 'name', 'artist', 'songs'
+  String _sortBy = 'songs'; // 'songs', 'name', 'artist'
   String _searchQuery = '';
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
@@ -150,13 +155,190 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
     required String artist,
     required List<Song> songs,
   }) {
-    return AppMediaCard(
-      expand: true,
-      title: album,
-      subtitle: '$artist · ${collectionSummary(songs)}',
-      artwork: FolderGridImage(songs: songs, isGridItem: true),
-      onTap: () => context.pushApp(SongListScreen(title: album, songs: songs)),
+    final cachedArt = ref
+        .watch(artistAlbumArtProvider)
+        .getAlbumArt(album, artistName: artist);
+    final hasImage = cachedArt != null && File(cachedArt).existsSync();
+
+    if (!hasImage) {
+      PassiveArtFetcherService.instance.fetchAlbumArtIfNeeded(album, artist);
+    }
+
+    final Widget artworkWidget = hasImage
+        ? ClipRRect(
+            borderRadius: AppTokens.brSm,
+            child: Image.file(
+              File(cachedArt),
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          )
+        : FolderGridImage(songs: songs, isGridItem: true);
+
+    return GestureDetector(
+      onLongPress: () => _showAlbumOptions(context, album, artist, songs),
+      child: AppMediaCard(
+        expand: true,
+        title: album,
+        subtitle: '$artist · ${collectionSummary(songs)}',
+        artwork: artworkWidget,
+        onTap: () => context.pushApp(SongListScreen(
+          title: album,
+          songs: songs,
+          isAlbum: true,
+          albumName: album,
+          artistName: artist,
+        )),
+      ),
     );
+  }
+
+  void _showAlbumOptions(
+      BuildContext context, String album, String artist, List<Song> songs) {
+    showAppSheet(
+      context,
+      title: album,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppSheetAction(
+            icon: AppIcons.manageSearch,
+            label: 'Fetch Missing Metadata',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              songActionFetchMissingMetadataForList(context, ref, songs);
+            },
+          ),
+          AppSheetAction(
+            icon: AppIcons.imageSearch,
+            label: 'Change Album Artwork',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showChangeAlbumArtworkDialog(context, album, artist, songs);
+            },
+          ),
+          AppSheetAction(
+            icon: AppIcons.play,
+            label: 'View Songs',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              context.pushApp(SongListScreen(title: album, songs: songs));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showChangeAlbumArtworkDialog(
+    BuildContext context,
+    String album,
+    String artist,
+    List<Song> songs,
+  ) async {
+    appSnack(context, 'Searching online for $album artwork...');
+    final onlineService = OnlineMetadataService.instance;
+    final compositeKey = artist.isNotEmpty ? '$artist|$album' : album;
+
+    final results = <Map<String, String>>[];
+
+    try {
+      final iTunesImage =
+          await onlineService.searchITunesAlbumImage(album, artistName: artist);
+      if (iTunesImage != null && iTunesImage.isNotEmpty) {
+        results.add({'url': iTunesImage, 'source': 'iTunes'});
+      }
+
+      final deezerImage =
+          await onlineService.searchDeezerAlbumImage(album, artistName: artist);
+      if (deezerImage != null &&
+          deezerImage.isNotEmpty &&
+          deezerImage != iTunesImage) {
+        results.add({'url': deezerImage, 'source': 'Deezer'});
+      }
+    } catch (_) {}
+
+    if (!context.mounted) return;
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Select Artwork for $album'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const AppIcon(AppIcons.musicNote),
+                title: const Text('Use Song Cover Grid'),
+                subtitle: const Text('Remove custom artwork'),
+                onTap: () => Navigator.pop(dialogContext, 'reset'),
+              ),
+              if (results.isNotEmpty) const Divider(),
+              ...results.map((res) => ListTile(
+                    leading: Image.network(
+                      res['url']!,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const AppIcon(AppIcons.image),
+                    ),
+                    title: Text('Artwork from ${res['source']}'),
+                    subtitle: Text(res['url']!,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.pop(dialogContext, res['url']),
+                  )),
+              if (results.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No online artwork options found'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selected == null) return;
+
+    if (selected == 'reset') {
+      await ref
+          .read(artistAlbumArtProvider.notifier)
+          .removeAlbumArt(compositeKey);
+      if (context.mounted) appSnack(context, 'Reset to song cover grid');
+      return;
+    }
+
+    if (!context.mounted) return;
+    appSnack(context, 'Downloading artwork...');
+    final localPath = await onlineService.downloadAndCacheCover(
+      selected,
+      'album_$compositeKey',
+    );
+
+    if (localPath != null && context.mounted) {
+      await ref.read(artistAlbumArtProvider.notifier).setAlbumArt(
+            albumKey: compositeKey,
+            albumName: album,
+            artistName: artist,
+            localPath: localPath,
+            imageUrl: selected,
+            source: 'online',
+          );
+      if (!context.mounted) return;
+      appSnack(context, 'Updated artwork for $album');
+    } else if (context.mounted) {
+      appSnack(context, 'Failed to download artwork');
+    }
   }
 
   List<String> _sortAlbums(Map<String, List<Song>> albumMap) {
@@ -173,17 +355,17 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
           return a.toLowerCase().compareTo(b.toLowerCase());
         });
         break;
+      case 'name':
+        albums.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        break;
       case 'songs':
+      default:
         albums.sort((a, b) {
           final countCompare =
               albumMap[b]!.length.compareTo(albumMap[a]!.length);
           if (countCompare != 0) return countCompare;
           return a.toLowerCase().compareTo(b.toLowerCase());
         });
-        break;
-      case 'name':
-      default:
-        albums.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
         break;
     }
 
@@ -197,9 +379,9 @@ class _AlbumsScreenState extends ConsumerState<AlbumsScreen> {
       builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _sortAction(sheetContext, 'songs', AppIcons.musicNote, 'Most Songs'),
           _sortAction(sheetContext, 'name', AppIcons.sort, 'Name (A-Z)'),
           _sortAction(sheetContext, 'artist', AppIcons.person, 'Artist'),
-          _sortAction(sheetContext, 'songs', AppIcons.musicNote, 'Most Songs'),
         ],
       ),
     );

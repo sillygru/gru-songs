@@ -290,6 +290,26 @@ class DatabaseService {
           FOREIGN KEY (snapshot_id) REFERENCES queue_snapshot (id) ON DELETE CASCADE
         )
     ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS artist_art (
+          artist_name TEXT PRIMARY KEY,
+          image_url TEXT,
+          local_path TEXT,
+          source TEXT,
+          updated_at REAL
+        )
+    ''');
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS album_art (
+          album_key TEXT PRIMARY KEY,
+          album_name TEXT,
+          artist_name TEXT,
+          image_url TEXT,
+          local_path TEXT,
+          source TEXT,
+          updated_at REAL
+        )
+    ''');
 
     // 2. Ensure specific columns exist (for future-proofing and existing installs)
     await _addColumnIfNotExists(
@@ -1769,8 +1789,10 @@ class DatabaseService {
     ''');
     for (final row in results) {
       final groupId = row['group_id'] as String;
-      await txn.delete('merged_song', where: 'group_id = ?', whereArgs: [groupId]);
-      await txn.delete('merged_song_group', where: 'id = ?', whereArgs: [groupId]);
+      await txn
+          .delete('merged_song', where: 'group_id = ?', whereArgs: [groupId]);
+      await txn
+          .delete('merged_song_group', where: 'id = ?', whereArgs: [groupId]);
     }
     await txn.delete('merged_song_group',
         where:
@@ -2647,6 +2669,22 @@ class DatabaseService {
       id TEXT PRIMARY KEY,
       removed_at REAL
     )''',
+    'artist_art': '''CREATE TABLE IF NOT EXISTS artist_art (
+      artist_name TEXT PRIMARY KEY,
+      image_url TEXT,
+      local_path TEXT,
+      source TEXT,
+      updated_at REAL
+    )''',
+    'album_art': '''CREATE TABLE IF NOT EXISTS album_art (
+      album_key TEXT PRIMARY KEY,
+      album_name TEXT,
+      artist_name TEXT,
+      image_url TEXT,
+      local_path TEXT,
+      source TEXT,
+      updated_at REAL
+    )''',
   };
 
   /// Expected columns per table for ALTER TABLE ADD COLUMN operations.
@@ -2716,6 +2754,22 @@ class DatabaseService {
     'recommendation_removal': {
       'id': 'TEXT',
       'removed_at': 'REAL',
+    },
+    'artist_art': {
+      'artist_name': 'TEXT',
+      'image_url': 'TEXT',
+      'local_path': 'TEXT',
+      'source': 'TEXT',
+      'updated_at': 'REAL',
+    },
+    'album_art': {
+      'album_key': 'TEXT',
+      'album_name': 'TEXT',
+      'artist_name': 'TEXT',
+      'image_url': 'TEXT',
+      'local_path': 'TEXT',
+      'source': 'TEXT',
+      'updated_at': 'REAL',
     },
   };
 
@@ -2986,6 +3040,7 @@ class DatabaseService {
     if (categories.contains(ImportDataCategory.mergedGroups)) {
       await _importMergedGroups(importedDataDb, additive);
     }
+    await _importArtistAlbumArt(importedDataDb, additive);
   }
 
   Future<void> _importPlayHistory(Database importedDb, bool additive) async {
@@ -3160,6 +3215,139 @@ class DatabaseService {
         }
       }
     });
+  }
+
+  Future<void> _importArtistAlbumArt(Database importedDb, bool additive) async {
+    await _userDataDatabase!.transaction((txn) async {
+      if (!additive) {
+        await txn.delete('artist_art');
+        await txn.delete('album_art');
+      }
+
+      final hasArtistArt = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='artist_art'");
+      if (hasArtistArt.isNotEmpty) {
+        final rows = await importedDb.query('artist_art');
+        for (final r in rows) {
+          await txn.insert('artist_art', r,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      final hasAlbumArt = await importedDb.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='album_art'");
+      if (hasAlbumArt.isNotEmpty) {
+        final rows = await importedDb.query('album_art');
+        for (final r in rows) {
+          await txn.insert('album_art', r,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+    });
+  }
+
+  // --- Artist & Album Art Cache Methods ---
+
+  Future<Map<String, String>> getArtistArtMap() async {
+    await _ensureInitialized();
+    final List<Map<String, dynamic>> maps =
+        await _userDataDatabase!.query('artist_art');
+    final result = <String, String>{};
+    for (final map in maps) {
+      final name = map['artist_name'] as String?;
+      final path = map['local_path'] as String?;
+      if (name != null && path != null && name.isNotEmpty && path.isNotEmpty) {
+        result[name.toLowerCase()] = path;
+      }
+    }
+    return result;
+  }
+
+  Future<void> saveArtistArt({
+    required String artistName,
+    required String localPath,
+    String? imageUrl,
+    String? source,
+  }) async {
+    await _ensureInitialized();
+    await _userDataDatabase!.insert(
+      'artist_art',
+      {
+        'artist_name': artistName,
+        'image_url': imageUrl,
+        'local_path': localPath,
+        'source': source,
+        'updated_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteArtistArt(String artistName) async {
+    await _ensureInitialized();
+    await _userDataDatabase!.delete(
+      'artist_art',
+      where: 'LOWER(artist_name) = ?',
+      whereArgs: [artistName.toLowerCase()],
+    );
+  }
+
+  Future<void> clearArtistArt() async {
+    await _ensureInitialized();
+    await _userDataDatabase!.delete('artist_art');
+  }
+
+  Future<Map<String, String>> getAlbumArtMap() async {
+    await _ensureInitialized();
+    final List<Map<String, dynamic>> maps =
+        await _userDataDatabase!.query('album_art');
+    final result = <String, String>{};
+    for (final map in maps) {
+      final key = map['album_key'] as String?;
+      final path = map['local_path'] as String?;
+      if (key != null && path != null && key.isNotEmpty && path.isNotEmpty) {
+        result[key.toLowerCase()] = path;
+      }
+    }
+    return result;
+  }
+
+  Future<void> saveAlbumArt({
+    required String albumKey,
+    required String albumName,
+    String? artistName,
+    required String localPath,
+    String? imageUrl,
+    String? source,
+  }) async {
+    await _ensureInitialized();
+    await _userDataDatabase!.insert(
+      'album_art',
+      {
+        'album_key': albumKey,
+        'album_name': albumName,
+        'artist_name': artistName,
+        'image_url': imageUrl,
+        'local_path': localPath,
+        'source': source,
+        'updated_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteAlbumArt(String albumKey) async {
+    await _ensureInitialized();
+    await _userDataDatabase!.delete(
+      'album_art',
+      where: 'LOWER(album_key) = ?',
+      whereArgs: [albumKey.toLowerCase()],
+    );
+  }
+
+  Future<void> clearAlbumArt() async {
+    await _ensureInitialized();
+    await _userDataDatabase!.delete('album_art');
   }
 
   Future<void> close() async {

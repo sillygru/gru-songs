@@ -1477,16 +1477,20 @@ final libraryRootPathProvider = Provider<AsyncValue<String?>>((ref) {
 
 final artistListProvider = FutureProvider<List<String>>((ref) async {
   final songsAsync = ref.watch(songsProvider);
-  if (songsAsync.hasValue) {
-    return DatabaseService.instance.getArtists();
+  final songs = songsAsync.value;
+  if (songs != null && songs.isNotEmpty) {
+    final artistMap = LibraryLogic.groupByArtist(songs);
+    return LibraryLogic.sortArtistsByTrackCount(artistMap);
   }
   return [];
 });
 
 final albumListProvider = FutureProvider<List<String>>((ref) async {
   final songsAsync = ref.watch(songsProvider);
-  if (songsAsync.hasValue) {
-    return DatabaseService.instance.getAlbums();
+  final songs = songsAsync.value;
+  if (songs != null && songs.isNotEmpty) {
+    final albumMap = LibraryLogic.groupByAlbum(songs);
+    return LibraryLogic.sortAlbumsByTrackCount(albumMap);
   }
   return [];
 });

@@ -1,36 +1,49 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/song.dart';
+import '../../providers/artist_album_art_provider.dart';
 import '../../providers/providers.dart';
+import '../../providers/selection_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/library_logic.dart';
-import '../widgets/song_list_item.dart';
-import '../widgets/sort_menu.dart';
-import '../widgets/duration_display.dart';
-import '../widgets/bulk_selection_bar.dart';
-import '../widgets/folder_grid_image.dart';
-import '../../providers/selection_provider.dart';
-import 'select_songs_screen.dart';
-import '../tokens/app_tokens.dart';
+import '../../services/online_metadata_service.dart';
+import '../../services/passive_art_fetcher_service.dart';
+import '../components/ambient_scaffold.dart';
 import '../components/app_dialog.dart';
+import '../components/app_feedback.dart';
+import '../components/app_icon.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_sheet.dart';
-import '../components/app_feedback.dart';
 import '../routes/app_page_route.dart';
-import '../components/app_icon.dart';
 import '../tokens/app_icons.dart';
+import '../tokens/app_tokens.dart';
+import '../widgets/bulk_selection_bar.dart';
+import '../widgets/duration_display.dart';
+import '../widgets/folder_grid_image.dart';
+import '../widgets/song_list_item.dart';
+import '../widgets/sort_menu.dart';
+import '../components/song_actions.dart';
+import 'select_songs_screen.dart';
 
 class SongListScreen extends ConsumerWidget {
   final String title;
   final List<Song> songs;
   final String? playlistId;
+  final bool isArtist;
+  final bool isAlbum;
+  final String? artistName;
+  final String? albumName;
 
   const SongListScreen({
     super.key,
     required this.title,
     required this.songs,
     this.playlistId,
+    this.isArtist = false,
+    this.isAlbum = false,
+    this.artistName,
+    this.albumName,
   });
 
   @override
@@ -53,7 +66,70 @@ class SongListScreen extends ConsumerWidget {
       lastPlayedTimestamps: lastPlayedTimestamps,
     );
 
-    final isPlaylist = playlistId != null;
+    final bool canFetchCover = playlistId == null;
+
+    final bool effectiveIsArtist = isArtist ||
+        (playlistId == null &&
+            !isAlbum &&
+            sortedSongs.isNotEmpty &&
+            sortedSongs.any((s) =>
+                s.artist.toLowerCase().contains(title.toLowerCase()) ||
+                title.toLowerCase().contains(s.artist.toLowerCase())));
+
+    final bool effectiveIsAlbum = isAlbum ||
+        (playlistId == null &&
+            !effectiveIsArtist &&
+            sortedSongs.isNotEmpty &&
+            sortedSongs.any((s) =>
+                s.album.toLowerCase().contains(title.toLowerCase()) ||
+                title.toLowerCase().contains(s.album.toLowerCase())));
+
+    final String effectiveArtistName = artistName ??
+        (effectiveIsArtist
+            ? title
+            : (sortedSongs.isNotEmpty ? sortedSongs.first.artist : ''));
+
+    final String effectiveAlbumName = albumName ??
+        (effectiveIsAlbum
+            ? title
+            : (sortedSongs.isNotEmpty ? sortedSongs.first.album : title));
+
+    final String? artworkPath = effectiveIsArtist
+        ? ref.watch(artistAlbumArtProvider).getArtistArt(effectiveArtistName)
+        : (effectiveIsAlbum
+            ? ref.watch(artistAlbumArtProvider).getAlbumArt(effectiveAlbumName,
+                artistName: effectiveArtistName)
+            : null);
+
+    final bool hasCustomArtwork =
+        artworkPath != null && File(artworkPath).existsSync();
+
+    if (effectiveIsArtist && !hasCustomArtwork) {
+      PassiveArtFetcherService.instance
+          .fetchArtistArtIfNeeded(effectiveArtistName);
+    } else if (effectiveIsAlbum && !hasCustomArtwork) {
+      PassiveArtFetcherService.instance
+          .fetchAlbumArtIfNeeded(effectiveAlbumName, effectiveArtistName);
+    }
+
+    void handleFetchCover() {
+      if (effectiveIsArtist) {
+        _showChangeArtistArtworkDialog(
+            context, ref, effectiveArtistName, sortedSongs);
+      } else if (effectiveIsAlbum) {
+        _showChangeAlbumArtworkDialog(
+            context, ref, effectiveAlbumName, effectiveArtistName, sortedSongs);
+      } else {
+        _showChangeArtistArtworkDialog(context, ref, title, sortedSongs);
+      }
+    }
+
+    final bool isUnknownArtistOrAlbum = (effectiveIsArtist &&
+            OnlineMetadataService.cleanTag(effectiveArtistName) == null) ||
+        (effectiveIsAlbum &&
+            OnlineMetadataService.cleanTag(effectiveAlbumName) == null) ||
+        title.toLowerCase() == 'unknown artist' ||
+        title.toLowerCase() == 'unknown album';
 
     return PopScope(
       canPop: !selectionState.isSelectionMode,
@@ -73,13 +149,33 @@ class SongListScreen extends ConsumerWidget {
               snap: true,
               actions: [
                 const SortMenu(),
+                if (isUnknownArtistOrAlbum)
+                  IconButton(
+                    icon: const AppIcon(AppIcons.manageSearch),
+                    onPressed: () => songActionFetchMissingMetadataForList(
+                        context, ref, sortedSongs),
+                    tooltip: 'Fetch Missing Metadata',
+                  )
+                else if (canFetchCover)
+                  IconButton(
+                    icon: const AppIcon(AppIcons.imageSearch),
+                    onPressed: handleFetchCover,
+                    tooltip: effectiveIsArtist
+                        ? 'Fetch Artist Cover Online'
+                        : (effectiveIsAlbum
+                            ? 'Fetch Album Cover Online'
+                            : 'Fetch Cover Online'),
+                  ),
                 if (playlistId != null)
                   IconButton(
                     icon: const AppIcon(AppIcons.moreVert),
                     onPressed: () => _showPlaylistOptions(context, ref),
                     tooltip: 'Playlist Options',
                   ),
-                if (playlistId == null && sortedSongs.length >= 2)
+                if (playlistId == null &&
+                    !effectiveIsArtist &&
+                    !effectiveIsAlbum &&
+                    sortedSongs.length >= 2)
                   IconButton(
                     icon: const AppIcon(AppIcons.merge),
                     onPressed: () async {
@@ -121,22 +217,33 @@ class SongListScreen extends ConsumerWidget {
                 child: Column(
                   children: [
                     const SizedBox(height: 16),
-                    Center(
-                      child: SizedBox(
-                        width: 220,
-                        height: 220,
-                        child: ClipRRect(
-                          borderRadius: AppTokens.brMd,
-                          child: FolderGridImage(
-                            songs: sortedSongs,
-                            size: 220,
+                    GestureDetector(
+                      onTap: canFetchCover ? handleFetchCover : null,
+                      onLongPress: canFetchCover ? handleFetchCover : null,
+                      child: Center(
+                        child: SizedBox(
+                          width: 220,
+                          height: 220,
+                          child: ClipRRect(
+                            borderRadius: AppTokens.brMd,
+                            child: hasCustomArtwork
+                                ? Image.file(
+                                    File(artworkPath),
+                                    width: 220,
+                                    height: 220,
+                                    fit: BoxFit.cover,
+                                  )
+                                : FolderGridImage(
+                                    songs: sortedSongs,
+                                    size: 220,
+                                  ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     GestureDetector(
-                      onLongPress: isPlaylist
+                      onLongPress: playlistId != null
                           ? () => _showRenameDialog(context, ref)
                           : null,
                       child: Text(
@@ -198,6 +305,23 @@ class SongListScreen extends ConsumerWidget {
                         ),
                       ],
                     ),
+                    if (isUnknownArtistOrAlbum) ...[
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: sortedSongs.isNotEmpty
+                            ? () => songActionFetchMissingMetadataForList(
+                                context, ref, sortedSongs)
+                            : null,
+                        icon: const AppIcon(AppIcons.manageSearch),
+                        label: const Text('Fetch Missing Metadata'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -300,6 +424,220 @@ class SongListScreen extends ConsumerWidget {
     if (confirmed == true && context.mounted) {
       ref.read(userDataProvider.notifier).deletePlaylist(playlistId!);
       Navigator.pop(context);
+    }
+  }
+
+  Future<void> _showChangeArtistArtworkDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String artist,
+    List<Song> songs,
+  ) async {
+    appSnack(context, 'Searching online for $artist artwork...');
+    final onlineService = OnlineMetadataService.instance;
+
+    final results = <Map<String, String>>[];
+
+    try {
+      final iTunesImage = await onlineService.searchITunesArtistImage(artist);
+      if (iTunesImage != null && iTunesImage.isNotEmpty) {
+        results.add({'url': iTunesImage, 'source': 'iTunes'});
+      }
+
+      final deezerImage = await onlineService.searchDeezerArtistImage(artist);
+      if (deezerImage != null &&
+          deezerImage.isNotEmpty &&
+          deezerImage != iTunesImage) {
+        results.add({'url': deezerImage, 'source': 'Deezer'});
+      }
+    } catch (_) {}
+
+    if (!context.mounted) return;
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Select Artwork for $artist'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const AppIcon(AppIcons.musicNote),
+                title: const Text('Use Song Cover Grid'),
+                subtitle: const Text('Remove custom artwork'),
+                onTap: () => Navigator.pop(dialogContext, 'reset'),
+              ),
+              if (results.isNotEmpty) const Divider(),
+              ...results.map((res) => ListTile(
+                    leading: Image.network(
+                      res['url']!,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const AppIcon(AppIcons.image),
+                    ),
+                    title: Text('Artwork from ${res['source']}'),
+                    subtitle: Text(res['url']!,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.pop(dialogContext, res['url']),
+                  )),
+              if (results.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No online artwork options found'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selected == null) return;
+
+    if (selected == 'reset') {
+      await ref.read(artistAlbumArtProvider.notifier).removeArtistArt(artist);
+      if (context.mounted) appSnack(context, 'Reset to song cover grid');
+      return;
+    }
+
+    if (context.mounted) appSnack(context, 'Downloading artwork...');
+    final localPath = await onlineService.downloadAndCacheCover(
+      selected,
+      'artist_$artist',
+    );
+
+    if (localPath != null && context.mounted) {
+      await ref.read(artistAlbumArtProvider.notifier).setArtistArt(
+            artistName: artist,
+            localPath: localPath,
+            imageUrl: selected,
+            source: 'online',
+          );
+      if (context.mounted) {
+        appSnack(context, 'Updated artwork for $artist');
+      }
+    } else if (context.mounted) {
+      appSnack(context, 'Failed to download artwork');
+    }
+  }
+
+  Future<void> _showChangeAlbumArtworkDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String album,
+    String artist,
+    List<Song> songs,
+  ) async {
+    appSnack(context, 'Searching online for $album artwork...');
+    final onlineService = OnlineMetadataService.instance;
+    final compositeKey = artist.isNotEmpty ? '$artist|$album' : album;
+
+    final results = <Map<String, String>>[];
+
+    try {
+      final iTunesImage =
+          await onlineService.searchITunesAlbumImage(album, artistName: artist);
+      if (iTunesImage != null && iTunesImage.isNotEmpty) {
+        results.add({'url': iTunesImage, 'source': 'iTunes'});
+      }
+
+      final deezerImage =
+          await onlineService.searchDeezerAlbumImage(album, artistName: artist);
+      if (deezerImage != null &&
+          deezerImage.isNotEmpty &&
+          deezerImage != iTunesImage) {
+        results.add({'url': deezerImage, 'source': 'Deezer'});
+      }
+    } catch (_) {}
+
+    if (!context.mounted) return;
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Select Artwork for $album'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const AppIcon(AppIcons.musicNote),
+                title: const Text('Use Song Cover Grid'),
+                subtitle: const Text('Remove custom artwork'),
+                onTap: () => Navigator.pop(dialogContext, 'reset'),
+              ),
+              if (results.isNotEmpty) const Divider(),
+              ...results.map((res) => ListTile(
+                    leading: Image.network(
+                      res['url']!,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const AppIcon(AppIcons.image),
+                    ),
+                    title: Text('Artwork from ${res['source']}'),
+                    subtitle: Text(res['url']!,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.pop(dialogContext, res['url']),
+                  )),
+              if (results.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No online artwork options found'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selected == null) return;
+
+    if (selected == 'reset') {
+      await ref
+          .read(artistAlbumArtProvider.notifier)
+          .removeAlbumArt(compositeKey);
+      if (context.mounted) appSnack(context, 'Reset to song cover grid');
+      return;
+    }
+
+    if (context.mounted) appSnack(context, 'Downloading artwork...');
+    final localPath = await onlineService.downloadAndCacheCover(
+      selected,
+      'album_$compositeKey',
+    );
+
+    if (localPath != null && context.mounted) {
+      await ref.read(artistAlbumArtProvider.notifier).setAlbumArt(
+            albumKey: compositeKey,
+            albumName: album,
+            artistName: artist.isNotEmpty ? artist : null,
+            localPath: localPath,
+            imageUrl: selected,
+            source: 'online',
+          );
+      if (context.mounted) {
+        appSnack(context, 'Updated artwork for $album');
+      }
+    } else if (context.mounted) {
+      appSnack(context, 'Failed to download artwork');
     }
   }
 }

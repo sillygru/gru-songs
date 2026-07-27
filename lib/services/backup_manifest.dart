@@ -14,6 +14,8 @@ enum BackupContentType {
   waveformCache,
   colorCache,
   lyricsCache,
+  artistArtCache,
+  albumArtCache,
 }
 
 /// One piece of cached content: where it lives on disk and where it is stored
@@ -117,6 +119,18 @@ Future<List<BackupArtifact>> cacheArtifacts() async {
       type: BackupContentType.lyricsCache,
       archivePath: 'cache/lyrics',
       sourcePath: p.join(v3Dir, _lyricsCacheDir),
+      isDirectory: true,
+    ),
+    BackupArtifact(
+      type: BackupContentType.artistArtCache,
+      archivePath: 'cache/artist_art',
+      sourcePath: p.join(supportDir.path, 'extracted_covers'),
+      isDirectory: true,
+    ),
+    BackupArtifact(
+      type: BackupContentType.albumArtCache,
+      archivePath: 'cache/album_art',
+      sourcePath: p.join(supportDir.path, 'extracted_covers'),
       isDirectory: true,
     ),
   ];

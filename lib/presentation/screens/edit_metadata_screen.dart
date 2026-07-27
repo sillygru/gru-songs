@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import '../components/ambient_scaffold.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
+import '../../domain/models/online_search_result.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../services/online_metadata_service.dart';
+import '../components/ambient_scaffold.dart';
 import '../widgets/album_art_image.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_feedback.dart';
@@ -396,6 +398,175 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
     }
   }
 
+  Future<void> _fetchCoverOnline(Song currentSong) async {
+    setState(() => _isSaving = true);
+    try {
+      final results =
+          await OnlineMetadataService.instance.searchParallelForSong(
+        currentSong,
+        titleOverride: _titleController.text,
+        artistOverride: _artistController.text,
+      );
+
+      final coverResults = results
+          .where((r) => r.coverUrl != null && r.coverUrl!.isNotEmpty)
+          .toList();
+
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+
+      if (coverResults.isEmpty) {
+        appSnack(context, "No online cover art found");
+        return;
+      }
+
+      final chosen = await showDialog<OnlineSearchResult>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text("Select Cover Art"),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 320,
+            child: ListView.builder(
+              itemCount: coverResults.length,
+              itemBuilder: (context, index) {
+                final item = coverResults[index];
+                return ListTile(
+                  leading: Image.network(
+                    item.coverUrl!,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const AppIcon(AppIcons.image),
+                  ),
+                  title: Text('${item.title} - ${item.artist}'),
+                  subtitle: Text('Source: ${item.source}'),
+                  onTap: () => Navigator.pop(dialogContext, item),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, null),
+              child: const Text("Cancel"),
+            ),
+          ],
+        ),
+      );
+
+      if (chosen == null || chosen.coverUrl == null) return;
+
+      setState(() => _isSaving = true);
+      final localPath =
+          await OnlineMetadataService.instance.downloadAndCacheCover(
+        chosen.coverUrl!,
+        currentSong.filename,
+      );
+      if (localPath != null && mounted) {
+        await ref
+            .read(songsProvider.notifier)
+            .updateSongCover(currentSong, localPath);
+        if (mounted) appSnack(context, "Cover updated from ${chosen.source}");
+      }
+    } catch (e) {
+      if (mounted) appSnack(context, "Error fetching cover: $e");
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _fetchMetadataOnline(Song currentSong) async {
+    setState(() => _isSaving = true);
+    try {
+      final results =
+          await OnlineMetadataService.instance.searchParallelForSong(
+        currentSong,
+        titleOverride: _titleController.text,
+        artistOverride: _artistController.text,
+      );
+
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+
+      if (results.isEmpty) {
+        appSnack(context, "No matching metadata found online");
+        return;
+      }
+
+      final chosen = await showDialog<OnlineSearchResult>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text("Select Online Match"),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 320,
+            child: ListView.builder(
+              itemCount: results.length,
+              itemBuilder: (context, index) {
+                final item = results[index];
+                return ListTile(
+                  leading: item.coverUrl != null
+                      ? Image.network(
+                          item.coverUrl!,
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              const AppIcon(AppIcons.musicNote),
+                        )
+                      : const AppIcon(AppIcons.musicNote),
+                  title: Text(item.title),
+                  subtitle:
+                      Text('${item.artist} · ${item.album} (${item.source})'),
+                  onTap: () => Navigator.pop(dialogContext, item),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, null),
+              child: const Text("Cancel"),
+            ),
+          ],
+        ),
+      );
+
+      if (chosen == null) return;
+
+      setState(() {
+        _titleController.text = chosen.title;
+        _artistController.text = chosen.artist;
+        _albumController.text = chosen.album;
+      });
+
+      if (chosen.coverUrl != null && chosen.coverUrl!.isNotEmpty) {
+        setState(() => _isSaving = true);
+        final localPath =
+            await OnlineMetadataService.instance.downloadAndCacheCover(
+          chosen.coverUrl!,
+          currentSong.filename,
+        );
+        if (localPath != null && mounted) {
+          await ref
+              .read(songsProvider.notifier)
+              .updateSongCover(currentSong, localPath);
+        }
+      }
+
+      if (mounted) {
+        appSnack(context, "Metadata & cover loaded from ${chosen.source}");
+      }
+    } catch (e) {
+      if (mounted) {
+        appSnack(context, "Error fetching metadata: $e");
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Watch for updates to the song
@@ -450,6 +621,13 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                         onPressed: () => _pickImage(currentSong),
                         icon: const AppIcon(AppIcons.image),
                         label: const Text("Change Cover"),
+                        style: AppTokens.tonalButton,
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: () => _fetchCoverOnline(currentSong),
+                        icon: const AppIcon(AppIcons.travelExplore),
+                        label: const Text("Fetch Cover Online"),
                         style: AppTokens.tonalButton,
                       ),
                       const SizedBox(height: 8),
@@ -518,7 +696,17 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle("Song Metadata"),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSectionTitle("Song Metadata"),
+                TextButton.icon(
+                  onPressed: () => _fetchMetadataOnline(currentSong),
+                  icon: const AppIcon(AppIcons.travelExplore, size: 16),
+                  label: const Text("Fetch Online"),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _titleController,

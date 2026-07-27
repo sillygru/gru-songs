@@ -295,27 +295,73 @@ class LibraryLogic {
     );
   }
 
+  /// Splits a multi-artist string into individual artist names.
+  /// Handles formats like:
+  /// - "Artist 1 & Artist 2"
+  /// - "Artist 1 ft. Artist 2"
+  /// - "Artist 1 feat. Artist 2"
+  /// - "Artist 1, Artist 2 and Artist 3"
+  /// - "Artist 1 / Artist 2"
+  /// - "Artist 1 x Artist 2"
+  static List<String> splitArtistNames(String artistField) {
+    if (artistField.trim().isEmpty) return [];
+
+    final splitRegex = RegExp(
+      r'\s*(?:,|&|/|;|\b(?:and|featuring|x)\b|\b(?:ft|feat|vs)\b\.?)\s*',
+      caseSensitive: false,
+    );
+
+    final parts = artistField
+        .split(splitRegex)
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty && artistField.trim().isNotEmpty) {
+      return [artistField.trim()];
+    }
+
+    return parts;
+  }
+
   static Map<String, List<Song>> groupByArtist(List<Song> songs) {
     final Map<String, List<Song>> artistMap = {};
-    for (var song in songs) {
-      final artist = song.artist.isEmpty ? 'Unknown Artist' : song.artist;
-      artistMap.putIfAbsent(artist, () => []).add(song);
+    final Map<String, String> canonicalNames = {};
+
+    for (final song in songs) {
+      final rawArtist = song.artist.trim();
+      final parsedArtists = splitArtistNames(rawArtist);
+      final artists =
+          parsedArtists.isEmpty ? ['Unknown Artist'] : parsedArtists;
+
+      for (final artist in artists) {
+        final lowerKey = artist.toLowerCase();
+        final canonicalName =
+            canonicalNames.putIfAbsent(lowerKey, () => artist);
+
+        final list = artistMap.putIfAbsent(canonicalName, () => []);
+        if (!list.contains(song)) {
+          list.add(song);
+        }
+      }
     }
-    for (var artist in artistMap.keys) {
-      final songs = artistMap[artist]!;
+
+    for (final artist in artistMap.keys) {
+      final songsList = artistMap[artist]!;
       final lowerAlbum = <String, String>{};
       final lowerTitle = <String, String>{};
-      for (final s in songs) {
+      for (final s in songsList) {
         lowerAlbum[s.filename] = s.album.toLowerCase();
         lowerTitle[s.filename] = s.title.toLowerCase();
       }
-      songs.sort((a, b) {
+      songsList.sort((a, b) {
         int albumCompare =
             lowerAlbum[a.filename]!.compareTo(lowerAlbum[b.filename]!);
         if (albumCompare != 0) return albumCompare;
         return lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!);
       });
     }
+
     return artistMap;
   }
 
@@ -335,5 +381,30 @@ class LibraryLogic {
           (a, b) => lowerTitle[a.filename]!.compareTo(lowerTitle[b.filename]!));
     }
     return albumMap;
+  }
+
+  /// Returns sorted album names from [albumMap] with most tracks first.
+  static List<String> sortAlbumsByTrackCount(Map<String, List<Song>> albumMap) {
+    final keys = albumMap.keys.toList();
+    keys.sort((a, b) {
+      final countCompare =
+          (albumMap[b]?.length ?? 0).compareTo(albumMap[a]?.length ?? 0);
+      if (countCompare != 0) return countCompare;
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
+    return keys;
+  }
+
+  /// Returns sorted artist names from [artistMap] with most tracks first.
+  static List<String> sortArtistsByTrackCount(
+      Map<String, List<Song>> artistMap) {
+    final keys = artistMap.keys.toList();
+    keys.sort((a, b) {
+      final countCompare =
+          (artistMap[b]?.length ?? 0).compareTo(artistMap[a]?.length ?? 0);
+      if (countCompare != 0) return countCompare;
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
+    return keys;
   }
 }

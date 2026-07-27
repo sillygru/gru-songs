@@ -67,7 +67,8 @@ class SongMergeFinder {
       );
     }
 
-    candidates.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    candidates
+        .sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 
     return candidates;
   }
@@ -104,7 +105,8 @@ class SongMergeFinder {
     var cleaned = artist.toLowerCase();
 
     // Remove feat/ft details from artist field if any
-    cleaned = cleaned.replaceAll(RegExp(r'(feat\.|ft\.).*$', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(
+        RegExp(r'(feat\.|ft\.).*$', caseSensitive: false), '');
     cleaned = cleaned.replaceAll(RegExp(r'[^a-z0-9\s]'), '');
     cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
 

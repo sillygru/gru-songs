@@ -1,18 +1,22 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../data/repositories/song_repository.dart';
+import '../domain/models/online_search_result.dart';
+import '../domain/services/search_service.dart';
 import '../models/song.dart';
+import '../providers/artist_album_art_provider.dart';
+import '../services/cache_service.dart';
+import '../services/color_extraction_service.dart';
 import '../services/cover_refresh_service.dart';
+import '../services/database_optimizer_service.dart';
 import '../services/database_service.dart';
+import '../services/ffmpeg_service.dart';
 import '../services/library_repair_service.dart';
+import '../services/online_metadata_service.dart';
+import '../services/passive_art_fetcher_service.dart';
 import '../services/scanner_service.dart';
 import '../services/waveform_service.dart';
-import '../services/color_extraction_service.dart';
-import '../services/cache_service.dart';
-import '../services/ffmpeg_service.dart';
-import '../services/database_optimizer_service.dart';
-import '../domain/services/search_service.dart';
-import '../data/repositories/song_repository.dart';
 import 'providers.dart';
 
 /// Represents the state of an indexer operation
@@ -214,6 +218,28 @@ class IndexerNotifier extends Notifier<IndexerState> {
         isBlocking: false,
         requiresRestart: false,
       ),
+      'fetch_missing_covers': const IndexerOperation(
+        id: 'fetch_missing_covers',
+        name: 'Fetch Missing Covers Online',
+        description: 'Search Deezer & iTunes for missing track covers',
+        isBlocking: false,
+        requiresRestart: false,
+      ),
+      'fetch_missing_metadata': const IndexerOperation(
+        id: 'fetch_missing_metadata',
+        name: 'Fetch Missing Metadata Online',
+        description:
+            'Search Deezer & iTunes for missing track metadata (title, artist, album)',
+        isBlocking: false,
+        requiresRestart: false,
+      ),
+      'rebuild_artist_album_art': const IndexerOperation(
+        id: 'rebuild_artist_album_art',
+        name: 'Rebuild Artist & Album Art Caches',
+        description: 'Fetch and cache images for all artists and albums',
+        isBlocking: false,
+        requiresRestart: false,
+      ),
     };
 
     return IndexerState(operations: operations, isInitialized: true);
@@ -230,6 +256,16 @@ class IndexerNotifier extends Notifier<IndexerState> {
     final colorCount = await _getColorCacheCount(songs);
     final blurredCount = await _getBlurredCacheCount(songs);
     final searchCount = await _getSearchIndexCount();
+
+    final missingCoversCount =
+        songs.where((s) => s.coverUrl == null || s.coverUrl!.isEmpty).length;
+    final missingMetadataCount = songs
+        .where((s) =>
+            OnlineMetadataService.cleanTag(s.artist) == null ||
+            OnlineMetadataService.cleanTag(s.album) == null)
+        .length;
+
+    final artCounts = await _getArtistAlbumArtCount(songs);
 
     final updatedOperations =
         Map<String, IndexerOperation>.from(state.operations);
@@ -287,6 +323,28 @@ class IndexerNotifier extends Notifier<IndexerState> {
       processedCount: 0,
       totalCount: 6, // 6 recommendation types
       targetCount: 6,
+    );
+
+    updatedOperations['fetch_missing_covers'] =
+        updatedOperations['fetch_missing_covers']!.copyWith(
+      processedCount: (totalSongs - missingCoversCount).clamp(0, totalSongs),
+      totalCount: totalSongs,
+      targetCount: missingCoversCount,
+    );
+
+    updatedOperations['fetch_missing_metadata'] =
+        updatedOperations['fetch_missing_metadata']!.copyWith(
+      processedCount: (totalSongs - missingMetadataCount).clamp(0, totalSongs),
+      totalCount: totalSongs,
+      targetCount: missingMetadataCount,
+    );
+
+    updatedOperations['rebuild_artist_album_art'] =
+        updatedOperations['rebuild_artist_album_art']!.copyWith(
+      processedCount: artCounts['cached'],
+      totalCount: artCounts['total'],
+      targetCount: (artCounts['total']! - artCounts['cached']!)
+          .clamp(0, artCounts['total']!),
     );
 
     state = state.copyWith(operations: updatedOperations);
@@ -509,6 +567,12 @@ class IndexerNotifier extends Notifier<IndexerState> {
         return await _rebuildBlurredCache(songs, force: force);
       case 'rebuild_recommendations':
         return await _rebuildRecommendations();
+      case 'fetch_missing_covers':
+        return await _fetchMissingCovers(songs, force: force);
+      case 'fetch_missing_metadata':
+        return await _fetchMissingMetadata(songs, force: force);
+      case 'rebuild_artist_album_art':
+        return await _rebuildArtistAlbumArt(songs, force: force);
       default:
         return const IndexerResult(
             success: false, message: 'Unknown operation');
@@ -1058,6 +1122,204 @@ class IndexerNotifier extends Notifier<IndexerState> {
       message:
           'Generated $cached blurred backgrounds${skipped > 0 ? ', skipped $skipped' : ''}${failedItems.isNotEmpty ? ', ${failedItems.length} failed' : ''}',
       warnings: failedItems.isNotEmpty ? failedItems : null,
+    );
+  }
+
+  Future<Map<String, int>> _getArtistAlbumArtCount(List<Song> songs) async {
+    try {
+      final artState = ref.read(artistAlbumArtProvider);
+
+      final artists = songs
+          .map((s) => OnlineMetadataService.cleanTag(s.artist))
+          .whereType<String>()
+          .toSet();
+
+      final albumKeys = <String>{};
+      for (final song in songs) {
+        final album = OnlineMetadataService.cleanTag(song.album);
+        if (album == null) continue;
+        final artist = OnlineMetadataService.cleanTag(song.artist);
+        final key = artist != null
+            ? '${artist.toLowerCase()}|${album.toLowerCase()}'
+            : album.toLowerCase();
+        albumKeys.add(key);
+      }
+
+      int cached = 0;
+
+      for (final artist in artists) {
+        final p = artState.getArtistArt(artist);
+        if (p != null && await File(p).exists()) cached++;
+      }
+
+      for (final song in songs) {
+        final album = OnlineMetadataService.cleanTag(song.album);
+        if (album == null) continue;
+        final artist = OnlineMetadataService.cleanTag(song.artist);
+        final p = artState.getAlbumArt(album, artistName: artist);
+        if (p != null && await File(p).exists()) cached++;
+      }
+
+      final total = artists.length + albumKeys.length;
+      return {'cached': cached, 'total': total};
+    } catch (_) {
+      return {'cached': 0, 'total': 0};
+    }
+  }
+
+  Future<IndexerResult> _fetchMissingCovers(List<Song> songs,
+      {bool force = false}) async {
+    int processed = 0;
+    int updatedCount = 0;
+    final failedItems = <String>[];
+    final onlineService = OnlineMetadataService.instance;
+
+    final targetSongs = force
+        ? songs
+        : songs
+            .where((s) => s.coverUrl == null || s.coverUrl!.isEmpty)
+            .toList();
+
+    for (int i = 0; i < targetSongs.length; i++) {
+      if (_currentCancelToken?.isCancelled ?? false) break;
+
+      final song = targetSongs[i];
+      try {
+        final results = await onlineService.searchParallelForSong(song);
+        final match = results.firstWhere(
+          (r) => r.coverUrl != null && r.coverUrl!.isNotEmpty,
+          orElse: () => results.isNotEmpty
+              ? results.first
+              : OnlineSearchResult(
+                  title: '', artist: '', album: '', source: ''),
+        );
+
+        if (match.coverUrl != null && match.coverUrl!.isNotEmpty) {
+          final coverPath = await onlineService.downloadAndCacheCover(
+            match.coverUrl!,
+            song.filename,
+          );
+          if (coverPath != null && coverPath != song.coverUrl) {
+            await ref
+                .read(songsProvider.notifier)
+                .updateSongCover(song, coverPath);
+            updatedCount++;
+          }
+        }
+      } catch (e) {
+        failedItems.add(song.filename);
+      }
+      processed++;
+      _updateProgress('fetch_missing_covers', processed, targetSongs.length);
+
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    _updateFailedItems('fetch_missing_covers', failedItems);
+
+    return IndexerResult(
+      success: true,
+      message: 'Fetched missing covers for $updatedCount items',
+      warnings: failedItems.isNotEmpty ? failedItems : null,
+    );
+  }
+
+  Future<IndexerResult> _fetchMissingMetadata(List<Song> songs,
+      {bool force = false}) async {
+    int processed = 0;
+    int updatedCount = 0;
+    final failedItems = <String>[];
+    final onlineService = OnlineMetadataService.instance;
+
+    final targetSongs = force
+        ? songs
+        : songs
+            .where((s) =>
+                OnlineMetadataService.cleanTag(s.artist) == null ||
+                OnlineMetadataService.cleanTag(s.album) == null)
+            .toList();
+
+    for (int i = 0; i < targetSongs.length; i++) {
+      if (_currentCancelToken?.isCancelled ?? false) break;
+
+      final song = targetSongs[i];
+      try {
+        final results = await onlineService.searchParallelForSong(song);
+        if (results.isNotEmpty) {
+          final match = results.first;
+
+          String title = song.title;
+          String artist = song.artist;
+          String album = song.album;
+
+          if (OnlineMetadataService.cleanTag(artist) == null) {
+            artist = match.artist;
+          }
+          if (OnlineMetadataService.cleanTag(album) == null) {
+            album = match.album;
+          }
+          if (OnlineMetadataService.cleanTag(title) == null) {
+            title = match.title;
+          }
+
+          String? coverPath = song.coverUrl;
+          if ((coverPath == null || coverPath.isEmpty) &&
+              match.coverUrl != null &&
+              match.coverUrl!.isNotEmpty) {
+            coverPath = await onlineService.downloadAndCacheCover(
+              match.coverUrl!,
+              song.filename,
+            );
+          }
+
+          if (title != song.title ||
+              artist != song.artist ||
+              album != song.album) {
+            await ref
+                .read(songsProvider.notifier)
+                .updateSongMetadata(song, title, artist, album);
+            updatedCount++;
+          }
+
+          if (coverPath != null && coverPath != song.coverUrl) {
+            await ref
+                .read(songsProvider.notifier)
+                .updateSongCover(song, coverPath);
+            updatedCount++;
+          }
+        }
+      } catch (e) {
+        failedItems.add(song.filename);
+      }
+      processed++;
+      _updateProgress('fetch_missing_metadata', processed, targetSongs.length);
+
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    _updateFailedItems('fetch_missing_metadata', failedItems);
+
+    return IndexerResult(
+      success: true,
+      message: 'Fetched missing metadata for $updatedCount items',
+      warnings: failedItems.isNotEmpty ? failedItems : null,
+    );
+  }
+
+  Future<IndexerResult> _rebuildArtistAlbumArt(List<Song> songs,
+      {bool force = false}) async {
+    final notifier = ref.read(artistAlbumArtProvider.notifier);
+    if (force) {
+      await notifier.clearAll();
+    }
+
+    PassiveArtFetcherService.instance.start();
+
+    _updateProgress('rebuild_artist_album_art', 1, 1);
+
+    return const IndexerResult(
+      success: true,
+      message: 'Artist and Album artwork scan started in background',
     );
   }
 }
