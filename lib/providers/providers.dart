@@ -561,7 +561,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       }
 
       if (settings.extractFeatArtists) {
-        uniqueSongs = uniqueSongs.map(_extractFeatFromSong).toList();
+        uniqueSongs = uniqueSongs.map(extractFeatFromSong).toList();
       }
 
       // Carry forward what a scan can't re-derive: when a song was added, and
@@ -1356,9 +1356,10 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   }
 }
 
-Song _extractFeatFromSong(Song song) {
+@visibleForTesting
+Song extractFeatFromSong(Song song) {
   final regex = RegExp(
-    r'\s*[\(\[]?\s*(?:feat\.?|ft\.?|featuring)\s+(.+?)[\)\]]?\s*$',
+    r'\s*[\(\[]?\s*(?:feat\.?|ft\.?|featuring)\s+([^\)\]\(\[\n]+?)\s*[\)\]]?\s*$',
     caseSensitive: false,
   );
   final match = regex.firstMatch(song.title);

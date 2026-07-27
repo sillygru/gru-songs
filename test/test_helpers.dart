@@ -73,7 +73,9 @@ class TestEnvironment {
       return null;
     });
 
-    // Also mock the platform interface as a backup
+    // Also mock the platform interface as a backup. Save original so
+    // tearDown can restore it.
+    _originalPathProvider = PathProviderPlatform.instance;
     PathProviderPlatform.instance = _MockPathProviderPlatform(_tempDir!.path);
 
     // Mock the volume monitoring channel to prevent MissingPluginException
@@ -97,6 +99,8 @@ class TestEnvironment {
     SharedPreferencesStorePlatform.instance = MockSharedPreferencesStore();
   }
 
+  PathProviderPlatform? _originalPathProvider;
+
   /// Cleans up the temporary directory.
   void tearDown() {
     // Clear method channel handlers
@@ -110,6 +114,14 @@ class TestEnvironment {
       'gru_songs/volume_events',
       null,
     );
+
+    // Restore original path provider platform instance to avoid leaking
+    // the mock into subsequent test files in the same session.
+    final original = _originalPathProvider;
+    if (original != null) {
+      PathProviderPlatform.instance = original;
+      _originalPathProvider = null;
+    }
 
     // Clean up temp directory
     if (_tempDir != null && _tempDir!.existsSync()) {

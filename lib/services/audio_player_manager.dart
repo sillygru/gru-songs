@@ -1580,8 +1580,11 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     if (currentIdx != null && currentItemBefore != null) {
       final currentItemAfter = _effectiveQueue[currentIdx];
-      if (currentItemBefore.song.url != currentItemAfter.song.url ||
-          currentItemBefore.song.filename != currentItemAfter.song.filename) {
+      // Full Song equality (Equatable) so metadata edits (title, artist,
+      // album, coverUrl) also trigger a rebuild — the MediaItem baked into
+      // the AudioSource would otherwise stay stale for the now-playing bar
+      // and the notification.
+      if (currentItemBefore.song != currentItemAfter.song) {
         _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
       }
     }
