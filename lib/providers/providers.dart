@@ -31,6 +31,7 @@ import 'settings_provider.dart';
 import 'theme_provider.dart';
 
 export 'auto_backup_provider.dart';
+export 'sync_provider.dart';
 
 enum MetadataSaveStatus { idle, saving, success, error }
 

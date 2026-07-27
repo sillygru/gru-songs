@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/setup_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/settings_provider.dart';
 import 'providers/providers.dart';
 import 'services/cache_service.dart';
 import 'services/storage_service.dart';
@@ -19,6 +20,7 @@ import 'services/power_state_service.dart';
 import 'services/color_extraction_service.dart';
 import 'services/update_service.dart';
 import 'services/passive_art_fetcher_service.dart';
+import 'services/sync_service.dart';
 import 'presentation/widgets/update_available_dialog.dart';
 import 'theme/app_theme.dart';
 
@@ -47,6 +49,8 @@ Future<void> main() async {
 
   // Single user mode: always init database
   final migrated = await DatabaseService.instance.init();
+
+  unawaited(SyncService.instance.init());
 
   if (migrated) {
     debugPrint("Data migrated to single-user format. Restarting app...");
@@ -176,6 +180,20 @@ class _WispieAppState extends ConsumerState<WispieApp>
     if (Platform.isIOS && state != AppLifecycleState.resumed) {
       unawaited(ref.read(audioPlayerManagerProvider).forceFlushCurrentStats());
     }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_onAppForeground());
+    }
+  }
+
+  Future<void> _onAppForeground() async {
+    try {
+      final sync = SyncService.instance;
+      if (!sync.isSignedIn) return;
+      if (sync.isSyncing) return;
+      final settings = ref.read(settingsProvider);
+      if (!settings.autoSyncEnabled) return;
+      unawaited(ref.read(syncProvider.notifier).sync());
+    } catch (_) {}
   }
 
   @override

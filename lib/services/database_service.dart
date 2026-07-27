@@ -3372,6 +3372,357 @@ class DatabaseService {
     await _userDataDatabase!.delete('album_art');
   }
 
+  // ==========================================================================
+  // SYNC DATA EXPORT METHODS
+  // ==========================================================================
+
+  Future<List<Map<String, dynamic>>> getPlayEventsForSync() async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return [];
+    return await _statsDatabase!.query('playevent');
+  }
+
+  Future<List<Map<String, dynamic>>> getFavoritesWithTimestamps() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    return await _userDataDatabase!.query('favorite');
+  }
+
+  Future<List<Map<String, dynamic>>> getSuggestLessWithTimestamps() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    return await _userDataDatabase!.query('suggestless');
+  }
+
+  Future<List<Map<String, dynamic>>> getHiddenWithTimestamps() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    return await _userDataDatabase!.query('hidden');
+  }
+
+  Future<List<Map<String, dynamic>>> getPlaylistsForSync() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    try {
+      final plMaps = await _userDataDatabase!.query('playlist');
+      final result = <Map<String, dynamic>>[];
+      for (final pl in plMaps) {
+        final songs = await _userDataDatabase!.query(
+          'playlist_song',
+          where: 'playlist_id = ?',
+          whereArgs: [pl['id']],
+        );
+        pl['songs'] = songs;
+        result.add(pl);
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Error exporting playlists for sync: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getMergedGroupsForSync() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    try {
+      final groups = await _userDataDatabase!.query('merged_song_group');
+      final result = <Map<String, dynamic>>[];
+      for (final g in groups) {
+        final songs = await _userDataDatabase!.query(
+          'merged_song',
+          where: 'group_id = ?',
+          whereArgs: [g['id']],
+        );
+        g['songs'] = songs;
+        result.add(g);
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Error exporting merged groups for sync: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getArtistArtForSync() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    return await _userDataDatabase!.query(
+      'artist_art',
+      where: 'image_url IS NOT NULL AND image_url != \'\'',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAlbumArtForSync() async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null) return [];
+    return await _userDataDatabase!.query(
+      'album_art',
+      where: 'image_url IS NOT NULL AND image_url != \'\'',
+    );
+  }
+
+  // ==========================================================================
+  // SYNC DATA IMPORT/MERGE METHODS
+  // ==========================================================================
+
+  Future<void> importFavorites(List<Map<String, dynamic>> favorites) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null || favorites.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final fav in favorites) {
+        final filename = fav['filename'] as String?;
+        final addedAt = (fav['added_at'] as num?)?.toDouble();
+        if (filename == null || addedAt == null) continue;
+
+        final existing = await txn.query(
+          'favorite',
+          where: 'filename = ?',
+          whereArgs: [filename],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingAddedAt =
+              (existing.first['added_at'] as num?)?.toDouble() ?? 0;
+          if (addedAt <= existingAddedAt) continue;
+        }
+        await txn.insert(
+            'favorite',
+            {
+              'filename': filename,
+              'added_at': addedAt,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  Future<void> importSuggestLess(List<Map<String, dynamic>> suggestless) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null || suggestless.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final s in suggestless) {
+        final filename = s['filename'] as String?;
+        final addedAt = (s['added_at'] as num?)?.toDouble();
+        if (filename == null || addedAt == null) continue;
+
+        final existing = await txn.query(
+          'suggestless',
+          where: 'filename = ?',
+          whereArgs: [filename],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingAddedAt =
+              (existing.first['added_at'] as num?)?.toDouble() ?? 0;
+          if (addedAt <= existingAddedAt) continue;
+        }
+        await txn.insert(
+            'suggestless',
+            {
+              'filename': filename,
+              'added_at': addedAt,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  Future<void> importHidden(List<Map<String, dynamic>> hidden) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null || hidden.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final h in hidden) {
+        final filename = h['filename'] as String?;
+        final hiddenAt = (h['hidden_at'] as num?)?.toDouble();
+        if (filename == null || hiddenAt == null) continue;
+
+        final existing = await txn.query(
+          'hidden',
+          where: 'filename = ?',
+          whereArgs: [filename],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingHiddenAt =
+              (existing.first['hidden_at'] as num?)?.toDouble() ?? 0;
+          if (hiddenAt <= existingHiddenAt) continue;
+        }
+        await txn.insert(
+            'hidden',
+            {
+              'filename': filename,
+              'hidden_at': hiddenAt,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  Future<void> importPlaylists(List<Map<String, dynamic>> playlists) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null || playlists.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final pl in playlists) {
+        final id = pl['id'] as String?;
+        final name = pl['name'] as String?;
+        final updatedAt = (pl['updated_at'] as num?)?.toDouble();
+        if (id == null || name == null) continue;
+
+        final existing = await txn.query(
+          'playlist',
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingUpdated =
+              (existing.first['updated_at'] as num?)?.toDouble() ?? 0;
+          if (updatedAt != null && updatedAt <= existingUpdated) {
+            // Remote is older or same; only merge songs
+            await _mergePlaylistSongs(txn, id, pl['songs'] as List?);
+            continue;
+          }
+        }
+
+        await txn.insert(
+            'playlist',
+            {
+              'id': id,
+              'name': name,
+              'description': pl['description'],
+              'is_recommendation': pl['is_recommendation'] ?? 0,
+              'created_at': pl['created_at'] ?? updatedAt ?? 0,
+              'updated_at': updatedAt ?? 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+
+        await txn
+            .delete('playlist_song', where: 'playlist_id = ?', whereArgs: [id]);
+        await _mergePlaylistSongs(txn, id, pl['songs'] as List?);
+      }
+    });
+  }
+
+  Future<void> _mergePlaylistSongs(
+      Transaction txn, String playlistId, List? songs) async {
+    if (songs == null) return;
+    for (final s in songs) {
+      final sm = s as Map<String, dynamic>;
+      final filename = sm['song_filename'] as String?;
+      if (filename == null) continue;
+      await txn.insert(
+          'playlist_song',
+          {
+            'playlist_id': playlistId,
+            'song_filename': filename,
+            'added_at': sm['added_at'] ??
+                DateTime.now().millisecondsSinceEpoch / 1000.0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
+  Future<void> importMergedGroups(List<Map<String, dynamic>> groups) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null || groups.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final g in groups) {
+        final id = g['id'] as String?;
+        if (id == null) continue;
+
+        final existing = await txn.query(
+          'merged_song_group',
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await txn.insert(
+              'merged_song_group',
+              {
+                'id': id,
+                'priority_filename': g['priority_filename'],
+                'created_at': g['created_at'] ??
+                    DateTime.now().millisecondsSinceEpoch / 1000.0,
+              },
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+
+          final songs = g['songs'] as List?;
+          if (songs != null) {
+            for (final s in songs) {
+              final sm = s as Map<String, dynamic>;
+              await txn.insert(
+                  'merged_song',
+                  {
+                    'filename': sm['filename'],
+                    'group_id': id,
+                    'added_at': sm['added_at'] ??
+                        DateTime.now().millisecondsSinceEpoch / 1000.0,
+                  },
+                  conflictAlgorithm: ConflictAlgorithm.ignore);
+            }
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> importArtistArtBatch(
+      List<Map<String, dynamic>> artistArt) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null || artistArt.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final a in artistArt) {
+        final name = a['artist_name'] as String?;
+        if (name == null) continue;
+
+        final updatedAt = (a['updated_at'] as num?)?.toDouble() ?? 0;
+        final existing = await txn.query(
+          'artist_art',
+          where: 'artist_name = ?',
+          whereArgs: [name],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingUpdated =
+              (existing.first['updated_at'] as num?)?.toDouble() ?? 0;
+          if (updatedAt <= existingUpdated) continue;
+        }
+
+        await txn.insert('artist_art', a,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  Future<void> importAlbumArtBatch(List<Map<String, dynamic>> albumArt) async {
+    await _ensureInitialized();
+    if (_userDataDatabase == null || albumArt.isEmpty) return;
+    await _userDataDatabase!.transaction((txn) async {
+      for (final a in albumArt) {
+        final key = a['album_key'] as String?;
+        if (key == null) continue;
+
+        final updatedAt = (a['updated_at'] as num?)?.toDouble() ?? 0;
+        final existing = await txn.query(
+          'album_art',
+          where: 'album_key = ?',
+          whereArgs: [key],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingUpdated =
+              (existing.first['updated_at'] as num?)?.toDouble() ?? 0;
+          if (updatedAt <= existingUpdated) continue;
+        }
+
+        await txn.insert('album_art', a,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
   Future<String?> getTranslatedLyrics(
       String filename, String targetLang) async {
     await _ensureInitialized();

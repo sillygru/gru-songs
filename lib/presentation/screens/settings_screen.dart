@@ -20,6 +20,7 @@ import 'data_management_settings_screen.dart';
 import 'misc_settings_screen.dart';
 import 'about_settings_screen.dart';
 import 'indexer_screen.dart';
+import 'sync_settings_screen.dart';
 import '../tokens/app_icons.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -166,6 +167,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'Appearance',
             subtitle: 'Theme, display options',
             onTap: () => context.pushApp(const AppearanceSettingsScreen()),
+          ),
+        ],
+      ),
+      AppSettingsGroup(
+        label: 'Sync',
+        children: [
+          AppSettingsTile(
+            icon: AppIcons.cloudUpload,
+            title: 'Sync',
+            subtitle: 'Google Drive, cross-device sync',
+            onTap: () => context.pushApp(const SyncSettingsScreen()),
           ),
         ],
       ),

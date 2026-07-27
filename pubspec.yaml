@@ -1,7 +1,7 @@
 name: wispie
 description: "A feature packed local music player."
 publish_to: "none"
-version: 3.29.10-beta+338
+version: 3.30.0-beta+339
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -34,6 +34,8 @@ dependencies:
   video_player: ^2.9.2
   wakelock_plus: ^1.3.3
   hugeicons: ^1.1.7
+  google_sign_in: ^6.2.1
+  http: ^1.2.1
 
 dev_dependencies:
   flutter_test:
