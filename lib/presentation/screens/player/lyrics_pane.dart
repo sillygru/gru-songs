@@ -296,7 +296,8 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     }
   }
 
-  Future<void> _performTranslation(String targetLang, {bool silent = false}) async {
+  Future<void> _performTranslation(String targetLang,
+      {bool silent = false}) async {
     final content = _rawLyricsContent;
     if (content == null || content.trim().isEmpty) return;
 
