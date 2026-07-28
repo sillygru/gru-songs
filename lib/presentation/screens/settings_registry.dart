@@ -412,15 +412,6 @@ final List<SettingsDestination> settingsRegistry = [
     open: () => const DataManagementSettingsScreen(highlightId: 'data.import'),
   ),
   SettingsDestination(
-    anchorId: 'data.namida',
-    icon: AppIcons.download,
-    title: 'Import from Namida',
-    subtitle: 'Import playlists and favorites from Namida',
-    breadcrumb: 'Settings › Data Management › Backup & Restore',
-    keywords: const ['namida', 'migrate', 'import'],
-    open: () => const DataManagementSettingsScreen(highlightId: 'data.namida'),
-  ),
-  SettingsDestination(
     anchorId: 'data.backups',
     icon: AppIcons.cloudUpload,
     title: 'Manage Backups',

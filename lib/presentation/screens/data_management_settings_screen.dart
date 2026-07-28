@@ -6,7 +6,6 @@ import '../../services/backup_service.dart';
 import '../../services/import_options.dart';
 import '../../presentation/widgets/import_options_dialog.dart';
 import '../../presentation/widgets/import_progress_dialog.dart';
-import 'namida_import_screen.dart';
 import 'backup_management_screen.dart';
 import 'storage_management_screen.dart';
 import '../components/app_screen_header.dart';
@@ -65,13 +64,6 @@ class _DataManagementSettingsScreenState
                 title: 'Import App Data',
                 subtitle: 'Restore data from a backup (replaces all)',
                 onTap: () => _handleImport(),
-              ),
-              AppSettingsTile(
-                searchId: 'data.namida',
-                icon: AppIcons.download,
-                title: 'Import from Namida',
-                subtitle: 'Import playlists and favorites from Namida',
-                onTap: () => context.pushApp(const NamidaImportScreen()),
               ),
               AppSettingsTile(
                 searchId: 'data.backups',
