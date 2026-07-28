@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -311,9 +310,6 @@ class _NowPlayingContent extends ConsumerWidget {
       );
     }
 
-    final settings = ref.watch(settingsProvider);
-    final showBlur = settings.showProgressiveBlurHeaders;
-
     // The bar floats over scrolling content as an L2 slab. Opaque fill (never
     // glass — content must not show through) lifted one notch off the canvas,
     // and a soft floating shadow does the lifting.
@@ -322,28 +318,16 @@ class _NowPlayingContent extends ConsumerWidget {
       Theme.of(context).colorScheme.surface,
     );
 
-    Widget bar = DecoratedBox(
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: borderRadius,
-      ),
-      child: content,
-    );
-
-    if (showBlur) {
-      bar = ClipRRect(
-        borderRadius: borderRadius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: bar,
+    final Widget bar = ClipRRect(
+      borderRadius: borderRadius,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: borderRadius,
         ),
-      );
-    } else {
-      bar = ClipRRect(
-        borderRadius: borderRadius,
-        child: bar,
-      );
-    }
+        child: content,
+      ),
+    );
 
     // Shadow lives outside the clip so it is not cropped to the bar's corners.
     return DecoratedBox(

@@ -7,6 +7,7 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'database_service.dart';
+import 'library_repair_service.dart';
 import '../models/playlist.dart';
 
 /// Represents the type of import operation
@@ -316,6 +317,10 @@ class NamidaImportService {
           );
         }
       }
+
+      // Reconcile imported library data against the filesystem so that
+      // cover paths, audio URLs, and merged groups are valid on this device.
+      await LibraryRepairService.instance.repairLibrary();
 
       // Cleanup temp directory
       final tempDir = Directory(importPath).parent;

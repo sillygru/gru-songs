@@ -92,18 +92,6 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
                 icon: AppIcons.image,
               ),
               _buildOperationTile(
-                id: 'fetch_missing_covers',
-                icon: AppIcons.imageSearch,
-              ),
-              _buildOperationTile(
-                id: 'fetch_missing_metadata',
-                icon: AppIcons.manageSearch,
-              ),
-              _buildOperationTile(
-                id: 'rebuild_artist_album_art',
-                icon: AppIcons.person,
-              ),
-              _buildOperationTile(
                 id: 'rebuild_search_indexes',
                 icon: AppIcons.search,
                 warningMessage:

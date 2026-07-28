@@ -8,7 +8,6 @@ import '../tokens/app_tokens.dart';
 ///
 /// Home and Library each grew their own `SliverAppBar` with slightly different
 /// backgrounds, blur handling and title weights. This is the one of them.
-/// Honours the existing `showProgressiveBlurHeaders` setting.
 class AppSliverHeader extends ConsumerWidget {
   final String title;
 

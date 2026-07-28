@@ -765,13 +765,14 @@ class BackupService {
     // Last, so it sees the restored music folders and any covers the archive
     // brought with it. Without this the library table describes the old device
     // and nothing downstream ever notices.
-    if (replacedDatabaseFiles || importedRows != null) {
-      await LibraryRepairService.instance.repairLibrary(
-        preImportSongs: preImportSongs,
-        importedRows: importedRows,
-        onProgress: onProgress,
-      );
-    }
+    // Always runs — repair is idempotent and cheap when nothing needs changing,
+    // and every import path (app data, backup restore, Namida) should reconcile
+    // the library against the filesystem so orphaned paths don't accumulate.
+    await LibraryRepairService.instance.repairLibrary(
+      preImportSongs: preImportSongs,
+      importedRows: importedRows,
+      onProgress: onProgress,
+    );
   }
 
   /// Imports a previously validated archive, then removes the extracted copy.

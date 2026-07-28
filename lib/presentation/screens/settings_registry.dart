@@ -291,16 +291,6 @@ final List<SettingsDestination> settingsRegistry = [
         const AppearanceSettingsScreen(highlightId: 'appearance.lyrics_blur'),
   ),
   SettingsDestination(
-    anchorId: 'appearance.header_blur',
-    icon: AppIcons.blur,
-    title: 'Progressive blur on list headers',
-    subtitle: 'Blur behind scrolling headers (performance heavy)',
-    breadcrumb: 'Settings › Appearance › Display',
-    keywords: const ['blur', 'header', 'performance'],
-    open: () =>
-        const AppearanceSettingsScreen(highlightId: 'appearance.header_blur'),
-  ),
-  SettingsDestination(
     anchorId: 'appearance.cover_sizing',
     icon: AppIcons.photoSize,
     title: 'Player Cover Sizing',

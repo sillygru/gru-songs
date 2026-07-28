@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'database_service.dart';
+import 'sync_service.dart';
 
 class StatsService {
   final String _sessionId;
@@ -46,6 +47,7 @@ class StatsService {
     final statsWithMeta = Map<String, dynamic>.from(stats);
     statsWithMeta['platform'] = _platform;
     statsWithMeta['session_id'] = _sessionId;
+    statsWithMeta['device_id'] = SyncService.instance.deviceId;
     statsWithMeta['timestamp'] = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
     _pendingStats.add(statsWithMeta);

@@ -27,13 +27,16 @@ class AutoBackupState {
     bool? isRunning,
     AutoBackupResult? lastResult,
     bool? hasPermissionError,
+    bool clearLastResult = false,
+    bool clearLastAutoBackup = false,
   }) {
     return AutoBackupState(
       frequencyHours: frequencyHours ?? this.frequencyHours,
       deleteAfterDays: deleteAfterDays ?? this.deleteAfterDays,
-      lastAutoBackup: lastAutoBackup ?? this.lastAutoBackup,
+      lastAutoBackup:
+          clearLastAutoBackup ? null : (lastAutoBackup ?? this.lastAutoBackup),
       isRunning: isRunning ?? this.isRunning,
-      lastResult: lastResult ?? this.lastResult,
+      lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
       hasPermissionError: hasPermissionError ?? this.hasPermissionError,
     );
   }
@@ -79,7 +82,7 @@ class AutoBackupNotifier extends Notifier<AutoBackupState> {
 
       if (hours == 0) {
         await AutoBackupService.instance.resetLastAutoBackup();
-        state = state.copyWith(lastAutoBackup: null);
+        state = state.copyWith(clearLastAutoBackup: true);
       }
     } catch (e) {
       debugPrint('Error setting auto-backup frequency: $e');
@@ -133,7 +136,7 @@ class AutoBackupNotifier extends Notifier<AutoBackupState> {
   }
 
   Future<void> clearLastError() async {
-    state = state.copyWith(lastResult: null, hasPermissionError: false);
+    state = state.copyWith(clearLastResult: true, hasPermissionError: false);
   }
 
   Future<void> requestPermission() async {

@@ -11,6 +11,7 @@ import '../models/playlist.dart';
 import '../models/queue_snapshot.dart';
 import '../models/song.dart';
 import 'import_options.dart';
+import 'sync_service.dart';
 
 /// DatabaseService handles local SQLite storage.
 class DatabaseService {
@@ -2552,7 +2553,8 @@ class DatabaseService {
       id TEXT PRIMARY KEY,
       start_time REAL,
       end_time REAL,
-      platform TEXT
+      platform TEXT,
+      device_id TEXT
     );
     CREATE TABLE IF NOT EXISTS playevent (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3392,11 +3394,12 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> getPlayEventsForSync() async {
     await _ensureInitialized();
     if (_statsDatabase == null) return [];
+    final currentDeviceId = SyncService.instance.deviceId;
     final results = await _statsDatabase!.rawQuery('''
-      SELECT pe.*, ps.device_id, ps.platform
+      SELECT pe.*, COALESCE(NULLIF(ps.device_id, ''), ?) AS device_id, ps.platform
       FROM playevent pe
       LEFT JOIN playsession ps ON pe.session_id = ps.id
-    ''');
+    ''', [currentDeviceId]);
     return results.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 

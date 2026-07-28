@@ -90,5 +90,25 @@ void main() {
         expect(a.containsKey('local_path'), isFalse);
       }
     });
+
+    test('getPlayEventsForSync falls back to current device_id when missing',
+        () async {
+      final db = DatabaseService.instance;
+      await db.insertPlayEventsBatch([
+        {
+          'session_id': 'sess_null_device',
+          'song_filename': 'song_null.mp3',
+          'timestamp': 1500.0,
+          'duration_played': 100.0,
+          'total_length': 180.0,
+          // device_id is omitted/null
+        },
+      ]);
+
+      final events = await db.getPlayEventsForSync();
+      expect(events.length, 1);
+      expect(events.first['device_id'], isNotNull);
+      expect(events.first['device_id'], isNotEmpty);
+    });
   });
 }

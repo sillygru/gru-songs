@@ -127,14 +127,6 @@ class _AppearanceSettingsScreenState
                 value: settings.lyricsBlurOverlayEnabled,
                 onChanged: notifier.setLyricsBlurOverlayEnabled,
               ),
-              AppSettingsSwitch(
-                icon: AppIcons.blur,
-                searchId: 'appearance.header_blur',
-                title: 'Progressive blur on list headers',
-                subtitle: 'Blur behind scrolling headers (performance heavy)',
-                value: settings.showProgressiveBlurHeaders,
-                onChanged: notifier.setProgressiveBlurHeaders,
-              ),
               AppSettingsAnchor(
                 id: 'appearance.cover_sizing',
                 child: AppListRow(

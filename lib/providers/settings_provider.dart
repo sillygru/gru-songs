@@ -36,7 +36,6 @@ class SettingsState {
   final PlayerMotionIntensity playerMotionIntensity;
   final double playerMotionCustomIntensity;
   final int playerMotionLatencyMs;
-  final bool showProgressiveBlurHeaders;
   final bool showQuickPicks;
   final bool showRecentQueues;
   final bool showForYou;
@@ -78,7 +77,6 @@ class SettingsState {
     this.playerMotionIntensity = PlayerMotionIntensity.subtle,
     this.playerMotionCustomIntensity = 0.5,
     this.playerMotionLatencyMs = 80,
-    this.showProgressiveBlurHeaders = false,
     this.showQuickPicks = true,
     this.showRecentQueues = true,
     this.showForYou = true,
@@ -121,7 +119,6 @@ class SettingsState {
     PlayerMotionIntensity? playerMotionIntensity,
     double? playerMotionCustomIntensity,
     int? playerMotionLatencyMs,
-    bool? showProgressiveBlurHeaders,
     bool? showQuickPicks,
     bool? showRecentQueues,
     bool? showForYou,
@@ -179,8 +176,6 @@ class SettingsState {
           playerMotionCustomIntensity ?? this.playerMotionCustomIntensity,
       playerMotionLatencyMs:
           playerMotionLatencyMs ?? this.playerMotionLatencyMs,
-      showProgressiveBlurHeaders:
-          showProgressiveBlurHeaders ?? this.showProgressiveBlurHeaders,
       showQuickPicks: showQuickPicks ?? this.showQuickPicks,
       showRecentQueues: showRecentQueues ?? this.showRecentQueues,
       showForYou: showForYou ?? this.showForYou,
@@ -229,7 +224,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyPlayerMotionCustomIntensity =
       'player_motion_custom_intensity';
   static const _keyPlayerMotionLatencyMs = 'player_motion_latency_ms';
-  static const _keyProgressiveBlurHeaders = 'progressive_blur_headers';
   static const _keyShowQuickPicks = 'show_quick_picks';
   static const _keyShowRecentQueues = 'show_recent_queues';
   static const _keyShowForYou = 'show_for_you';
@@ -308,8 +302,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
               .clamp(0.0, 1.0),
       playerMotionLatencyMs:
           (prefs.getInt(_keyPlayerMotionLatencyMs) ?? 80).clamp(-200, 500),
-      showProgressiveBlurHeaders:
-          prefs.getBool(_keyProgressiveBlurHeaders) ?? false,
       showQuickPicks: prefs.getBool(_keyShowQuickPicks) ?? true,
       showRecentQueues: prefs.getBool(_keyShowRecentQueues) ?? true,
       showForYou: prefs.getBool(_keyShowForYou) ?? true,
@@ -566,12 +558,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(playerMotionLatencyMs: clamped);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyPlayerMotionLatencyMs, clamped);
-  }
-
-  Future<void> setProgressiveBlurHeaders(bool enabled) async {
-    state = state.copyWith(showProgressiveBlurHeaders: enabled);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyProgressiveBlurHeaders, enabled);
   }
 
   Future<void> setShowQuickPicks(bool show) async {

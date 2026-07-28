@@ -72,7 +72,7 @@ class _QuickActionsSettingsScreenState
   Widget _getActionIcon(QuickAction action, bool enabled) {
     final color = enabled
         ? Theme.of(context).colorScheme.primary
-        : Theme.of(context).colorScheme.outline;
+        : Theme.of(context).colorScheme.onSurfaceVariant;
     return AppIcon(_getIconData(action), color: color);
   }
 
@@ -196,7 +196,7 @@ class _QuickActionsSettingsScreenState
                     AppIcon(
                       AppIcons.close,
                       size: 16,
-                      color: Theme.of(context).colorScheme.outline,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -204,7 +204,7 @@ class _QuickActionsSettingsScreenState
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.outline,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         letterSpacing: 1.2,
                       ),
                     ),
@@ -255,7 +255,7 @@ class _QuickActionsSettingsScreenState
           style: TextStyle(
             color: enabled
                 ? Theme.of(context).colorScheme.onSurface
-                : Theme.of(context).colorScheme.outline,
+                : Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
         trailing: Row(

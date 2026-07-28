@@ -45,7 +45,6 @@ class SyncService {
     'player_motion_intensity',
     'player_motion_custom_intensity',
     'player_motion_latency_ms',
-    'progressive_blur_headers',
     'show_quick_picks',
     'show_recent_queues',
     'show_for_you',
@@ -62,7 +61,15 @@ class SyncService {
   bool get isSyncing => _isSyncing;
   String? get accountEmail => _oauth.accountEmail;
   String? get lastError => _oauth.lastError;
-  String get deviceId => _deviceId ?? 'unknown';
+  String get deviceId {
+    if (_deviceId == null) {
+      _deviceId = _generateDeviceId();
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('sync_device_id', _deviceId!);
+      });
+    }
+    return _deviceId!;
+  }
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -223,16 +230,25 @@ class SyncService {
         return bTime.compareTo(aTime);
       });
 
-      onProgress?.call('Downloading latest cloud snapshot...', 0.5);
-      final latest = validFiles.first;
-      final snapshot = await _downloadFile(token, latest['id'] as String);
-
+      onProgress?.call('Downloading cloud snapshots...', 0.5);
       onProgress?.call('Clearing local play stats...', 0.7);
       await DatabaseService.instance.clearAllPlayStats();
 
       onProgress?.call('Importing cloud stats...', 0.85);
-      await _mergeSnapshot(snapshot,
-          syncSettings: syncSettings, onProgress: onProgress);
+      for (final file in validFiles) {
+        try {
+          final snapshot = await _downloadFile(token, file['id'] as String);
+          await _mergeSnapshot(
+            snapshot,
+            syncSettings: syncSettings,
+            forceImport: true,
+            onProgress: onProgress,
+          );
+        } catch (e) {
+          debugPrint(
+              'SyncService: force pull failed to process ${file['name']}: $e');
+        }
+      }
 
       final processedFiles = validFiles.map((f) => f['name'] as String).toSet();
       await _setProcessedFiles(processedFiles);
@@ -286,12 +302,13 @@ class SyncService {
   Future<void> _mergeSnapshot(
     Map<String, dynamic> snapshot, {
     bool syncSettings = true,
+    bool forceImport = false,
     SyncProgressCallback? onProgress,
   }) async {
     final db = DatabaseService.instance;
     final deviceId = snapshot['device_id'] as String?;
 
-    if (deviceId == null || deviceId == _deviceId) return;
+    if (!forceImport && (deviceId == null || deviceId == _deviceId)) return;
 
     try {
       if (snapshot['play_events'] is List) {
@@ -299,7 +316,10 @@ class SyncService {
         final events =
             List<Map<String, dynamic>>.from(snapshot['play_events'] as List);
         for (final ev in events) {
-          if (!ev.containsKey('device_id') && deviceId.isNotEmpty) {
+          final evDevId = ev['device_id'] as String?;
+          if ((evDevId == null || evDevId.isEmpty) &&
+              deviceId != null &&
+              deviceId.isNotEmpty) {
             ev['device_id'] = deviceId;
           }
         }
