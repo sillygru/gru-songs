@@ -23,6 +23,7 @@ import '../services/library_logic.dart';
 import '../services/lrclib_service.dart';
 import '../domain/services/search_service.dart';
 import '../domain/services/song_affinity_service.dart';
+import 'search_provider.dart';
 import '../presentation/widgets/spectrum_controller.dart';
 import '../data/repositories/song_repository.dart';
 import '../models/song.dart';
@@ -1059,8 +1060,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   }
 
   Future<void> _reindexSong(Song song, {String? previousFilename}) async {
-    final searchService = SearchService();
     try {
+      final searchService = ref.read(searchServiceProvider);
       await searchService.init();
       if (previousFilename != null && previousFilename != song.filename) {
         await searchService.removeSong(previousFilename);
@@ -1068,8 +1069,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       await searchService.updateSong(song);
     } catch (e) {
       debugPrint('Search index update failed for ${song.filename}: $e');
-    } finally {
-      await searchService.dispose();
     }
   }
 

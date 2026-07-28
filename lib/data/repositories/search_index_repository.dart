@@ -16,7 +16,7 @@ class SearchIndexRepository {
   static const String _tableName = 'search_index';
   static const String _metadataTable = 'search_metadata';
 
-  Database? _database;
+  static Database? _database;
   final FFmpegService _ffmpegService = FFmpegService();
 
   /// Gets the database file path
@@ -27,7 +27,8 @@ class SearchIndexRepository {
 
   /// Initializes the search index database
   Future<void> init() async {
-    if (_database != null) return;
+    if (_database != null && _database!.isOpen) return;
+    _database = null;
 
     final dbPath = await _getDbPath();
 
@@ -83,9 +84,8 @@ class SearchIndexRepository {
 
   /// Rebuilds the entire search index from a list of songs incrementally
   Future<void> rebuildIndex(List<Song> songs) async {
-    if (_database == null) {
-      await init();
-    }
+    await init();
+    if (_database == null || !_database!.isOpen) return;
 
     // 1. Fetch existing index state to determine what needs updating
     final List<Map<String, dynamic>> existingEntries = await _database!.query(
@@ -198,7 +198,8 @@ class SearchIndexRepository {
 
   /// Updates or inserts a single song into the index
   Future<void> upsertSong(Song song) async {
-    if (_database == null) return;
+    await init();
+    if (_database == null || !_database!.isOpen) return;
 
     final int songMtime =
         (song.mtime != null) ? (song.mtime! * 1000).round() : 0;
@@ -245,7 +246,8 @@ class SearchIndexRepository {
 
   /// Removes a song from the index
   Future<void> removeSong(String filename) async {
-    if (_database == null) return;
+    await init();
+    if (_database == null || !_database!.isOpen) return;
 
     await _database!.delete(
       _tableName,
@@ -264,7 +266,8 @@ class SearchIndexRepository {
     required bool searchAlbums,
     required bool searchLyrics,
   }) async {
-    if (_database == null || query.isEmpty) {
+    await init();
+    if (_database == null || !_database!.isOpen || query.isEmpty) {
       return [];
     }
 
@@ -399,7 +402,8 @@ class SearchIndexRepository {
 
   /// Gets statistics about the search index
   Future<SearchIndexStats> getStats() async {
-    if (_database == null) {
+    await init();
+    if (_database == null || !_database!.isOpen) {
       return SearchIndexStats.empty();
     }
 
@@ -439,7 +443,8 @@ class SearchIndexRepository {
 
   /// Clears the entire search index
   Future<void> clear() async {
-    if (_database == null) return;
+    await init();
+    if (_database == null || !_database!.isOpen) return;
 
     await _database!.transaction((txn) async {
       await txn.delete(_tableName);
@@ -450,7 +455,9 @@ class SearchIndexRepository {
   /// Closes the database connection
   Future<void> close() async {
     if (_database != null) {
-      await _database!.close();
+      if (_database!.isOpen) {
+        await _database!.close();
+      }
       _database = null;
     }
   }

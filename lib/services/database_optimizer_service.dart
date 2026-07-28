@@ -1015,29 +1015,19 @@ class DatabaseOptimizerService {
 
       // Initialize and rebuild search index
       final searchService = SearchService();
-      try {
-        await searchService.init();
+      await searchService.init();
 
-        final startTime = DateTime.now();
-        await searchService.rebuildIndex(songs);
-        final duration = DateTime.now().difference(startTime);
+      final startTime = DateTime.now();
+      await searchService.rebuildIndex(songs);
+      final duration = DateTime.now().difference(startTime);
 
-        // Get stats after rebuild before disposing
-        final stats = await searchService.getIndexStats();
+      final stats = await searchService.getIndexStats();
 
-        fixes.add(
-            'Rebuilt search index with ${songs.length} songs in ${duration.inMilliseconds}ms');
-        details['index_entries'] = stats.totalEntries;
-        details['entries_with_lyrics'] = stats.entriesWithLyrics;
-        details['rebuild_duration_ms'] = duration.inMilliseconds;
-      } finally {
-        // Always dispose, but don't let disposal errors mask other errors
-        try {
-          await searchService.dispose();
-        } catch (disposeError) {
-          debugPrint('Warning: Error disposing search service: $disposeError');
-        }
-      }
+      fixes.add(
+          'Rebuilt search index with ${songs.length} songs in ${duration.inMilliseconds}ms');
+      details['index_entries'] = stats.totalEntries;
+      details['entries_with_lyrics'] = stats.entriesWithLyrics;
+      details['rebuild_duration_ms'] = duration.inMilliseconds;
     } catch (e) {
       issues.add('Error optimizing search index: $e');
       debugPrint('Error optimizing search index: $e');

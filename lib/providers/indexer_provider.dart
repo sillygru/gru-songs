@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/repositories/song_repository.dart';
 import '../domain/models/online_search_result.dart';
-import '../domain/services/search_service.dart';
 import '../models/song.dart';
 import '../providers/artist_album_art_provider.dart';
 import '../services/cache_service.dart';
@@ -18,6 +17,7 @@ import '../services/passive_art_fetcher_service.dart';
 import '../services/scanner_service.dart';
 import '../services/waveform_service.dart';
 import 'providers.dart';
+import 'search_provider.dart';
 
 /// Represents the state of an indexer operation
 enum IndexerOperationState {
@@ -422,10 +422,9 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
   Future<int> _getSearchIndexCount() async {
     try {
-      final searchService = SearchService();
+      final searchService = ref.read(searchServiceProvider);
       await searchService.init();
       final stats = await searchService.getIndexStats();
-      await searchService.dispose();
       return stats.totalEntries;
     } catch (_) {
       return 0;
@@ -760,7 +759,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
   Future<IndexerResult> _rebuildSearchIndexes(List<Song> songs,
       {bool force = false}) async {
-    final searchService = SearchService();
+    final searchService = ref.read(searchServiceProvider);
     await searchService.init();
 
     try {
@@ -770,7 +769,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
       await searchService.rebuildIndex(songs);
       final stats = await searchService.getIndexStats();
       final failedCount =
-          (songs.length - stats.totalEntries).clamp(0, songs.length);
+          (songs.length - stats.totalEntries).clamp(0, songs.length).toInt();
       final failedItems = failedCount > 0
           ? List<String>.generate(
               failedCount,
@@ -778,7 +777,6 @@ class IndexerNotifier extends Notifier<IndexerState> {
             )
           : <String>[];
       _updateFailedItems('rebuild_search_indexes', failedItems);
-      await searchService.dispose();
 
       return IndexerResult(
         success: true,
@@ -788,7 +786,6 @@ class IndexerNotifier extends Notifier<IndexerState> {
       );
     } catch (e) {
       _updateFailedItems('rebuild_search_indexes', []);
-      await searchService.dispose();
       return IndexerResult(
           success: false, message: 'Error rebuilding search index: $e');
     }

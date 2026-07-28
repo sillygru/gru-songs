@@ -175,8 +175,13 @@ class SearchService {
     );
   }
 
-  /// Disposes of resources
+  /// Disposes of transient service resources
   Future<void> dispose() async {
+    _initFuture = null;
+  }
+
+  /// Explicitly closes the underlying database connection
+  Future<void> closeRepository() async {
     await _indexRepository.close();
     _initFuture = null;
   }
