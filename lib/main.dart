@@ -192,7 +192,22 @@ class _WispieAppState extends ConsumerState<WispieApp>
       if (sync.isSyncing) return;
       final settings = ref.read(settingsProvider);
       if (!settings.autoSyncEnabled) return;
-      unawaited(ref.read(syncProvider.notifier).sync());
+
+      final lastSyncedAt = await sync.getLastSyncTimestamp();
+      if (lastSyncedAt != null) {
+        final nowSec = DateTime.now().millisecondsSinceEpoch / 1000.0;
+        if (nowSec - lastSyncedAt < 900) {
+          return;
+        }
+      }
+
+      await Future.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+      if (sync.isSyncing) return;
+
+      unawaited(ref.read(syncProvider.notifier).sync(
+            syncSettings: settings.syncSettingsEnabled,
+          ));
     } catch (_) {}
   }
 

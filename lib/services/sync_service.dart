@@ -1,15 +1,16 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_service.dart';
 import 'google_oauth_service.dart';
 import 'storage_service.dart';
+
+typedef SyncProgressCallback = void Function(
+    String statusMessage, double progress);
 
 class SyncService {
   static final SyncService instance = SyncService._internal();
@@ -86,29 +87,46 @@ class SyncService {
     await _oauth.signOut();
   }
 
-  Future<bool> sync() async {
+  Future<bool> sync(
+      {SyncProgressCallback? onProgress, bool syncSettings = true}) async {
     if (_isSyncing) return false;
     if (!_oauth.isSignedIn) return false;
 
     _isSyncing = true;
     try {
+      onProgress?.call('Connecting to Google Drive...', 0.1);
       final authHeaders = await _oauth.authHeaders;
       final token = authHeaders['Authorization'];
       if (token == null) throw Exception('No auth token');
 
-      final snapshot = await _composeSnapshot();
+      onProgress?.call('Preparing local snapshot...', 0.2);
+      final snapshot = await _composeSnapshot(syncSettings: syncSettings);
       final fileName =
           '$_filePrefix${_deviceId}_${DateTime.now().millisecondsSinceEpoch}.json';
 
+      onProgress?.call('Listing cloud backups...', 0.3);
       final processedFiles = await _getProcessedFiles();
       final existingFiles = await _listDriveFiles(token);
 
+      int remoteCount = 0;
+      for (final file in existingFiles) {
+        final name = file['name'] as String? ?? '';
+        if (name.startsWith(_filePrefix) && !processedFiles.contains(name)) {
+          remoteCount++;
+        }
+      }
+
+      int processedCount = 0;
       for (final file in existingFiles) {
         final name = file['name'] as String? ?? '';
         if (name.startsWith(_filePrefix) && !processedFiles.contains(name)) {
           try {
+            processedCount++;
+            onProgress?.call(
+                'Downloading snapshot ($processedCount/$remoteCount)...', 0.4);
             final json = await _downloadFile(token, file['id'] as String);
-            await _mergeSnapshot(json);
+            await _mergeSnapshot(json,
+                syncSettings: syncSettings, onProgress: onProgress);
             processedFiles.add(name);
           } catch (e) {
             debugPrint('SyncService: failed to process $name: $e');
@@ -117,10 +135,13 @@ class SyncService {
       }
 
       await _setProcessedFiles(processedFiles);
+      onProgress?.call('Uploading snapshot to cloud...', 0.8);
       await _uploadSnapshot(token, fileName, snapshot);
+      onProgress?.call('Cleaning up old snapshots...', 0.95);
       await _cleanupOldSnapshots(token, existingFiles);
       await _updateLastSyncTimestamp();
 
+      onProgress?.call('Sync complete', 1.0);
       _isSyncing = false;
       return true;
     } catch (e) {
@@ -130,57 +151,120 @@ class SyncService {
     }
   }
 
-  Future<Map<String, dynamic>> _composeSnapshot() async {
+  Future<bool> forcePushLocalToCloud(
+      {SyncProgressCallback? onProgress, bool syncSettings = true}) async {
+    if (_isSyncing) return false;
+    if (!_oauth.isSignedIn) return false;
+
+    _isSyncing = true;
+    try {
+      onProgress?.call('Connecting to Google Drive...', 0.1);
+      final authHeaders = await _oauth.authHeaders;
+      final token = authHeaders['Authorization'];
+      if (token == null) throw Exception('No auth token');
+
+      onProgress?.call('Listing cloud backups...', 0.25);
+      final existingFiles = await _listDriveFiles(token);
+
+      onProgress?.call('Removing old cloud snapshots...', 0.4);
+      for (final file in existingFiles) {
+        final name = file['name'] as String? ?? '';
+        if (name.startsWith(_filePrefix)) {
+          await _deleteFile(token, file['id'] as String);
+        }
+      }
+
+      onProgress?.call('Preparing local snapshot...', 0.65);
+      final snapshot = await _composeSnapshot(syncSettings: syncSettings);
+      final fileName =
+          '$_filePrefix${_deviceId}_${DateTime.now().millisecondsSinceEpoch}.json';
+
+      onProgress?.call('Uploading fresh snapshot...', 0.85);
+      await _uploadSnapshot(token, fileName, snapshot);
+      await _setProcessedFiles({fileName});
+      await _updateLastSyncTimestamp();
+
+      onProgress?.call('Cloud updated with local data', 1.0);
+      _isSyncing = false;
+      return true;
+    } catch (e) {
+      debugPrint('SyncService: force push failed: $e');
+      _isSyncing = false;
+      return false;
+    }
+  }
+
+  Future<bool> forcePullCloudToLocal(
+      {SyncProgressCallback? onProgress, bool syncSettings = true}) async {
+    if (_isSyncing) return false;
+    if (!_oauth.isSignedIn) return false;
+
+    _isSyncing = true;
+    try {
+      onProgress?.call('Connecting to Google Drive...', 0.1);
+      final authHeaders = await _oauth.authHeaders;
+      final token = authHeaders['Authorization'];
+      if (token == null) throw Exception('No auth token');
+
+      onProgress?.call('Fetching cloud backups...', 0.25);
+      final existingFiles = await _listDriveFiles(token);
+      final validFiles = existingFiles.where((f) {
+        final name = f['name'] as String? ?? '';
+        return name.startsWith(_filePrefix);
+      }).toList();
+
+      if (validFiles.isEmpty) {
+        throw Exception('No cloud backups found');
+      }
+
+      validFiles.sort((a, b) {
+        final aTime = a['createdTime'] as String? ?? '';
+        final bTime = b['createdTime'] as String? ?? '';
+        return bTime.compareTo(aTime);
+      });
+
+      onProgress?.call('Downloading latest cloud snapshot...', 0.5);
+      final latest = validFiles.first;
+      final snapshot = await _downloadFile(token, latest['id'] as String);
+
+      onProgress?.call('Clearing local play stats...', 0.7);
+      await DatabaseService.instance.clearAllPlayStats();
+
+      onProgress?.call('Importing cloud stats...', 0.85);
+      await _mergeSnapshot(snapshot,
+          syncSettings: syncSettings, onProgress: onProgress);
+
+      final processedFiles = validFiles.map((f) => f['name'] as String).toSet();
+      await _setProcessedFiles(processedFiles);
+      await _updateLastSyncTimestamp();
+
+      onProgress?.call('Local data replaced from cloud', 1.0);
+      _isSyncing = false;
+      return true;
+    } catch (e) {
+      debugPrint('SyncService: force pull failed: $e');
+      _isSyncing = false;
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> _composeSnapshot(
+      {bool syncSettings = true}) async {
     final db = DatabaseService.instance;
     final storage = StorageService();
 
-    final settings = await storage.exportAppSettings();
     final syncedSettings = <String, dynamic>{};
-    for (final key in _syncableSettingsKeys) {
-      if (settings.containsKey(key)) {
-        syncedSettings[key] = settings[key];
+    if (syncSettings) {
+      final settings = await storage.exportAppSettings();
+      for (final key in _syncableSettingsKeys) {
+        if (settings.containsKey(key)) {
+          syncedSettings[key] = settings[key];
+        }
       }
     }
 
     final artistArt = await db.getArtistArtForSync();
     final albumArt = await db.getAlbumArtForSync();
-    final artFiles = <String, Map<String, String>>{};
-
-    for (final a in artistArt) {
-      final path = a['local_path'] as String?;
-      if (path != null && await File(path).exists()) {
-        try {
-          final bytes = await File(path).readAsBytes();
-          final hash = sha1.convert(bytes).toString();
-          final ext = p.extension(path);
-          artFiles[hash] = {
-            'data': base64Encode(bytes),
-            'mime': ext == '.png' ? 'image/png' : 'image/jpeg',
-          };
-          a['local_path_hash'] = hash;
-        } catch (e) {
-          debugPrint('SyncService: failed to read artist art: $e');
-        }
-      }
-    }
-
-    for (final a in albumArt) {
-      final path = a['local_path'] as String?;
-      if (path != null && await File(path).exists()) {
-        try {
-          final bytes = await File(path).readAsBytes();
-          final hash = sha1.convert(bytes).toString();
-          final ext = p.extension(path);
-          artFiles[hash] = {
-            'data': base64Encode(bytes),
-            'mime': ext == '.png' ? 'image/png' : 'image/jpeg',
-          };
-          a['local_path_hash'] = hash;
-        } catch (e) {
-          debugPrint('SyncService: failed to read album art: $e');
-        }
-      }
-    }
 
     return {
       'version': 1,
@@ -196,11 +280,14 @@ class SyncService {
       'settings': syncedSettings,
       'artist_art': artistArt,
       'album_art': albumArt,
-      'art_files': artFiles,
     };
   }
 
-  Future<void> _mergeSnapshot(Map<String, dynamic> snapshot) async {
+  Future<void> _mergeSnapshot(
+    Map<String, dynamic> snapshot, {
+    bool syncSettings = true,
+    SyncProgressCallback? onProgress,
+  }) async {
     final db = DatabaseService.instance;
     final deviceId = snapshot['device_id'] as String?;
 
@@ -208,8 +295,14 @@ class SyncService {
 
     try {
       if (snapshot['play_events'] is List) {
+        onProgress?.call('Merging play stats...', 0.45);
         final events =
             List<Map<String, dynamic>>.from(snapshot['play_events'] as List);
+        for (final ev in events) {
+          if (!ev.containsKey('device_id') && deviceId.isNotEmpty) {
+            ev['device_id'] = deviceId;
+          }
+        }
         await db.insertPlayEventsBatch(events);
       }
     } catch (e) {
@@ -229,6 +322,7 @@ class SyncService {
           List<Map<String, dynamic>>.from(snapshot['hidden'] as List));
     }
     if (snapshot['playlists'] is List) {
+      onProgress?.call('Merging playlists...', 0.6);
       await db.importPlaylists(
           List<Map<String, dynamic>>.from(snapshot['playlists'] as List));
     }
@@ -237,22 +331,19 @@ class SyncService {
           List<Map<String, dynamic>>.from(snapshot['merged_groups'] as List));
     }
 
-    if (snapshot['settings'] is Map) {
+    if (syncSettings && snapshot['settings'] is Map) {
+      onProgress?.call('Merging settings...', 0.7);
       await _mergeSettings(snapshot['settings'] as Map<String, dynamic>,
           snapshot['device_id'] as String?);
     }
 
     if (snapshot['artist_art'] is List) {
-      await _mergeArtistArtWithFiles(
-        List<Map<String, dynamic>>.from(snapshot['artist_art'] as List),
-        snapshot['art_files'] as Map<String, dynamic>? ?? {},
-      );
+      await db.importArtistArtBatch(
+          List<Map<String, dynamic>>.from(snapshot['artist_art'] as List));
     }
     if (snapshot['album_art'] is List) {
-      await _mergeAlbumArtWithFiles(
-        List<Map<String, dynamic>>.from(snapshot['album_art'] as List),
-        snapshot['art_files'] as Map<String, dynamic>? ?? {},
-      );
+      await db.importAlbumArtBatch(
+          List<Map<String, dynamic>>.from(snapshot['album_art'] as List));
     }
   }
 
@@ -275,75 +366,6 @@ class SyncService {
         await prefs.setStringList(key, value.cast<String>());
       }
     }
-  }
-
-  Future<void> _mergeArtistArtWithFiles(
-    List<Map<String, dynamic>> artistArt,
-    Map<String, dynamic> artFiles,
-  ) async {
-    final db = DatabaseService.instance;
-    final syncDir = await _getSyncArtDir();
-    final updated = <Map<String, dynamic>>[];
-
-    for (final a in artistArt) {
-      final hash = a['local_path_hash'] as String?;
-      if (hash != null && artFiles.containsKey(hash)) {
-        final fileData = artFiles[hash] as Map<String, dynamic>;
-        final data = fileData['data'] as String?;
-        final mime = fileData['mime'] as String? ?? 'image/jpeg';
-        if (data != null) {
-          final ext = mime == 'image/png' ? '.png' : '.jpg';
-          final filePath = p.join(syncDir.path, 'artist_$hash$ext');
-          final file = File(filePath);
-          if (!await file.exists()) {
-            await file.writeAsBytes(base64Decode(data));
-          }
-          a['local_path'] = filePath;
-        }
-      }
-      updated.add(a);
-    }
-
-    await db.importArtistArtBatch(updated);
-  }
-
-  Future<void> _mergeAlbumArtWithFiles(
-    List<Map<String, dynamic>> albumArt,
-    Map<String, dynamic> artFiles,
-  ) async {
-    final db = DatabaseService.instance;
-    final syncDir = await _getSyncArtDir();
-    final updated = <Map<String, dynamic>>[];
-
-    for (final a in albumArt) {
-      final hash = a['local_path_hash'] as String?;
-      if (hash != null && artFiles.containsKey(hash)) {
-        final fileData = artFiles[hash] as Map<String, dynamic>;
-        final data = fileData['data'] as String?;
-        final mime = fileData['mime'] as String? ?? 'image/jpeg';
-        if (data != null) {
-          final ext = mime == 'image/png' ? '.png' : '.jpg';
-          final filePath = p.join(syncDir.path, 'album_$hash$ext');
-          final file = File(filePath);
-          if (!await file.exists()) {
-            await file.writeAsBytes(base64Decode(data));
-          }
-          a['local_path'] = filePath;
-        }
-      }
-      updated.add(a);
-    }
-
-    await db.importAlbumArtBatch(updated);
-  }
-
-  Future<Directory> _getSyncArtDir() async {
-    final docDir = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docDir.path, 'sync_art'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
   }
 
   Future<List<Map<String, dynamic>>> _listDriveFiles(String token) async {
@@ -374,7 +396,8 @@ class SyncService {
       'Authorization': token,
     });
     if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      final body = response.body;
+      return await Isolate.run(() => jsonDecode(body) as Map<String, dynamic>);
     }
     throw Exception('Download failed: ${response.statusCode}');
   }
@@ -385,18 +408,20 @@ class SyncService {
       'name': fileName,
       'parents': ['appDataFolder'],
     });
-    final body = jsonEncode(snapshot);
 
     final boundary = 'Boundary_${DateTime.now().millisecondsSinceEpoch}';
-    final bodyBytes = utf8.encode(
-      '--$boundary\r\n'
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-      '$metadata\r\n'
-      '--$boundary\r\n'
-      'Content-Type: application/json\r\n\r\n'
-      '$body\r\n'
-      '--$boundary--\r\n',
-    );
+    final bodyBytes = await Isolate.run(() {
+      final body = jsonEncode(snapshot);
+      return utf8.encode(
+        '--$boundary\r\n'
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+        '$metadata\r\n'
+        '--$boundary\r\n'
+        'Content-Type: application/json\r\n\r\n'
+        '$body\r\n'
+        '--$boundary--\r\n',
+      );
+    });
 
     final url = Uri.parse(
         'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart');

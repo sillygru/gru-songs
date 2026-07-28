@@ -176,9 +176,13 @@ class DatabaseService {
         id TEXT PRIMARY KEY,
         start_time REAL,
         end_time REAL,
-        platform TEXT
+        platform TEXT,
+        device_id TEXT
       )
     ''');
+    try {
+      await db.execute('ALTER TABLE playsession ADD COLUMN device_id TEXT');
+    } catch (_) {}
     await db.execute('''
       CREATE TABLE IF NOT EXISTS playevent (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2091,6 +2095,8 @@ class DatabaseService {
       throw ArgumentError('timestamp is required');
     }
 
+    final deviceId = event['device_id'] as String?;
+
     await txn.insert(
         'playsession',
         {
@@ -2098,8 +2104,15 @@ class DatabaseService {
           'start_time': timestamp,
           'end_time': timestamp,
           'platform': event['platform'] ?? 'unknown',
+          'device_id': deviceId,
         },
         conflictAlgorithm: ConflictAlgorithm.ignore);
+
+    if (deviceId != null && deviceId.isNotEmpty) {
+      await txn.rawUpdate(
+          'UPDATE playsession SET device_id = ? WHERE id = ? AND (device_id IS NULL OR device_id = \'\')',
+          [deviceId, sessionId]);
+    }
 
     await txn.rawUpdate(
         'UPDATE playsession SET end_time = ? WHERE id = ? AND end_time < ?',
@@ -3379,7 +3392,58 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> getPlayEventsForSync() async {
     await _ensureInitialized();
     if (_statsDatabase == null) return [];
-    return await _statsDatabase!.query('playevent');
+    final results = await _statsDatabase!.rawQuery('''
+      SELECT pe.*, ps.device_id, ps.platform
+      FROM playevent pe
+      LEFT JOIN playsession ps ON pe.session_id = ps.id
+    ''');
+    return results.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<Map<String, int>> getPlayStatsDeviceBreakdown(
+      String currentDeviceId) async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) {
+      return {'localPlayCount': 0, 'remotePlayCount': 0, 'totalPlayCount': 0};
+    }
+    final results = await _statsDatabase!.rawQuery('''
+      SELECT 
+        COALESCE(ps.device_id, ?) AS dev_id,
+        COUNT(pe.id) AS event_count
+      FROM playevent pe
+      LEFT JOIN playsession ps ON pe.session_id = ps.id
+      GROUP BY dev_id
+    ''', [currentDeviceId]);
+
+    int localCount = 0;
+    int remoteCount = 0;
+    int totalCount = 0;
+
+    for (final row in results) {
+      final devId = row['dev_id'] as String?;
+      final count = (row['event_count'] as num?)?.toInt() ?? 0;
+      totalCount += count;
+      if (devId == null || devId == currentDeviceId || devId == 'unknown') {
+        localCount += count;
+      } else {
+        remoteCount += count;
+      }
+    }
+
+    return {
+      'localPlayCount': localCount,
+      'remotePlayCount': remoteCount,
+      'totalPlayCount': totalCount,
+    };
+  }
+
+  Future<void> clearAllPlayStats() async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return;
+    await _statsDatabase!.transaction((txn) async {
+      await txn.delete('playevent');
+      await txn.delete('playsession');
+    });
   }
 
   Future<List<Map<String, dynamic>>> getFavoritesWithTimestamps() async {
@@ -3447,19 +3511,29 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> getArtistArtForSync() async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return [];
-    return await _userDataDatabase!.query(
+    final rows = await _userDataDatabase!.query(
       'artist_art',
-      where: 'image_url IS NOT NULL AND image_url != \'\'',
+      where: "(image_url IS NOT NULL AND image_url != '') OR source = 'song'",
     );
+    return rows.map((row) {
+      final m = Map<String, dynamic>.from(row);
+      m.remove('local_path');
+      return m;
+    }).toList();
   }
 
   Future<List<Map<String, dynamic>>> getAlbumArtForSync() async {
     await _ensureInitialized();
     if (_userDataDatabase == null) return [];
-    return await _userDataDatabase!.query(
+    final rows = await _userDataDatabase!.query(
       'album_art',
-      where: 'image_url IS NOT NULL AND image_url != \'\'',
+      where: "(image_url IS NOT NULL AND image_url != '') OR source = 'song'",
     );
+    return rows.map((row) {
+      final m = Map<String, dynamic>.from(row);
+      m.remove('local_path');
+      return m;
+    }).toList();
   }
 
   // ==========================================================================

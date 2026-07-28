@@ -44,6 +44,7 @@ class SettingsState {
   final bool lyricsAutoTranslate;
   final String lyricsTranslationMode;
   final bool autoSyncEnabled;
+  final bool syncSettingsEnabled;
 
   SettingsState({
     this.visualizerMode = VisualizerMode.synced,
@@ -85,6 +86,7 @@ class SettingsState {
     this.lyricsAutoTranslate = false,
     this.lyricsTranslationMode = 'subtext',
     this.autoSyncEnabled = true,
+    this.syncSettingsEnabled = true,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
 
   SettingsState copyWith({
@@ -127,6 +129,7 @@ class SettingsState {
     bool? lyricsAutoTranslate,
     String? lyricsTranslationMode,
     bool? autoSyncEnabled,
+    bool? syncSettingsEnabled,
   }) {
     return SettingsState(
       visualizerMode: visualizerMode ?? this.visualizerMode,
@@ -186,6 +189,7 @@ class SettingsState {
       lyricsTranslationMode:
           lyricsTranslationMode ?? this.lyricsTranslationMode,
       autoSyncEnabled: autoSyncEnabled ?? this.autoSyncEnabled,
+      syncSettingsEnabled: syncSettingsEnabled ?? this.syncSettingsEnabled,
     );
   }
 }
@@ -233,6 +237,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyLyricsAutoTranslate = 'lyrics_auto_translate';
   static const _keyLyricsTranslationMode = 'lyrics_translation_mode';
   static const String _keyAutoSyncEnabled = 'auto_sync_enabled';
+  static const String _keySyncSettingsEnabled = 'sync_settings_enabled';
   static const double maxDelayDuration = 12.0;
   static const int minMotionLatencyMs = -200;
   static const int maxMotionLatencyMs = 500;
@@ -313,6 +318,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       lyricsTranslationMode:
           prefs.getString(_keyLyricsTranslationMode) ?? 'subtext',
       autoSyncEnabled: prefs.getBool(_keyAutoSyncEnabled) ?? true,
+      syncSettingsEnabled: prefs.getBool(_keySyncSettingsEnabled) ?? true,
     );
   }
 
@@ -590,6 +596,12 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(autoSyncEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAutoSyncEnabled, enabled);
+  }
+
+  Future<void> setSyncSettingsEnabled(bool enabled) async {
+    state = state.copyWith(syncSettingsEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySyncSettingsEnabled, enabled);
   }
 }
 
