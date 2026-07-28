@@ -121,70 +121,86 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       );
     }
 
+    final navIntent = ref.watch(libraryNavigationProvider);
+    final initialTabIndex =
+        (navIntent?.subTabIndex ?? widget.initialTabIndex).clamp(0, 2);
+
     return DefaultTabController(
       length: 3,
-      initialIndex: widget.initialTabIndex,
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: NestedScrollView(
-          controller: widget.scrollController,
-          // Required for the header's snap to work over the tab body —
-          // without it the outer scroll won't float the sliver back in.
-          floatHeaderSlivers: true,
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              AppSliverHeader(
-                title: 'Library',
-                isScrolled: innerBoxIsScrolled,
-                floating: true,
-                snap: true,
-                actions: [
-                  songsAsyncValue.when(
-                    data: (songs) => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SortMenu(),
-                        IconButton(
-                          icon: const AppIcon(AppIcons.shuffle),
-                          tooltip: 'Shuffle all',
-                          onPressed: () {
-                            if (songs.isNotEmpty) {
-                              audioManager.shuffleAndPlay(songs,
-                                  isRestricted: false);
-                            }
-                          },
+      initialIndex: initialTabIndex,
+      child: Builder(
+        builder: (context) {
+          ref.listen(libraryNavigationProvider, (previous, next) {
+            if (next == null) return;
+            final controller = DefaultTabController.of(context);
+            if (controller.index != next.subTabIndex) {
+              controller.animateTo(next.subTabIndex);
+            }
+          });
+
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: NestedScrollView(
+              controller: widget.scrollController,
+              // Required for the header's snap to work over the tab body —
+              // without it the outer scroll won't float the sliver back in.
+              floatHeaderSlivers: true,
+              headerSliverBuilder: (context, innerBoxIsScrolled) {
+                return [
+                  AppSliverHeader(
+                    title: 'Library',
+                    isScrolled: innerBoxIsScrolled,
+                    floating: true,
+                    snap: true,
+                    actions: [
+                      songsAsyncValue.when(
+                        data: (songs) => Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SortMenu(),
+                            IconButton(
+                              icon: const AppIcon(AppIcons.shuffle),
+                              tooltip: 'Shuffle all',
+                              onPressed: () {
+                                if (songs.isNotEmpty) {
+                                  audioManager.shuffleAndPlay(songs,
+                                      isRestricted: false);
+                                }
+                              },
+                            ),
+                          ],
                         ),
-                      ],
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, __) => const SizedBox.shrink(),
+                      ),
+                    ],
+                    bottom: AppSegmentedTabs(
+                      controller: DefaultTabController.of(context),
+                      labels: const ['Folders', 'Artists', 'Albums'],
+                      accent: AppTokens.accentOf(context, ref),
                     ),
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
                   ),
-                ],
-                bottom: AppSegmentedTabs(
-                  controller: DefaultTabController.of(context),
-                  labels: const ['Folders', 'Artists', 'Albums'],
-                  accent: AppTokens.accentOf(context, ref),
+                ];
+              },
+              body: songsAsyncValue.when(
+                data: (allSongs) => TabBarView(
+                  children: [
+                    buildFolderTab(),
+                    _buildArtistsView(context, allSongs),
+                    _buildAlbumsView(context, allSongs),
+                  ],
+                ),
+                loading: () => const AppLoading(),
+                error: (e, s) => AppEmptyState(
+                  icon: AppIcons.error,
+                  title: 'Could not load library',
+                  message: '$e',
+                  tone: AppTone.danger,
                 ),
               ),
-            ];
-          },
-          body: songsAsyncValue.when(
-            data: (allSongs) => TabBarView(
-              children: [
-                buildFolderTab(),
-                _buildArtistsView(context, allSongs),
-                _buildAlbumsView(context, allSongs),
-              ],
             ),
-            loading: () => const AppLoading(),
-            error: (e, s) => AppEmptyState(
-              icon: AppIcons.error,
-              title: 'Could not load library',
-              message: '$e',
-              tone: AppTone.danger,
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -533,6 +549,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     }
 
     final artState = ref.watch(artistAlbumArtProvider);
+    final sortOrder = ref.watch(settingsProvider).sortOrder;
+    final userData = ref.watch(userDataProvider);
+    final audioManager = ref.watch(audioPlayerManagerProvider);
+    final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
+    final playCounts = ref.watch(playCountsProvider);
+    final lastPlayedAsync = ref.watch(lastPlayedTimestampsProvider);
+    final lastPlayedTimestamps = lastPlayedAsync.asData?.value ?? const {};
 
     return NotificationListener<ScrollNotification>(
       onNotification: handleScrollNotification,
@@ -552,9 +575,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         itemCount: entries.length,
         itemBuilder: (context, index) {
           final entry = entries[index];
+          final sortedEntrySongs = LibraryLogic.sortSongs(
+            entry.songs,
+            sortOrder,
+            userData: userData,
+            shuffleConfig: shuffleConfig,
+            playCounts: playCounts,
+            lastPlayedTimestamps: lastPlayedTimestamps,
+          );
           final String? artistName = isArtist
               ? entry.key
-              : (entry.songs.isNotEmpty ? entry.songs.first.artist : null);
+              : (sortedEntrySongs.isNotEmpty
+                  ? sortedEntrySongs.first.artist
+                  : null);
           final String? albumName = isAlbum ? entry.key : null;
 
           final cachedArt = isArtist
@@ -574,7 +607,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                     height: double.infinity,
                   ),
                 )
-              : FolderGridImage(songs: entry.songs, isGridItem: true);
+              : FolderGridImage(songs: sortedEntrySongs, isGridItem: true);
 
           return AppMediaCard(
             expand: true,

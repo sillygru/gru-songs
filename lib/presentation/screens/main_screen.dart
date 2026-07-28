@@ -282,6 +282,17 @@ class _MainScreenState extends ConsumerState<MainScreen>
       }
     });
 
+    ref.listen(libraryNavigationProvider, (previous, next) {
+      if (next == null) return;
+      // Library is bottom-nav index 1.
+      if (_selectedIndex != 1 || !_builtScreens.contains(1)) {
+        setState(() {
+          _selectedIndex = 1;
+          _builtScreens.add(1);
+        });
+      }
+    });
+
     return Scaffold(
       body: PopScope(
         canPop: !isSelectionMode,

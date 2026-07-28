@@ -133,6 +133,7 @@ class BeatAnalysisService {
     );
 
     final session = await FFmpegKit.executeWithArguments([
+      '-threads', '1', // leave headroom for the audio callback
       '-i', path,
       '-vn', // ignore cover art and video streams
       '-ac', '1', // mono

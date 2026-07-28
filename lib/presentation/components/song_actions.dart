@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../domain/models/online_search_result.dart';
 import '../../models/song.dart';
 import '../../providers/providers.dart';
+import '../../services/library_logic.dart';
 import '../../services/online_metadata_service.dart';
 import '../components/app_feedback.dart';
 import '../components/app_icon.dart';
@@ -309,23 +310,58 @@ void songActionGoToAlbum(BuildContext host, WidgetRef ref, Song song) {
   );
 }
 
-/// Opens the artist this song belongs to. No-op when the library has not
-/// finished loading, since there is nothing to filter yet.
-void songActionGoToArtist(BuildContext host, WidgetRef ref, Song song) {
+/// Opens the specified artist screen. Filters all library songs where this artist is featured.
+void songActionGoToArtistByName(
+  BuildContext host,
+  WidgetRef ref,
+  String artistName,
+) {
   final songs = ref.read(songsProvider).value;
   if (songs == null) return;
 
-  final artistSongs = songs.where((s) => s.artist == song.artist).toList();
-  if (artistSongs.isEmpty) return;
+  final cleanTarget = artistName.trim().toLowerCase();
+  if (cleanTarget.isEmpty) return;
+
+  final artistSongs = songs.where((s) {
+    final parsed = LibraryLogic.splitArtistNames(s.artist);
+    if (parsed.isEmpty) {
+      return s.artist.trim().toLowerCase() == cleanTarget;
+    }
+    return parsed.any((a) => a.trim().toLowerCase() == cleanTarget);
+  }).toList();
+
+  if (artistSongs.isEmpty) {
+    final fallbackSongs = songs
+        .where((s) => s.artist.toLowerCase().contains(cleanTarget))
+        .toList();
+    if (fallbackSongs.isEmpty) return;
+    host.pushApp(
+      SongListScreen(
+        title: artistName,
+        songs: fallbackSongs,
+        isArtist: true,
+        artistName: artistName,
+      ),
+    );
+    return;
+  }
 
   host.pushApp(
     SongListScreen(
-      title: song.artist,
+      title: artistName,
       songs: artistSongs,
       isArtist: true,
-      artistName: song.artist,
+      artistName: artistName,
     ),
   );
+}
+
+/// Opens the artist this song belongs to. No-op when the library has not
+/// finished loading, since there is nothing to filter yet.
+void songActionGoToArtist(BuildContext host, WidgetRef ref, Song song) {
+  final artists = LibraryLogic.splitArtistNames(song.artist);
+  final targetArtist = artists.isNotEmpty ? artists.first : song.artist;
+  songActionGoToArtistByName(host, ref, targetArtist);
 }
 
 Future<void> songActionFetchMissingCover(

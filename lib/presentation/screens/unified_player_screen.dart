@@ -20,6 +20,7 @@ import '../widgets/basic_progress_bar.dart';
 import '../widgets/beat_cover_glow.dart';
 import '../widgets/beat_particle_field.dart';
 import '../widgets/blurred_background.dart';
+import '../widgets/clickable_artist_text.dart';
 import '../widgets/player_motion.dart';
 import '../widgets/smooth_color_builder.dart';
 import '../widgets/song_options_menu.dart';
@@ -462,16 +463,12 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
                         textAlign: TextAlign.center,
                         style: PlayerTokens.trackTitle(context),
                       ),
-                      Pressable(
-                        alignment: Alignment.center,
-                        onTap: () => songActionGoToArtist(context, ref, song),
-                        child: Text(
-                          song.artist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: PlayerTokens.trackSubtitle(context),
-                        ),
+                      ClickableArtistText(
+                        artist: song.artist,
+                        textAlign: TextAlign.center,
+                        style: PlayerTokens.trackSubtitle(context),
+                        onArtistTap: (artistName) => songActionGoToArtistByName(
+                            context, ref, artistName),
                       ),
                     ],
                   ),

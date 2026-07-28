@@ -85,6 +85,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// tick, so it is scoped to the loader widget alone.
   final ValueNotifier<double> _gapProgress = ValueNotifier(0);
 
+  /// After the gap ends we keep the slot for one collapse animation so the
+  /// reserved space can AnimatedSize shut instead of vanishing in a frame.
+  Timer? _gapCollapseTimer;
+  static const Duration _gapCollapseHold = PlayerTokens.dSlow;
+
   StreamSubscription<Duration>? _positionSub;
   DateTime? _lastManualScroll;
 
@@ -115,6 +120,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   @override
   void dispose() {
+    _gapCollapseTimer?.cancel();
     _positionSub?.cancel();
     _scrollController.removeListener(_onUserScroll);
     _scrollController.dispose();
@@ -143,8 +149,23 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       delay: _gapLoaderDelay,
       minimumWindow: _minimumGapLoaderWindow,
     );
-    _gapSlot.value = gap.shouldShow ? gap.insertBeforeLyricIndex : -1;
-    _gapProgress.value = gap.progress;
+
+    if (gap.shouldShow) {
+      _gapCollapseTimer?.cancel();
+      _gapCollapseTimer = null;
+      _gapSlot.value = gap.insertBeforeLyricIndex;
+      _gapProgress.value = gap.progress;
+    } else if (_gapSlot.value >= 0 && _gapCollapseTimer == null) {
+      // Drive the loader's own exit to completion, then clear the slot so
+      // AnimatedSize can collapse the row height.
+      _gapProgress.value = 1;
+      _gapCollapseTimer = Timer(_gapCollapseHold, () {
+        if (!mounted) return;
+        _gapSlot.value = -1;
+        _gapProgress.value = 0;
+        _gapCollapseTimer = null;
+      });
+    }
   }
 
   void _onUserScroll() {
@@ -158,6 +179,8 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   Future<void> _load() async {
     final filename = widget.song.filename;
+    _gapCollapseTimer?.cancel();
+    _gapCollapseTimer = null;
     setState(() {
       _loading = true;
       _lyrics = null;
@@ -218,7 +241,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         if (settings.lyricsAutoTranslate &&
             content != null &&
             content.trim().isNotEmpty) {
-          _performTranslation(settings.lyricsTargetLanguage);
+          _performTranslation(settings.lyricsTargetLanguage, silent: true);
         }
       }
     }
@@ -273,7 +296,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     }
   }
 
-  Future<void> _performTranslation(String targetLang) async {
+  Future<void> _performTranslation(String targetLang, {bool silent = false}) async {
     final content = _rawLyricsContent;
     if (content == null || content.trim().isEmpty) return;
 
@@ -345,8 +368,10 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
           _translatedLyrics = null;
           _hasCachedTranslation = false;
         });
-        appSnack(context, 'Lyrics are already in target language',
-            tone: AppTone.info);
+        if (!silent) {
+          appSnack(context, 'Lyrics are already in target language',
+              tone: AppTone.info);
+        }
       } else if (response.text.trim().isNotEmpty) {
         await DatabaseService.instance.saveTranslatedLyrics(
           widget.song.filename,
@@ -566,31 +591,37 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
               ),
             );
 
-            if (gapSlot == index) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: PlayerTokens.s5,
-                      vertical: PlayerTokens.s3,
-                    ),
-                    // The only thing in the pane that follows the playhead
-                    // continuously, and it rebuilds nothing but itself.
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: _gapProgress,
-                      builder: (context, progress, _) => LyricsGapLoader(
-                        progress: progress,
-                        accent: widget.accent,
-                      ),
-                    ),
-                  ),
-                  lyricWidget,
-                ],
-              );
-            }
-
-            return lyricWidget;
+            // AnimatedSize on every row so opening/closing a gap grows and
+            // shrinks the reserved space instead of popping the list.
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedSize(
+                  duration: PlayerTokens.dSlow,
+                  curve: PlayerTokens.cStandard,
+                  alignment: Alignment.topCenter,
+                  child: gapSlot == index
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: PlayerTokens.s5,
+                            vertical: PlayerTokens.s3,
+                          ),
+                          // The only thing in the pane that follows the
+                          // playhead continuously, and it rebuilds nothing
+                          // but itself.
+                          child: ValueListenableBuilder<double>(
+                            valueListenable: _gapProgress,
+                            builder: (context, progress, _) => LyricsGapLoader(
+                              progress: progress,
+                              accent: widget.accent,
+                            ),
+                          ),
+                        )
+                      : const SizedBox(width: double.infinity),
+                ),
+                lyricWidget,
+              ],
+            );
           },
         );
       },

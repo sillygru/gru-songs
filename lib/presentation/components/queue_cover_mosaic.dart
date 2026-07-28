@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../models/song.dart';
@@ -30,12 +31,37 @@ class QueueCoverMosaic extends StatelessWidget {
 
   static const double _gap = 1.5;
 
+  static bool _isValidCoverUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    final trimmed = url.trim();
+    if (trimmed.startsWith('/') ||
+        trimmed.startsWith('file://') ||
+        trimmed.startsWith('C:\\')) {
+      try {
+        final path = trimmed.startsWith('file://')
+            ? Uri.parse(trimmed).toFilePath()
+            : trimmed;
+        return File(path).existsSync();
+      } catch (_) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final covers = songs
-        .where((song) => (song.coverUrl ?? '').isNotEmpty)
-        .take(4)
-        .toList();
+    final uniqueUrls = <String>{};
+    final covers = <Song>[];
+    for (final song in songs) {
+      final url = song.coverUrl;
+      if (_isValidCoverUrl(url)) {
+        if (uniqueUrls.add(url!)) {
+          covers.add(song);
+          if (covers.length >= 4) break;
+        }
+      }
+    }
 
     return ClipRRect(
       borderRadius: PlayerTokens.brSm,

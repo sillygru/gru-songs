@@ -13,10 +13,14 @@ class LyricsGapLoader extends StatefulWidget {
 
   final Color accent;
 
+  /// Fits the now-playing peek's single-line height instead of a full lyrics row.
+  final bool compact;
+
   const LyricsGapLoader({
     super.key,
     required this.progress,
     required this.accent,
+    this.compact = false,
   });
 
   @override
@@ -35,8 +39,6 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
   static const double _enterEnd = 0.06;
   static const double _pulseEnd = 0.88;
 
-  static const double _idleSize = 7.0;
-  static const double _filledSize = 11.0;
   static const double _idleAlpha = 0.22;
   static const double _filledAlpha = 0.95;
 
@@ -45,6 +47,12 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
   static const Duration _smoothing = Duration(milliseconds: 240);
 
   late final AnimationController _pulse;
+
+  double get _idleSize => widget.compact ? 3.5 : 7.0;
+  double get _filledSize => widget.compact ? 5.5 : 11.0;
+  double get _dotGap => widget.compact ? 4.0 : 8.0;
+  double get _glowPad => widget.compact ? 3.0 : 6.0;
+  double get _minSlot => widget.compact ? 12.0 : 22.0;
 
   @override
   void initState() {
@@ -63,57 +71,61 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(end: widget.progress),
-            duration: _smoothing,
-            curve: Curves.linear,
-            builder: (context, p, _) {
-              final enter = Curves.easeOut.transform(
-                (p / _enterEnd).clamp(0.0, 1.0),
-              );
+    final content = Align(
+      alignment: Alignment.centerLeft,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: widget.progress),
+        duration: _smoothing,
+        curve: Curves.linear,
+        builder: (context, p, _) {
+          final enter = Curves.easeOut.transform(
+            (p / _enterEnd).clamp(0.0, 1.0),
+          );
 
-              // One gentle swell once the row is full, then out of the way.
-              final pulseRaw =
-                  ((p - _fillEnd) / (_pulseEnd - _fillEnd)).clamp(0.0, 1.0);
-              final swell = math.sin(pulseRaw * math.pi) * 0.12;
+          // One gentle swell once the row is full, then out of the way.
+          final pulseRaw =
+              ((p - _fillEnd) / (_pulseEnd - _fillEnd)).clamp(0.0, 1.0);
+          final swell = math.sin(pulseRaw * math.pi) * 0.12;
 
-              final exitRaw =
-                  ((p - _pulseEnd) / (1.0 - _pulseEnd)).clamp(0.0, 1.0);
-              final exit = Curves.easeInCubic.transform(exitRaw);
+          final exitRaw = ((p - _pulseEnd) / (1.0 - _pulseEnd)).clamp(0.0, 1.0);
+          final exit = Curves.easeInCubic.transform(exitRaw);
 
-              final opacity = enter * (1.0 - exit);
-              final scale = (0.9 + enter * 0.1) * (1.0 + swell) - exit * 0.15;
+          final opacity = enter * (1.0 - exit);
+          final scale = (0.9 + enter * 0.1) * (1.0 + swell) - exit * 0.15;
 
-              return Opacity(
-                opacity: opacity.clamp(0.0, 1.0),
-                child: Transform.scale(
-                  scale: scale,
-                  child: AnimatedBuilder(
-                    animation: _pulse,
-                    builder: (context, _) => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(
-                        _dotCount,
-                        (index) => Padding(
-                          padding: EdgeInsets.only(
-                            right: index == _dotCount - 1 ? 0 : 8,
-                          ),
-                          child: _buildDot(index, p),
-                        ),
+          return Opacity(
+            opacity: opacity.clamp(0.0, 1.0),
+            child: Transform.scale(
+              scale: scale,
+              alignment: Alignment.centerLeft,
+              child: AnimatedBuilder(
+                animation: _pulse,
+                builder: (context, _) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(
+                    _dotCount,
+                    (index) => Padding(
+                      padding: EdgeInsets.only(
+                        right: index == _dotCount - 1 ? 0 : _dotGap,
                       ),
+                      child: _buildDot(index, p),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
-        ),
+              ),
+            ),
+          );
+        },
       ),
+    );
+
+    return RepaintBoundary(
+      child: widget.compact
+          ? content
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: content,
+            ),
     );
   }
 
@@ -131,6 +143,8 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
           (_idleAlpha + (_filledAlpha - _idleAlpha) * fill + breath * 0.05)
               .clamp(0.0, 1.0),
       glowAlpha: fill * 0.16,
+      glowPad: _glowPad,
+      minSlot: _minSlot,
       accent: widget.accent,
     );
   }
@@ -140,20 +154,24 @@ class _GapLoaderDot extends StatelessWidget {
   final double size;
   final double coreAlpha;
   final double glowAlpha;
+  final double glowPad;
+  final double minSlot;
   final Color accent;
 
   const _GapLoaderDot({
     required this.size,
     required this.coreAlpha,
     required this.glowAlpha,
+    required this.glowPad,
+    required this.minSlot,
     required this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
-    final glowSize = size + 6.0;
+    final glowSize = size + glowPad;
     // Fixed slot, so growing dots never reflow the row.
-    final boxSize = math.max(glowSize, 22.0);
+    final boxSize = math.max(glowSize, minSlot);
 
     return SizedBox(
       width: boxSize,

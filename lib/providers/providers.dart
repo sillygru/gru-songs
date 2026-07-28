@@ -303,6 +303,41 @@ final bottomDockVisibilityProvider =
   BottomDockVisibilityNotifier.new,
 );
 
+/// Opens the Library bottom-nav tab on a Folders / Artists / Albums sub-tab.
+///
+/// Each call mints a new [id] so re-tapping the same destination still notifies
+/// listeners (e.g. drawer → Artists while already on Artists).
+class LibraryNavigationIntent {
+  final int subTabIndex;
+  final int id;
+
+  const LibraryNavigationIntent({
+    required this.subTabIndex,
+    required this.id,
+  });
+}
+
+class LibraryNavigationNotifier extends Notifier<LibraryNavigationIntent?> {
+  int _nextId = 0;
+
+  @override
+  LibraryNavigationIntent? build() => null;
+
+  /// [subTabIndex]: 0 Folders, 1 Artists, 2 Albums.
+  void openSubTab(int subTabIndex) {
+    assert(subTabIndex >= 0 && subTabIndex <= 2);
+    state = LibraryNavigationIntent(
+      subTabIndex: subTabIndex,
+      id: ++_nextId,
+    );
+  }
+}
+
+final libraryNavigationProvider =
+    NotifierProvider<LibraryNavigationNotifier, LibraryNavigationIntent?>(
+  LibraryNavigationNotifier.new,
+);
+
 class ScanProgressNotifier extends Notifier<double> {
   @override
   double build() => 0.0;
@@ -1000,7 +1035,10 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           final index =
               updatedSongsList.indexWhere((s) => s.filename == song.filename);
           if (index != -1) {
-            updatedSongsList[index] = updatedSong;
+            final mtime = await _statMtime(song.url, song.mtime);
+            final finalSong = updatedSong.copyWith(mtime: mtime);
+            updatedSongsList[index] = finalSong;
+            await _reindexSong(finalSong);
           }
           updatedCount++;
         } catch (e) {
@@ -1009,6 +1047,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         }
       }
 
+      await DatabaseService.instance.insertSongsBatch(updatedSongsList);
       state = AsyncValue.data(updatedSongsList);
       ref.read(audioPlayerManagerProvider).refreshSongs(updatedSongsList);
 
@@ -1035,7 +1074,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
   ///  2. the `song` table, so the change survives a restart;
   ///  3. the player's song map and queues, which is also what pushes the new
   ///     values onto the player screen and the now-playing bar;
-  ///  4. the search index, in the background — nothing is waiting on it.
+  ///  4. the search index — updated before publishing state so searches stay in sync.
   ///
   /// [previousFilename] is for renames, where the entry to replace is not the
   /// one the updated song now points at.
@@ -1053,9 +1092,12 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       ]);
     }
 
-    await DatabaseService.instance.insertSongsBatch([updated]);
-    ref.read(audioPlayerManagerProvider).refreshSongs(state.value ?? const []);
+    ref.read(audioPlayerManagerProvider).refreshSongs(
+          state.value ?? const [],
+          previousFilename: previousFilename,
+        );
 
+    unawaited(DatabaseService.instance.insertSongsBatch([updated]));
     unawaited(_reindexSong(updated, previousFilename: previousFilename));
   }
 
@@ -1160,11 +1202,13 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
         mtime: await _statMtime(song.url, song.mtime),
       );
 
-      // Evict the old cover from Flutter's decoded-image cache so the next
-      // `Image.file` with the same path reads the new bytes off disk.
-      // Only necessary when the path stays the same (re-extract in place).
-      if (song.coverUrl != null && song.coverUrl == newCoverPath) {
+      // Evict old and new covers from Flutter's decoded-image cache so the next
+      // `Image.file` reads the new bytes off disk.
+      if (song.coverUrl != null) {
         await CoverRefreshService.evictCoverFromImageCache(song.coverUrl!);
+      }
+      if (newCoverPath != null && newCoverPath != song.coverUrl) {
+        await CoverRefreshService.evictCoverFromImageCache(newCoverPath);
       }
 
       // Wipe the blurred background cache so the player re-renders the

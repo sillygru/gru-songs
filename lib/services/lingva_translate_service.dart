@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,15 +12,20 @@ class TranslationResponse {
   });
 }
 
-/// Translation service utilizing Lingva Translate API with automatic fallback
-/// to Google Translate GTX endpoint for ultra-fast, robust translations.
+/// Translation service that races multiple keyless backends in parallel and
+/// keeps the first successful reply. Batches for a single lyrics payload also
+/// run concurrently so long tracks do not wait on a serial waterfall.
 class LingvaTranslateService {
   static const List<String> defaultHosts = [
     'lingva.ml',
     'lingva.lunar.icu',
+    'translate.plausibility.cloud',
+    'lingva.garudalinux.org',
   ];
-  static const Duration _timeout = Duration(seconds: 12);
-  static const int _maxBatchChars = 2500;
+
+  static const Duration _timeout = Duration(seconds: 8);
+  static const int _maxBatchChars = 1800;
+  static const int _myMemoryMaxChars = 450;
 
   final List<String> hosts;
 
@@ -83,7 +89,6 @@ class LingvaTranslateService {
     final List<String?> resultLines = List.filled(lines.length, null);
     final List<_PendingLine> pendingTextLines = [];
 
-    // Step 1: Parse lines and categorize (metadata, empty, text)
     final timeExp = RegExp(r'^((?:\[[0-9]+:[0-9]+\.?[0-9]*\])+)(.*)$');
     final metaExp = RegExp(r'^\[[a-zA-Z]+:.+\]$');
 
@@ -103,8 +108,8 @@ class LingvaTranslateService {
 
       final timeMatch = timeExp.firstMatch(lineText);
       if (timeMatch != null) {
-        final timePrefix = timeMatch.group(1)!;
-        final contentText = timeMatch.group(2)!.trim();
+        final timePrefix = timeMatch.group(1) ?? '';
+        final contentText = (timeMatch.group(2) ?? '').trim();
         if (contentText.isEmpty) {
           resultLines[i] = rawLine;
         } else {
@@ -127,18 +132,23 @@ class LingvaTranslateService {
       return TranslationResponse(text: lyrics);
     }
 
-    // Step 2: Chunk text lines into safe batches
     final batches = _createBatches(pendingTextLines);
+
+    // Translate every batch concurrently; each batch races its backends.
+    final batchResults = await Future.wait(
+      batches.map(
+        (batch) => _translateBatch(
+          batch: batch,
+          targetLang: targetLang,
+          sourceLang: sourceLang,
+        ),
+      ),
+    );
+
     String? detectedSource;
-
-    // Step 3: Translate batches via Lingva / GTX API
-    for (final batch in batches) {
-      final batchResult = await _translateBatch(
-        batch: batch,
-        targetLang: targetLang,
-        sourceLang: sourceLang,
-      );
-
+    for (int i = 0; i < batches.length; i++) {
+      final batch = batches[i];
+      final batchResult = batchResults[i];
       detectedSource ??= batchResult.detectedSourceLang;
 
       for (int k = 0; k < batch.length; k++) {
@@ -148,7 +158,6 @@ class LingvaTranslateService {
       }
     }
 
-    // Step 4: Reassemble lines
     final fullText = resultLines.whereType<String>().join('\n');
     return TranslationResponse(
       text: fullText,
@@ -186,7 +195,7 @@ class LingvaTranslateService {
     required String sourceLang,
   }) async {
     final batchText = batch.map((b) => b.text).join('\n');
-    final fetchResult = await _fetchTranslationWithFallback(
+    final fetchResult = await _raceTranslation(
       query: batchText,
       targetLang: targetLang,
       sourceLang: sourceLang,
@@ -209,152 +218,303 @@ class LingvaTranslateService {
     );
   }
 
-  Future<TranslationResponse> _fetchTranslationWithFallback({
+  /// Fires every keyless backend at once and keeps the first usable reply.
+  Future<TranslationResponse> _raceTranslation({
     required String query,
     required String targetLang,
     required String sourceLang,
   }) async {
+    final completer = Completer<TranslationResponse>();
+    final clients = <HttpClient>[];
+    var failures = 0;
     Object? lastError;
 
-    // 1. Try Lingva hosts
-    for (final h in hosts) {
-      try {
-        final result = await _fetchFromLingvaHost(
-          host: h,
-          query: query,
-          targetLang: targetLang,
-          sourceLang: sourceLang,
+    late final List<Future<TranslationResponse> Function(HttpClient)> starters;
+
+    starters = [
+      for (final h in hosts)
+        (client) => _fetchFromLingvaHost(
+              client: client,
+              host: h,
+              query: query,
+              targetLang: targetLang,
+              sourceLang: sourceLang,
+            ),
+      (client) => _fetchFromGTX(
+            client: client,
+            query: query,
+            targetLang: targetLang,
+            sourceLang: sourceLang,
+          ),
+      (client) => _fetchFromGoogleClients5(
+            client: client,
+            query: query,
+            targetLang: targetLang,
+            sourceLang: sourceLang,
+          ),
+      if (query.length <= _myMemoryMaxChars)
+        (client) => _fetchFromMyMemory(
+              client: client,
+              query: query,
+              targetLang: targetLang,
+              sourceLang: sourceLang,
+            ),
+    ];
+
+    void settleFailure(Object error) {
+      lastError = error;
+      failures += 1;
+      if (failures >= starters.length && !completer.isCompleted) {
+        completer.completeError(
+          HttpException(
+            'Translation service unavailable: ${lastError ?? "all translation endpoints failed"}',
+          ),
         );
-        if (result.text.trim().isNotEmpty) {
-          return result;
-        }
-      } catch (e) {
-        lastError = e;
       }
     }
 
-    // 2. Fallback to GTX Endpoint (Google Translate free engine)
-    try {
-      final result = await _fetchFromGTX(
-        query: query,
-        targetLang: targetLang,
-        sourceLang: sourceLang,
+    void settleSuccess(TranslationResponse result) {
+      if (completer.isCompleted) return;
+      if (result.text.trim().isEmpty) {
+        settleFailure(const FormatException('Empty translation'));
+        return;
+      }
+      completer.complete(result);
+      for (final client in clients) {
+        client.close(force: true);
+      }
+    }
+
+    for (final start in starters) {
+      final client = HttpClient()..connectionTimeout = _timeout;
+      clients.add(client);
+      start(client).then<void>(
+        settleSuccess,
+        onError: settleFailure,
       );
-      if (result.text.trim().isNotEmpty) {
-        return result;
-      }
-    } catch (e) {
-      lastError = e;
     }
 
-    throw HttpException(
-      'Translation service unavailable: ${lastError ?? "all translation endpoints failed"}',
-    );
+    try {
+      return await completer.future.timeout(_timeout);
+    } on TimeoutException {
+      for (final client in clients) {
+        client.close(force: true);
+      }
+      throw HttpException(
+        'Translation service unavailable: ${lastError ?? "timed out"}',
+      );
+    } finally {
+      // Losers may still be mid-flight after a successful race; close them so
+      // sockets do not linger until the OS timeout.
+      if (completer.isCompleted) {
+        for (final client in clients) {
+          client.close(force: true);
+        }
+      }
+    }
   }
 
   Future<TranslationResponse> _fetchFromLingvaHost({
+    required HttpClient client,
     required String host,
     required String query,
     required String targetLang,
     required String sourceLang,
   }) async {
-    final client = HttpClient();
-    client.connectionTimeout = _timeout;
+    final encodedSource = Uri.encodeComponent(sourceLang);
+    final encodedTarget = Uri.encodeComponent(targetLang);
+    final encodedQuery = Uri.encodeComponent(query);
 
-    try {
-      final encodedSource = Uri.encodeComponent(sourceLang);
-      final encodedTarget = Uri.encodeComponent(targetLang);
-      final encodedQuery = Uri.encodeComponent(query);
+    final uri = Uri(
+      scheme: 'https',
+      host: host,
+      path: '/api/v1/$encodedSource/$encodedTarget/$encodedQuery',
+    );
 
-      final uri = Uri(
-        scheme: 'https',
-        host: host,
-        path: '/api/v1/$encodedSource/$encodedTarget/$encodedQuery',
-      );
+    final request = await client.getUrl(uri);
+    request.headers.set(HttpHeaders.userAgentHeader, 'WispieMusicPlayer/1.0');
 
-      final request = await client.getUrl(uri);
-      request.headers.set(HttpHeaders.userAgentHeader, 'WispieMusicPlayer/1.0');
+    final response = await request.close().timeout(_timeout);
 
-      final response = await request.close().timeout(_timeout);
-
-      if (response.statusCode != 200) {
-        throw HttpException('HTTP ${response.statusCode}');
-      }
-
-      final body = await response.transform(utf8.decoder).join();
-      final Map<String, dynamic> data = jsonDecode(body);
-
-      final translation = data['translation'] as String?;
-      if (translation == null) {
-        throw const FormatException('Missing translation field in response');
-      }
-
-      String? detected;
-      if (data['info'] is Map && data['info']['detectedSource'] is String) {
-        detected = data['info']['detectedSource'] as String;
-      }
-
-      return TranslationResponse(
-          text: translation, detectedSourceLang: detected);
-    } finally {
-      client.close();
+    if (response.statusCode != 200) {
+      throw HttpException('Lingva HTTP ${response.statusCode}');
     }
+
+    final body = await response.transform(utf8.decoder).join();
+    final Map<String, dynamic> data = jsonDecode(body) as Map<String, dynamic>;
+
+    final translation = data['translation'] as String?;
+    if (translation == null) {
+      throw const FormatException('Missing translation field in response');
+    }
+
+    String? detected;
+    final info = data['info'];
+    if (info is Map && info['detectedSource'] is String) {
+      detected = info['detectedSource'] as String;
+    }
+
+    return TranslationResponse(text: translation, detectedSourceLang: detected);
   }
 
   Future<TranslationResponse> _fetchFromGTX({
+    required HttpClient client,
     required String query,
     required String targetLang,
     required String sourceLang,
   }) async {
-    final client = HttpClient();
-    client.connectionTimeout = _timeout;
+    final encodedSource = Uri.encodeComponent(sourceLang);
+    final encodedTarget = Uri.encodeComponent(targetLang);
+    final encodedQuery = Uri.encodeComponent(query);
 
-    try {
-      final encodedSource = Uri.encodeComponent(sourceLang);
-      final encodedTarget = Uri.encodeComponent(targetLang);
-      final encodedQuery = Uri.encodeComponent(query);
+    final uri = Uri.parse(
+      'https://translate.googleapis.com/translate_a/single?client=gtx&sl=$encodedSource&tl=$encodedTarget&dt=t&q=$encodedQuery',
+    );
 
-      final uri = Uri.parse(
-        'https://translate.googleapis.com/translate_a/single?client=gtx&sl=$encodedSource&tl=$encodedTarget&dt=t&q=$encodedQuery',
-      );
+    final request = await client.getUrl(uri);
+    request.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
 
-      final request = await client.getUrl(uri);
-      request.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+    final response = await request.close().timeout(_timeout);
 
-      final response = await request.close().timeout(_timeout);
-
-      if (response.statusCode != 200) {
-        throw HttpException('HTTP ${response.statusCode}');
-      }
-
-      final body = await response.transform(utf8.decoder).join();
-      final List<dynamic> data = jsonDecode(body);
-
-      if (data.isEmpty || data.first == null || data.first is! List) {
-        throw const FormatException('Invalid GTX translation format');
-      }
-
-      final List<dynamic> segments = data.first as List<dynamic>;
-      final StringBuffer buffer = StringBuffer();
-
-      for (final segment in segments) {
-        if (segment is List && segment.isNotEmpty && segment.first is String) {
-          buffer.write(segment.first as String);
-        }
-      }
-
-      String? detected;
-      if (data.length > 2 && data[2] is String) {
-        detected = data[2] as String;
-      }
-
-      return TranslationResponse(
-        text: buffer.toString(),
-        detectedSourceLang: detected,
-      );
-    } finally {
-      client.close();
+    if (response.statusCode != 200) {
+      throw HttpException('GTX HTTP ${response.statusCode}');
     }
+
+    final body = await response.transform(utf8.decoder).join();
+    final List<dynamic> data = jsonDecode(body) as List<dynamic>;
+
+    if (data.isEmpty || data.first == null || data.first is! List) {
+      throw const FormatException('Invalid GTX translation format');
+    }
+
+    final List<dynamic> segments = data.first as List<dynamic>;
+    final StringBuffer buffer = StringBuffer();
+
+    for (final segment in segments) {
+      if (segment is List && segment.isNotEmpty && segment.first is String) {
+        buffer.write(segment.first as String);
+      }
+    }
+
+    String? detected;
+    if (data.length > 2 && data[2] is String) {
+      detected = data[2] as String;
+    }
+
+    return TranslationResponse(
+      text: buffer.toString(),
+      detectedSourceLang: detected,
+    );
+  }
+
+  /// Alternate Google free endpoint used by Chrome's dictionary extension.
+  Future<TranslationResponse> _fetchFromGoogleClients5({
+    required HttpClient client,
+    required String query,
+    required String targetLang,
+    required String sourceLang,
+  }) async {
+    final uri = Uri.https(
+      'clients5.google.com',
+      '/translate_a/t',
+      {
+        'client': 'dict-chrome-ex',
+        'sl': sourceLang,
+        'tl': targetLang,
+        'q': query,
+      },
+    );
+
+    final request = await client.getUrl(uri);
+    request.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+
+    final response = await request.close().timeout(_timeout);
+
+    if (response.statusCode != 200) {
+      throw HttpException('Clients5 HTTP ${response.statusCode}');
+    }
+
+    final body = await response.transform(utf8.decoder).join();
+    final dynamic data = jsonDecode(body);
+
+    final buffer = StringBuffer();
+    String? detected;
+
+    if (data is List && data.isNotEmpty) {
+      // Typical shape: [["translated","sourceLang"], ...] or
+      // [[["translated", ...], ...], "sourceLang"]
+      final first = data.first;
+      if (first is List) {
+        for (final item in data) {
+          if (item is List && item.isNotEmpty && item.first is String) {
+            buffer.write(item.first as String);
+            if (item.length > 1 && item[1] is String) {
+              detected ??= item[1] as String;
+            }
+          }
+        }
+      } else if (first is String) {
+        buffer.write(first);
+      }
+      if (data.length > 1 && data[1] is String) {
+        detected ??= data[1] as String;
+      }
+    } else {
+      throw const FormatException('Invalid Clients5 translation format');
+    }
+
+    return TranslationResponse(
+      text: buffer.toString(),
+      detectedSourceLang: detected,
+    );
+  }
+
+  Future<TranslationResponse> _fetchFromMyMemory({
+    required HttpClient client,
+    required String query,
+    required String targetLang,
+    required String sourceLang,
+  }) async {
+    final source = sourceLang == 'auto' ? 'Autodetect' : sourceLang;
+    final uri = Uri.https(
+      'api.mymemory.translated.net',
+      '/get',
+      {
+        'q': query,
+        'langpair': '$source|$targetLang',
+      },
+    );
+
+    final request = await client.getUrl(uri);
+    request.headers.set(HttpHeaders.userAgentHeader, 'WispieMusicPlayer/1.0');
+
+    final response = await request.close().timeout(_timeout);
+
+    if (response.statusCode != 200) {
+      throw HttpException('MyMemory HTTP ${response.statusCode}');
+    }
+
+    final body = await response.transform(utf8.decoder).join();
+    final Map<String, dynamic> data = jsonDecode(body) as Map<String, dynamic>;
+
+    final responseData = data['responseData'];
+    if (responseData is! Map) {
+      throw const FormatException('Invalid MyMemory response');
+    }
+
+    final translated = responseData['translatedText'] as String?;
+    if (translated == null || translated.trim().isEmpty) {
+      throw const FormatException('Empty MyMemory translation');
+    }
+
+    // MyMemory echoes MACHINE_ONLY / INVALID when it cannot translate.
+    if (translated.contains('MYMEMORY WARNING') ||
+        translated == 'INVALID SOURCE LANGUAGE' ||
+        translated == 'PLEASE SELECT TWO DISTINCT LANGUAGES') {
+      throw FormatException('MyMemory rejected query: $translated');
+    }
+
+    return TranslationResponse(text: translated);
   }
 }
 

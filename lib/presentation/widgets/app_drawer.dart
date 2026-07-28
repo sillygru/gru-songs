@@ -5,7 +5,6 @@ import '../../providers/providers.dart';
 import '../../services/database_service.dart';
 import '../../services/sleep_timer_service.dart';
 import '../screens/song_list_screen.dart';
-import '../screens/library_screen.dart';
 import '../screens/playlists_screen.dart';
 import '../screens/session_history_screen.dart';
 import '../screens/settings_screen.dart';
@@ -74,6 +73,15 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
           queueShowsHistory: true,
         ),
       );
+    });
+  }
+
+  /// Jump to the Library bottom-nav tab on Artists / Albums instead of pushing
+  /// a second LibraryScreen that lacks the shell chrome.
+  void _openLibrarySubTab(int subTabIndex) {
+    _closeDrawer().then((_) {
+      if (!mounted) return;
+      ref.read(libraryNavigationProvider.notifier).openSubTab(subTabIndex);
     });
   }
 
@@ -175,16 +183,14 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                               label: 'Albums',
                               iconSize: iconSize,
                               fontSize: textFontSize,
-                              onTap: () => _navigateTo(
-                                  const LibraryScreen(initialTabIndex: 2)),
+                              onTap: () => _openLibrarySubTab(2),
                             ),
                             _buildNavItem(
                               icon: AppIcons.person,
                               label: 'Artists',
                               iconSize: iconSize,
                               fontSize: textFontSize,
-                              onTap: () => _navigateTo(
-                                  const LibraryScreen(initialTabIndex: 1)),
+                              onTap: () => _openLibrarySubTab(1),
                             ),
                             const AppSectionHeader(
                               label: 'History',

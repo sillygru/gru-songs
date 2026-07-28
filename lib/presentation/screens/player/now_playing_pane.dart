@@ -20,9 +20,11 @@ import '../../components/song_actions.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/album_art_image.dart';
 import '../../widgets/beat_reactive_cover.dart';
+import '../../widgets/clickable_artist_text.dart';
 import '../../widgets/heart_context_menu.dart';
 import '../../widgets/now_playing_lyric_peek.dart';
 import '../../widgets/player_motion.dart';
+import '../../widgets/shrink_then_wrap_text.dart';
 
 /// Center pane. Content only — the shell owns the backdrop, header, pill and
 /// transport dock. Do not add a Scaffold, AppBar or background here.
@@ -130,23 +132,19 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                ShrinkThenWrapText(
                   widget.song.title,
                   maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  minFontSize: 16,
                   style: PlayerTokens.paneTitle(context).copyWith(fontSize: 22),
                 ),
                 const SizedBox(height: PlayerTokens.s1),
-                Pressable(
-                  alignment: Alignment.centerLeft,
-                  onTap: () => songActionGoToArtist(context, ref, widget.song),
-                  child: Text(
-                    widget.song.artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PlayerTokens.trackSubtitle(context)
-                        .copyWith(fontSize: 14),
-                  ),
+                ClickableArtistText(
+                  artist: widget.song.artist,
+                  style: PlayerTokens.trackSubtitle(context)
+                      .copyWith(fontSize: 14),
+                  onArtistTap: (artistName) =>
+                      songActionGoToArtistByName(context, ref, artistName),
                 ),
                 if (widget.song.album.isNotEmpty) ...[
                   const SizedBox(height: 2),

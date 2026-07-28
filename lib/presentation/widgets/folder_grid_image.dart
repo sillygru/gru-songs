@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../models/song.dart';
 import 'album_art_image.dart';
@@ -17,15 +18,33 @@ class FolderGridImage extends StatelessWidget {
     this.isGridItem = false,
   });
 
+  static bool _isValidCoverUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    final trimmed = url.trim();
+    if (trimmed.startsWith('/') ||
+        trimmed.startsWith('file://') ||
+        trimmed.startsWith('C:\\')) {
+      try {
+        final path = trimmed.startsWith('file://')
+            ? Uri.parse(trimmed).toFilePath()
+            : trimmed;
+        return File(path).existsSync();
+      } catch (_) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Get unique covers
     final uniqueCovers = <String>{};
     final List<String> covers = [];
-    for (var song in songs) {
-      if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
-        if (uniqueCovers.add(song.coverUrl!)) {
-          covers.add(song.coverUrl!);
+    for (final song in songs) {
+      final url = song.coverUrl;
+      if (_isValidCoverUrl(url)) {
+        if (uniqueCovers.add(url!)) {
+          covers.add(url);
           if (covers.length >= 4) break;
         }
       }
@@ -39,8 +58,11 @@ class FolderGridImage extends StatelessWidget {
           color: AppTokens.warning.withValues(alpha: 0.2),
           borderRadius: AppTokens.brSm,
         ),
-        child: AppIcon(AppIcons.folder,
-            size: size * 0.6, color: AppTokens.warning),
+        child: AppIcon(
+          AppIcons.folder,
+          size: size * 0.6,
+          color: AppTokens.warning,
+        ),
       );
     }
 
@@ -53,44 +75,173 @@ class FolderGridImage extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          // Use higher resolution for grid items
           memCacheWidth: isGridItem ? (size * 4).toInt() : null,
           memCacheHeight: isGridItem ? (size * 4).toInt() : null,
         ),
       );
     }
 
-    // 2, 3, or 4 covers
-    final int displayCount = covers.length;
+    const double gap = 1.0;
+
+    if (covers.length == 2) {
+      return ClipRRect(
+        borderRadius: AppTokens.brSm,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Row(
+            children: [
+              Expanded(
+                child: AlbumArtImage(
+                  url: covers[0],
+                  filename: covers[0],
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                  memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                  memCacheHeight: isGridItem ? (size * 4).toInt() : null,
+                ),
+              ),
+              const SizedBox(width: gap),
+              Expanded(
+                child: AlbumArtImage(
+                  url: covers[1],
+                  filename: covers[1],
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                  memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                  memCacheHeight: isGridItem ? (size * 4).toInt() : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (covers.length == 3) {
+      return ClipRRect(
+        borderRadius: AppTokens.brSm,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Row(
+            children: [
+              Expanded(
+                child: AlbumArtImage(
+                  url: covers[0],
+                  filename: covers[0],
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                  memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                  memCacheHeight: isGridItem ? (size * 4).toInt() : null,
+                ),
+              ),
+              const SizedBox(width: gap),
+              Expanded(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: AlbumArtImage(
+                        url: covers[1],
+                        filename: covers[1],
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                        memCacheHeight: isGridItem ? (size * 2).toInt() : null,
+                      ),
+                    ),
+                    const SizedBox(height: gap),
+                    Expanded(
+                      child: AlbumArtImage(
+                        url: covers[2],
+                        filename: covers[2],
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                        memCacheHeight: isGridItem ? (size * 2).toInt() : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return ClipRRect(
       borderRadius: AppTokens.brSm,
       child: SizedBox(
         width: size,
         height: size,
-        child: GridView.builder(
-          padding: EdgeInsets.zero,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 0,
-            mainAxisSpacing: 0,
-          ),
-          itemCount: 4,
-          itemBuilder: (context, index) {
-            // If we have fewer than 4, we cycle through them to fill the grid
-            final url = covers[index % displayCount];
-            return AlbumArtImage(
-              url: url,
-              filename: url,
-              width: size / 2,
-              height: size / 2,
-              fit: BoxFit.cover,
-              // Use higher resolution for grid items
-              memCacheWidth: isGridItem ? (size * 2).toInt() : null,
-              memCacheHeight: isGridItem ? (size * 2).toInt() : null,
-            );
-          },
+        child: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: AlbumArtImage(
+                      url: covers[0],
+                      filename: covers[0],
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                      memCacheHeight: isGridItem ? (size * 2).toInt() : null,
+                    ),
+                  ),
+                  const SizedBox(width: gap),
+                  Expanded(
+                    child: AlbumArtImage(
+                      url: covers[1],
+                      filename: covers[1],
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                      memCacheHeight: isGridItem ? (size * 2).toInt() : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: gap),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: AlbumArtImage(
+                      url: covers[2],
+                      filename: covers[2],
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                      memCacheHeight: isGridItem ? (size * 2).toInt() : null,
+                    ),
+                  ),
+                  const SizedBox(width: gap),
+                  Expanded(
+                    child: AlbumArtImage(
+                      url: covers[3],
+                      filename: covers[3],
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      memCacheWidth: isGridItem ? (size * 2).toInt() : null,
+                      memCacheHeight: isGridItem ? (size * 2).toInt() : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

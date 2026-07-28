@@ -1,10 +1,17 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../providers/providers.dart';
 
-final Set<String> _sessionViewedSongs = {};
+/// Thin placeholder height while an uncached waveform is still generating.
+const double _collapsedAmplitude = 0.28;
+
+/// Let playback settle before kicking off an uncached FFmpeg decode.
+const Duration _uncachedExtractDelay = Duration(milliseconds: 2800);
 
 class WaveformProgressBar extends ConsumerStatefulWidget {
   final String filename;
@@ -30,13 +37,11 @@ class WaveformProgressBar extends ConsumerStatefulWidget {
 }
 
 class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   List<double>? _peaks;
-  bool _isLoading = false;
   late AnimationController _barAnimationController;
   late Animation<double> _barAnimation;
   double? _dragPosition;
-  late bool _hasViewed;
   StreamSubscription<Duration>? _positionSubscription;
   DateTime? _lastPositionUpdate;
   final ValueNotifier<Duration> _positionNotifier =
@@ -50,15 +55,16 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
 
   AnimationStatusListener? _routeStatusListener;
   Animation<double>? _monitoredAnimation;
+  Timer? _deferTimer;
+  int _loadToken = 0;
 
   @override
   void initState() {
     super.initState();
-    _hasViewed = _sessionViewedSongs.contains(widget.filename);
     _barAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-      value: _hasViewed ? 1.0 : 0.0,
+      value: 0.0,
     );
     _barAnimation = CurvedAnimation(
       parent: _barAnimationController,
@@ -73,6 +79,8 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   @override
   void dispose() {
     _cleanupRouteListener();
+    _deferTimer?.cancel();
+    _loadToken++;
     _barAnimationController.dispose();
     _positionSubscription?.cancel();
     _positionNotifier.dispose();
@@ -106,17 +114,15 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   void didUpdateWidget(WaveformProgressBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.filename != widget.filename) {
-      _hasViewed = _sessionViewedSongs.contains(widget.filename);
+      _loadToken++;
+      _deferTimer?.cancel();
+      _cleanupRouteListener();
       _positionNotifier.value = Duration.zero;
       _cachedDisplayPeaks = null;
       _cachedWidth = 0;
       _labelStyle = null;
-
-      if (_hasViewed) {
-        _barAnimationController.value = 1.0;
-      } else {
-        _barAnimationController.reset();
-      }
+      _peaks = null;
+      _barAnimationController.value = 0.0;
 
       _scheduleWaveformLoad();
     }
@@ -132,81 +138,115 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
 
   Future<void> _scheduleWaveformLoad() async {
     _cleanupRouteListener();
+    _deferTimer?.cancel();
     if (widget.filename.isEmpty || widget.path.isEmpty) return;
 
     final currentFilename = widget.filename;
+    final token = ++_loadToken;
     final waveformService = ref.read(waveformServiceProvider);
 
     final isCached = await waveformService.isWaveformCached(currentFilename);
-    if (!mounted || widget.filename != currentFilename) return;
+    if (!mounted || widget.filename != currentFilename || token != _loadToken) {
+      return;
+    }
 
     if (isCached) {
-      _loadWaveform();
-    } else {
-      final route = ModalRoute.of(context);
-      final animation = route?.animation;
-      if (animation != null && !animation.isCompleted) {
-        _monitoredAnimation = animation;
-        _routeStatusListener = (status) {
-          if (status == AnimationStatus.completed) {
-            _cleanupRouteListener();
-            if (mounted && widget.filename == currentFilename) {
-              _loadWaveform();
-            }
-          }
-        };
-        animation.addStatusListener(_routeStatusListener!);
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && widget.filename == currentFilename) {
-            _loadWaveform();
-          }
-        });
-      }
+      // Already on disk — show the full waveform immediately.
+      await _loadWaveform(expandFromCollapsed: false);
+      return;
     }
+
+    // Uncached: wait out the route transition, then give playback a few
+    // seconds before FFmpeg wakes up so the audio thread is not starved.
+    final route = ModalRoute.of(context);
+    final animation = route?.animation;
+    if (animation != null && !animation.isCompleted) {
+      _monitoredAnimation = animation;
+      _routeStatusListener = (status) {
+        if (status == AnimationStatus.completed) {
+          _cleanupRouteListener();
+          if (mounted &&
+              widget.filename == currentFilename &&
+              token == _loadToken) {
+            _deferUncachedExtract(currentFilename, token);
+          }
+        }
+      };
+      animation.addStatusListener(_routeStatusListener!);
+      return;
+    }
+
+    _deferUncachedExtract(currentFilename, token);
   }
 
-  Future<void> _loadWaveform() async {
+  void _deferUncachedExtract(String filename, int token) {
+    _deferTimer?.cancel();
+    _deferTimer = Timer(_uncachedExtractDelay, () {
+      if (!mounted || widget.filename != filename || token != _loadToken) {
+        return;
+      }
+      // Idle priority: yield to animations / gestures that landed in the delay.
+      unawaited(
+        SchedulerBinding.instance.scheduleTask(
+          () {
+            if (!mounted ||
+                widget.filename != filename ||
+                token != _loadToken) {
+              return;
+            }
+            unawaited(_loadWaveform(expandFromCollapsed: true));
+          },
+          Priority.idle,
+          debugLabel: 'waveformExtract',
+        ),
+      );
+    });
+  }
+
+  Future<void> _loadWaveform({required bool expandFromCollapsed}) async {
     if (widget.filename.isEmpty || widget.path.isEmpty) return;
 
-    setState(() {
-      _isLoading = true;
-      _peaks = null;
-    });
+    final token = _loadToken;
+    final currentFilename = widget.filename;
 
     try {
       final waveformService = ref.read(waveformServiceProvider);
-      final currentFilename = widget.filename;
       final peaks =
           await waveformService.getWaveform(widget.filename, widget.path);
 
-      if (mounted && widget.filename == currentFilename) {
-        setState(() {
-          _peaks = peaks;
-          _isLoading = false;
-          _sessionViewedSongs.add(widget.filename);
-        });
-        if (!_hasViewed) {
-          _barAnimationController.forward();
-        }
+      if (!mounted ||
+          widget.filename != currentFilename ||
+          token != _loadToken) {
+        return;
+      }
+
+      setState(() {
+        _peaks = peaks;
+        _cachedDisplayPeaks = null;
+        _cachedWidth = 0;
+      });
+
+      if (peaks.isEmpty) return;
+
+      if (expandFromCollapsed) {
+        _barAnimationController.value = _collapsedAmplitude;
+        unawaited(_barAnimationController.forward());
+      } else {
+        _barAnimationController.value = 1.0;
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      debugPrint('WaveformProgressBar: load failed: $e');
     }
   }
 
   String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
-    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    final twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
     if (duration.inHours > 0) {
-      return "${duration.inHours}:$twoDigitMinutes:$twoDigitSeconds";
+      return '${duration.inHours}:$twoDigitMinutes:$twoDigitSeconds';
     }
-    return "${duration.inMinutes}:$twoDigitSeconds";
+    return '${duration.inMinutes}:$twoDigitSeconds';
   }
 
   @override
@@ -267,22 +307,8 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             padding: const EdgeInsets.symmetric(vertical: 5),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                if (_isLoading) {
-                  return CustomPaint(
-                    size: Size(constraints.maxWidth, constraints.maxHeight),
-                    painter: WaveformPainter(
-                      peaks: null,
-                      positionNotifier: _positionNotifier,
-                      dragPositionNotifier: _dragPositionNotifier,
-                      total: widget.total,
-                      color: primaryColor,
-                      animationValue: 1.0,
-                      isLoading: true,
-                    ),
-                  );
-                }
-
-                if (_peaks == null || _peaks!.isEmpty) {
+                final peaks = _peaks;
+                if (peaks == null || peaks.isEmpty) {
                   return ValueListenableBuilder<Duration>(
                     valueListenable: _positionNotifier,
                     builder: (context, position, child) {
@@ -291,15 +317,20 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
                                   widget.total.inMilliseconds)
                               .clamp(0.0, 1.0)
                           : 0.0;
-                      return Container(
-                        height: 2,
-                        color: Colors.white.withValues(alpha: 0.1),
-                        alignment: Alignment.centerLeft,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 100),
-                          curve: Curves.easeOut,
-                          width: constraints.maxWidth * progress,
+                      return CustomPaint(
+                        size: Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        ),
+                        painter: WaveformPainter(
+                          peaks: null,
+                          positionNotifier: _positionNotifier,
+                          dragPositionNotifier: _dragPositionNotifier,
+                          total: widget.total,
                           color: primaryColor,
+                          animationValue: _collapsedAmplitude,
+                          isCollapsedPlaceholder: true,
+                          progressOverride: progress,
                         ),
                       );
                     },
@@ -310,7 +341,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
                 if (_cachedWidth != width || _cachedDisplayPeaks == null) {
                   _cachedWidth = width;
                   final totalBars = (width / 3).floor();
-                  _cachedDisplayPeaks = _downsample(_peaks!, totalBars);
+                  _cachedDisplayPeaks = _downsample(peaks, totalBars);
                 }
 
                 return AnimatedBuilder(
@@ -370,11 +401,11 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   List<double> _downsample(List<double> samples, int targetCount) {
     if (samples.length == targetCount) return samples;
 
-    final List<double> result = [];
+    final result = <double>[];
     final stepSize = samples.length / targetCount;
-    for (int i = 0; i < targetCount; i++) {
-      int start = (i * stepSize).floor();
-      int end = ((i + 1) * stepSize).floor();
+    for (var i = 0; i < targetCount; i++) {
+      var start = (i * stepSize).floor();
+      var end = ((i + 1) * stepSize).floor();
       if (end > samples.length) end = samples.length;
 
       if (start >= end) {
@@ -382,8 +413,8 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
         continue;
       }
 
-      double max = 0;
-      for (int j = start; j < end; j++) {
+      var max = 0.0;
+      for (var j = start; j < end; j++) {
         if (samples[j] > max) max = samples[j];
       }
       result.add(max);
@@ -414,7 +445,8 @@ class WaveformPainter extends CustomPainter {
   final Duration total;
   final Color color;
   final double animationValue;
-  final bool isLoading;
+  final bool isCollapsedPlaceholder;
+  final double? progressOverride;
 
   WaveformPainter({
     required this.peaks,
@@ -423,24 +455,27 @@ class WaveformPainter extends CustomPainter {
     required this.total,
     required this.color,
     required this.animationValue,
-    this.isLoading = false,
+    this.isCollapsedPlaceholder = false,
+    this.progressOverride,
   }) : super(
-            repaint:
-                Listenable.merge([positionNotifier, dragPositionNotifier]));
+          repaint: Listenable.merge([positionNotifier, dragPositionNotifier]),
+        );
 
   @override
   void paint(Canvas canvas, Size size) {
-    final barWidth = 2.0;
-    final spacing = 1.0;
+    const barWidth = 2.0;
+    const spacing = 1.0;
     final totalBarsCount = (size.width / (barWidth + spacing)).floor();
 
     final paint = Paint()
       ..style = PaintingStyle.fill
       ..strokeCap = StrokeCap.round;
 
-    double progress;
+    final double progress;
     if (dragPositionNotifier.value != null) {
       progress = dragPositionNotifier.value!;
+    } else if (progressOverride != null) {
+      progress = progressOverride!;
     } else {
       progress = total.inMilliseconds > 0
           ? (positionNotifier.value.inMilliseconds / total.inMilliseconds)
@@ -448,13 +483,17 @@ class WaveformPainter extends CustomPainter {
           : 0.0;
     }
 
-    if (isLoading) {
+    final peakData = peaks;
+    if (isCollapsedPlaceholder || peakData == null || peakData.isEmpty) {
       final progressBarIndex = progress * totalBarsCount;
-      for (int i = 0; i < totalBarsCount; i++) {
+      final heightScale =
+          (animationValue / _collapsedAmplitude).clamp(0.35, 1.0);
+      final barHeight = size.height * 0.05 * heightScale;
+      for (var i = 0; i < totalBarsCount; i++) {
         final distanceFromProgress = (i - progressBarIndex).abs();
         final isActive = i < progressBarIndex;
 
-        double colorIntensity = 1.0;
+        final double colorIntensity;
         if (distanceFromProgress < 2) {
           colorIntensity = isActive ? 1.0 : (2 - distanceFromProgress) / 2;
         } else {
@@ -468,7 +507,6 @@ class WaveformPainter extends CustomPainter {
         )!;
 
         final x = i * (barWidth + spacing) + spacing / 2;
-        final barHeight = size.height * 0.05;
         final y = (size.height - barHeight) / 2;
 
         canvas.drawRRect(
@@ -482,20 +520,17 @@ class WaveformPainter extends CustomPainter {
       return;
     }
 
-    if (peaks == null || peaks!.isEmpty) return;
-
-    final actualPeaks = peaks!;
     // Compensate for audio buffer latency (~150ms typical on mobile)
-    final barOffset = 2.35 / actualPeaks.length;
+    final barOffset = 2.35 / peakData.length;
     final adjustedProgress = (progress - barOffset).clamp(0.0, 1.0);
-    final progressBarIndex = adjustedProgress * actualPeaks.length;
+    final progressBarIndex = adjustedProgress * peakData.length;
 
-    for (int i = 0; i < actualPeaks.length; i++) {
-      final v = actualPeaks[i];
+    for (var i = 0; i < peakData.length; i++) {
+      final v = peakData[i];
       final distanceFromProgress = (i - progressBarIndex).abs();
       final isActive = i < progressBarIndex;
 
-      double colorIntensity = 1.0;
+      final double colorIntensity;
       if (distanceFromProgress < 2) {
         colorIntensity = isActive ? 1.0 : (2 - distanceFromProgress) / 2;
       } else {
@@ -528,7 +563,8 @@ class WaveformPainter extends CustomPainter {
   bool shouldRepaint(covariant WaveformPainter oldDelegate) {
     return oldDelegate.peaks != peaks ||
         oldDelegate.animationValue != animationValue ||
-        oldDelegate.isLoading != isLoading ||
+        oldDelegate.isCollapsedPlaceholder != isCollapsedPlaceholder ||
+        oldDelegate.progressOverride != progressOverride ||
         oldDelegate.total != total;
   }
 }

@@ -1542,7 +1542,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _updateEffectivePlaybackMode();
   }
 
-  void refreshSongs(List<Song> newSongs) {
+  void refreshSongs(List<Song> newSongs, {String? previousFilename}) {
+    final oldSongMapKeys = _songMap.keys.toSet();
     _allSongs = newSongs.where((s) => !_isHidden(s.filename)).toList();
     _songMap = {for (var s in _allSongs) s.filename: s};
 
@@ -1552,13 +1553,34 @@ class AudioPlayerManager extends WidgetsBindingObserver {
             ? _effectiveQueue[currentIdx]
             : null;
 
+    Song? renamedSong;
+    if (previousFilename != null) {
+      renamedSong = _allSongs.firstWhere(
+        (s) => !oldSongMapKeys.contains(s.filename),
+        orElse: () => _allSongs.firstWhere(
+          (s) => s.filename != previousFilename,
+          orElse: () => _allSongs.isNotEmpty ? _allSongs.first : newSongs.first,
+        ),
+      );
+    }
+
     _effectiveQueue = _effectiveQueue.map((item) {
-      final updatedSong = _songMap[item.song.filename];
+      final lookupFilename = (previousFilename != null &&
+              item.song.filename == previousFilename &&
+              renamedSong != null)
+          ? renamedSong.filename
+          : item.song.filename;
+      final updatedSong = _songMap[lookupFilename];
       return updatedSong != null ? item.copyWith(song: updatedSong) : item;
     }).toList();
 
     _originalQueue = _originalQueue.map((item) {
-      final updatedSong = _songMap[item.song.filename];
+      final lookupFilename = (previousFilename != null &&
+              item.song.filename == previousFilename &&
+              renamedSong != null)
+          ? renamedSong.filename
+          : item.song.filename;
+      final updatedSong = _songMap[lookupFilename];
       return updatedSong != null ? item.copyWith(song: updatedSong) : item;
     }).toList();
 
@@ -1566,10 +1588,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _savePlaybackState();
     _updateEffectivePlaybackMode();
 
-    // The current-song notifier is otherwise only assigned when the *filename*
-    // changes, so an edit to the playing track's title, artist or cover would
-    // never reach the player screen, the now-playing bar or the notification.
-    // Nothing here changes which track is playing, only what we know about it.
+    if (previousFilename != null &&
+        _currentSongFilename == previousFilename &&
+        renamedSong != null) {
+      _currentSongFilename = renamedSong.filename;
+    }
+
     final currentFilename = _currentSongFilename;
     if (currentFilename != null) {
       final updated = _songMap[currentFilename];
@@ -1584,7 +1608,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       // album, coverUrl) also trigger a rebuild — the MediaItem baked into
       // the AudioSource would otherwise stay stale for the now-playing bar
       // and the notification.
-      if (currentItemBefore.song != currentItemAfter.song) {
+      if (currentItemBefore.song != currentItemAfter.song ||
+          previousFilename != null) {
         _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
       }
     }
