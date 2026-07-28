@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wispie/main.dart';
+import 'package:wispie/presentation/screens/setup_screen.dart';
+import 'package:wispie/presentation/widgets/wispie_ghost_widget.dart';
 import 'test_helpers.dart';
 
 void main() {
@@ -26,8 +28,8 @@ void main() {
       ),
     );
 
-    // Verify that we are on the SetupScreen
-    expect(find.text('Wispie'), findsOneWidget);
-    expect(find.text('Your personal music library'), findsOneWidget);
+    // Verify that we are on the SetupScreen with Wispie ghost mascot
+    expect(find.byType(SetupScreen), findsOneWidget);
+    expect(find.byType(WispieGhostWidget), findsOneWidget);
   });
 }

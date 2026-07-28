@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../presentation/widgets/in_app_folder_picker.dart';
 import 'android_storage_service.dart';
 import 'backup_manifest.dart';
 import 'cache_service.dart';
@@ -171,7 +172,17 @@ class StorageService {
     await CacheService.instance.markLibraryChanged();
   }
 
-  Future<Map<String, String>?> pickMusicFolder() async {
+  Future<Map<String, String>?> pickMusicFolder([BuildContext? context]) async {
+    if (context != null) {
+      final selection = await showInAppFolderPicker(context);
+      if (selection == null ||
+          selection['path'] == null ||
+          selection['path']!.isEmpty) {
+        return null;
+      }
+      return _normalizeFolderRecord(selection);
+    }
+
     if (Platform.isAndroid) {
       final selection = await AndroidStorageService.pickTree();
       if (selection == null ||

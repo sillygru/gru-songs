@@ -4,7 +4,7 @@ import '../presentation/tokens/app_tokens.dart';
 
 /// The app is dark-only and always matches the current cover. There are no
 /// user-facing theme modes: the artwork *is* the theme. What varies is only the
-/// seed colour — pulled from the cover, or the signature teal before one loads.
+/// seed colour — pulled from the cover, or the signature pink before one loads.
 ///
 /// Component themes are declared here in full. That is deliberate: every widget
 /// theme left undeclared is a widget that gets styled at its call site instead,
@@ -18,15 +18,15 @@ class AppTheme {
 
   // Signature accent used when no cover colour is driving the theme. The old
   // default was Material's stock lavender (0xFFBB86FC) — the single most
-  // recognisable "untouched Flutter / generated app" tell there is. This aurora
-  // teal gives the app an identity of its own before a track's artwork takes
+  // recognisable "untouched Flutter / generated app" tell there is. This warm
+  // pink gives the app an identity of its own before a track's artwork takes
   // over, and its hue sits clear of every semantic role (danger/warning/
   // success/info) so the brand accent is never mistaken for one. (Swap the hex
   // to re-tune.)
-  static const Color _defaultSeed = Color(0xFF3DD6C0);
+  static const Color _defaultSeed = Color(0xFFF7B2B4);
 
   /// The one theme entry point. Always cover-matching:
-  ///  - no artwork colour yet  → the signature teal identity
+  ///  - no artwork colour yet  → the signature pink identity
   ///  - black-and-white cover  → match its *absence* of colour (OLED variant),
   ///    rather than amplifying sensor noise into a fake hue
   ///  - otherwise              → seed from the (already legibility-corrected)

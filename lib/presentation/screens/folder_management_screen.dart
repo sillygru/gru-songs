@@ -39,7 +39,7 @@ class _FolderManagementScreenState
 
   Future<void> _addFolder() async {
     final storage = ref.read(storageServiceProvider);
-    final selection = await storage.pickMusicFolder();
+    final selection = await storage.pickMusicFolder(context);
     if (selection == null || selection['path']!.isEmpty) {
       if (mounted) {
         appSnack(context, "Unable to access selected folder");

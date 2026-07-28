@@ -1,48 +1,25 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wispie/services/namida_import_service.dart';
 import 'package:wispie/services/database_service.dart';
 import 'package:wispie/models/playlist.dart';
 import 'package:wispie/models/song.dart';
 
-// Initialize sqflite for tests
-void setupTestDatabase() {
-  sqfliteFfiInit();
-  databaseFactory = null;
-  databaseFactory = databaseFactoryFfi;
-}
+import 'test_helpers.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-  SharedPreferences.setMockInitialValues({});
-  setupTestDatabase();
+  late TestEnvironment testEnv;
 
-  // Mock path provider
-  late Directory testDocsDir;
-  const channel = MethodChannel('plugins.flutter.io/path_provider');
-
-  setUpAll(() {
-    testDocsDir = Directory.systemTemp.createTempSync('test_docs_');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-      if (methodCall.method == 'getApplicationDocumentsDirectory') {
-        return testDocsDir.path;
-      }
-      return null;
-    });
+  setUpAll(() async {
+    testEnv = TestEnvironment();
+    testEnv.setUp();
   });
 
   tearDownAll(() async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
-    if (testDocsDir.existsSync()) {
-      await testDocsDir.delete(recursive: true);
-    }
+    await testEnv.tearDown();
   });
 
   group('NamidaImportService', () {
@@ -52,6 +29,15 @@ void main() {
 
     setUp(() async {
       importService = NamidaImportService();
+      await DatabaseService.instance.init();
+      await DatabaseService.instance.clearSongs();
+      await DatabaseService.instance.clearAllPlayStats();
+      final db = DatabaseService.instance.getUserDataDatabase();
+      if (db != null) {
+        await db.delete('favorite');
+        await db.delete('playlist');
+        await db.delete('playlist_song');
+      }
       tempDir = await Directory.systemTemp.createTemp('namida_test_');
       musicFolder = p.join(tempDir.path, 'music');
       await Directory(musicFolder).create();
@@ -63,10 +49,8 @@ void main() {
     });
 
     tearDown(() async {
-      await tempDir.delete(recursive: true);
-      // Clean up database files to ensure fresh state for each test
-      for (final entity in testDocsDir.listSync()) {
-        await entity.delete(recursive: true);
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
       }
     });
 

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:wispie/services/database_service.dart';
 
 /// Manages the test environment for tests that need file system isolation.
 ///
@@ -102,7 +103,10 @@ class TestEnvironment {
   PathProviderPlatform? _originalPathProvider;
 
   /// Cleans up the temporary directory.
-  void tearDown() {
+  Future<void> tearDown() async {
+    // Close any open databases before deleting temp directory
+    await DatabaseService.instance.close();
+
     // Clear method channel handlers
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, null);

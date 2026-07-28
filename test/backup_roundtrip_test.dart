@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wispie/services/backup_manifest.dart';
 import 'package:wispie/services/backup_service.dart';
+import 'package:wispie/services/database_service.dart';
 import 'package:wispie/services/import_options.dart';
 
 import 'test_helpers.dart';
@@ -15,19 +16,22 @@ import 'test_helpers.dart';
 void main() {
   late TestEnvironment testEnv;
 
-  setUpAll(() {
+  setUpAll(() async {
     testEnv = TestEnvironment();
     testEnv.setUp();
+    await DatabaseService.instance.init();
   });
 
-  tearDownAll(() {
-    testEnv.tearDown();
+  tearDownAll(() async {
+    await testEnv.tearDown();
   });
 
   setUp(() async {
     // Each test starts from a clean prefs store and no leftover archives.
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+
+    await DatabaseService.instance.init();
 
     final backupsDir = Directory(p.join(testEnv.tempPath, 'backups'));
     if (await backupsDir.exists()) {
