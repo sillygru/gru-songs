@@ -311,6 +311,7 @@ class ScannerService {
     Map<String, int>? playCounts,
     void Function(double progress)? onProgress,
     void Function(List<Song>)? onComplete,
+    void Function(List<Song>)? onSongsDiscovered,
     bool includeVideos = true,
     int minimumFileSizeBytes = 0,
     bool fastMode = false,
@@ -382,6 +383,7 @@ class ScannerService {
         allScannedSongs.addAll(message);
         // Incremental DB insert to save memory and keep UI responsive
         await DatabaseService.instance.insertSongsBatch(message);
+        onSongsDiscovered?.call(message);
       } else if (message is String && message.startsWith('unreachable:')) {
         folderUnavailable = true;
       } else if (message == 'done') {
@@ -445,6 +447,7 @@ class ScannerService {
     Map<String, int>? playCounts,
     void Function(double progress)? onProgress,
     void Function(List<Song>)? onComplete,
+    void Function(List<Song>)? onSongsDiscovered,
     bool fastMode = false,
     bool includeVideos = true,
     int minimumFileSizeBytes = 0,
@@ -536,6 +539,7 @@ class ScannerService {
         allScannedSongs.addAll(message);
         // Incremental DB insert
         await DatabaseService.instance.insertSongsBatch(message);
+        onSongsDiscovered?.call(message);
       } else if (message == 'done') {
         if (!fastMode) {
           // Rebuild search index after scanning
@@ -595,10 +599,11 @@ class ScannerService {
   static Future<List<Song>> enrichAllMetadata(
     List<Song> songs, {
     void Function(double progress)? onProgress,
+    void Function(List<Song> enrichedBatch)? onBatchEnriched,
   }) async {
     final updated = <Song>[];
     final total = songs.length;
-    const batchSize = 50;
+    const batchSize = 25;
 
     for (int i = 0; i < total; i += batchSize) {
       final end = (i + batchSize).clamp(0, total);
@@ -610,12 +615,82 @@ class ScannerService {
 
       if (result.changed.isNotEmpty) {
         await DatabaseService.instance.insertSongsBatch(result.changed);
+        onBatchEnriched?.call(result.changed);
       }
 
       onProgress?.call(end / total);
     }
 
     return updated;
+  }
+
+  /// Extracts cover art in background isolates for songs missing covers.
+  /// Runs on background isolates without blocking the UI thread.
+  static Future<List<Song>> extractCoversInBackground(
+    List<Song> songs, {
+    void Function(double progress)? onProgress,
+    void Function(List<Song> updatedSongs)? onBatchExtracted,
+  }) async {
+    final toProcess = <Song>[];
+    for (final song in songs) {
+      if (song.coverUrl == null || song.coverUrl!.isEmpty) {
+        toProcess.add(song);
+      }
+    }
+    if (toProcess.isEmpty) return songs;
+
+    final supportDir = await getApplicationSupportDirectory();
+    final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+    if (!await coversDir.exists()) {
+      await coversDir.create(recursive: true);
+    }
+
+    final updatedSongsMap = <String, Song>{};
+    const batchSize = 10;
+    for (int i = 0; i < toProcess.length; i += batchSize) {
+      final end = (i + batchSize).clamp(0, toProcess.length);
+      final batch = toProcess.sublist(i, end);
+
+      final coversDirPath = coversDir.path;
+      final batchCovers = await Isolate.run(() async {
+        final results = <String, String>{};
+        for (final song in batch) {
+          final coverPath = await extractCoverWithoutFFmpeg(
+            song.url,
+            coversDirPath,
+            song.filename,
+          );
+          if (coverPath != null) {
+            results[song.filename] = coverPath;
+          }
+        }
+        return results;
+      });
+
+      if (batchCovers.isNotEmpty) {
+        final newlyUpdated = <Song>[];
+        for (final song in batch) {
+          final coverPath = batchCovers[song.filename];
+          if (coverPath != null) {
+            final updated = _songWithCover(song, coverPath);
+            updatedSongsMap[song.filename] = updated;
+            newlyUpdated.add(updated);
+          }
+        }
+
+        if (newlyUpdated.isNotEmpty) {
+          await DatabaseService.instance.insertSongsBatch(newlyUpdated);
+          onBatchExtracted?.call(newlyUpdated);
+        }
+      }
+
+      onProgress?.call(end / toProcess.length);
+      await Future.delayed(Duration.zero);
+    }
+
+    if (updatedSongsMap.isEmpty) return songs;
+
+    return songs.map((s) => updatedSongsMap[s.filename] ?? s).toList();
   }
 
   /// Parses one batch of songs. Runs inside a background isolate — must not
@@ -1204,9 +1279,8 @@ class ScannerService {
           params.sendPort.send((i + 1) / audioFiles.length);
         }
 
-        // Send chunks of 200 songs to keep memory usage low in the isolate
-        // and allow the main isolate to start processing/indexing sooner.
-        if (songs.length >= 200) {
+        final targetChunkSize = params.fastMode ? 20 : 200;
+        if (songs.length >= targetChunkSize) {
           params.sendPort.send(List<Song>.from(songs));
           songs.clear();
         }

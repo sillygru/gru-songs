@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
-import '../widgets/scanning_progress_bar.dart';
 import '../components/app_feedback.dart';
 import '../components/app_screen_header.dart';
 import '../components/app_settings.dart';
@@ -44,10 +42,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (ref.watch(isScanningProvider)) {
-      return const ScanningProgressBar();
-    }
-
     return AmbientScaffold(
       appBar: AppTopBar(
         title: 'Settings',

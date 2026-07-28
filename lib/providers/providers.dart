@@ -482,6 +482,36 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     } catch (_) {}
   }
 
+  void updateSongCoverByFilename(String filename, String coverUrl) {
+    final current = state.value;
+    if (current == null || current.isEmpty) return;
+    bool updatedAny = false;
+    final newList = current.map((s) {
+      if (s.filename == filename && s.coverUrl != coverUrl) {
+        updatedAny = true;
+        return Song(
+          title: s.title,
+          artist: s.artist,
+          album: s.album,
+          filename: s.filename,
+          url: s.url,
+          coverUrl: coverUrl,
+          hasLyrics: s.hasLyrics,
+          playCount: s.playCount,
+          duration: s.duration,
+          mtime: s.mtime,
+          createdEpochSec: s.createdEpochSec,
+          songDateEpochSec: s.songDateEpochSec,
+        );
+      }
+      return s;
+    }).toList();
+    if (updatedAny) {
+      state = AsyncValue.data(newList);
+      ref.read(audioPlayerManagerProvider).refreshSongs(newList);
+    }
+  }
+
   void _scheduleBackgroundScanUpdate(List<Song> existingSongs,
       {bool showIndicator = false}) {
     _debounceTimer?.cancel();
@@ -490,11 +520,13 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     });
   }
 
-  Future<List<Song>> _performFullScan(
-      {bool isBackground = false,
-      List<Song>? existingSongs,
-      bool showIndicator = false,
-      bool fastMode = false}) async {
+  Future<List<Song>> _performFullScan({
+    bool isBackground = false,
+    List<Song>? existingSongs,
+    bool showIndicator = false,
+    bool fastMode = false,
+    void Function(List<Song> songs)? onSongsDiscovered,
+  }) async {
     final storage = ref.read(storageServiceProvider);
     final scanner = ref.read(scannerServiceProvider);
 
@@ -531,6 +563,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
             final overallProgress = (i + progress) / musicFolders.length;
             ref.read(scanProgressProvider.notifier).state = overallProgress;
           },
+          onSongsDiscovered: onSongsDiscovered,
           includeVideos: settings.includeVideos,
           minimumFileSizeBytes: settings.minimumFileSizeBytes,
           fastMode: fastMode,
@@ -632,87 +665,128 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       _isRefreshing = true;
       final userData = ref.read(userDataProvider);
 
-      // Show the scanning indicator for the full duration of both passes
+      CoverRefreshService.instance.onCoverResolved = (song) {
+        updateSongCoverByFilename(song.filename, song.coverUrl!);
+      };
+
+      // Show the scanning indicator for the full duration of all passes
       if (showIndicator) {
         ref.read(isScanningProvider.notifier).state = true;
       }
 
       // === Pass 0: Fast registration (filenames, paths, mtimes only) ===
-      // This runs quickly and lets the user see their library immediately.
-      // Pass showIndicator: false to _performFullScan — we control the
-      // indicator lifecycle ourselves here.
+      // Stream songs live into the UI as they are discovered.
+      final accumulatedFast = <Song>[];
       final fastSongs = await _performFullScan(
         isBackground: true,
         existingSongs: existingSongs,
         showIndicator: false,
         fastMode: true,
+        onSongsDiscovered: (chunk) {
+          accumulatedFast.addAll(chunk);
+          final filtered = accumulatedFast
+              .where((s) => !userData.isHidden(s.filename))
+              .toList();
+          if (filtered.isNotEmpty) {
+            ref.read(audioPlayerManagerProvider).refreshSongs(filtered);
+            state = AsyncValue.data(filtered);
+          }
+        },
       );
 
       final filteredFast =
           fastSongs.where((s) => !userData.isHidden(s.filename)).toList();
 
-      // Show filenames immediately so the app is usable
-      bool hasChanges = filteredFast.length != (state.value?.length ?? 0);
-      if (!hasChanges) {
-        final currentSongs = state.value ?? [];
-        for (int i = 0; i < filteredFast.length; i++) {
-          if (i >= currentSongs.length ||
-              filteredFast[i].url != currentSongs[i].url ||
-              filteredFast[i].mtime != currentSongs[i].mtime) {
-            hasChanges = true;
-            break;
-          }
-        }
-      }
-      if (hasChanges && filteredFast.isNotEmpty) {
+      if (filteredFast.isNotEmpty) {
         ref.read(audioPlayerManagerProvider).refreshSongs(filteredFast);
         state = AsyncValue.data(filteredFast);
       }
 
-      // === Pass 1: Metadata enrichment (throttled, background) ===
-      // Read title, artist, album, duration from file headers in batches.
-      // Use all songs (not filteredFast) so hidden songs get metadata too.
+      // === Pass 1: Metadata enrichment & Cover extraction ===
+      List<Song> latestEnriched = fastSongs;
       if (fastSongs.isNotEmpty) {
         try {
-          final enriched = await ScannerService.enrichAllMetadata(
+          latestEnriched = await ScannerService.enrichAllMetadata(
             fastSongs,
             onProgress: (progress) {
-              ref.read(scanProgressProvider.notifier).state = progress;
+              ref.read(scanProgressProvider.notifier).state = progress * 0.5;
+            },
+            onBatchEnriched: (batch) {
+              final currentList = state.value ?? [];
+              if (currentList.isEmpty) return;
+              final enrichedMap = {for (final s in batch) s.filename: s};
+              final updated = currentList.map((s) {
+                final match = enrichedMap[s.filename];
+                return match ?? s;
+              }).toList();
+              ref.read(audioPlayerManagerProvider).refreshSongs(updated);
+              state = AsyncValue.data(updated);
             },
           );
 
-          final filteredEnriched =
-              enriched.where((s) => !userData.isHidden(s.filename)).toList();
+          final filteredEnriched = latestEnriched
+              .where((s) => !userData.isHidden(s.filename))
+              .toList();
 
-          bool enrichmentChanged =
-              filteredEnriched.length != (state.value?.length ?? 0);
-          if (!enrichmentChanged) {
-            final currentSongs = state.value ?? [];
-            for (int i = 0; i < filteredEnriched.length; i++) {
-              if (i >= currentSongs.length ||
-                  filteredEnriched[i].title != currentSongs[i].title ||
-                  filteredEnriched[i].artist != currentSongs[i].artist) {
-                enrichmentChanged = true;
-                break;
-              }
-            }
-          }
-          if (enrichmentChanged) {
-            ref.read(audioPlayerManagerProvider).refreshSongs(filteredEnriched);
-            state = AsyncValue.data(filteredEnriched);
-          }
+          ref.read(audioPlayerManagerProvider).refreshSongs(filteredEnriched);
+          state = AsyncValue.data(filteredEnriched);
         } catch (e) {
           debugPrint('Metadata enrichment failed: $e');
         }
 
-        // Rebuild search index after enrichment (not during fast pass).
-        // Yield first so the index transaction doesn't land in the same frame
-        // as the enrichment result publish above.
+        // === Pass 2: Fast Background Cover Extraction (non-freezing) ===
+        try {
+          final withCovers = await ScannerService.extractCoversInBackground(
+            latestEnriched,
+            onProgress: (progress) {
+              ref.read(scanProgressProvider.notifier).state =
+                  0.5 + (progress * 0.5);
+            },
+            onBatchExtracted: (updatedBatch) {
+              final currentList = state.value ?? [];
+              if (currentList.isEmpty) return;
+              final coverMap = {
+                for (final s in updatedBatch) s.filename: s.coverUrl
+              };
+              final updated = currentList.map((s) {
+                final newCover = coverMap[s.filename];
+                if (newCover != null) {
+                  return Song(
+                    title: s.title,
+                    artist: s.artist,
+                    album: s.album,
+                    filename: s.filename,
+                    url: s.url,
+                    coverUrl: newCover,
+                    hasLyrics: s.hasLyrics,
+                    playCount: s.playCount,
+                    duration: s.duration,
+                    mtime: s.mtime,
+                    createdEpochSec: s.createdEpochSec,
+                    songDateEpochSec: s.songDateEpochSec,
+                  );
+                }
+                return s;
+              }).toList();
+              ref.read(audioPlayerManagerProvider).refreshSongs(updated);
+              state = AsyncValue.data(updated);
+            },
+          );
+
+          final filteredWithCovers =
+              withCovers.where((s) => !userData.isHidden(s.filename)).toList();
+          ref.read(audioPlayerManagerProvider).refreshSongs(filteredWithCovers);
+          state = AsyncValue.data(filteredWithCovers);
+        } catch (e) {
+          debugPrint('Background cover extraction failed: $e');
+        }
+
+        // Rebuild search index after enrichment.
         await Future.delayed(Duration.zero);
         final searchService = SearchService();
         try {
           await searchService.init();
-          await searchService.rebuildIndex(fastSongs);
+          await searchService.rebuildIndex(latestEnriched);
         } catch (e) {
           debugPrint('Search index rebuild failed: $e');
         } finally {

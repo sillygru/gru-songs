@@ -5,7 +5,6 @@ import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
 import '../../models/shuffle_config.dart';
 import '../widgets/fun_stats_view.dart';
-import '../widgets/scanning_progress_bar.dart';
 import '../components/app_dialog.dart';
 import '../components/app_feedback.dart';
 import '../components/app_list_row.dart';
@@ -69,10 +68,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (ref.watch(isScanningProvider)) {
-      return const ScanningProgressBar();
-    }
-
     final authState = ref.watch(authProvider);
     final userData = ref.watch(userDataProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);

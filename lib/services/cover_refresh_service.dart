@@ -31,6 +31,9 @@ class CoverRefreshService {
   final Queue<Completer<void>> _waiting = Queue<Completer<void>>();
   int _active = 0;
 
+  /// Callback fired whenever a cover is resolved for a song.
+  void Function(Song song)? onCoverResolved;
+
   /// filename -> file mtime at the time we found no cover.
   Map<String, double>? _misses;
   Future<Map<String, double>>? _missesLoad;
@@ -206,22 +209,23 @@ class CoverRefreshService {
       // Extraction may have overwritten a path that is already on screen.
       await evictCoverFromImageCache(coverPath);
 
-      await DatabaseService.instance.insertSongsBatch([
-        Song(
-          title: song.title,
-          artist: song.artist,
-          album: song.album,
-          filename: song.filename,
-          url: song.url,
-          coverUrl: coverPath,
-          hasLyrics: song.hasLyrics,
-          playCount: song.playCount,
-          duration: song.duration,
-          mtime: song.mtime,
-          createdEpochSec: song.createdEpochSec,
-          songDateEpochSec: song.songDateEpochSec,
-        ),
-      ]);
+      final updatedSong = Song(
+        title: song.title,
+        artist: song.artist,
+        album: song.album,
+        filename: song.filename,
+        url: song.url,
+        coverUrl: coverPath,
+        hasLyrics: song.hasLyrics,
+        playCount: song.playCount,
+        duration: song.duration,
+        mtime: song.mtime,
+        createdEpochSec: song.createdEpochSec,
+        songDateEpochSec: song.songDateEpochSec,
+      );
+
+      await DatabaseService.instance.insertSongsBatch([updatedSong]);
+      onCoverResolved?.call(updatedSong);
 
       return coverPath;
     } catch (e) {

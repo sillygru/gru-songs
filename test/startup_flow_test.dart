@@ -31,6 +31,7 @@ class _FakeScannerService extends ScannerService {
     Map<String, int>? playCounts,
     void Function(double progress)? onProgress,
     void Function(List<Song>)? onComplete,
+    void Function(List<Song>)? onSongsDiscovered,
     bool includeVideos = true,
     int minimumFileSizeBytes = 0,
     bool fastMode = false,

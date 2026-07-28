@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/album_art_image.dart';
 import '../widgets/song_list_item.dart';
-import '../widgets/scanning_progress_bar.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/library_logic.dart';
@@ -403,10 +402,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (ref.watch(isScanningProvider)) {
-      return const ScanningProgressBar();
-    }
-
     final settings = ref.watch(settingsProvider);
     final songsAsyncValue = ref.watch(songsProvider);
     final audioManager = ref.watch(audioPlayerManagerProvider);

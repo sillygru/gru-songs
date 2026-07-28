@@ -141,13 +141,13 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
         if (name.isNotEmpty) {
           return 'Awesome to meet you, $name! Let\'s customize Wispie for you.';
         }
-        return 'Hi there! I am Wispie, your music guide. What should I call you?';
+        return 'What should I call you friend?';
       case 1:
-        return 'Here are your appearance settings! Choose your favorite motion and visualizer style.';
+        return 'Here are your appearance settings!';
       case 2:
         return 'Now, let\'s find your music! Select the folders where your audio files live.';
       case 3:
-        return 'Everything is set up! Ready to dive into your personal music universe?';
+        return 'Everything is set up! Let\'s get started!';
       default:
         return 'Welcome to Wispie!';
     }
@@ -322,7 +322,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
                       child: Transform.scale(
                         scale: swoop.scale.clamp(0.1, 1.0),
                         child: WispieGhostWidget(
-                          speechText: 'Welcome! I am Wispie, your music guide.',
+                          speechText: 'Welcome to wispie!',
                           expression: GhostExpression.excited,
                           ghostSize: 135,
                           idleFloat: _introController.isCompleted,

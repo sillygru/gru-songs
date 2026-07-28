@@ -26,16 +26,22 @@ class SyncIndicator extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isScanning = ref.watch(isScanningProvider);
     final metadataState = ref.watch(metadataSaveProvider);
+    final progress = ref.watch(scanProgressProvider);
 
     if (!isScanning && metadataState.status == MetadataSaveStatus.idle) {
       return const SizedBox.shrink();
     }
 
+    final progressPct = (progress * 100).clamp(0, 100).toInt();
+    final scanText = progressPct > 0
+        ? 'Scanning library ($progressPct%)'
+        : 'Scanning library…';
+
     final (String text, AppTone tone, AppIconData icon, bool busy) = switch ((
       isScanning,
       metadataState.status,
     )) {
-      (true, _) => ('Scanning library…', AppTone.info, AppIcons.search, true),
+      (true, _) => (scanText, AppTone.info, AppIcons.search, true),
       (_, MetadataSaveStatus.saving) => (
           metadataState.message,
           AppTone.warning,
@@ -64,6 +70,7 @@ class SyncIndicator extends ConsumerWidget {
           tone: tone,
           icon: icon,
           busy: busy,
+          progress: isScanning ? progress : null,
         ),
       ),
     );
