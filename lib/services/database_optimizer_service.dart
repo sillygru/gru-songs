@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,7 +10,6 @@ import '../services/database_service.dart';
 
 /// Available optimization types for database maintenance
 enum OptimizationType {
-  shuffleState,
   statsDatabase,
   userDataDatabase,
   coverCache,
@@ -53,12 +51,10 @@ class OptimizationResult {
 /// Service for optimizing and repairing database files
 ///
 /// This service handles database maintenance tasks:
-/// - Clean up obsolete shuffle state JSON (removes history data now read from database)
-/// - Fix event type categorization based on play ratios and completion rules
 /// - Vacuum databases to reclaim space
 /// - Fix orphaned records
 /// - Remove duplicate entries
-/// - Ensure table schemas are up to date (without data loss)
+/// - Rebuild cover and search index caches
 class DatabaseOptimizerService {
   static final DatabaseOptimizerService _instance =
       DatabaseOptimizerService._internal();
@@ -81,9 +77,6 @@ class DatabaseOptimizerService {
 
       // Calculate total steps and progress increments
       final enabledTypes = <OptimizationType>[];
-      if (options.isEnabled(OptimizationType.shuffleState)) {
-        enabledTypes.add(OptimizationType.shuffleState);
-      }
       if (options.isEnabled(OptimizationType.statsDatabase)) {
         enabledTypes.add(OptimizationType.statsDatabase);
       }
@@ -110,18 +103,7 @@ class DatabaseOptimizerService {
       final totalSteps = enabledTypes.length;
       var currentStep = 0;
 
-      // Clean up shuffle state JSON (remove history data)
-      if (options.isEnabled(OptimizationType.shuffleState)) {
-        currentStep++;
-        final progress = currentStep / totalSteps;
-        onProgress?.call('Cleaning up shuffle state...', progress);
-        final shuffleCleanupResult = await _cleanupShuffleStateJson();
-        issuesFound.addAll(shuffleCleanupResult['issues'] as List<String>);
-        fixesApplied.addAll(shuffleCleanupResult['fixes'] as List<String>);
-        details['shuffle_state_cleanup'] = shuffleCleanupResult['details'];
-      }
-
-      // Optimize stats database (fix event types, vacuum)
+      // Optimize stats database (vacuum, remove short sessions/followups)
       if (options.isEnabled(OptimizationType.statsDatabase)) {
         currentStep++;
         final progress = currentStep / totalSteps;
@@ -132,7 +114,7 @@ class DatabaseOptimizerService {
         details['stats_db'] = statsResult['details'];
       }
 
-      // Optimize user data database (fix schema, orphans, duplicates)
+      // Optimize user data database (orphans, duplicates, vacuum)
       if (options.isEnabled(OptimizationType.userDataDatabase)) {
         currentStep++;
         final progress = currentStep / totalSteps;
@@ -242,48 +224,6 @@ class DatabaseOptimizerService {
     }
   }
 
-  /// Cleans up shuffle state JSON file by removing obsolete history data
-  /// History is now read directly from the stats database
-  Future<Map<String, dynamic>> _cleanupShuffleStateJson() async {
-    final issues = <String>[];
-    final fixes = <String>[];
-    final details = <String, dynamic>{};
-
-    try {
-      final docDir = await getApplicationDocumentsDirectory();
-      final shuffleStateFile = File(join(docDir.path, 'shuffle_state.json'));
-
-      if (await shuffleStateFile.exists()) {
-        final content = await shuffleStateFile.readAsString();
-        final Map<String, dynamic> data = jsonDecode(content);
-
-        // Check if history exists in the JSON
-        if (data.containsKey('history')) {
-          final historyCount = (data['history'] as List?)?.length ?? 0;
-          details['old_history_entries'] = historyCount;
-
-          // Remove history from JSON
-          data.remove('history');
-
-          // Save cleaned JSON
-          await shuffleStateFile.writeAsString(jsonEncode(data));
-          fixes.add(
-              'Removed $historyCount history entries from shuffle state JSON (now read from database)');
-          details['cleaned'] = true;
-        } else {
-          details['cleaned'] = false;
-          details['reason'] = 'No history data found in shuffle state';
-        }
-      } else {
-        details['exists'] = false;
-      }
-    } catch (e) {
-      issues.add('Error cleaning shuffle state JSON: $e');
-    }
-
-    return {'issues': issues, 'fixes': fixes, 'details': details};
-  }
-
   /// Optimizes the stats database (playevent table)
   /// Uses DatabaseService singleton for operations, separate connection only for VACUUM
   Future<Map<String, dynamic>> _optimizeStatsDatabase(String dbPath) async {
@@ -325,13 +265,6 @@ class DatabaseOptimizerService {
         await checkDb?.close();
       }
 
-      // Fix Event Types using DatabaseService's connection
-      final fixResult = await _fixEventTypesViaService();
-      if (fixResult['fixed'] > 0) {
-        fixes.add('Fixed ${fixResult['fixed']} event type categorizations');
-      }
-      details['event_fixes'] = fixResult;
-
       // Delete tiny immediate follow-up events after near-full repeats
       final shortFollowUpResult = await _deleteShortFollowUpsViaService();
       if (shortFollowUpResult['deleted'] > 0) {
@@ -370,75 +303,6 @@ class DatabaseOptimizerService {
     }
 
     return {'issues': issues, 'fixes': fixes, 'details': details};
-  }
-
-  /// Migrates playevent table - drops deprecated event_type column if it exists
-  /// Since we now track listening duration directly, event_type is no longer needed
-  Future<Map<String, dynamic>> _fixEventTypesViaService() async {
-    int fixedCount = 0;
-    final details = <String, dynamic>{};
-
-    try {
-      final statsDb = DatabaseService.instance.getStatsDatabase();
-      if (statsDb == null) {
-        details['error'] = 'Stats database not available';
-        return {'fixed': fixedCount, 'details': details};
-      }
-
-      final columns = await statsDb.rawQuery('PRAGMA table_info(playevent)');
-      final columnNames = columns.map((c) => c['name'] as String).toList();
-
-      if (columnNames.contains('event_type')) {
-        try {
-          await statsDb
-              .rawUpdate('ALTER TABLE playevent DROP COLUMN event_type');
-          fixedCount = 1;
-          details['dropped_event_type'] = true;
-        } catch (_) {
-          final columnData = await statsDb.query('playevent');
-          await statsDb.execute('''
-            CREATE TABLE playevent_new (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              session_id TEXT,
-              song_filename TEXT,
-              timestamp REAL,
-              duration_played REAL,
-              total_length REAL,
-              play_ratio REAL,
-              foreground_duration REAL,
-              background_duration REAL,
-              FOREIGN KEY (session_id) REFERENCES playsession (id)
-            )
-          ''');
-          for (final row in columnData) {
-            await statsDb.insert('playevent_new', {
-              'id': row['id'],
-              'session_id': row['session_id'],
-              'song_filename': row['song_filename'],
-              'timestamp': row['timestamp'],
-              'duration_played': row['duration_played'],
-              'total_length': row['total_length'],
-              'play_ratio': row['play_ratio'],
-              'foreground_duration': row['foreground_duration'],
-              'background_duration': row['background_duration'],
-            });
-          }
-          await statsDb.execute('DROP TABLE playevent');
-          await statsDb
-              .execute('ALTER TABLE playevent_new RENAME TO playevent');
-          fixedCount = 1;
-          details['dropped_event_type'] = true;
-          details['migration_method'] = 'recreate';
-        }
-      } else {
-        details['dropped_event_type'] = false;
-      }
-    } catch (e) {
-      debugPrint('Error migrating playevent table: $e');
-      details['error'] = e.toString();
-    }
-
-    return {'fixed': fixedCount, 'details': details};
   }
 
   /// Deletes sessions shorter than 60 seconds and their associated events
@@ -485,13 +349,6 @@ class DatabaseOptimizerService {
   }
 
   /// Deletes tiny immediate follow-up events after near-full/multi-full plays.
-  ///
-  /// Example:
-  /// - Song total_length=210s, previous duration=211s (within ±10s of 1*length)
-  /// - Next event for same song is 2s and happens immediately after
-  ///   -> delete the 2s event
-  ///
-  /// Also supports multi-repeat durations (2x, 3x, ...) within ±10s.
   Future<Map<String, dynamic>> _deleteShortFollowUpsViaService() async {
     int deleted = 0;
     final details = <String, dynamic>{};
@@ -503,7 +360,6 @@ class DatabaseOptimizerService {
         return {'deleted': deleted, 'details': details};
       }
 
-      // Keep ordering deterministic even when timestamps are equal.
       final events = await statsDb.rawQuery('''
         SELECT id, song_filename, timestamp, duration_played, total_length
         FROM playevent
@@ -580,22 +436,7 @@ class DatabaseOptimizerService {
     return {'deleted': deleted, 'details': details};
   }
 
-  /// Fixes event type categorization based on new rules with priority hierarchy:
-  ///
-  /// PRIORITY 1 (HIGHEST): Low play ratio → 'skip'
-  ///   - If play_ratio < 0.10 (less than 10% played), force event to 'skip'
-  ///   - Example: Song played for 5 seconds out of 3 minutes (ratio 0.027) → 'skip'
-  ///   - This rule overrides all other categorizations
-  ///
-  /// PRIORITY 2: Near completion → 'complete'
-  ///   - If within 10s of end OR ratio >= 1.0, change 'skip'/'listen' to 'complete'
-  ///   - Example: Song 3:40 long, played 3:35 (remaining 5s) → 'complete'
-  ///   - Excludes events already marked skip by Priority 1
-  ///
-  /// PRIORITY 3: Session context → 'skip'
-  ///   - If 'listen' event has later events in same session, change to 'skip'
-  ///   - 'listen' should only be the absolute last event of a session
-  /// Optimizes the user data database
+  /// Optimizes the user data database (orphaned records, duplicates, vacuum)
   /// Uses DatabaseService singleton for operations, separate connection only for integrity check and VACUUM
   Future<Map<String, dynamic>> _optimizeUserDataDatabase(String dbPath) async {
     final issues = <String>[];
@@ -649,25 +490,7 @@ class DatabaseOptimizerService {
         return {'issues': issues, 'fixes': fixes, 'details': details};
       }
 
-      // Step 1: Ensure all tables exist (create missing ones)
-      final tableResult = await _ensureUserDataTables(userDataDb);
-      issues.addAll(tableResult['issues'] as List<String>);
-      fixes.addAll(tableResult['fixes'] as List<String>);
-      details['tables'] = tableResult['details'];
-
-      // Step 2: Ensure all columns exist (add missing ones)
-      final columnResult = await _ensureUserDataColumns(userDataDb);
-      issues.addAll(columnResult['issues'] as List<String>);
-      fixes.addAll(columnResult['fixes'] as List<String>);
-      details['columns'] = columnResult['details'];
-
-      // Step 3: Create indexes (after tables are guaranteed to exist)
-      final indexResult = await _ensureUserDataIndexes(userDataDb);
-      issues.addAll(indexResult['issues'] as List<String>);
-      fixes.addAll(indexResult['fixes'] as List<String>);
-      details['indexes'] = indexResult['details'];
-
-      // Step 4: Fix orphaned records
+      // Step 1: Fix orphaned records
       final orphanResult = await _fixOrphanedRecords(userDataDb);
       if (orphanResult['issuesFound'] > 0) {
         issues.add('Found ${orphanResult['issuesFound']} orphaned records');
@@ -675,7 +498,7 @@ class DatabaseOptimizerService {
       }
       details['orphaned_records'] = orphanResult;
 
-      // Step 5: Fix duplicate entries
+      // Step 2: Fix duplicate entries
       final duplicateResult = await _fixDuplicateRecords(userDataDb);
       if (duplicateResult['issuesFound'] > 0) {
         issues.add('Found ${duplicateResult['issuesFound']} duplicate entries');
@@ -684,7 +507,7 @@ class DatabaseOptimizerService {
       }
       details['duplicates'] = duplicateResult;
 
-      // Step 6: Vacuum requires exclusive access - use separate connection
+      // Step 3: Vacuum requires exclusive access - use separate connection
       Database? vacuumDb;
       try {
         vacuumDb = await openDatabase(dbPath, singleInstance: false);
@@ -701,168 +524,6 @@ class DatabaseOptimizerService {
       issues.add('Error optimizing user data database: $e');
     }
 
-    return {'issues': issues, 'fixes': fixes, 'details': details};
-  }
-
-  /// Dynamically checks the DB against the canonical schema, creates missing
-  /// tables and drops unrecognized ones.
-  Future<Map<String, dynamic>> _ensureUserDataTables(Database db) async {
-    final issues = <String>[];
-    final fixes = <String>[];
-    final details = <String, dynamic>{};
-
-    final actualResult = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-    );
-    final actualTables = actualResult.map((r) => r['name'] as String).toSet();
-    final expectedTables = DatabaseService.userDataTableSql.keys.toSet();
-
-    for (final tableName in expectedTables) {
-      if (!actualTables.contains(tableName)) {
-        issues.add('Table $tableName is missing');
-        try {
-          await db.execute(DatabaseService.userDataTableSql[tableName]!);
-          fixes.add('Created missing table $tableName');
-          details[tableName] = {'created': true};
-        } catch (e) {
-          issues.add('Failed to create table $tableName: $e');
-          details[tableName] = {'created': false, 'error': e.toString()};
-        }
-      } else {
-        details[tableName] = {'exists': true};
-      }
-    }
-
-    for (final tableName in actualTables) {
-      if (!expectedTables.contains(tableName)) {
-        issues.add('Unrecognized table $tableName found');
-        try {
-          await db.execute('DROP TABLE IF EXISTS $tableName');
-          fixes.add('Dropped unrecognized table $tableName');
-          details[tableName] = {'dropped': true};
-        } catch (e) {
-          issues.add('Failed to drop table $tableName: $e');
-          details[tableName] = {'dropped': false, 'error': e.toString()};
-        }
-      }
-    }
-
-    return {'issues': issues, 'fixes': fixes, 'details': details};
-  }
-
-  /// Dynamically checks every canonical table's columns: adds missing ones and
-  /// drops unrecognized ones. Columns that are part of a PRIMARY KEY or are
-  /// referenced by an index cannot be dropped by SQLite and are skipped with a warning.
-  Future<Map<String, dynamic>> _ensureUserDataColumns(Database db) async {
-    final issues = <String>[];
-    final fixes = <String>[];
-    final details = <String, dynamic>{};
-
-    for (final entry in DatabaseService.userDataExpectedColumns.entries) {
-      final tableName = entry.key;
-      final expectedCols = entry.value;
-
-      final tableExists = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        [tableName],
-      );
-      if (tableExists.isEmpty) continue;
-
-      final existingColInfo =
-          await db.rawQuery('PRAGMA table_info($tableName)');
-      final existingNames =
-          existingColInfo.map((c) => c['name'] as String).toSet();
-      final pkColNames = existingColInfo
-          .where((c) => (c['pk'] as int? ?? 0) > 0)
-          .map((c) => c['name'] as String)
-          .toSet();
-
-      // Add missing columns
-      for (final colEntry in expectedCols.entries) {
-        final colName = colEntry.key;
-        final colType = colEntry.value;
-        if (!existingNames.contains(colName)) {
-          issues.add('Table $tableName is missing column $colName');
-          try {
-            await db
-                .execute('ALTER TABLE $tableName ADD COLUMN $colName $colType');
-            fixes.add('Added column $colName to $tableName');
-          } catch (e) {
-            issues.add('Failed to add column $colName to $tableName: $e');
-          }
-        }
-      }
-
-      // Drop unrecognized columns
-      for (final colName in existingNames) {
-        if (expectedCols.containsKey(colName)) continue;
-
-        if (pkColNames.contains(colName)) {
-          // SQLite cannot drop a PK column — it would require recreating the table
-          issues.add(
-              'Unrecognized PK column $colName in $tableName (cannot auto-drop)');
-          continue;
-        }
-
-        issues.add('Unrecognized column $colName in $tableName');
-        try {
-          await db.execute('ALTER TABLE $tableName DROP COLUMN $colName');
-          fixes.add('Dropped unrecognized column $colName from $tableName');
-        } catch (e) {
-          // Column may be referenced by an index or constraint — log but continue
-          issues.add(
-              'Failed to drop column $colName from $tableName (may be in use): $e');
-        }
-      }
-
-      details[tableName] = {'columns_checked': expectedCols.length};
-    }
-
-    return {'issues': issues, 'fixes': fixes, 'details': details};
-  }
-
-  /// Dynamically checks performance indexes against the canonical set,
-  /// creates missing ones and drops unrecognized user-created indexes.
-  Future<Map<String, dynamic>> _ensureUserDataIndexes(Database db) async {
-    final issues = <String>[];
-    final fixes = <String>[];
-    final details = <String, dynamic>{};
-
-    final actualResult = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
-    );
-    final actualIndexes = actualResult.map((r) => r['name'] as String).toSet();
-    final expectedIndexes = DatabaseService.userDataIndexSql;
-
-    for (final entry in expectedIndexes.entries) {
-      final indexName = entry.key;
-      final createSql = entry.value;
-      if (!actualIndexes.contains(indexName)) {
-        issues.add('Index $indexName is missing');
-        try {
-          await db.execute(createSql);
-          fixes.add('Created missing index $indexName');
-        } catch (e) {
-          if (!e.toString().contains('no such table')) {
-            issues.add('Failed to create index $indexName: $e');
-          }
-        }
-      }
-    }
-
-    for (final indexName in actualIndexes) {
-      if (!expectedIndexes.containsKey(indexName)) {
-        issues.add('Unrecognized index $indexName found');
-        try {
-          await db.execute('DROP INDEX IF EXISTS $indexName');
-          fixes.add('Dropped unrecognized index $indexName');
-        } catch (e) {
-          issues.add('Failed to drop index $indexName: $e');
-        }
-      }
-    }
-
-    details['indexes_checked'] = expectedIndexes.length;
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
@@ -976,11 +637,7 @@ class DatabaseOptimizerService {
         '$dbPath.corrupted.${DateTime.now().millisecondsSinceEpoch}';
     await File(dbPath).rename(backupPath);
 
-    final db = await openDatabase(dbPath, version: 1);
-    for (final sql in DatabaseService.userDataTableSql.values) {
-      await db.execute(sql);
-    }
-    await db.close();
+    await DatabaseService.instance.init();
 
     debugPrint(
         'Recovered user data database. Corrupted file backed up to $backupPath');
@@ -1075,18 +732,6 @@ class DatabaseOptimizerService {
   // ---------------------------------------------------------------------------
   // Test-visible wrappers (internal use only)
   // ---------------------------------------------------------------------------
-
-  @visibleForTesting
-  Future<Map<String, dynamic>> ensureUserDataTablesForTest(Database db) =>
-      _ensureUserDataTables(db);
-
-  @visibleForTesting
-  Future<Map<String, dynamic>> ensureUserDataColumnsForTest(Database db) =>
-      _ensureUserDataColumns(db);
-
-  @visibleForTesting
-  Future<Map<String, dynamic>> ensureUserDataIndexesForTest(Database db) =>
-      _ensureUserDataIndexes(db);
 
   @visibleForTesting
   Future<Map<String, dynamic>> fixOrphanedRecordsForTest(Database db) =>

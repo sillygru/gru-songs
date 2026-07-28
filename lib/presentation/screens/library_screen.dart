@@ -34,8 +34,14 @@ import '../tokens/app_icons.dart';
 class LibraryScreen extends ConsumerStatefulWidget {
   final String? relativePath;
   final ScrollController? scrollController;
+  final int initialTabIndex;
 
-  const LibraryScreen({super.key, this.relativePath, this.scrollController});
+  const LibraryScreen({
+    super.key,
+    this.relativePath,
+    this.scrollController,
+    this.initialTabIndex = 0,
+  });
 
   @override
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
@@ -117,6 +123,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
 
     return DefaultTabController(
       length: 3,
+      initialIndex: widget.initialTabIndex,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: NestedScrollView(

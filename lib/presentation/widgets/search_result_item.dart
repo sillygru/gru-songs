@@ -1,11 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/search_result.dart';
 import '../../models/song.dart';
+import '../../providers/artist_album_art_provider.dart';
 import '../../providers/providers.dart';
 import '../../providers/selection_provider.dart';
 import 'album_art_image.dart';
+import 'folder_grid_image.dart';
 import 'lyrics_match_widget.dart';
 import 'song_options_menu.dart';
 import '../tokens/app_tokens.dart';
@@ -265,7 +268,7 @@ class SearchResultItem extends ConsumerWidget {
 }
 
 /// Widget for displaying artist search results
-class ArtistSearchResultItem extends StatelessWidget {
+class ArtistSearchResultItem extends ConsumerWidget {
   final String artistName;
   final List<Song> songs;
   final VoidCallback onTap;
@@ -278,8 +281,27 @@ class ArtistSearchResultItem extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final cachedArt =
+        ref.watch(artistAlbumArtProvider).getArtistArt(artistName);
+    final hasImage = cachedArt != null && File(cachedArt).existsSync();
+
+    final Widget artworkWidget = hasImage
+        ? ClipRRect(
+            borderRadius: AppTokens.brSm,
+            child: Image.file(
+              File(cachedArt),
+              fit: BoxFit.cover,
+              width: 56,
+              height: 56,
+            ),
+          )
+        : FolderGridImage(
+            songs: songs,
+            size: 56,
+            isGridItem: true,
+          );
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -299,31 +321,10 @@ class ArtistSearchResultItem extends StatelessWidget {
               children: [
                 Hero(
                   tag: 'artist_$artistName',
-                  child: ClipRRect(
-                    borderRadius: AppTokens.brSm,
-                    child: songs.isNotEmpty
-                        ? AlbumArtImage(
-                            url: songs.first.coverUrl ?? '',
-                            filename: songs.first.filename,
-                            width: 56,
-                            height: 56,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 112,
-                            memCacheHeight: 112,
-                          )
-                        : Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primaryContainer,
-                              borderRadius: AppTokens.brSm,
-                            ),
-                            child: AppIcon(
-                              AppIcons.person,
-                              size: 32,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            ),
-                          ),
+                  child: SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: artworkWidget,
                   ),
                 ),
                 const SizedBox(width: 12),

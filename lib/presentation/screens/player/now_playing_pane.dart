@@ -15,6 +15,7 @@ import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/audio_player_manager.dart';
+import '../../components/pressable.dart';
 import '../../components/song_actions.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/album_art_image.dart';
@@ -136,20 +137,28 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
                   style: PlayerTokens.paneTitle(context).copyWith(fontSize: 22),
                 ),
                 const SizedBox(height: PlayerTokens.s1),
-                Text(
-                  widget.song.artist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PlayerTokens.trackSubtitle(context)
-                      .copyWith(fontSize: 14),
+                Pressable(
+                  alignment: Alignment.centerLeft,
+                  onTap: () => songActionGoToArtist(context, ref, widget.song),
+                  child: Text(
+                    widget.song.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PlayerTokens.trackSubtitle(context)
+                        .copyWith(fontSize: 14),
+                  ),
                 ),
                 if (widget.song.album.isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    widget.song.album,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PlayerTokens.meta(context),
+                  Pressable(
+                    alignment: Alignment.centerLeft,
+                    onTap: () => songActionGoToAlbum(context, ref, widget.song),
+                    child: Text(
+                      widget.song.album,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PlayerTokens.meta(context),
+                    ),
                   ),
                 ],
               ],

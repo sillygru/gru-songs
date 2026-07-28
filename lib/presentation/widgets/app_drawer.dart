@@ -5,9 +5,8 @@ import '../../providers/providers.dart';
 import '../../services/database_service.dart';
 import '../../services/sleep_timer_service.dart';
 import '../screens/song_list_screen.dart';
+import '../screens/library_screen.dart';
 import '../screens/playlists_screen.dart';
-import '../screens/artists_screen.dart';
-import '../screens/albums_screen.dart';
 import '../screens/session_history_screen.dart';
 import '../screens/settings_screen.dart';
 import 'album_art_image.dart';
@@ -176,14 +175,16 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                               label: 'Albums',
                               iconSize: iconSize,
                               fontSize: textFontSize,
-                              onTap: () => _navigateTo(const AlbumsScreen()),
+                              onTap: () => _navigateTo(
+                                  const LibraryScreen(initialTabIndex: 2)),
                             ),
                             _buildNavItem(
                               icon: AppIcons.person,
                               label: 'Artists',
                               iconSize: iconSize,
                               fontSize: textFontSize,
-                              onTap: () => _navigateTo(const ArtistsScreen()),
+                              onTap: () => _navigateTo(
+                                  const LibraryScreen(initialTabIndex: 1)),
                             ),
                             const AppSectionHeader(
                               label: 'History',

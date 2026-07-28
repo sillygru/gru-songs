@@ -462,12 +462,16 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
                         textAlign: TextAlign.center,
                         style: PlayerTokens.trackTitle(context),
                       ),
-                      Text(
-                        song.artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: PlayerTokens.trackSubtitle(context),
+                      Pressable(
+                        alignment: Alignment.center,
+                        onTap: () => songActionGoToArtist(context, ref, song),
+                        child: Text(
+                          song.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: PlayerTokens.trackSubtitle(context),
+                        ),
                       ),
                     ],
                   ),

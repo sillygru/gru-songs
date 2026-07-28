@@ -10,6 +10,7 @@ import '../components/app_feedback.dart';
 import '../components/app_icon.dart';
 import '../tokens/app_icons.dart';
 import '../tokens/app_tokens.dart';
+import '../routes/app_page_route.dart';
 import '../screens/edit_metadata_screen.dart';
 import '../screens/song_list_screen.dart';
 import '../widgets/folder_picker.dart';
@@ -297,20 +298,19 @@ void songActionGoToAlbum(BuildContext host, WidgetRef ref, Song song) {
   final albumSongs = songs.where((s) => s.album == song.album).toList();
   if (albumSongs.isEmpty) return;
 
-  Navigator.push(
-    host,
-    MaterialPageRoute(
-      builder: (_) => SongListScreen(
-        title: song.album,
-        songs: albumSongs,
-        isAlbum: true,
-        albumName: song.album,
-        artistName: song.artist,
-      ),
+  host.pushApp(
+    SongListScreen(
+      title: song.album,
+      songs: albumSongs,
+      isAlbum: true,
+      albumName: song.album,
+      artistName: song.artist,
     ),
   );
 }
 
+/// Opens the artist this song belongs to. No-op when the library has not
+/// finished loading, since there is nothing to filter yet.
 void songActionGoToArtist(BuildContext host, WidgetRef ref, Song song) {
   final songs = ref.read(songsProvider).value;
   if (songs == null) return;
@@ -318,15 +318,12 @@ void songActionGoToArtist(BuildContext host, WidgetRef ref, Song song) {
   final artistSongs = songs.where((s) => s.artist == song.artist).toList();
   if (artistSongs.isEmpty) return;
 
-  Navigator.push(
-    host,
-    MaterialPageRoute(
-      builder: (_) => SongListScreen(
-        title: song.artist,
-        songs: artistSongs,
-        isArtist: true,
-        artistName: song.artist,
-      ),
+  host.pushApp(
+    SongListScreen(
+      title: song.artist,
+      songs: artistSongs,
+      isArtist: true,
+      artistName: song.artist,
     ),
   );
 }

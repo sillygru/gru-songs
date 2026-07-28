@@ -90,7 +90,14 @@ class SearchIndexRepository {
     // 1. Fetch existing index state to determine what needs updating
     final List<Map<String, dynamic>> existingEntries = await _database!.query(
       _tableName,
-      columns: ['filename', 'last_modified', 'lyrics_content'],
+      columns: [
+        'filename',
+        'title',
+        'artist',
+        'album',
+        'last_modified',
+        'lyrics_content'
+      ],
     );
 
     final Map<String, Map<String, dynamic>> existingMap = {
@@ -128,10 +135,13 @@ class SearchIndexRepository {
 
         String? lyricsContent;
 
-        // Optimization: Skip extraction if file hasn't changed OR reuse cached lyrics
-        if (existing != null && songMtime == existingMtime) {
-          // Metadata and mtime match, we can skip this entirely unless we want to ensure
-          // lyrics are still there. But for speed, we skip.
+        final bool metadataMatches = existing != null &&
+            (existing['title'] as String?) == song.title.toLowerCase() &&
+            (existing['artist'] as String?) == song.artist.toLowerCase() &&
+            (existing['album'] as String?) == song.album.toLowerCase();
+
+        // Optimization: Skip extraction if file mtime and metadata haven't changed
+        if (existing != null && songMtime == existingMtime && metadataMatches) {
           continue;
         }
 

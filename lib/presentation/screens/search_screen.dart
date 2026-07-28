@@ -4,9 +4,11 @@ import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/search_filter.dart';
 import '../../domain/models/search_result.dart';
+import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/search_provider.dart';
 import '../../services/audio_player_manager.dart';
+import '../../services/library_logic.dart';
 import '../widgets/search_filter_chips.dart';
 import '../widgets/search_result_item.dart';
 import '../widgets/bulk_selection_bar.dart';
@@ -179,12 +181,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final showSongs =
         filterState.songs || filterState.all || filterState.lyrics;
 
+    final lowerQuery = _query.toLowerCase().trim();
+
     if (showArtists && !showSongs && !showAlbums) {
       // Group by artist (only artists filter selected)
       final artistGroups = <String, List<SearchResult>>{};
       for (final result in results) {
-        if (result.matchedArtist) {
-          artistGroups.putIfAbsent(result.song.artist, () => []).add(result);
+        final parsed = LibraryLogic.splitArtistNames(result.song.artist);
+        final artists = parsed.isEmpty ? [result.song.artist] : parsed;
+        for (final artist in artists) {
+          if (result.matchedArtist ||
+              artist.toLowerCase().contains(lowerQuery)) {
+            artistGroups.putIfAbsent(artist, () => []).add(result);
+          }
         }
       }
       return artistGroups.entries
@@ -196,7 +205,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       // Group by album (only albums filter selected)
       final albumGroups = <String, List<SearchResult>>{};
       for (final result in results) {
-        if (result.matchedAlbum) {
+        if (result.matchedAlbum ||
+            result.song.album.toLowerCase().contains(lowerQuery)) {
           final key = '${result.song.album}|${result.song.artist}';
           albumGroups.putIfAbsent(key, () => []).add(result);
         }
@@ -219,8 +229,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       if (showArtists) {
         final artistGroups = <String, List<SearchResult>>{};
         for (final result in results) {
-          if (result.matchedArtist) {
-            artistGroups.putIfAbsent(result.song.artist, () => []).add(result);
+          final parsed = LibraryLogic.splitArtistNames(result.song.artist);
+          final artists = parsed.isEmpty ? [result.song.artist] : parsed;
+          for (final artist in artists) {
+            if (result.matchedArtist ||
+                artist.toLowerCase().contains(lowerQuery)) {
+              artistGroups.putIfAbsent(artist, () => []).add(result);
+            }
           }
         }
         if (artistGroups.isNotEmpty) {
@@ -235,7 +250,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       if (showAlbums) {
         final albumGroups = <String, List<SearchResult>>{};
         for (final result in results) {
-          if (result.matchedAlbum) {
+          if (result.matchedAlbum ||
+              result.song.album.toLowerCase().contains(lowerQuery)) {
             final key = '${result.song.album}|${result.song.artist}';
             albumGroups.putIfAbsent(key, () => []).add(result);
           }
@@ -274,11 +290,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   bool _hasArtistMatches(List<SearchResult> results) {
-    return results.any((r) => r.matchedArtist);
+    final lowerQuery = _query.toLowerCase().trim();
+    if (lowerQuery.isEmpty) return false;
+    return results.any((r) =>
+        r.matchedArtist ||
+        r.song.artist.toLowerCase().contains(lowerQuery) ||
+        LibraryLogic.splitArtistNames(r.song.artist)
+            .any((a) => a.toLowerCase().contains(lowerQuery)));
   }
 
   bool _hasAlbumMatches(List<SearchResult> results) {
-    return results.any((r) => r.matchedAlbum);
+    final lowerQuery = _query.toLowerCase().trim();
+    if (lowerQuery.isEmpty) return false;
+    return results.any((r) =>
+        r.matchedAlbum || r.song.album.toLowerCase().contains(lowerQuery));
   }
 
   Widget _buildResultItem(
@@ -286,6 +311,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     AudioPlayerManager audioManager,
     BuildContext context,
   ) {
+    final allSongs = ref.watch(songsProvider).asData?.value ?? [];
+
     if (item is SearchResult) {
       return SearchResultItem(
         result: item,
@@ -294,18 +321,25 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         onTap: () => _playSearchResult(item, audioManager),
       );
     } else if (item is _ArtistGroup) {
+      final artistMap = LibraryLogic.groupByArtist(allSongs);
+      final fullArtistSongs = artistMap[item.artistName] ??
+          item.results.map((r) => r.song).toList();
       return ArtistSearchResultItem(
         artistName: item.artistName,
-        songs: item.results.map((r) => r.song).toList(),
-        onTap: () => _showArtistSongs(item.artistName, item.results),
+        songs: fullArtistSongs,
+        onTap: () => _showArtistSongs(item.artistName, fullArtistSongs),
       );
     } else if (item is _AlbumGroup) {
+      final albumMap = LibraryLogic.groupByAlbum(allSongs);
+      final fullAlbumSongs = albumMap['${item.albumName}|${item.artistName}'] ??
+          albumMap[item.albumName] ??
+          item.results.map((r) => r.song).toList();
       return AlbumSearchResultItem(
         albumName: item.albumName,
         artistName: item.artistName,
-        songs: item.results.map((r) => r.song).toList(),
+        songs: fullAlbumSongs,
         onTap: () =>
-            _showAlbumSongs(item.albumName, item.artistName, item.results),
+            _showAlbumSongs(item.albumName, item.artistName, fullAlbumSongs),
       );
     } else if (item is _SectionHeader) {
       return AppSectionHeader(label: item.title);
@@ -318,8 +352,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     audioManager.playSong(result.song);
   }
 
-  void _showArtistSongs(String artistName, List<SearchResult> results) {
-    final songs = results.map((r) => r.song).toList();
+  void _showArtistSongs(String artistName, List<Song> songs) {
     context.pushApp(SongListScreen(
       title: artistName,
       songs: songs,
@@ -328,9 +361,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     ));
   }
 
-  void _showAlbumSongs(
-      String albumName, String artistName, List<SearchResult> results) {
-    final songs = results.map((r) => r.song).toList();
+  void _showAlbumSongs(String albumName, String artistName, List<Song> songs) {
     context.pushApp(SongListScreen(
       title: albumName,
       songs: songs,

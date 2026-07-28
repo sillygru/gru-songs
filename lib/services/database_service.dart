@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/playlist.dart';
 import '../models/queue_snapshot.dart';
@@ -32,143 +30,30 @@ class DatabaseService {
   @visibleForTesting
   DatabaseService.forTest();
 
-  Future<bool> init() async {
+  Future<void> init() async {
     if (_initCompleter != null && !_initCompleter!.isCompleted) {
       await _initCompleter!.future;
-      return false;
+      return;
     }
 
     _initCompleter = Completer<void>();
-    bool migrated = false;
 
     try {
-      // --- MIGRATION LOGIC ---
-      migrated = await _performMigrationIfNeeded();
-
       // Open local databases (create schema if needed)
       _statsDatabase = await _openDatabase('wispie_stats.db', _statsSchema);
       _userDataDatabase =
           await _openDatabase('wispie_data.db', _userDataSchema);
 
-      // --- AUTO-MIGRATION: Ensure tables and columns exist ---
+      // Ensure tables and columns exist
       await _ensureStatsTables(_statsDatabase!);
       await _ensureTablesAndColumns(_userDataDatabase!);
 
       _initCompleter!.complete();
-      return migrated;
     } catch (e) {
       debugPrint('Database initialization failed: $e');
       _initCompleter!.completeError(e);
       rethrow;
     }
-  }
-
-  Future<bool> _performMigrationIfNeeded() async {
-    final docDir = await getApplicationDocumentsDirectory();
-    final newDataDb = File(join(docDir.path, 'wispie_data.db'));
-
-    // If new DB already exists, migration is done.
-    if (await newDataDb.exists()) return false;
-
-    bool migrated = false;
-    // Check for old user to migrate
-    final prefs = await SharedPreferences.getInstance();
-    // Try 'local_username' first (from StorageService), then 'username' (legacy Auth)
-    final username =
-        prefs.getString('local_username') ?? prefs.getString('username');
-
-    if (username != null) {
-      debugPrint('Migrating data for user: $username');
-      final oldDataDb = File(join(docDir.path, '${username}_data.db'));
-      final oldStatsDb = File(join(docDir.path, '${username}_stats.db'));
-
-      if (await oldDataDb.exists()) {
-        await oldDataDb.rename(newDataDb.path);
-        debugPrint('Migrated data DB');
-        migrated = true;
-      }
-
-      if (await oldStatsDb.exists()) {
-        await oldStatsDb.rename(join(docDir.path, 'wispie_stats.db'));
-        debugPrint('Migrated stats DB');
-        migrated = true;
-      }
-
-      // Rename JSON caches
-      final oldSongsJson =
-          File(join(docDir.path, 'cached_songs_$username.json'));
-      if (await oldSongsJson.exists()) {
-        await oldSongsJson.rename(join(docDir.path, 'cached_songs.json'));
-        migrated = true;
-      }
-
-      final oldUserDataJson =
-          File(join(docDir.path, 'user_data_$username.json'));
-      if (await oldUserDataJson.exists()) {
-        await oldUserDataJson.rename(join(docDir.path, 'user_data.json'));
-        migrated = true;
-      }
-
-      final oldShuffleJson =
-          File(join(docDir.path, 'shuffle_state_$username.json'));
-      if (await oldShuffleJson.exists()) {
-        await oldShuffleJson.rename(join(docDir.path, 'shuffle_state.json'));
-        migrated = true;
-      }
-
-      final oldPlaybackJson =
-          File(join(docDir.path, 'playback_state_$username.json'));
-      if (await oldPlaybackJson.exists()) {
-        await oldPlaybackJson.rename(join(docDir.path, 'playback_state.json'));
-        migrated = true;
-      }
-    }
-
-    // Cleanup: Delete ALL old user DBs and JSONs (for all users, including the one we just migrated from if copy failed/renamed, or others)
-
-    // Actually, since we renamed, the old files for the current user are gone (if rename worked).
-
-    // Now we just delete anything that looks like a user DB but isn't wispie_*.
-
-    try {
-      if (await docDir.exists()) {
-        final entities = docDir.listSync();
-
-        for (final entity in entities) {
-          if (entity is File) {
-            final name = basename(entity.path);
-
-            // Delete old DBs
-
-            if ((name.endsWith('_data.db') || name.endsWith('_stats.db')) &&
-                !name.startsWith('wispie_')) {
-              debugPrint('Deleting old DB: $name');
-
-              try {
-                await entity.delete();
-              } catch (_) {}
-            }
-
-            // Delete old JSONs
-
-            if ((name.startsWith('cached_songs_') ||
-                    name.startsWith('user_data_') ||
-                    name.startsWith('shuffle_state_') ||
-                    name.startsWith('playback_state_')) &&
-                name.endsWith('.json')) {
-              debugPrint('Deleting old JSON: $name');
-
-              try {
-                await entity.delete();
-              } catch (_) {}
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error cleaning up old files: $e');
-    }
-    return migrated;
   }
 
   Future<void> _ensureStatsTables(Database db) async {
@@ -181,9 +66,6 @@ class DatabaseService {
         device_id TEXT
       )
     ''');
-    try {
-      await db.execute('ALTER TABLE playsession ADD COLUMN device_id TEXT');
-    } catch (_) {}
     await db.execute('''
       CREATE TABLE IF NOT EXISTS playevent (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,7 +83,7 @@ class DatabaseService {
   }
 
   Future<void> _ensureTablesAndColumns(Database db) async {
-    // 1. Ensure Tables exist (redundant but safe)
+    // 1. Ensure Tables exist
     await db.execute(
         'CREATE TABLE IF NOT EXISTS favorite (filename TEXT PRIMARY KEY, added_at REAL)');
     await db.execute(
@@ -325,16 +207,7 @@ class DatabaseService {
         )
     ''');
 
-    // 2. Ensure specific columns exist (for future-proofing and existing installs)
-    await _addColumnIfNotExists(
-        db, 'merged_song_group', 'priority_filename', 'TEXT');
-    await _addColumnIfNotExists(db, 'playlist', 'description', 'TEXT');
-    await _addColumnIfNotExists(
-        db, 'playlist', 'is_recommendation', 'INTEGER DEFAULT 0');
-    await _addColumnIfNotExists(db, 'song', 'created_epoch_sec', 'REAL');
-    await _addColumnIfNotExists(db, 'song', 'song_date_epoch_sec', 'REAL');
-
-    // 3. Create indexes for the song table
+    // 2. Create indexes for the song table
     await db
         .execute('CREATE INDEX IF NOT EXISTS idx_song_artist ON song(artist)');
     await db
@@ -349,21 +222,6 @@ class DatabaseService {
         'CREATE INDEX IF NOT EXISTS idx_queue_snapshot_created_at ON queue_snapshot(created_at)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_queue_snapshot_song_snapshot_id ON queue_snapshot_song(snapshot_id)');
-  }
-
-  // ignore: unused_element
-  Future<void> _addColumnIfNotExists(Database db, String tableName,
-      String columnName, String columnType) async {
-    final List<Map<String, dynamic>> columns =
-        await db.rawQuery('PRAGMA table_info($tableName)');
-    final bool columnExists =
-        columns.any((column) => column['name'] == columnName);
-
-    if (!columnExists) {
-      await db
-          .execute('ALTER TABLE $tableName ADD COLUMN $columnName $columnType');
-      debugPrint('Migration: Added column $columnName to $tableName');
-    }
   }
 
   Future<void> _ensureInitialized() async {
@@ -2615,218 +2473,6 @@ class DatabaseService {
       FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
     );
   ''';
-
-  /// Canonical CREATE TABLE statements for wispie_data.db, keyed by table name.
-  /// This is the single source of truth used by DatabaseOptimizerService.
-  static const Map<String, String> userDataTableSql = {
-    'userdata': '''CREATE TABLE IF NOT EXISTS userdata (
-      username TEXT PRIMARY KEY,
-      password_hash TEXT,
-      created_at REAL
-    )''',
-    'favorite': '''CREATE TABLE IF NOT EXISTS favorite (
-      filename TEXT PRIMARY KEY,
-      added_at REAL
-    )''',
-    'suggestless': '''CREATE TABLE IF NOT EXISTS suggestless (
-      filename TEXT PRIMARY KEY,
-      added_at REAL
-    )''',
-    'hidden': '''CREATE TABLE IF NOT EXISTS hidden (
-      filename TEXT PRIMARY KEY,
-      hidden_at REAL
-    )''',
-    'cover_miss': '''CREATE TABLE IF NOT EXISTS cover_miss (
-      filename TEXT PRIMARY KEY,
-      file_mtime REAL,
-      checked_at REAL
-    )''',
-    'song': '''CREATE TABLE IF NOT EXISTS song (
-      filename TEXT PRIMARY KEY,
-      title TEXT,
-      artist TEXT,
-      album TEXT,
-      url TEXT,
-      cover_url TEXT,
-      has_lyrics INTEGER,
-      play_count INTEGER,
-      duration_ms INTEGER,
-      mtime REAL,
-      created_epoch_sec REAL,
-      song_date_epoch_sec REAL
-    )''',
-    'playlist': '''CREATE TABLE IF NOT EXISTS playlist (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      description TEXT,
-      is_recommendation INTEGER DEFAULT 0,
-      created_at REAL,
-      updated_at REAL
-    )''',
-    'playlist_song': '''CREATE TABLE IF NOT EXISTS playlist_song (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      playlist_id TEXT,
-      song_filename TEXT,
-      added_at REAL,
-      FOREIGN KEY (playlist_id) REFERENCES playlist (id)
-    )''',
-    'merged_song_group': '''CREATE TABLE IF NOT EXISTS merged_song_group (
-      id TEXT PRIMARY KEY,
-      priority_filename TEXT,
-      created_at REAL
-    )''',
-    'merged_song': '''CREATE TABLE IF NOT EXISTS merged_song (
-      filename TEXT PRIMARY KEY,
-      group_id TEXT,
-      added_at REAL,
-      FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
-    )''',
-    'recommendation_preference':
-        '''CREATE TABLE IF NOT EXISTS recommendation_preference (
-      id TEXT PRIMARY KEY,
-      custom_title TEXT,
-      is_pinned INTEGER DEFAULT 0,
-      updated_at REAL
-    )''',
-    'recommendation_removal':
-        '''CREATE TABLE IF NOT EXISTS recommendation_removal (
-      id TEXT PRIMARY KEY,
-      removed_at REAL
-    )''',
-    'artist_art': '''CREATE TABLE IF NOT EXISTS artist_art (
-      artist_name TEXT PRIMARY KEY,
-      image_url TEXT,
-      local_path TEXT,
-      source TEXT,
-      updated_at REAL
-    )''',
-    'album_art': '''CREATE TABLE IF NOT EXISTS album_art (
-      album_key TEXT PRIMARY KEY,
-      album_name TEXT,
-      artist_name TEXT,
-      image_url TEXT,
-      local_path TEXT,
-      source TEXT,
-      updated_at REAL
-    )''',
-    'translated_lyrics': '''CREATE TABLE IF NOT EXISTS translated_lyrics (
-      filename TEXT,
-      target_lang TEXT,
-      translated_content TEXT,
-      updated_at REAL,
-      PRIMARY KEY (filename, target_lang)
-    )''',
-  };
-
-  /// Expected columns per table for ALTER TABLE ADD COLUMN operations.
-  /// Maps table name → (column name → type fragment used in ALTER TABLE ADD COLUMN).
-  static const Map<String, Map<String, String>> userDataExpectedColumns = {
-    'userdata': {
-      'username': 'TEXT',
-      'password_hash': 'TEXT',
-      'created_at': 'REAL',
-    },
-    'favorite': {
-      'filename': 'TEXT',
-      'added_at': 'REAL',
-    },
-    'suggestless': {
-      'filename': 'TEXT',
-      'added_at': 'REAL',
-    },
-    'hidden': {
-      'filename': 'TEXT',
-      'hidden_at': 'REAL',
-    },
-    'song': {
-      'filename': 'TEXT',
-      'title': 'TEXT',
-      'artist': 'TEXT',
-      'album': 'TEXT',
-      'url': 'TEXT',
-      'cover_url': 'TEXT',
-      'has_lyrics': 'INTEGER',
-      'play_count': 'INTEGER',
-      'duration_ms': 'INTEGER',
-      'mtime': 'REAL',
-      'created_epoch_sec': 'REAL',
-      'song_date_epoch_sec': 'REAL',
-    },
-    'playlist': {
-      'id': 'TEXT',
-      'name': 'TEXT',
-      'description': 'TEXT',
-      'is_recommendation': 'INTEGER DEFAULT 0',
-      'created_at': 'REAL',
-      'updated_at': 'REAL',
-    },
-    'playlist_song': {
-      'id': 'INTEGER',
-      'playlist_id': 'TEXT',
-      'song_filename': 'TEXT',
-      'added_at': 'REAL',
-    },
-    'merged_song_group': {
-      'id': 'TEXT',
-      'priority_filename': 'TEXT',
-      'created_at': 'REAL',
-    },
-    'merged_song': {
-      'filename': 'TEXT',
-      'group_id': 'TEXT',
-      'added_at': 'REAL',
-    },
-    'recommendation_preference': {
-      'id': 'TEXT',
-      'custom_title': 'TEXT',
-      'is_pinned': 'INTEGER DEFAULT 0',
-      'updated_at': 'REAL',
-    },
-    'recommendation_removal': {
-      'id': 'TEXT',
-      'removed_at': 'REAL',
-    },
-    'artist_art': {
-      'artist_name': 'TEXT',
-      'image_url': 'TEXT',
-      'local_path': 'TEXT',
-      'source': 'TEXT',
-      'updated_at': 'REAL',
-    },
-    'album_art': {
-      'album_key': 'TEXT',
-      'album_name': 'TEXT',
-      'artist_name': 'TEXT',
-      'image_url': 'TEXT',
-      'local_path': 'TEXT',
-      'source': 'TEXT',
-      'updated_at': 'REAL',
-    },
-    'translated_lyrics': {
-      'filename': 'TEXT',
-      'target_lang': 'TEXT',
-      'translated_content': 'TEXT',
-      'updated_at': 'REAL',
-    },
-  };
-
-  /// Expected performance indexes for wispie_data.db, keyed by index name.
-  static const Map<String, String> userDataIndexSql = {
-    'idx_song_artist':
-        'CREATE INDEX IF NOT EXISTS idx_song_artist ON song(artist)',
-    'idx_song_album':
-        'CREATE INDEX IF NOT EXISTS idx_song_album ON song(album)',
-    'idx_song_mtime':
-        'CREATE INDEX IF NOT EXISTS idx_song_mtime ON song(mtime)',
-    'idx_song_created_epoch_sec':
-        'CREATE INDEX IF NOT EXISTS idx_song_created_epoch_sec ON song(created_epoch_sec)',
-    'idx_song_date_epoch_sec':
-        'CREATE INDEX IF NOT EXISTS idx_song_date_epoch_sec ON song(song_date_epoch_sec)',
-    'idx_merged_song_group_id':
-        'CREATE INDEX IF NOT EXISTS idx_merged_song_group_id ON merged_song(group_id)',
-    'idx_playlist_song_playlist_id':
-        'CREATE INDEX IF NOT EXISTS idx_playlist_song_playlist_id ON playlist_song(playlist_id)',
-  };
 
   Future<void> importData({
     required String statsDbPath,

@@ -48,23 +48,9 @@ Future<void> main() async {
   final username = prefs.getString('username');
 
   // Single user mode: always init database
-  final migrated = await DatabaseService.instance.init();
+  await DatabaseService.instance.init();
 
   unawaited(SyncService.instance.init());
-
-  if (migrated) {
-    debugPrint("Data migrated to single-user format. Restarting app...");
-    await storage.setIsLocalMode(true);
-    unawaited(Future.microtask(() => runApp(ProviderScope(
-          overrides: [
-            setupProvider
-                .overrideWith(() => InitializedSetupNotifier(isSetupComplete)),
-            authProvider.overrideWith(() => PreloadedAuthNotifier(username)),
-          ],
-          child: const WispieApp(),
-        ))));
-    return;
-  }
 
   await storage.setIsLocalMode(true);
 
