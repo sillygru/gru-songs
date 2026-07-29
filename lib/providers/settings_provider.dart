@@ -33,8 +33,10 @@ class SettingsState {
   final bool lyricsBlurOverlayEnabled;
   final bool beatReactiveCoverEnabled;
   final bool beatReactiveParticlesEnabled;
-  final PlayerMotionIntensity playerMotionIntensity;
-  final double playerMotionCustomIntensity;
+  final PlayerMotionIntensity coverMotionIntensity;
+  final PlayerMotionIntensity particleMotionIntensity;
+  final double coverMotionCustomIntensity;
+  final double particleMotionCustomIntensity;
   final int playerMotionLatencyMs;
   final bool showQuickPicks;
   final bool showRecentQueues;
@@ -74,8 +76,10 @@ class SettingsState {
     this.lyricsBlurOverlayEnabled = true,
     this.beatReactiveCoverEnabled = true,
     this.beatReactiveParticlesEnabled = true,
-    this.playerMotionIntensity = PlayerMotionIntensity.subtle,
-    this.playerMotionCustomIntensity = 0.5,
+    this.coverMotionIntensity = PlayerMotionIntensity.subtle,
+    this.particleMotionIntensity = PlayerMotionIntensity.subtle,
+    this.coverMotionCustomIntensity = 0.5,
+    this.particleMotionCustomIntensity = 0.5,
     this.playerMotionLatencyMs = 80,
     this.showQuickPicks = true,
     this.showRecentQueues = true,
@@ -116,8 +120,10 @@ class SettingsState {
     bool? lyricsBlurOverlayEnabled,
     bool? beatReactiveCoverEnabled,
     bool? beatReactiveParticlesEnabled,
-    PlayerMotionIntensity? playerMotionIntensity,
-    double? playerMotionCustomIntensity,
+    PlayerMotionIntensity? coverMotionIntensity,
+    PlayerMotionIntensity? particleMotionIntensity,
+    double? coverMotionCustomIntensity,
+    double? particleMotionCustomIntensity,
     int? playerMotionLatencyMs,
     bool? showQuickPicks,
     bool? showRecentQueues,
@@ -170,10 +176,13 @@ class SettingsState {
           beatReactiveCoverEnabled ?? this.beatReactiveCoverEnabled,
       beatReactiveParticlesEnabled:
           beatReactiveParticlesEnabled ?? this.beatReactiveParticlesEnabled,
-      playerMotionIntensity:
-          playerMotionIntensity ?? this.playerMotionIntensity,
-      playerMotionCustomIntensity:
-          playerMotionCustomIntensity ?? this.playerMotionCustomIntensity,
+      coverMotionIntensity: coverMotionIntensity ?? this.coverMotionIntensity,
+      particleMotionIntensity:
+          particleMotionIntensity ?? this.particleMotionIntensity,
+      coverMotionCustomIntensity:
+          coverMotionCustomIntensity ?? this.coverMotionCustomIntensity,
+      particleMotionCustomIntensity:
+          particleMotionCustomIntensity ?? this.particleMotionCustomIntensity,
       playerMotionLatencyMs:
           playerMotionLatencyMs ?? this.playerMotionLatencyMs,
       showQuickPicks: showQuickPicks ?? this.showQuickPicks,
@@ -220,9 +229,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyBeatReactiveCoverEnabled = 'beat_reactive_cover_enabled';
   static const _keyBeatReactiveParticlesEnabled =
       'beat_reactive_particles_enabled';
-  static const _keyPlayerMotionIntensity = 'player_motion_intensity';
-  static const _keyPlayerMotionCustomIntensity =
-      'player_motion_custom_intensity';
+  static const _keyCoverMotionIntensity = 'cover_motion_intensity';
+  static const _keyParticleMotionIntensity = 'particle_motion_intensity';
+  static const _keyCoverMotionCustomIntensity = 'cover_motion_custom_intensity';
+  static const _keyParticleMotionCustomIntensity =
+      'particle_motion_custom_intensity';
   static const _keyPlayerMotionLatencyMs = 'player_motion_latency_ms';
   static const _keyShowQuickPicks = 'show_quick_picks';
   static const _keyShowRecentQueues = 'show_recent_queues';
@@ -246,7 +257,46 @@ class SettingsNotifier extends Notifier<SettingsState> {
     final prefs = await SharedPreferences.getInstance();
     final sortOrderIndex = prefs.getInt(_keySortOrder);
     final coverSizingModeIndex = prefs.getInt(_keyCoverSizingMode);
-    final motionIntensityIndex = prefs.getInt(_keyPlayerMotionIntensity);
+    final oldIntensityIndex = prefs.getInt('player_motion_intensity');
+    final oldCustomIntensity =
+        prefs.getDouble('player_motion_custom_intensity');
+
+    // Migrate from old combined keys if present
+    PlayerMotionIntensity coverIntensity;
+    PlayerMotionIntensity particleIntensity;
+    double coverCustom;
+    double particleCustom;
+    if (prefs.containsKey('player_motion_intensity') &&
+        !prefs.containsKey(_keyCoverMotionIntensity)) {
+      final i = oldIntensityIndex != null &&
+              oldIntensityIndex >= 0 &&
+              oldIntensityIndex < PlayerMotionIntensity.values.length
+          ? PlayerMotionIntensity.values[oldIntensityIndex]
+          : PlayerMotionIntensity.subtle;
+      coverIntensity = i;
+      particleIntensity = i;
+      coverCustom = (oldCustomIntensity ?? 0.5).clamp(0.0, 1.0);
+      particleCustom = (oldCustomIntensity ?? 0.5).clamp(0.0, 1.0);
+    } else {
+      final coverIdx = prefs.getInt(_keyCoverMotionIntensity);
+      final particleIdx = prefs.getInt(_keyParticleMotionIntensity);
+      coverIntensity = coverIdx != null &&
+              coverIdx >= 0 &&
+              coverIdx < PlayerMotionIntensity.values.length
+          ? PlayerMotionIntensity.values[coverIdx]
+          : PlayerMotionIntensity.subtle;
+      particleIntensity = particleIdx != null &&
+              particleIdx >= 0 &&
+              particleIdx < PlayerMotionIntensity.values.length
+          ? PlayerMotionIntensity.values[particleIdx]
+          : PlayerMotionIntensity.subtle;
+      coverCustom = (prefs.getDouble(_keyCoverMotionCustomIntensity) ?? 0.5)
+          .clamp(0.0, 1.0);
+      particleCustom =
+          (prefs.getDouble(_keyParticleMotionCustomIntensity) ?? 0.5)
+              .clamp(0.0, 1.0);
+    }
+
     state = SettingsState(
       visualizerMode: _readVisualizerMode(prefs),
       autoHideBottomBarOnScroll:
@@ -292,14 +342,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
           prefs.getBool(_keyBeatReactiveCoverEnabled) ?? true,
       beatReactiveParticlesEnabled:
           prefs.getBool(_keyBeatReactiveParticlesEnabled) ?? true,
-      playerMotionIntensity: motionIntensityIndex != null &&
-              motionIntensityIndex >= 0 &&
-              motionIntensityIndex < PlayerMotionIntensity.values.length
-          ? PlayerMotionIntensity.values[motionIntensityIndex]
-          : PlayerMotionIntensity.subtle,
-      playerMotionCustomIntensity:
-          (prefs.getDouble(_keyPlayerMotionCustomIntensity) ?? 0.5)
-              .clamp(0.0, 1.0),
+      coverMotionIntensity: coverIntensity,
+      particleMotionIntensity: particleIntensity,
+      coverMotionCustomIntensity: coverCustom,
+      particleMotionCustomIntensity: particleCustom,
       playerMotionLatencyMs:
           (prefs.getInt(_keyPlayerMotionLatencyMs) ?? 80).clamp(-200, 500),
       showQuickPicks: prefs.getBool(_keyShowQuickPicks) ?? true,
@@ -537,17 +583,30 @@ class SettingsNotifier extends Notifier<SettingsState> {
     await prefs.setBool(_keyBeatReactiveParticlesEnabled, enabled);
   }
 
-  Future<void> setPlayerMotionIntensity(PlayerMotionIntensity value) async {
-    state = state.copyWith(playerMotionIntensity: value);
+  Future<void> setCoverMotionIntensity(PlayerMotionIntensity value) async {
+    state = state.copyWith(coverMotionIntensity: value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyPlayerMotionIntensity, value.index);
+    await prefs.setInt(_keyCoverMotionIntensity, value.index);
   }
 
-  Future<void> setPlayerMotionCustomIntensity(double value) async {
-    final clamped = value.clamp(0.0, 1.0);
-    state = state.copyWith(playerMotionCustomIntensity: clamped);
+  Future<void> setParticleMotionIntensity(PlayerMotionIntensity value) async {
+    state = state.copyWith(particleMotionIntensity: value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyPlayerMotionCustomIntensity, clamped);
+    await prefs.setInt(_keyParticleMotionIntensity, value.index);
+  }
+
+  Future<void> setCoverMotionCustomIntensity(double value) async {
+    final clamped = value.clamp(0.0, 1.0);
+    state = state.copyWith(coverMotionCustomIntensity: clamped);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyCoverMotionCustomIntensity, clamped);
+  }
+
+  Future<void> setParticleMotionCustomIntensity(double value) async {
+    final clamped = value.clamp(0.0, 1.0);
+    state = state.copyWith(particleMotionCustomIntensity: clamped);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyParticleMotionCustomIntensity, clamped);
   }
 
   /// Visual offset compensating audio output latency, in milliseconds.

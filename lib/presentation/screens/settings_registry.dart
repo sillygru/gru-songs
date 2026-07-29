@@ -322,14 +322,31 @@ final List<SettingsDestination> settingsRegistry = [
     ),
   ),
   SettingsDestination(
-    anchorId: 'appearance.motion_intensity',
-    icon: AppIcons.tune,
-    title: 'Motion intensity',
-    subtitle: 'How strongly the player reacts',
+    anchorId: 'appearance.cover_intensity',
+    icon: AppIcons.album,
+    title: 'Cover intensity',
+    subtitle: 'How strongly the album art reacts to the beat',
     breadcrumb: 'Settings › Appearance › Player motion',
-    keywords: const ['subtle', 'balanced', 'bold', 'custom', 'strength'],
+    keywords: const ['cover', 'album', 'pulse', 'subtle', 'balanced', 'bold'],
     open: () => const AppearanceSettingsScreen(
-      highlightId: 'appearance.motion_intensity',
+        highlightId: 'appearance.cover_intensity'),
+  ),
+  SettingsDestination(
+    anchorId: 'appearance.particle_intensity',
+    icon: AppIcons.autoAwesome,
+    title: 'Particle density',
+    subtitle: 'How many particles and how lively they are',
+    breadcrumb: 'Settings › Appearance › Player motion',
+    keywords: const [
+      'particles',
+      'motes',
+      'density',
+      'subtle',
+      'balanced',
+      'bold'
+    ],
+    open: () => const AppearanceSettingsScreen(
+      highlightId: 'appearance.particle_intensity',
     ),
   ),
   SettingsDestination(

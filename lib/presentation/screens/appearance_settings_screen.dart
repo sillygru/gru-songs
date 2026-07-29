@@ -24,24 +24,6 @@ class AppearanceSettingsScreen extends ConsumerStatefulWidget {
 
 class _AppearanceSettingsScreenState
     extends ConsumerState<AppearanceSettingsScreen> {
-  String _customIntensityLabel(double value) {
-    if (value <= 0.125) return 'Min';
-    if (value <= 0.375) return 'Subtle';
-    if (value <= 0.625) return 'Balanced';
-    if (value <= 0.875) return 'Bold';
-    return 'Max';
-  }
-
-  Widget _sliderLabel(String text, double align) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 11,
-        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
@@ -123,7 +105,7 @@ class _AppearanceSettingsScreenState
                 icon: AppIcons.blur,
                 searchId: 'appearance.lyrics_blur',
                 title: 'Lyrics blur overlay',
-                subtitle: 'Progressive blur on the lyrics top and bottom edges',
+                subtitle: 'Progressive blur on the lyrics',
                 value: settings.lyricsBlurOverlayEnabled,
                 onChanged: notifier.setLyricsBlurOverlayEnabled,
               ),
@@ -173,6 +155,18 @@ class _AppearanceSettingsScreenState
                 value: settings.beatReactiveCoverEnabled,
                 onChanged: notifier.setBeatReactiveCoverEnabled,
               ),
+              // Cover intensity — only visible when the cover toggle is on.
+              if (settings.beatReactiveCoverEnabled)
+                _MotionIntensityRow(
+                  id: 'appearance.cover_intensity',
+                  accent: accent,
+                  title: 'Cover intensity',
+                  subtitle: 'How strongly the cover reacts',
+                  intensity: settings.coverMotionIntensity,
+                  customIntensity: settings.coverMotionCustomIntensity,
+                  onIntensityChanged: notifier.setCoverMotionIntensity,
+                  onCustomChanged: notifier.setCoverMotionCustomIntensity,
+                ),
               AppSettingsSwitch(
                 icon: AppIcons.autoAwesome,
                 searchId: 'appearance.beat_particles',
@@ -182,93 +176,17 @@ class _AppearanceSettingsScreenState
                 value: settings.beatReactiveParticlesEnabled,
                 onChanged: notifier.setBeatReactiveParticlesEnabled,
               ),
-              AppSettingsAnchor(
-                id: 'appearance.motion_intensity',
-                child: AppListRow(
-                  dense: true,
-                  leading: AppRowIcon(
-                    icon: AppIcons.tune,
-                    color: accent,
-                    size: 40,
-                  ),
-                  title: 'Motion intensity',
-                  subtitle: 'How strongly the player reacts',
-                  trailing: DropdownButton<PlayerMotionIntensity>(
-                    value: settings.playerMotionIntensity,
-                    underline: const SizedBox.shrink(),
-                    borderRadius: AppTokens.brMd,
-                    onChanged: (value) {
-                      if (value == null) return;
-                      notifier.setPlayerMotionIntensity(value);
-                    },
-                    items: const [
-                      DropdownMenuItem(
-                        value: PlayerMotionIntensity.subtle,
-                        child: Text('Subtle'),
-                      ),
-                      DropdownMenuItem(
-                        value: PlayerMotionIntensity.balanced,
-                        child: Text('Balanced'),
-                      ),
-                      DropdownMenuItem(
-                        value: PlayerMotionIntensity.bold,
-                        child: Text('Bold'),
-                      ),
-                      DropdownMenuItem(
-                        value: PlayerMotionIntensity.custom,
-                        child: Text('Custom'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              if (settings.playerMotionIntensity ==
-                  PlayerMotionIntensity.custom)
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: AppTokens.s3 + 40 + AppTokens.s3,
-                    right: AppTokens.s3,
-                    bottom: AppTokens.s2,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: accent,
-                          thumbColor: accent,
-                          inactiveTrackColor: accent.withValues(alpha: 0.2),
-                          overlayColor: accent.withValues(alpha: 0.12),
-                        ),
-                        child: Slider(
-                          value: settings.playerMotionCustomIntensity,
-                          min: 0.0,
-                          max: 1.0,
-                          divisions: 4,
-                          label: _customIntensityLabel(
-                              settings.playerMotionCustomIntensity),
-                          onChanged: (value) =>
-                              notifier.setPlayerMotionCustomIntensity(value),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Row(
-                          children: [
-                            _sliderLabel('Min', 0.0),
-                            const Spacer(),
-                            _sliderLabel('Subtle', 0.25),
-                            const Spacer(),
-                            _sliderLabel('Balanced', 0.5),
-                            const Spacer(),
-                            _sliderLabel('Bold', 0.75),
-                            const Spacer(),
-                            _sliderLabel('Max', 1.0),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+              // Particle intensity — only visible when the particle toggle is on.
+              if (settings.beatReactiveParticlesEnabled)
+                _MotionIntensityRow(
+                  id: 'appearance.particle_intensity',
+                  accent: accent,
+                  title: 'Particle density',
+                  subtitle: 'How many particles and how lively',
+                  intensity: settings.particleMotionIntensity,
+                  customIntensity: settings.particleMotionCustomIntensity,
+                  onIntensityChanged: notifier.setParticleMotionIntensity,
+                  onCustomChanged: notifier.setParticleMotionCustomIntensity,
                 ),
               // Output latency is a property of the listener's hardware, not the
               // app: Bluetooth typically runs 150-250ms behind wired. Without
@@ -351,6 +269,140 @@ class _AppearanceSettingsScreenState
           ),
         ],
       ),
+    );
+  }
+}
+
+String _customIntensityLabel(double value) {
+  if (value <= 0.125) return 'Min';
+  if (value <= 0.375) return 'Subtle';
+  if (value <= 0.625) return 'Balanced';
+  if (value <= 0.875) return 'Bold';
+  return 'Max';
+}
+
+Widget _sliderLabel(BuildContext context, String text) {
+  return Text(
+    text,
+    style: TextStyle(
+      fontSize: 11,
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+    ),
+  );
+}
+
+/// A single motion-intensity row: dropdown + optional custom slider.
+class _MotionIntensityRow extends StatelessWidget {
+  final String id;
+  final Color accent;
+  final String title;
+  final String subtitle;
+  final PlayerMotionIntensity intensity;
+  final double customIntensity;
+  final ValueChanged<PlayerMotionIntensity> onIntensityChanged;
+  final ValueChanged<double> onCustomChanged;
+
+  const _MotionIntensityRow({
+    required this.id,
+    required this.accent,
+    required this.title,
+    required this.subtitle,
+    required this.intensity,
+    required this.customIntensity,
+    required this.onIntensityChanged,
+    required this.onCustomChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        AppSettingsAnchor(
+          id: id,
+          child: AppListRow(
+            dense: true,
+            leading: AppRowIcon(
+              icon: AppIcons.tune,
+              color: accent,
+              size: 40,
+            ),
+            title: title,
+            subtitle: subtitle,
+            trailing: DropdownButton<PlayerMotionIntensity>(
+              value: intensity,
+              underline: const SizedBox.shrink(),
+              borderRadius: AppTokens.brMd,
+              onChanged: (value) {
+                if (value == null) return;
+                onIntensityChanged(value);
+              },
+              items: const [
+                DropdownMenuItem(
+                  value: PlayerMotionIntensity.subtle,
+                  child: Text('Subtle'),
+                ),
+                DropdownMenuItem(
+                  value: PlayerMotionIntensity.balanced,
+                  child: Text('Balanced'),
+                ),
+                DropdownMenuItem(
+                  value: PlayerMotionIntensity.bold,
+                  child: Text('Bold'),
+                ),
+                DropdownMenuItem(
+                  value: PlayerMotionIntensity.custom,
+                  child: Text('Custom'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (intensity == PlayerMotionIntensity.custom)
+          Padding(
+            padding: const EdgeInsets.only(
+              left: AppTokens.s3 + 40 + AppTokens.s3,
+              right: AppTokens.s3,
+              bottom: AppTokens.s2,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: accent,
+                    thumbColor: accent,
+                    inactiveTrackColor: accent.withValues(alpha: 0.2),
+                    overlayColor: accent.withValues(alpha: 0.12),
+                  ),
+                  child: Slider(
+                    value: customIntensity,
+                    min: 0.0,
+                    max: 1.0,
+                    divisions: 4,
+                    label: _customIntensityLabel(customIntensity),
+                    onChanged: onCustomChanged,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    children: [
+                      _sliderLabel(context, 'Min'),
+                      const Spacer(),
+                      _sliderLabel(context, 'Subtle'),
+                      const Spacer(),
+                      _sliderLabel(context, 'Balanced'),
+                      const Spacer(),
+                      _sliderLabel(context, 'Bold'),
+                      const Spacer(),
+                      _sliderLabel(context, 'Max'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

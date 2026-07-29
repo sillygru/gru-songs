@@ -10,7 +10,6 @@ import '../services/audio_player_manager.dart';
 import '../services/storage_service.dart';
 import '../services/scanner_service.dart';
 import '../services/database_service.dart';
-import '../services/bulk_metadata_service.dart';
 import '../services/file_manager_service.dart';
 import '../services/beat_analysis_service.dart';
 import '../services/waveform_service.dart';
@@ -1007,60 +1006,6 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       final userData = ref.read(userDataProvider);
       return updatedSongs.where((s) => !userData.isHidden(s.filename)).toList();
     });
-  }
-
-  Future<BulkMetadataResult> updateSongsMetadataBulk(
-      List<Song> songs, BulkMetadataPlan plan) async {
-    final notifier = ref.read(metadataSaveProvider.notifier);
-    notifier.start();
-
-    int updatedCount = 0;
-    List<String> failedFilenames = [];
-
-    try {
-      final fileManager = ref.read(fileManagerServiceProvider);
-      final currentSongs = state.value ?? [];
-      final updatedSongsList = List<Song>.from(currentSongs);
-
-      for (final song in songs) {
-        try {
-          final updatedSong = plan.apply(song);
-          await fileManager.updateSongMetadata(
-            song,
-            updatedSong.title,
-            updatedSong.artist,
-            updatedSong.album,
-          );
-
-          final index =
-              updatedSongsList.indexWhere((s) => s.filename == song.filename);
-          if (index != -1) {
-            final mtime = await _statMtime(song.url, song.mtime);
-            final finalSong = updatedSong.copyWith(mtime: mtime);
-            updatedSongsList[index] = finalSong;
-            await _reindexSong(finalSong);
-          }
-          updatedCount++;
-        } catch (e) {
-          debugPrint('Failed to update bulk metadata for ${song.filename}: $e');
-          failedFilenames.add(song.filename);
-        }
-      }
-
-      await DatabaseService.instance.insertSongsBatch(updatedSongsList);
-      state = AsyncValue.data(updatedSongsList);
-      ref.read(audioPlayerManagerProvider).refreshSongs(updatedSongsList);
-
-      unawaited(refresh(isBackground: true));
-
-      notifier.success('Updated $updatedCount songs');
-      return BulkMetadataResult(
-          updated: updatedCount, failedFilenames: failedFilenames);
-    } catch (e) {
-      notifier.error('Bulk update failed');
-      return BulkMetadataResult(
-          updated: updatedCount, failedFilenames: failedFilenames);
-    }
   }
 
   /// Publishes an edited song everywhere it is cached, without rescanning.

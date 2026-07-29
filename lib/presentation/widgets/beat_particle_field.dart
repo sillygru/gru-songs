@@ -853,7 +853,7 @@ class _ParticlePainter extends CustomPainter {
     if (size.isEmpty) return;
 
     final frame = controller.frame;
-    final spec = controller.spec;
+    final spec = controller.particleSpec;
 
     // Nothing to draw, and nothing worth simulating either: at zero motes or
     // zero opacity the whole field is invisible, so skip the integration step

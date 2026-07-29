@@ -15,12 +15,14 @@ class _FakeDatabaseService extends DatabaseService {
   Future<bool> init() async => false;
 
   @override
-  Future<void> insertPlayEvent(Map<String, dynamic> event) async {
+  Future<void> insertPlayEvent(Map<String, dynamic> event,
+      {bool isSync = false}) async {
     insertedSingles.add(Map<String, dynamic>.from(event));
   }
 
   @override
-  Future<void> insertPlayEventsBatch(List<Map<String, dynamic>> events) async {
+  Future<void> insertPlayEventsBatch(List<Map<String, dynamic>> events,
+      {bool isSync = false}) async {
     if (failBatchWrites) {
       throw Exception('batch write failed');
     }

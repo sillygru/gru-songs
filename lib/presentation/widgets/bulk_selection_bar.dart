@@ -7,7 +7,6 @@ import '../../models/song.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/selection_provider.dart';
-import '../screens/bulk_metadata_screen.dart';
 import '../screens/edit_metadata_screen.dart';
 import 'playlist_selector_screen.dart';
 import 'folder_picker.dart';
@@ -254,14 +253,10 @@ class BulkSelectionBar extends ConsumerWidget {
     return _ActionButton(
       icon: AppIcons.edit,
       label: 'Metadata',
-      onTap: isCurrentlyPlaying
+      onTap: isCurrentlyPlaying || count != 1
           ? null
           : () {
-              if (count == 1) {
-                context.pushApp(EditMetadataScreen(song: songs[0]));
-              } else {
-                context.pushApp(BulkMetadataScreen(songs: songs));
-              }
+              context.pushApp(EditMetadataScreen(song: songs[0]));
             },
     );
   }

@@ -42,8 +42,10 @@ class SyncService {
     'lyrics_blur_overlay_enabled',
     'beat_reactive_cover_enabled',
     'beat_reactive_particles_enabled',
-    'player_motion_intensity',
-    'player_motion_custom_intensity',
+    'cover_motion_intensity',
+    'particle_motion_intensity',
+    'cover_motion_custom_intensity',
+    'particle_motion_custom_intensity',
     'player_motion_latency_ms',
     'show_quick_picks',
     'show_recent_queues',
@@ -323,7 +325,7 @@ class SyncService {
             ev['device_id'] = deviceId;
           }
         }
-        await db.insertPlayEventsBatch(events);
+        await db.insertPlayEventsBatch(events, isSync: true);
       }
     } catch (e) {
       debugPrint('SyncService: failed to merge play events: $e');

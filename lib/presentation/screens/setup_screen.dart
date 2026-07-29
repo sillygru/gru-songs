@@ -723,36 +723,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
                   ),
                   const Divider(height: 1),
 
-                  // Player Motion Intensity
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Motion Intensity'),
-                    subtitle: const Text('Beat reaction & motion strength'),
-                    trailing: DropdownButton<PlayerMotionIntensity>(
-                      value: settings.playerMotionIntensity,
-                      underline: const SizedBox.shrink(),
-                      borderRadius: AppTokens.brMd,
-                      onChanged: (val) {
-                        if (val != null) notifier.setPlayerMotionIntensity(val);
-                      },
-                      items: const [
-                        DropdownMenuItem(
-                          value: PlayerMotionIntensity.subtle,
-                          child: Text('Subtle'),
-                        ),
-                        DropdownMenuItem(
-                          value: PlayerMotionIntensity.balanced,
-                          child: Text('Balanced'),
-                        ),
-                        DropdownMenuItem(
-                          value: PlayerMotionIntensity.bold,
-                          child: Text('Bold'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-
                   // Beat-reactive cover toggle
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -761,6 +731,39 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
                     value: settings.beatReactiveCoverEnabled,
                     onChanged: notifier.setBeatReactiveCoverEnabled,
                   ),
+                  if (settings.beatReactiveCoverEnabled)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Cover intensity'),
+                        subtitle: const Text('How strongly the cover reacts'),
+                        trailing: DropdownButton<PlayerMotionIntensity>(
+                          value: settings.coverMotionIntensity,
+                          underline: const SizedBox.shrink(),
+                          borderRadius: AppTokens.brMd,
+                          onChanged: (val) {
+                            if (val != null) {
+                              notifier.setCoverMotionIntensity(val);
+                            }
+                          },
+                          items: const [
+                            DropdownMenuItem(
+                              value: PlayerMotionIntensity.subtle,
+                              child: Text('Subtle'),
+                            ),
+                            DropdownMenuItem(
+                              value: PlayerMotionIntensity.balanced,
+                              child: Text('Balanced'),
+                            ),
+                            DropdownMenuItem(
+                              value: PlayerMotionIntensity.bold,
+                              child: Text('Bold'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
                   // Beat-reactive particles toggle
                   SwitchListTile(
@@ -770,6 +773,40 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
                     value: settings.beatReactiveParticlesEnabled,
                     onChanged: notifier.setBeatReactiveParticlesEnabled,
                   ),
+                  if (settings.beatReactiveParticlesEnabled)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Particle density'),
+                        subtitle:
+                            const Text('How many particles and how lively'),
+                        trailing: DropdownButton<PlayerMotionIntensity>(
+                          value: settings.particleMotionIntensity,
+                          underline: const SizedBox.shrink(),
+                          borderRadius: AppTokens.brMd,
+                          onChanged: (val) {
+                            if (val != null) {
+                              notifier.setParticleMotionIntensity(val);
+                            }
+                          },
+                          items: const [
+                            DropdownMenuItem(
+                              value: PlayerMotionIntensity.subtle,
+                              child: Text('Subtle'),
+                            ),
+                            DropdownMenuItem(
+                              value: PlayerMotionIntensity.balanced,
+                              child: Text('Balanced'),
+                            ),
+                            DropdownMenuItem(
+                              value: PlayerMotionIntensity.bold,
+                              child: Text('Bold'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
                   // Waveform toggle
                   SwitchListTile(

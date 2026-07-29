@@ -3,6 +3,12 @@ name: Build APK
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build_apk.yml'
   workflow_dispatch:
 
 jobs:

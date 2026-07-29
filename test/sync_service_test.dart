@@ -110,5 +110,61 @@ void main() {
       expect(events.first['device_id'], isNotNull);
       expect(events.first['device_id'], isNotEmpty);
     });
+
+    test(
+        'isSync: true does not multiply duration_played on repeated sync merges',
+        () async {
+      final db = DatabaseService.instance;
+      final syncEvent = {
+        'session_id': 'sess_sync_1',
+        'song_filename': 'track_sync.mp3',
+        'timestamp': 1000.0,
+        'duration_played': 180.0,
+        'total_length': 180.0,
+        'device_id': 'dev_sync',
+      };
+
+      await db.insertPlayEventsBatch([syncEvent], isSync: true);
+      var events = await db.getPlayEventsForSync();
+      expect(events.first['duration_played'], 180.0);
+
+      // Repeat sync 3 times
+      await db.insertPlayEventsBatch([syncEvent], isSync: true);
+      await db.insertPlayEventsBatch([syncEvent], isSync: true);
+      await db.insertPlayEventsBatch([syncEvent], isSync: true);
+
+      events = await db.getPlayEventsForSync();
+      expect(events.first['duration_played'], 180.0);
+    });
+
+    test('repairCorruptedPlayStats repairs inflated play durations', () async {
+      final db = DatabaseService.instance;
+      // Directly insert an inflated row to simulate existing corrupt DB state
+      final statsDb = db.getStatsDatabase();
+      await statsDb?.insert('playsession', {
+        'id': 'sess_corrupt_1',
+        'start_time': 1000.0,
+        'end_time': 1000.0,
+        'platform': 'unknown',
+        'device_id': 'dev_1',
+      });
+      await statsDb?.insert('playevent', {
+        'session_id': 'sess_corrupt_1',
+        'song_filename': 'corrupt_song.mp3',
+        'timestamp': 1000.0,
+        'duration_played': 3600.0, // Inflated 1 hour for 180s song
+        'total_length': 180.0,
+        'play_ratio': 20.0,
+        'foreground_duration': 3600.0,
+        'background_duration': 0.0,
+      });
+
+      final repaired = await db.repairCorruptedPlayStats();
+      expect(repaired, 1);
+
+      final events = await db.getPlayEventsForSync();
+      expect(events.first['duration_played'], 180.0);
+      expect(events.first['play_ratio'], 1.0);
+    });
   });
 }

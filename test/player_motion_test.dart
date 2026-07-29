@@ -396,13 +396,13 @@ void main() {
     });
 
     test('power save thins the field without emptying it', () {
-      controller.intensity = PlayerMotionIntensity.bold;
-      final full = controller.spec.particleCount;
+      controller.particleIntensity = PlayerMotionIntensity.bold;
+      final full = controller.particleSpec.particleCount;
 
       controller.powerSave = true;
 
-      expect(controller.spec.particleCount, lessThan(full));
-      expect(controller.spec.particleCount, greaterThan(0));
+      expect(controller.particleSpec.particleCount, lessThan(full));
+      expect(controller.particleSpec.particleCount, greaterThan(0));
     });
 
     test('the clock keeps real time across skipped frames', () {

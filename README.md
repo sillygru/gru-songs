@@ -1,37 +1,75 @@
-# Wispie [Beta]
+# Wispie
 
-## What is Wispie?
+A local music player that works offline and learns what you actually listen to.
 
-Wispie is a simple local music player app built with Flutter.
+[Features](#features) | [Getting Started](#getting-started) | [Important](#important) | [Screenshots](#screenshots) | [For Developers](#for-developers)
 
-[Features](#features) | [Additional Features](#additional-features) | [Getting Started](#getting-started) | [Good to know](#good-to-know) | [Others](#others) | [Screenshots](#screenshots)
+## What it does
+
+- **Smart shuffle** - Tracks which songs you finish and skip, then plays accordingly
+- **Auto-fetch metadata** - Downloads missing album art and song info
+- **Timed lyrics** - Synchronized lyrics that scroll with the music
+- **Lyrics translation** - Translate lyrics to your preferred language
+- **File-based** - Everything is stored locally; no accounts or cloud services
 
 ## Features
 
-- **Shuffle personalities:** Multiple shuffle personalities such as consistent and explorer with the hability to make your own
-- **Folder Based Organization:** Organize your music with intuitive folder structure support while also supporting playlists
-- **Metadata Editing:** Built-in editor for modifying song metadata (title, artist, album, filename, lyrics)
-- **Lyrics:** Support for embedded lyrics with synchronized scrolling
-- **Merged Songs:** Combine multiple versions of a track (remixes, live, etc.) into a single group for shuffle, keeping individual favorites and settings
-- **Sleep timer:** Sleep timer with customizable duration and features.
-- **Cross fade:** Crossfade between songs alongside option to delay song playing
+### Shuffle
 
-## Additional Features
+Wispie tracks which songs you finish and which you skip, then uses that data to pick what plays next.
 
-- **Backups:** Backup management system
-- **Data Export:** Export user data and databases for backup and migration purposes
-- **Auto pause on mute:** Auto-pause playback when volume is muted and resume when restored
-- **Dynamic themes:** You can optionally sync your theme with the cover art of the currently playing song
-- **Statistics Tracking:** Collects stats (real)
-- **Smart indexing for search:** When searching, song lyrics, albums and artists are all indexed for quick searches
+- **Consistent mode** - Plays favorites more often but still introduces new tracks
+- **Explorer mode** - Plays more songs you haven't heard recently
+- **Custom mode** - Adjust individual weights for favorites, skips, and playlists
+
+### Library
+
+- **Folder browsing** - Navigate your music using your existing folder structure
+- **Playlists** - Create and manage custom playlists
+- **Edit metadata** - Change song titles, artist names, and album art
+- **Auto-fetch metadata** - Download missing metadata and album art automatically
+- **Lyrics** - View synchronized lyrics that scroll with the music
+- **Lyrics translation** - Translate lyrics to your preferred language
+- **Video support** - Play video files as audio
+
+### Organization
+
+- **Merged songs** - Group different versions (remixes, live, acoustic) so shuffle treats them as one
+- **Search** - Search titles, artists, albums, and lyrics
+- **Queue history** - Save and restore previous listening sessions
+- **Backups** - Export and restore your data
+
+### Playback
+
+- **Dynamic themes** - Match the app theme to your album art
+- **Beat visualization** - The player reacts to the music's beat
+- **Waveform display** - See the audio waveform while playing
+- **Crossfade** - Smooth transitions between tracks
+- **Sleep timer** - Stop playback after a set time
+- **Auto-pause** - Pause when volume drops to zero
+- **Background art fetching** - Downloads album art in the background
 
 ## Getting Started
 
-Simply install the app from the releases page.
+### Installation
 
-## Good to know
+Download the latest release from the releases page and install it on your Android device.
 
-User data in Wispie is tied to the music file's name. If you rename a file outside of the Wispie app (such as with your file manager), any stats and preferences linked to that file such as play count, favorites, or "suggest less" status will be lost or reset. This can also impact shuffle personality weight system.
+### Setup
+
+1. Grant storage permissions
+2. Select your music folders
+3. Start listening
+
+## Important
+
+### File names
+
+Wispie links your data (favorites, play counts) to file names. If you rename a file outside the app, that song's history resets.
+
+### Offline
+
+The app works without internet. Your music and data stay on your device.
 
 ## Screenshots
 
@@ -42,40 +80,35 @@ User data in Wispie is tied to the music file's name. If you rename a file outsi
   <img src="https://raw.githubusercontent.com/sillygru/gru-songs/main/assets/screenshots/image04.jpg" width="200" />
 </p>
 
-## Others
-
-I do not hide the fact that this is a vibe coded project. Though, from personal daily use, it is stable and functional.
-This was originally a personal side project, so there might be leftovers of old features that are no longer relevant.
-
 ## Telemetry
 
-Wispie collects optional, anonymous usage data (startup events only) to help
-understand how many people use the app. No personal data (names, emails, file
-paths, IPs) is ever collected. Telemetry uses a per-installation UUID, never
-linked to your identity.
+Wispie can send anonymous startup events to count installations. No personal data (names, emails, file paths, IPs) is collected. Each installation uses a random UUID.
 
-You can disable telemetry at any time in Settings > Privacy. When disabled, no
-data is sent.
+Disable this in Settings > Privacy. When disabled, nothing is sent.
 
-Telemetry only functions when built with a valid `TELEMETRY_SECRET` environment
-variable. Community-built versions or builds without the secret are completely
-telemetry-free.
+Telemetry only works when built with a `TELEMETRY_SECRET` environment variable. Builds without this variable send no data.
 
-## For developers
+## For Developers
 
-### Run the app
+### Run
 
-- Install Flutter dependencies: `flutter pub get`.
-- Run the app: `flutter run`.
+```bash
+flutter pub get
+flutter run
+```
 
-### Build the app for Android
+### Build Android
 
-- **ARMv8 (arm64):**
-  - `flutter build apk --release --target-platform=android-arm64`
-- **ARMv7:**
-  - `flutter build apk --release --target-platform=android-arm`
+```bash
+# ARMv8 (arm64)
+flutter build apk --release --target-platform=android-arm64
+
+# ARMv7
+flutter build apk --release --target-platform=android-arm
+```
 
 ## License
 
 Copyright (c) 2026 gru — Licensed under PolyForm Noncommercial License 1.0.0.
+
 See [LICENSE](LICENSE) for full terms.

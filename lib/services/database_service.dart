@@ -1915,22 +1915,24 @@ class DatabaseService {
     }
   }
 
-  Future<void> insertPlayEvent(Map<String, dynamic> event) async {
+  Future<void> insertPlayEvent(Map<String, dynamic> event,
+      {bool isSync = false}) async {
     await _ensureInitialized();
     if (_statsDatabase == null) return;
 
     await _statsDatabase!.transaction((txn) async {
-      await _insertPlayEventTxn(txn, event);
+      await _insertPlayEventTxn(txn, event, isSync: isSync);
     });
   }
 
-  Future<void> insertPlayEventsBatch(List<Map<String, dynamic>> events) async {
+  Future<void> insertPlayEventsBatch(List<Map<String, dynamic>> events,
+      {bool isSync = false}) async {
     await _ensureInitialized();
     if (_statsDatabase == null || events.isEmpty) return;
 
     await _statsDatabase!.transaction((txn) async {
       for (final event in events) {
-        await _insertPlayEventTxn(txn, event);
+        await _insertPlayEventTxn(txn, event, isSync: isSync);
       }
     });
   }
@@ -1939,8 +1941,8 @@ class DatabaseService {
     return playRatio < _skipRatioThreshold ? 'skip' : 'listen';
   }
 
-  Future<void> _insertPlayEventTxn(
-      Transaction txn, Map<String, dynamic> event) async {
+  Future<void> _insertPlayEventTxn(Transaction txn, Map<String, dynamic> event,
+      {bool isSync = false}) async {
     final sessionId = event['session_id'] as String?;
     final songFilename = event['song_filename'] as String?;
     final timestamp = (event['timestamp'] as num?)?.toDouble();
@@ -1990,6 +1992,10 @@ class DatabaseService {
     final duration = (event['duration_played'] as num?)?.toDouble() ?? 0.0;
     final incomingRatio = (event['play_ratio'] as num?)?.toDouble() ??
         (totalLength > 0 ? duration / totalLength : 0.0);
+    final incomingFg =
+        (event['foreground_duration'] as num?)?.toDouble() ?? 0.0;
+    final incomingBg =
+        (event['background_duration'] as num?)?.toDouble() ?? 0.0;
 
     if (lastEvents.isNotEmpty) {
       final last = lastEvents.first;
@@ -1998,37 +2004,93 @@ class DatabaseService {
       final effectiveTotalLength =
           totalLength > 0 ? totalLength : lastTotalLength;
 
-      final newDuration =
-          (last['duration_played'] as num).toDouble() + duration;
-      final newFg = ((last['foreground_duration'] as num?) ?? 0) +
-          ((event['foreground_duration'] as num?) ?? 0);
-      final newBg = ((last['background_duration'] as num?) ?? 0) +
-          ((event['background_duration'] as num?) ?? 0);
-      final newRatio = effectiveTotalLength > 0
-          ? newDuration / effectiveTotalLength
-          : incomingRatio;
+      if (isSync) {
+        // Synced play events are complete point-in-time snapshots, NOT incremental diffs.
+        // Take the maximum values rather than blindly adding durations which inflates stats.
+        final lastDuration =
+            (last['duration_played'] as num?)?.toDouble() ?? 0.0;
+        final lastFg = (last['foreground_duration'] as num?)?.toDouble() ?? 0.0;
+        final lastBg = (last['background_duration'] as num?)?.toDouble() ?? 0.0;
+        final lastRatio = (last['play_ratio'] as num?)?.toDouble() ?? 0.0;
+        final lastTimestamp = (last['timestamp'] as num?)?.toDouble() ?? 0.0;
 
-      await txn.update(
-          'playevent',
-          {
-            'duration_played': newDuration,
-            'foreground_duration': newFg,
-            'background_duration': newBg,
-            'total_length': effectiveTotalLength,
-            'timestamp': timestamp, // Update to latest timestamp
-            'play_ratio': newRatio,
-          },
-          where: 'id = ?',
-          whereArgs: [lastId]);
+        double newDuration = max(lastDuration, duration);
+        if (effectiveTotalLength > 0 &&
+            newDuration > effectiveTotalLength * 1.05 + 10.0) {
+          newDuration = effectiveTotalLength;
+        }
+
+        final newFg = max(lastFg, incomingFg);
+        final newBg = max(lastBg, incomingBg);
+        final newRatio = effectiveTotalLength > 0
+            ? min(1.0, newDuration / effectiveTotalLength)
+            : max(lastRatio, incomingRatio);
+        final newTimestamp = max(lastTimestamp, timestamp);
+
+        await txn.update(
+            'playevent',
+            {
+              'duration_played': newDuration,
+              'foreground_duration': newFg,
+              'background_duration': newBg,
+              'total_length': effectiveTotalLength,
+              'timestamp': newTimestamp,
+              'play_ratio': newRatio,
+            },
+            where: 'id = ?',
+            whereArgs: [lastId]);
+      } else {
+        // Live playback incremental flush on local player
+        double newDuration =
+            (last['duration_played'] as num).toDouble() + duration;
+        double newFg =
+            ((last['foreground_duration'] as num?) ?? 0) + incomingFg;
+        double newBg =
+            ((last['background_duration'] as num?) ?? 0) + incomingBg;
+
+        if (effectiveTotalLength > 0 &&
+            newDuration > effectiveTotalLength * 1.05 + 10.0) {
+          newDuration = effectiveTotalLength;
+          if (newFg + newBg > 0) {
+            final scale = newDuration / (newFg + newBg);
+            newFg *= scale;
+            newBg *= scale;
+          }
+        }
+
+        final newRatio = effectiveTotalLength > 0
+            ? min(1.0, newDuration / effectiveTotalLength)
+            : incomingRatio;
+
+        await txn.update(
+            'playevent',
+            {
+              'duration_played': newDuration,
+              'foreground_duration': newFg,
+              'background_duration': newBg,
+              'total_length': effectiveTotalLength,
+              'timestamp': timestamp,
+              'play_ratio': newRatio,
+            },
+            where: 'id = ?',
+            whereArgs: [lastId]);
+      }
     } else {
       // First insert for this song/session
+      double sanitizedDuration = duration;
+      double sanitizedRatio = incomingRatio;
+      if (totalLength > 0 && sanitizedDuration > totalLength * 1.05 + 10.0) {
+        sanitizedDuration = totalLength;
+        sanitizedRatio = 1.0;
+      }
+
       await txn.insert('playevent', {
         'session_id': sessionId,
         'song_filename': songFilename,
         'timestamp': timestamp,
-        'duration_played': duration,
+        'duration_played': sanitizedDuration,
         'total_length': totalLength,
-        'play_ratio': incomingRatio,
+        'play_ratio': sanitizedRatio,
         'foreground_duration': event['foreground_duration'],
         'background_duration': event['background_duration'],
       });
@@ -2092,6 +2154,92 @@ class DatabaseService {
     }
   }
 
+  /// Repairs corrupted playevent rows where duration_played was inflated beyond
+  /// actual song lengths (e.g. from repeated sync compounding).
+  Future<int> repairCorruptedPlayStats() async {
+    await _ensureInitialized();
+    if (_statsDatabase == null) return 0;
+
+    int repairedCount = 0;
+    try {
+      final songs = await getAllSongs();
+      final songDurationMap = {
+        for (var s in songs)
+          if (s.duration != null && s.duration!.inMilliseconds > 0)
+            s.filename: s.duration!.inMilliseconds / 1000.0
+      };
+
+      final corruptedEvents = await _statsDatabase!.rawQuery('''
+        SELECT id, song_filename, duration_played, total_length, foreground_duration, background_duration
+        FROM playevent
+      ''');
+
+      await _statsDatabase!.transaction((txn) async {
+        for (final row in corruptedEvents) {
+          final id = row['id'] as int;
+          final filename = row['song_filename'] as String? ?? '';
+          final durationPlayed =
+              (row['duration_played'] as num?)?.toDouble() ?? 0.0;
+          var totalLength = (row['total_length'] as num?)?.toDouble() ?? 0.0;
+
+          if (totalLength <= 0 && songDurationMap.containsKey(filename)) {
+            totalLength = songDurationMap[filename]!;
+          }
+
+          bool needsRepair = false;
+          double targetDuration = durationPlayed;
+
+          if (totalLength > 0 && durationPlayed > totalLength * 1.01) {
+            needsRepair = true;
+            targetDuration = totalLength;
+          } else if (totalLength <= 0 && durationPlayed > 600.0) {
+            // Cap orphan songs with no length metadata at 10 minutes max per play
+            needsRepair = true;
+            targetDuration = 600.0;
+          }
+
+          if (needsRepair) {
+            repairedCount++;
+            final fg = (row['foreground_duration'] as num?)?.toDouble() ?? 0.0;
+            final bg = (row['background_duration'] as num?)?.toDouble() ?? 0.0;
+            double newFg = fg;
+            double newBg = bg;
+            if (fg + bg > 0) {
+              final scale = targetDuration / (fg + bg);
+              newFg = fg * scale;
+              newBg = bg * scale;
+            } else {
+              newFg = targetDuration;
+            }
+
+            final newRatio =
+                totalLength > 0 ? min(1.0, targetDuration / totalLength) : 1.0;
+
+            await txn.update(
+              'playevent',
+              {
+                'duration_played': targetDuration,
+                'total_length': totalLength > 0 ? totalLength : 0.0,
+                'foreground_duration': newFg,
+                'background_duration': newBg,
+                'play_ratio': newRatio,
+              },
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+          }
+        }
+      });
+
+      if (repairedCount > 0) {
+        debugPrint('Repaired $repairedCount corrupted playevent rows.');
+      }
+    } catch (e) {
+      debugPrint('Error repairing corrupted play stats: $e');
+    }
+    return repairedCount;
+  }
+
   Future<Map<String, dynamic>> getFunStats() async {
     await _ensureInitialized();
 
@@ -2100,6 +2248,7 @@ class DatabaseService {
     }
 
     try {
+      await repairCorruptedPlayStats();
       final events =
           await _statsDatabase!.query('playevent', orderBy: 'timestamp ASC');
 

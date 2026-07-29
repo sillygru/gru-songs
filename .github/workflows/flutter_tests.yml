@@ -3,8 +3,18 @@ name: Flutter Tests
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/flutter_tests.yml'
   pull_request:
     branches: [main, master]
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/flutter_tests.yml'
 
 jobs:
   analyze:

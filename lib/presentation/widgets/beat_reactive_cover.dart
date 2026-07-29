@@ -47,7 +47,7 @@ class BeatReactiveCover extends StatelessWidget {
       child: child,
       builder: (context, child) {
         final frame = controller.frame;
-        final spec = controller.spec;
+        final spec = controller.coverSpec;
 
         // One matrix rather than nested Transforms: three stacked transforms
         // would mean three layers for what is one gesture.

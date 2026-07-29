@@ -325,9 +325,13 @@ class PlayerMotionController extends ChangeNotifier {
 
   BeatMap? _beatMap;
   BeatFrame _frame = BeatFrame.idle;
-  PlayerMotionIntensity _intensityEnum = PlayerMotionIntensity.subtle;
-  double _customIntensity = 0.5;
-  MotionIntensitySpec _spec =
+  PlayerMotionIntensity _coverIntensityEnum = PlayerMotionIntensity.subtle;
+  PlayerMotionIntensity _particleIntensityEnum = PlayerMotionIntensity.subtle;
+  double _coverCustomIntensity = 0.5;
+  double _particleCustomIntensity = 0.5;
+  MotionIntensitySpec _coverSpec =
+      MotionIntensitySpec.of(PlayerMotionIntensity.subtle);
+  MotionIntensitySpec _particleSpec =
       MotionIntensitySpec.of(PlayerMotionIntensity.subtle);
 
   bool _enabled = true;
@@ -379,7 +383,8 @@ class PlayerMotionController extends ChangeNotifier {
   PlayerMotionController.forTesting();
 
   BeatFrame get frame => _frame;
-  MotionIntensitySpec get spec => _spec;
+  MotionIntensitySpec get coverSpec => _coverSpec;
+  MotionIntensitySpec get particleSpec => _particleSpec;
   bool get hasBeatMap => _beatMap?.hasBeats ?? false;
 
   /// Monotonic animation clock. The particle simulation integrates against this,
@@ -408,28 +413,49 @@ class PlayerMotionController extends ChangeNotifier {
     }
   }
 
-  set intensity(PlayerMotionIntensity value) {
-    if (_intensityEnum == value) return;
-    _intensityEnum = value;
-    _applySpec();
+  set coverIntensity(PlayerMotionIntensity value) {
+    if (_coverIntensityEnum == value) return;
+    _coverIntensityEnum = value;
+    _applyCoverSpec();
   }
 
-  /// Fine-grained intensity for the [custom] setting. Only applied when the
-  /// current [intensity] is [PlayerMotionIntensity.custom].
-  set customIntensity(double value) {
+  set particleIntensity(PlayerMotionIntensity value) {
+    if (_particleIntensityEnum == value) return;
+    _particleIntensityEnum = value;
+    _applyParticleSpec();
+  }
+
+  set coverCustomIntensity(double value) {
     final clamped = value.clamp(0.0, 1.0);
-    if (_customIntensity == clamped) return;
-    _customIntensity = clamped;
-    if (_intensityEnum == PlayerMotionIntensity.custom) {
-      _applySpec();
+    if (_coverCustomIntensity == clamped) return;
+    _coverCustomIntensity = clamped;
+    if (_coverIntensityEnum == PlayerMotionIntensity.custom) {
+      _applyCoverSpec();
     }
   }
 
-  void _applySpec() {
-    final base = _intensityEnum == PlayerMotionIntensity.custom
-        ? MotionIntensitySpec.custom(_customIntensity)
-        : MotionIntensitySpec.of(_intensityEnum);
-    _spec = _powerSave ? base.dimmed() : base;
+  set particleCustomIntensity(double value) {
+    final clamped = value.clamp(0.0, 1.0);
+    if (_particleCustomIntensity == clamped) return;
+    _particleCustomIntensity = clamped;
+    if (_particleIntensityEnum == PlayerMotionIntensity.custom) {
+      _applyParticleSpec();
+    }
+  }
+
+  void _applyCoverSpec() {
+    final base = _coverIntensityEnum == PlayerMotionIntensity.custom
+        ? MotionIntensitySpec.custom(_coverCustomIntensity)
+        : MotionIntensitySpec.of(_coverIntensityEnum);
+    _coverSpec = _powerSave ? base.dimmed() : base;
+    notifyListeners();
+  }
+
+  void _applyParticleSpec() {
+    final base = _particleIntensityEnum == PlayerMotionIntensity.custom
+        ? MotionIntensitySpec.custom(_particleCustomIntensity)
+        : MotionIntensitySpec.of(_particleIntensityEnum);
+    _particleSpec = _powerSave ? base.dimmed() : base;
     notifyListeners();
   }
 
@@ -457,7 +483,8 @@ class PlayerMotionController extends ChangeNotifier {
     if (_powerSave == value) return;
     _powerSave = value;
     _minFrameInterval = value ? _powerSaveFrameInterval : _frameInterval;
-    _applySpec();
+    _applyCoverSpec();
+    _applyParticleSpec();
   }
 
   void _onPlayerState(PlayerState state) {

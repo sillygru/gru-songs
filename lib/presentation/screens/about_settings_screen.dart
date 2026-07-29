@@ -29,7 +29,7 @@ class AboutSettingsScreen extends ConsumerWidget {
                 : 'Check for updates';
 
     final statusSubtitle = updateState.isChecking
-        ? 'Wispie is quietly checking GitHub Releases.'
+        ? 'Wispie is checking GitHub Releases.'
         : updateState.hasUpdate
             ? 'A newer version is available on GitHub.'
             : updateState.latestVersionLabel != null
