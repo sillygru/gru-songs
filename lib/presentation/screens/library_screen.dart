@@ -13,6 +13,7 @@ import '../../services/audio_player_manager.dart';
 import '../../services/library_logic.dart';
 import '../widgets/folder_options_menu.dart';
 import '../widgets/folder_grid_image.dart';
+import '../widgets/header_shuffle_button.dart';
 import '../widgets/song_list_item.dart';
 import '../widgets/sort_menu.dart';
 import '../widgets/duration_display.dart';
@@ -158,10 +159,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const SortMenu(),
-                            IconButton(
-                              icon: const AppIcon(AppIcons.shuffle),
+                            HeaderShuffleButton(
                               tooltip: 'Shuffle all',
-                              onPressed: () {
+                              onShufflePressed: () {
                                 if (songs.isNotEmpty) {
                                   audioManager.shuffleAndPlay(songs,
                                       isRestricted: false);

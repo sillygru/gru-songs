@@ -472,6 +472,12 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     ref.watch(userDataProvider.select((s) => s.hidden));
     final userData = ref.read(userDataProvider);
 
+    CoverRefreshService.instance.onCoverResolved = (song) {
+      if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
+        updateSongCoverByFilename(song.filename, song.coverUrl!);
+      }
+    };
+
     final cached = await DatabaseService.instance.getAllSongs();
     if (cached.isNotEmpty) {
       final filtered =
@@ -744,7 +750,8 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           latestEnriched = await ScannerService.enrichAllMetadata(
             fastSongs,
             onProgress: (progress) {
-              ref.read(scanProgressProvider.notifier).state = progress * 0.5;
+              ref.read(scanProgressProvider.notifier).state =
+                  0.2 + (progress * 0.3);
             },
             onBatchEnriched: (batch) {
               final currentList = state.value ?? [];
@@ -1095,6 +1102,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       await ref.read(songRepositoryProvider).invalidateLyricsCache(song);
 
       await _applyLocalSongUpdate(updated, previousFilename: song.filename);
+      ref.read(userDataProvider.notifier).refresh();
       notifier.success('Renamed successfully');
       return updated;
     } catch (e) {

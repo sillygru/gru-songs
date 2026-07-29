@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../domain/services/search_service.dart';
 import '../models/song.dart';
 import '../services/scanner_service.dart';
 import '../services/database_service.dart';
+import '../services/wispie_paths.dart';
 
 /// Available optimization types for database maintenance
 enum OptimizationType {
@@ -71,9 +71,9 @@ class DatabaseOptimizerService {
     final details = <String, dynamic>{};
 
     try {
-      final docDir = await getApplicationDocumentsDirectory();
-      final statsDbPath = join(docDir.path, 'wispie_stats.db');
-      final userDataDbPath = join(docDir.path, 'wispie_data.db');
+      final wispieDir = await getWispieDirectory();
+      final statsDbPath = join(wispieDir.path, 'wispie_stats.db');
+      final userDataDbPath = join(wispieDir.path, 'wispie_data.db');
 
       // Calculate total steps and progress increments
       final enabledTypes = <OptimizationType>[];

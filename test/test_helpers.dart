@@ -6,6 +6,9 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wispie/services/database_service.dart';
+import 'package:wispie/services/storage_service.dart';
+import 'package:wispie/services/wispie_paths.dart';
+import 'package:wispie/data/repositories/search_index_repository.dart';
 
 /// Manages the test environment for tests that need file system isolation.
 ///
@@ -98,6 +101,13 @@ class TestEnvironment {
 
     // Mock SharedPreferences
     SharedPreferencesStorePlatform.instance = MockSharedPreferencesStore();
+
+    // Belt-and-suspenders: override path-based services directly so they
+    // cannot write to the real Documents folder even if the method channel
+    // or platform interface mock fails.
+    testWispiePath = _tempDir!.path;
+    SearchIndexRepository.testDocumentsPath = _tempDir!.path;
+    StorageService.testDocumentsPath = _tempDir!.path;
   }
 
   PathProviderPlatform? _originalPathProvider;
@@ -126,6 +136,13 @@ class TestEnvironment {
       PathProviderPlatform.instance = original;
       _originalPathProvider = null;
     }
+
+    // Clear static path overrides and reset the search index database
+    // handle so the next test file starts fresh.
+    testWispiePath = null;
+    SearchIndexRepository.testDocumentsPath = null;
+    SearchIndexRepository.resetDatabase();
+    StorageService.testDocumentsPath = null;
 
     // Clean up temp directory
     if (_tempDir != null && _tempDir!.existsSync()) {

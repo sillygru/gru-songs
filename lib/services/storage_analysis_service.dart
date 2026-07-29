@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'color_extraction_service.dart';
 import 'cover_refresh_service.dart';
 import 'database_service.dart';
+import 'wispie_paths.dart';
 
 class StorageAnalysisService {
   static final StorageAnalysisService instance = StorageAnalysisService._();
@@ -17,7 +18,7 @@ class StorageAnalysisService {
   Future<int> getDatabaseSize() async {
     int total = 0;
     try {
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await getWispieDirectory();
       final files = [
         File(p.join(docDir.path, 'wispie_stats.db')),
         File(p.join(docDir.path, 'wispie_data.db')),
@@ -56,7 +57,7 @@ class StorageAnalysisService {
 
   Future<int> getBackupsSize() async {
     try {
-      final appDir = await getApplicationDocumentsDirectory();
+      final appDir = await getWispieDirectory();
       final backupsDir = Directory(p.join(appDir.path, 'backups'));
       if (await backupsDir.exists()) {
         return await _getDirSize(backupsDir);
@@ -75,7 +76,7 @@ class StorageAnalysisService {
       int total = 0;
 
       // Check for cached_songs.json files
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await getWispieDirectory();
       await for (var entity in docDir.list()) {
         if (entity is File) {
           final name = p.basename(entity.path);
@@ -101,7 +102,7 @@ class StorageAnalysisService {
 
   Future<int> getSearchIndexSize() async {
     try {
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await getWispieDirectory();
       final searchIndexFile =
           File(p.join(docDir.path, 'wispie_search_index.db'));
       if (await searchIndexFile.exists()) {
@@ -217,19 +218,13 @@ class StorageAnalysisService {
   /// Clears only the database files
   Future<void> clearDatabase() async {
     try {
-      final docDir = await getApplicationDocumentsDirectory();
-      final dbFiles = [
-        File(p.join(docDir.path, 'wispie_stats.db')),
-        File(p.join(docDir.path, 'wispie_data.db')),
-        File(p.join(docDir.path, 'wispie_stats.db-journal')),
-        File(p.join(docDir.path, 'wispie_data.db-journal')),
-        File(p.join(docDir.path, 'wispie_stats.db-wal')),
-        File(p.join(docDir.path, 'wispie_data.db-wal')),
-        File(p.join(docDir.path, 'wispie_stats.db-shm')),
-        File(p.join(docDir.path, 'wispie_data.db-shm')),
-      ];
-      for (var f in dbFiles) {
-        if (await f.exists()) await f.delete();
+      await DatabaseService.instance.close();
+      final docDir = await getWispieDirectory();
+      for (final name in ['wispie_stats', 'wispie_data']) {
+        for (final suffix in ['', '-journal', '-wal', '-shm']) {
+          final f = File(p.join(docDir.path, '$name$suffix'));
+          if (await f.exists()) await f.delete();
+        }
       }
     } catch (e) {
       debugPrint('Error clearing database: $e');
@@ -277,7 +272,7 @@ class StorageAnalysisService {
   /// Clears only the backups
   Future<void> clearBackups() async {
     try {
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await getWispieDirectory();
       final backupsDir = Directory(p.join(docDir.path, 'backups'));
       if (await backupsDir.exists()) {
         await backupsDir.delete(recursive: true);
@@ -292,7 +287,7 @@ class StorageAnalysisService {
   Future<void> clearLibraryCache() async {
     try {
       // Clear cached_songs.json files
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await getWispieDirectory();
       await for (var entity in docDir.list()) {
         if (entity is File) {
           final name = p.basename(entity.path);
@@ -317,7 +312,7 @@ class StorageAnalysisService {
   /// Clears only the search index
   Future<void> clearSearchIndex() async {
     try {
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await getWispieDirectory();
       final searchIndex = File(p.join(docDir.path, 'wispie_search_index.db'));
       if (await searchIndex.exists()) await searchIndex.delete();
     } catch (e) {
@@ -411,31 +406,42 @@ class StorageAnalysisService {
 
   Future<void> clearAllUserData() async {
     try {
-      // 1. Delete Database Files
-      await clearDatabase();
+      // Close DB before deleting files so SQLite doesn't lose its WAL/SHM
+      await DatabaseService.instance.close();
 
-      // 2. Delete Song Covers
-      await clearCoversCache();
+      // Delete database files
+      final docDir = await getWispieDirectory();
+      for (final name in ['wispie_stats', 'wispie_data']) {
+        for (final suffix in ['', '-journal', '-wal', '-shm']) {
+          final f = File(p.join(docDir.path, '$name$suffix'));
+          if (await f.exists()) await f.delete();
+        }
+      }
 
-      // 3. Delete Backups
+      // Delete song covers directory (no SQL needed — DB is gone)
+      final supportDir = await getApplicationSupportDirectory();
+      final coversDir = Directory(p.join(supportDir.path, 'extracted_covers'));
+      if (await coversDir.exists()) await coversDir.delete(recursive: true);
+
+      // Delete Backups
       await clearBackups();
 
-      // 4. Delete Library Cache (gru_cache_v3)
+      // Delete Library Cache
       await clearLibraryCache();
 
-      // 5. Delete Search Index (if exists)
+      // Delete Search Index
       await clearSearchIndex();
 
-      // 6. Delete Waveform Cache
+      // Delete Waveform Cache
       await clearWaveformCache();
 
-      // 7. Clear Lyrics Cache
+      // Clear Lyrics Cache
       await clearLyricsCache();
 
-      // 8. Clear Blurred Cache
+      // Clear Blurred Cache
       await clearBlurredCache();
 
-      // 9. Clear Shared Preferences
+      // Clear Shared Preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
     } catch (e) {

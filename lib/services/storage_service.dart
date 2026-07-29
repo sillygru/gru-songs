@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'wispie_paths.dart';
 import '../presentation/widgets/in_app_folder_picker.dart';
 import 'android_storage_service.dart';
 import 'backup_manifest.dart';
@@ -12,6 +12,9 @@ import 'ios_folder_access_service.dart';
 import 'import_options.dart';
 
 class StorageService {
+  @visibleForTesting
+  static String? testDocumentsPath;
+
   static const String _musicFoldersKey = 'music_folders_list';
   static const String _musicFolderKey = 'music_folder_path';
   static const String _excludedFoldersKey = 'excluded_folders';
@@ -87,8 +90,9 @@ class StorageService {
   }
 
   Future<String> get _localPath async {
-    final directory = await getApplicationDocumentsDirectory();
-    return directory.path;
+    if (testDocumentsPath != null) return testDocumentsPath!;
+    final dir = await getWispieDirectory();
+    return dir.path;
   }
 
   Future<File> getSongsFile() async {

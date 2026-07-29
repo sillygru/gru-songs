@@ -40,8 +40,10 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final player = ref.watch(audioPlayerManagerProvider).player;
+    final audioManager = ref.watch(audioPlayerManagerProvider);
+    final player = audioManager.player;
     final settings = ref.watch(settingsProvider);
+    ref.watch(audioPlayerManagerProvider).currentSongNotifier;
     final isBarVisible = TickerMode.valuesOf(context).enabled &&
         (ModalRoute.of(context)?.isCurrent ?? true);
     final isDesktop =

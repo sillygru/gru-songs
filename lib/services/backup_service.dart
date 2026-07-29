@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'backup_manifest.dart';
 import 'storage_service.dart';
 import 'database_service.dart';
+import 'wispie_paths.dart';
 import 'import_options.dart';
 import 'library_repair_service.dart';
 import '../models/song.dart';
@@ -127,7 +128,7 @@ class BackupService {
   BackupService._();
 
   Future<Directory> get backupsDir async {
-    final appDir = await getApplicationDocumentsDirectory();
+    final appDir = await getWispieDirectory();
     final backupsDir = Directory(p.join(appDir.path, backupsDirName));
     if (!await backupsDir.exists()) {
       await backupsDir.create(recursive: true);
@@ -211,7 +212,7 @@ class BackupService {
   /// Shared by [createBackup] and [exportUserData] so both archives always
   /// carry the same content for the same options.
   Future<void> _stageBackup(BackupOptions options, Directory stagingDir) async {
-    final appDir = await getApplicationDocumentsDirectory();
+    final appDir = await getWispieDirectory();
     final storage = StorageService();
 
     if (options.includeUserStats) {
@@ -838,7 +839,7 @@ class BackupService {
 
         final contentPath = _resolveContentRoot(tempDir);
 
-        final appDir = await getApplicationDocumentsDirectory();
+        final appDir = await getWispieDirectory();
 
         File? foundStatsDb;
         File? foundDataDb;

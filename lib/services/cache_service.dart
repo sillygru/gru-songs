@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'wispie_paths.dart';
 
 import '../models/song.dart';
 import 'color_extraction_service.dart';
@@ -219,7 +220,7 @@ class CacheService {
     // to prevent UI jank while calculating size for thousands of covers.
     return compute(_calculateCacheSizeInIsolate, {
       'v3Path': _v3Dir.path,
-      'docPath': (await getApplicationDocumentsDirectory()).path,
+      'docPath': (await getWispieDirectory()).path,
       'supportPath': (await getApplicationSupportDirectory()).path,
     });
   }

@@ -1555,13 +1555,9 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
     Song? renamedSong;
     if (previousFilename != null) {
-      renamedSong = _allSongs.firstWhere(
-        (s) => !oldSongMapKeys.contains(s.filename),
-        orElse: () => _allSongs.firstWhere(
-          (s) => s.filename != previousFilename,
-          orElse: () => _allSongs.isNotEmpty ? _allSongs.first : newSongs.first,
-        ),
-      );
+      renamedSong = _allSongs
+          .where((s) => !oldSongMapKeys.contains(s.filename))
+          .firstOrNull;
     }
 
     _effectiveQueue = _effectiveQueue.map((item) {
@@ -1602,16 +1598,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       }
     }
 
-    if (currentIdx != null && currentItemBefore != null) {
-      final currentItemAfter = _effectiveQueue[currentIdx];
-      // Full Song equality (Equatable) so metadata edits (title, artist,
-      // album, coverUrl) also trigger a rebuild — the MediaItem baked into
-      // the AudioSource would otherwise stay stale for the now-playing bar
-      // and the notification.
-      if (currentItemBefore.song != currentItemAfter.song ||
-          previousFilename != null) {
-        _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
-      }
+    if (currentIdx != null &&
+        currentItemBefore != null &&
+        previousFilename != null) {
+      _rebuildQueue(initialIndex: currentIdx, startPlaying: _player.playing);
     }
   }
 

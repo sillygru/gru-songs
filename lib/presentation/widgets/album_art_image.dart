@@ -144,6 +144,8 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
           );
         },
         errorBuilder: (context, error, stackTrace) {
+          CoverRefreshService.evictCoverFromImageCache(path);
+          _refreshFuture = null;
           _scheduleLazyRefresh();
           return widget.placeholder ?? _buildPlaceholder();
         },

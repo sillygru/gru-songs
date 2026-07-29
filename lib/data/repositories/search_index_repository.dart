@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../models/song.dart';
 import '../../services/ffmpeg_service.dart';
+import '../../services/wispie_paths.dart';
 import '../models/search_index_entry.dart';
 
 /// Repository for managing the search index database
@@ -19,10 +19,22 @@ class SearchIndexRepository {
   static Database? _database;
   final FFmpegService _ffmpegService = FFmpegService();
 
+  @visibleForTesting
+  static String? testDocumentsPath;
+
   /// Gets the database file path
   Future<String> _getDbPath() async {
-    final docDir = await getApplicationDocumentsDirectory();
-    return join(docDir.path, 'wispie_search_index.db');
+    if (testDocumentsPath != null) {
+      return join(testDocumentsPath!, 'wispie_search_index.db');
+    }
+    final wispieDir = await getWispieDirectory();
+    return join(wispieDir.path, 'wispie_search_index.db');
+  }
+
+  @visibleForTesting
+  static void resetDatabase() {
+    _database?.close();
+    _database = null;
   }
 
   /// Initializes the search index database

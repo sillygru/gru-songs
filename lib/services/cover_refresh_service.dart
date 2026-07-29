@@ -28,6 +28,7 @@ class CoverRefreshService {
   static const int _maxConcurrent = 2;
 
   final Set<String> _inFlight = {};
+  final Map<String, Future<String?>> _inFlightFutures = {};
   final Queue<Completer<void>> _waiting = Queue<Completer<void>>();
   int _active = 0;
 
@@ -140,7 +141,23 @@ class CoverRefreshService {
   }
 
   Future<String?> ensureCoverForSong(String songFilename) async {
-    if (songFilename.isEmpty || _inFlight.contains(songFilename)) {
+    if (songFilename.isEmpty) return null;
+    final existingFuture = _inFlightFutures[songFilename];
+    if (existingFuture != null) {
+      return await existingFuture;
+    }
+
+    final future = _ensureCoverForSongInternal(songFilename);
+    _inFlightFutures[songFilename] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlightFutures.remove(songFilename);
+    }
+  }
+
+  Future<String?> _ensureCoverForSongInternal(String songFilename) async {
+    if (_inFlight.contains(songFilename)) {
       return null;
     }
 

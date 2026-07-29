@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../models/playlist.dart';
@@ -10,6 +9,7 @@ import '../models/queue_snapshot.dart';
 import '../models/song.dart';
 import 'import_options.dart';
 import 'sync_service.dart';
+import 'wispie_paths.dart';
 
 /// DatabaseService handles local SQLite storage.
 class DatabaseService {
@@ -250,8 +250,8 @@ class DatabaseService {
   }
 
   Future<Database> _openDatabase(String name, String schema) async {
-    final docDir = await getApplicationDocumentsDirectory();
-    final path = join(docDir.path, name);
+    final wispieDir = await getWispieDirectory();
+    final path = join(wispieDir.path, name);
     return await openDatabase(
       path,
       version: 1,

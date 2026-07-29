@@ -28,6 +28,7 @@ import '../components/app_sheet.dart';
 import '../components/app_surface.dart';
 import '../tokens/app_tokens.dart';
 import '../components/app_icon.dart';
+import '../widgets/header_shuffle_button.dart';
 import '../tokens/app_icons.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -482,10 +483,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     title: 'Wispie',
                     isScrolled: isScrolled,
                     actions: [
-                      IconButton(
+                      HeaderShuffleButton(
                         tooltip: 'Shuffle all',
-                        icon: AppIcon(AppIcons.shuffle, color: accent),
-                        onPressed: () => audioManager.shuffleAndPlay(
+                        color: accent,
+                        onShufflePressed: () => audioManager.shuffleAndPlay(
                           songs,
                           isRestricted: false,
                         ),

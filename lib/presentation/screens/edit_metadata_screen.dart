@@ -30,11 +30,13 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
   late TextEditingController _titleController;
   late TextEditingController _artistController;
   late TextEditingController _albumController;
+  late String _activeFilename;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
+    _activeFilename = widget.song.filename;
     _filenameController = TextEditingController(
         text: p.basenameWithoutExtension(widget.song.filename));
     _titleController = TextEditingController(text: widget.song.title);
@@ -368,12 +370,21 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
       // 1. Handle Filename Rename if changed. The renamed song is carried
       //    forward: the metadata write below addresses the file by path, and
       //    the old one no longer exists.
-      var song = widget.song;
+      final songsList = ref.read(songsProvider).asData?.value ?? [];
+      var song = songsList.firstWhere(
+        (s) => s.filename == _activeFilename,
+        orElse: () => widget.song,
+      );
       if (newFilename != p.basenameWithoutExtension(song.filename)) {
         song = await ref.read(songsProvider.notifier).renameSong(
               song,
               newFilename,
             );
+        if (mounted) {
+          setState(() {
+            _activeFilename = song.filename;
+          });
+        }
       }
 
       // 2. Handle Metadata update
@@ -572,7 +583,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
     // Watch for updates to the song
     final songs = ref.watch(songsProvider).asData?.value ?? [];
     final currentSong = songs.firstWhere(
-      (s) => s.filename == widget.song.filename,
+      (s) => s.filename == _activeFilename,
       orElse: () => widget.song,
     );
 
@@ -824,9 +835,14 @@ class _LyricsEditorScreenState extends ConsumerState<LyricsEditorScreen> {
   Future<void> _save() async {
     setState(() => _isSaving = true);
     try {
+      final songs = ref.read(songsProvider).asData?.value ?? const <Song>[];
+      final currentSong = songs.firstWhere(
+        (s) => s.filename == widget.song.filename,
+        orElse: () => widget.song,
+      );
       await ref
           .read(songsProvider.notifier)
-          .updateLyrics(widget.song, _controller.text);
+          .updateLyrics(currentSong, _controller.text);
       if (mounted) {
         Navigator.pop(context);
         appSnack(context, "Lyrics saved");

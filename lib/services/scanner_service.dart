@@ -15,6 +15,7 @@ import '../domain/services/embedded_cover_bytes.dart';
 import '../domain/services/search_service.dart';
 import 'storage_service.dart';
 import 'ffmpeg_service.dart';
+import 'cover_refresh_service.dart';
 
 /// Why a scan produced the songs it did.
 ///
@@ -675,6 +676,7 @@ class ScannerService {
             final updated = _songWithCover(song, coverPath);
             updatedSongsMap[song.filename] = updated;
             newlyUpdated.add(updated);
+            unawaited(CoverRefreshService.evictCoverFromImageCache(coverPath));
           }
         }
 

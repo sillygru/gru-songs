@@ -1,3 +1,4 @@
+import 'dart:io' show exit;
 import 'package:flutter/material.dart';
 import '../components/ambient_scaffold.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -212,12 +213,11 @@ class _StorageManagementScreenState
 
     try {
       await StorageAnalysisService.instance.clearDatabase();
-
-      // Reset
       if (mounted) {
         final storage = ref.read(storageServiceProvider);
         await storage.setSetupComplete(false);
         ref.read(setupProvider.notifier).setComplete(false);
+        exit(0);
       }
     } catch (e) {
       if (mounted) {
@@ -559,13 +559,7 @@ class _StorageManagementScreenState
 
     try {
       await StorageAnalysisService.instance.clearAllUserData();
-
-      // Reset
-      if (mounted) {
-        final storage = ref.read(storageServiceProvider);
-        await storage.setSetupComplete(false);
-        ref.read(setupProvider.notifier).setComplete(false);
-      }
+      if (mounted) exit(0);
     } catch (e) {
       if (mounted) {
         setState(() => _isClearing = false);
