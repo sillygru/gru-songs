@@ -1,5 +1,19 @@
 # Wispie
 
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-GPLv3-blue.svg">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Android-3DDC84.svg">
+  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.44+-02569B.svg?logo=flutter">
+  <img alt="Stars" src="https://img.shields.io/github/stars/sillygru/wispie?style=flat&label=stars">
+  <img alt="Downloads" src="https://img.shields.io/github/downloads/sillygru/wispie/total">
+</p>
+
+<p align="center">
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/sillygru/wispie/">
+    <img alt="Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="50">
+  </a>
+</p>
+
 A local music player that works offline and learns what you actually listen to.
 
 [Features](#features) | [Getting Started](#getting-started) | [Important](#important) | [Screenshots](#screenshots) | [For Developers](#for-developers)
@@ -109,6 +123,6 @@ flutter build apk --release --target-platform=android-arm
 
 ## License
 
-Copyright (c) 2026 gru — Licensed under PolyForm Noncommercial License 1.0.0.
+Copyright (c) 2026 gru — Licensed under GNU General Public License v3.0.
 
 See [LICENSE](LICENSE) for full terms.

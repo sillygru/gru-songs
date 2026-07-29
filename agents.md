@@ -5,14 +5,11 @@
 - **No git commands** - Never run write git operations. Git commands are for reading only.
 - **No building** - Do not run `flutter build` or `flutter run` unless explicitly requested
 - **No emojis** - Never use emojis in code, comments, or messages
-- **Offline only** - Do not add features requiring internet connection unless explicitly requested
 - **File-based identity** - User data (favorites, stats) is linked to filenames. Do not change this
 - **Comments** - Minimal. Explain _why_, not _what_. No LLM-specific comments like "// added this"
-- **Always run `dart format .` after all changes are done, and verify `flutter analyze --no-pub` passes with no issues before finishing**
+- **Always run `dart format .` after all changes are done, and verify `flutter analyze --no-pub` passes with no issues before finishing** (Only if the changes touch actual code)
 
 ## Code & Architecture Standards
-
-Do not generate "vibe-coded" logic. Follow these rules:
 
 - **Explicit error handling** - Catch specific exceptions. No broad `try/catch` that silences errors. No happy-path assumptions.
 - **Modular structure** - Break monolithic widgets and functions into small, testable units. If a `build` method exceeds 50 lines, extract stateless widgets.
@@ -68,8 +65,6 @@ DB-, prefs- or path-touching tests must use `TestEnvironment` from `test/test_he
 
 ## UI / Design Standard
 
-Do not generate "vibe-coded" UI.
-
 - **Vibrant color blocking** - Use intentional, high-contrast solid colors in large blocks. Define a strict palette.
 - **No gradients** - Forbidden in UI elements, backgrounds, and text.
 - **No borders or outlines** - Do not use `border`, `ring`, or outlines to separate elements. Use color blocking, whitespace, and layout geometry instead.
@@ -94,6 +89,8 @@ Before returning UI code, verify: no gradients, no borders used for separation, 
 - **Queue History Screen**: `lib/presentation/screens/queue_history_screen.dart`
 
 ### Running Tests
+
+When doing minimal changes, only run the affected feature tests.
 
 ```bash
 flutter test
