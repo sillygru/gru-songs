@@ -84,7 +84,7 @@ class TestEnvironment {
 
     // Mock the volume monitoring channel to prevent MissingPluginException
     // when AudioPlayerManager initializes VolumeMonitorService.
-    final volumeChannel = MethodChannel('gru_songs/volume');
+    final volumeChannel = MethodChannel('wispie/volume');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(volumeChannel, (MethodCall methodCall) async {
       if (methodCall.method == 'getCurrentVolume') {
@@ -95,7 +95,7 @@ class TestEnvironment {
     // Mock the volume event channel to prevent unhandled stream errors.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMessageHandler(
-      'gru_songs/volume_events',
+      'wispie/volume_events',
       (ByteData? message) async => null,
     );
 
@@ -121,11 +121,10 @@ class TestEnvironment {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-            const MethodChannel('gru_songs/volume'), null);
+        .setMockMethodCallHandler(const MethodChannel('wispie/volume'), null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMessageHandler(
-      'gru_songs/volume_events',
+      'wispie/volume_events',
       null,
     );
 

@@ -4,9 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
 class VolumeMonitorService {
-  static const MethodChannel _channel = MethodChannel('gru_songs/volume');
+  static const MethodChannel _channel = MethodChannel('wispie/volume');
   static const EventChannel _eventChannel =
-      EventChannel('gru_songs/volume_events');
+      EventChannel('wispie/volume_events');
 
   StreamSubscription<double>? _volumeSubscription;
   double _currentVolume = 1.0;

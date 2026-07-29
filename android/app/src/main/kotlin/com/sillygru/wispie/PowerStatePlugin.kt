@@ -1,4 +1,4 @@
-package com.sillygru.gru_songs
+package com.sillygru.wispie
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -22,8 +22,8 @@ import io.flutter.plugin.common.MethodChannel.Result
  * value, one event channel for changes.
  */
 class PowerStatePlugin : MethodCallHandler {
-    private val methodChannel = "gru_songs/power"
-    private val eventChannel = "gru_songs/power_events"
+    private val methodChannel = "wispie/power"
+    private val eventChannel = "wispie/power_events"
 
     private var eventSink: EventChannel.EventSink? = null
     private var context: Context? = null

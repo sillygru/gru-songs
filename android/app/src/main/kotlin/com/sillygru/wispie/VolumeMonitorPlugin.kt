@@ -1,4 +1,4 @@
-package com.sillygru.gru_songs
+package com.sillygru.wispie
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -18,8 +18,8 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 
 class VolumeMonitorPlugin : MethodCallHandler {
-    private val methodChannel = "gru_songs/volume"
-    private val eventChannel = "gru_songs/volume_events"
+    private val methodChannel = "wispie/volume"
+    private val eventChannel = "wispie/volume_events"
     private var eventSink: EventChannel.EventSink? = null
     private var audioManager: AudioManager? = null
     private var context: Context? = null

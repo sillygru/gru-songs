@@ -10,7 +10,7 @@ class AndroidTreeSelection {
 }
 
 class AndroidStorageService {
-  static const MethodChannel _channel = MethodChannel('gru_songs/storage');
+  static const MethodChannel _channel = MethodChannel('wispie/storage');
 
   static Future<AndroidTreeSelection?> pickTree() async {
     if (!Platform.isAndroid) return null;

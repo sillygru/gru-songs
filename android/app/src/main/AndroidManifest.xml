@@ -18,7 +18,7 @@
         android:extractNativeLibs="true"
         android:usesCleartextTraffic="true">
         <activity
-            android:name="com.sillygru.gru_songs.MainActivity"
+            android:name="com.sillygru.wispie.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""

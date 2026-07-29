@@ -1,4 +1,4 @@
-package com.sillygru.gru_songs
+package com.sillygru.wispie
 
 import android.app.Activity
 import android.content.Intent
@@ -17,8 +17,8 @@ import java.util.concurrent.Executors
 import com.ryanheise.audioservice.AudioServiceActivity
 
 class MainActivity : AudioServiceActivity() {
-    private val channelName = "gru_songs/storage"
-    private val appChannelName = "gru_songs/app"
+    private val channelName = "wispie/storage"
+    private val appChannelName = "wispie/app"
     private val requestPickTree = 9001
     private var pendingResult: MethodChannel.Result? = null
     private lateinit var volumeMonitorPlugin: VolumeMonitorPlugin

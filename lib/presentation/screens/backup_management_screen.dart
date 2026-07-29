@@ -628,7 +628,7 @@ class _BackupManagementScreenState
     // For other platforms, we just exit and let the user relaunch
     if (Platform.isAndroid) {
       try {
-        const platform = MethodChannel('gru_songs/app');
+        const platform = MethodChannel('wispie/app');
         await platform.invokeMethod('restartApp');
       } catch (e) {
         // If platform method fails, just exit

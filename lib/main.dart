@@ -79,7 +79,7 @@ Future<void> _setupAudioSession() async {
 
 Future<void> _setupJustAudioBackground() async {
   await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.sillygru.gru_songs.channel.audio',
+    androidNotificationChannelId: 'com.sillygru.wispie.channel.audio',
     androidNotificationChannelName: 'Audio playback',
     androidNotificationOngoing: false,
   );

@@ -23,7 +23,7 @@ class IosFolderSelection {
 
 class IosFolderAccessService {
   static const MethodChannel _channel =
-      MethodChannel('gru_songs/ios_folder_access');
+      MethodChannel('wispie/ios_folder_access');
 
   static Future<IosFolderSelection?> pickFolder() async {
     if (!Platform.isIOS) return null;

@@ -64,7 +64,7 @@ Riverpod 3 with `Notifier`/`AsyncNotifier` API. `lib/providers/providers.dart` i
 
 ### Testing
 
-DB-, prefs- or path-touching tests must use `TestEnvironment` from `test/test_helpers.dart` (`setUpAll`/`tearDownAll`). It creates a temp documents directory, swaps in `databaseFactoryFfi`, and mocks path_provider, SharedPreferences and the `gru_songs/volume` channels.
+DB-, prefs- or path-touching tests must use `TestEnvironment` from `test/test_helpers.dart` (`setUpAll`/`tearDownAll`). It creates a temp documents directory, swaps in `databaseFactoryFfi`, and mocks path_provider, SharedPreferences and the `wispie/volume` channels.
 
 ## UI / Design Standard
 

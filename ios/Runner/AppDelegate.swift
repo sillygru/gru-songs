@@ -17,7 +17,7 @@ import CommonCrypto
 
     if let controller = window?.rootViewController as? FlutterViewController {
       let folderChannel = FlutterMethodChannel(
-        name: "gru_songs/ios_folder_access",
+        name: "wispie/ios_folder_access",
         binaryMessenger: controller.binaryMessenger
       )
       folderChannel.setMethodCallHandler { [weak self] call, result in
@@ -25,7 +25,7 @@ import CommonCrypto
       }
 
       let mediaChannel = FlutterMethodChannel(
-        name: "gru_songs/ios_media_access",
+        name: "wispie/ios_media_access",
         binaryMessenger: controller.binaryMessenger
       )
       mediaChannel.setMethodCallHandler { [weak self] call, result in
@@ -39,8 +39,8 @@ import CommonCrypto
   }
 }
 
-/// Serves Low Power Mode over `gru_songs/power` (current value) and
-/// `gru_songs/power_events` (changes), matching the Android PowerStatePlugin.
+/// Serves Low Power Mode over `wispie/power` (current value) and
+/// `wispie/power_events` (changes), matching the Android PowerStatePlugin.
 ///
 /// The app uses this to thin out the player's animation — fewer motes, half the
 /// frame rate — when the system says the user is trying to make the battery
@@ -52,7 +52,7 @@ private final class PowerStateMonitor: NSObject, FlutterStreamHandler {
     super.init()
 
     let methodChannel = FlutterMethodChannel(
-      name: "gru_songs/power",
+      name: "wispie/power",
       binaryMessenger: binaryMessenger
     )
     methodChannel.setMethodCallHandler { call, result in
@@ -65,7 +65,7 @@ private final class PowerStateMonitor: NSObject, FlutterStreamHandler {
     }
 
     let eventChannel = FlutterEventChannel(
-      name: "gru_songs/power_events",
+      name: "wispie/power_events",
       binaryMessenger: binaryMessenger
     )
     eventChannel.setStreamHandler(self)
@@ -331,7 +331,7 @@ private final class IOSFolderAccessManager: NSObject, UIDocumentPickerDelegate, 
   }
 }
 
-/// Handles the `gru_songs/ios_media_access` channel for iOS media file
+/// Handles the `wispie/ios_media_access` channel for iOS media file
 /// access coordination.
 extension AppDelegate {
   func handleMediaAccess(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

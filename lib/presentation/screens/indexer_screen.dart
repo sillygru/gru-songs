@@ -700,7 +700,7 @@ class _IndexerScreenState extends ConsumerState<IndexerScreen> {
   Future<void> _restartApp() async {
     if (Platform.isAndroid) {
       try {
-        const platform = MethodChannel('gru_songs/app');
+        const platform = MethodChannel('wispie/app');
         await platform.invokeMethod('restartApp');
       } catch (e) {
         exit(0);
