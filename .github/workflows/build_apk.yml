@@ -13,6 +13,16 @@ on:
 
 jobs:
   build-apk:
+    strategy:
+      matrix:
+        include:
+          - target-platform: android-arm
+            abi: armeabi-v7a
+            artifact-name: wispie-armeabi-v7a-release
+          - target-platform: android-arm64
+            abi: arm64-v8a
+            artifact-name: wispie-arm64-v8a-release
+
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,18 +45,25 @@ jobs:
           storeFile=upload-keystore.jks
           EOF
 
-      - name: Build release APK
+      - name: Build release APK (${{ matrix.abi }})
         env:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           TELEMETRY_SECRET: ${{ secrets.TELEMETRY_SECRET }}
+          WISPIE_ABI_FILTER: ${{ matrix.abi }}
         run: >
-          flutter build apk --target-platform android-arm64
+          flutter build apk
+          --target-platform ${{ matrix.target-platform }}
           --dart-define=TELEMETRY_SECRET="$TELEMETRY_SECRET"
           --dart-define=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET"
 
-      - name: Upload release APK
+      - name: Rename APK for upload
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/${{ matrix.artifact-name }}.apk
+
+      - name: Upload APK (${{ matrix.abi }})
         uses: actions/upload-artifact@v4
         with:
-          name: wispie-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: ${{ matrix.artifact-name }}
+          path: build/app/outputs/flutter-apk/${{ matrix.artifact-name }}.apk
           retention-days: 7

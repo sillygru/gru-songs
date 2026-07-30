@@ -7,6 +7,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Read WISPIE_ABI_FILTER env var to restrict to a single ABI per CI job.
+// Defaults to both ARM targets when unset (local builds).
+val wispieAbiFilter = providers.environmentVariable("WISPIE_ABI_FILTER").orNull
+
 dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
 }
@@ -31,9 +35,14 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // Support for ffmpeg-kit ABIs
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            // Set WISPIE_ABI_FILTER=armeabi-v7a or WISPIE_ABI_FILTER=arm64-v8a
+            // in CI to build for a single ABI. Falls back to both ARM ABIs locally.
+            abiFilters += if (wispieAbiFilter != null) {
+                listOf(wispieAbiFilter)
+            } else {
+                listOf("armeabi-v7a", "arm64-v8a")
+            }
         }
     }
 
