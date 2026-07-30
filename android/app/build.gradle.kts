@@ -47,9 +47,6 @@ android {
     }
 
     packaging {
-        jniLibs {
-            useLegacyPackaging = true
-        }
         resources {
             excludes += listOf(
                 "META-INF/DEPENDENCIES",
@@ -62,6 +59,19 @@ android {
                 "META-INF/ASL2.0",
                 "META-INF/*.kotlin_module"
             )
+        }
+        jniLibs {
+            useLegacyPackaging = true
+            // Explicitly exclude unwanted ABIs from pre-built .so files
+            // (ndk.abiFilters only affects NDK-compiled code, not AAR/package .so's)
+            val excludeAbis = if (wispieAbiFilter != null) {
+                listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") - wispieAbiFilter
+            } else {
+                listOf("x86", "x86_64")
+            }
+            excludeAbis.forEach { abi ->
+                excludes.add("lib/$abi/**")
+            }
         }
     }
 
@@ -108,3 +118,4 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 flutter {
     source = "../.."
 }
+

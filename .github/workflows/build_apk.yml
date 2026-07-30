@@ -55,6 +55,8 @@ jobs:
           --target-platform ${{ matrix.target-platform }}
           --dart-define=TELEMETRY_SECRET="$TELEMETRY_SECRET"
           --dart-define=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET"
+          --obfuscate
+          --split-debug-info=build/debug-info
 
       - name: Rename APK for upload
         run: |
