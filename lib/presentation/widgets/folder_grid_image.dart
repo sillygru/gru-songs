@@ -18,36 +18,60 @@ class FolderGridImage extends StatelessWidget {
     this.isGridItem = false,
   });
 
-  static bool _isValidCoverUrl(String? url) {
-    if (url == null || url.trim().isEmpty) return false;
+  /// Resolves a cover URL to a local path and its file size.
+  /// Returns null if the file doesn't exist or the URL isn't a local path.
+  /// Single stat call per file: existence + size in one syscall.
+  static ({String path, int size})? _resolveCover(String? url) {
+    if (url == null || url.trim().isEmpty) return null;
     final trimmed = url.trim();
-    if (trimmed.startsWith('/') ||
-        trimmed.startsWith('file://') ||
-        trimmed.startsWith('C:\\')) {
-      try {
-        final path = trimmed.startsWith('file://')
-            ? Uri.parse(trimmed).toFilePath()
-            : trimmed;
-        return File(path).existsSync();
-      } catch (_) {
-        return false;
-      }
+    if (!trimmed.startsWith('/') &&
+        !trimmed.startsWith('file://') &&
+        !trimmed.startsWith('C:\\')) {
+      return null;
     }
-    return true;
+    try {
+      final path = trimmed.startsWith('file://')
+          ? Uri.parse(trimmed).toFilePath()
+          : trimmed;
+      final file = File(path);
+      final stat = file.statSync();
+      if (stat.type == FileSystemEntityType.notFound) return null;
+      return (path: path, size: stat.size);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final uniqueCovers = <String>{};
     final List<String> covers = [];
+    int? firstSize;
+    bool allSameSize = true;
+
     for (final song in songs) {
-      final url = song.coverUrl;
-      if (_isValidCoverUrl(url)) {
-        if (uniqueCovers.add(url!)) {
-          covers.add(url);
-          if (covers.length >= 4) break;
+      if (covers.length >= 4) break;
+      final result = _resolveCover(song.coverUrl);
+      if (result == null || !uniqueCovers.add(result.path)) continue;
+
+      // Track file size as we go to detect duplicates (same image extracted
+      // from different songs in the same album).
+      if (allSameSize) {
+        if (firstSize == null) {
+          firstSize = result.size;
+        } else if (result.size != firstSize) {
+          allSameSize = false;
         }
       }
+
+      covers.add(result.path);
+    }
+
+    // If all unique covers have the same file size, they're the same image
+    // extracted from different songs — show a single full cover instead of
+    // repeating it in a grid.
+    if (covers.length >= 2 && allSameSize) {
+      covers.removeRange(1, covers.length);
     }
 
     if (covers.isEmpty) {

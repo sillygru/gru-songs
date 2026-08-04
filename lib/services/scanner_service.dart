@@ -16,6 +16,7 @@ import '../domain/services/search_service.dart';
 import 'storage_service.dart';
 import 'ffmpeg_service.dart';
 import 'cover_refresh_service.dart';
+import 'media_decode_gate.dart';
 
 /// Why a scan produced the songs it did.
 ///
@@ -880,38 +881,44 @@ class ScannerService {
   /// The FFmpeg half of cover extraction. Uses platform channels, so it must
   /// run on the main isolate. Call only after [extractCoverWithoutFFmpeg] has
   /// come up empty — an FFmpeg invocation per song is expensive.
+  ///
+  /// Also goes through the shared [MediaDecodeGate]: a song missing its cover
+  /// is usually a first-play too, and this must not decode while a waveform or
+  /// beat analysis is mid-decode.
   static Future<String?> extractCoverWithFFmpeg(
     File file,
     Directory coversDir,
     String filename,
-  ) async {
-    final hash = coverKeyForFilename(filename);
-    try {
-      debugPrint(
-          'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
-      final coverFile = File(p.join(coversDir.path, '${hash}_ffmpeg.jpg'));
+  ) {
+    return MediaDecodeGate.run(() async {
+      final hash = coverKeyForFilename(filename);
+      try {
+        debugPrint(
+            'Scanner: Manual extraction failed for ${file.path}, trying FFmpeg fallback...');
+        final coverFile = File(p.join(coversDir.path, '${hash}_ffmpeg.jpg'));
 
-      String? extracted;
-      if (_isVideoFile(file.path)) {
-        extracted = await _extractVideoThumbnailWithFallback(
-          inputPath: file.path,
-          outputPath: coverFile.path,
-        );
-      } else {
-        extracted = await FFmpegService().extractCover(
-          inputPath: file.path,
-          outputPath: coverFile.path,
-        );
-      }
+        String? extracted;
+        if (_isVideoFile(file.path)) {
+          extracted = await _extractVideoThumbnailWithFallback(
+            inputPath: file.path,
+            outputPath: coverFile.path,
+          );
+        } else {
+          extracted = await FFmpegService().extractCover(
+            inputPath: file.path,
+            outputPath: coverFile.path,
+          );
+        }
 
-      if (extracted != null) {
-        debugPrint('Scanner: FFmpeg fallback success!');
-        return extracted;
+        if (extracted != null) {
+          debugPrint('Scanner: FFmpeg fallback success!');
+          return extracted;
+        }
+      } catch (e) {
+        debugPrint('Scanner: FFmpeg fallback failed: $e');
       }
-    } catch (e) {
-      debugPrint('Scanner: FFmpeg fallback failed: $e');
-    }
-    return null;
+      return null;
+    });
   }
 
   /// Re-derives cover art for [songs], keyed by [Song.url].

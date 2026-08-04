@@ -569,8 +569,12 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
 
+          // No palette warm here: the current track's palette is extracted
+          // below and the next track's by [_preExtractNextColor]. A radius-1
+          // warm would add a third cover decode (the previous track's) to an
+          // already crowded track change, and its theme is still cached from
+          // when it was playing.
           if (state.currentIndex != null) {
-            _warmThemePalettesAroundIndex(state.currentIndex!);
             _syncCoverWarmer(state.currentIndex!);
           }
 
@@ -1283,11 +1287,15 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     );
   }
 
+  /// Purely a head start on the theme for tracks either side of this one. The
+  /// track actually playing is extracted separately, so skipping this in the
+  /// background costs nothing but a decode the user cannot see.
+  ///
+  /// Used on explicit navigation (queue reorder, skip-to, resume) rather than
+  /// on automatic track changes — those already cover current + next through
+  /// the dedicated extract and [_preExtractNextColor].
   void _warmThemePalettesAroundIndex(int centerIndex, {int radius = 1}) {
     if (_effectiveQueue.isEmpty) return;
-    // Purely a head start on the theme for tracks either side of this one. The
-    // track actually playing is extracted separately, so skipping this in the
-    // background costs nothing but a decode the user cannot see.
     if (_isBackground) return;
 
     for (int offset = -radius; offset <= radius; offset++) {
@@ -2605,6 +2613,62 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       } catch (e) {
         _effectiveQueue.removeAt(targetIndex);
         _effectiveQueue.insert(oldIndex, item);
+        rethrow;
+      }
+      _updateQueueNotifier();
+      _savePlaybackState();
+      await _updateCurrentSnapshotSongs();
+    });
+  }
+
+  /// Moves a queued entry to the top of the upcoming section — immediately
+  /// after the current track, or after the furthest-along entry in
+  /// [sessionTopOrder] that is still present up there, so swiping several
+  /// songs to the top stacks them in swipe order.
+  ///
+  /// [sessionTopOrder] is the RAM-only swipe history owned by the queue pane.
+  /// The insertion point is resolved *inside* the serialized mutation, so a
+  /// burst of swipes cannot target a stale offset while earlier moves are
+  /// still churning through the player.
+  Future<void> moveUpcomingToTop(
+    String queueId,
+    List<String> sessionTopOrder,
+  ) async {
+    await _runSerializedQueueMutation(() async {
+      final currentIndex = _player.currentIndex ?? -1;
+      if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) return;
+
+      final sourceIndex =
+          _effectiveQueue.indexWhere((item) => item.queueId == queueId);
+      // Never touch the current track or anything behind it — moving a played
+      // entry here would displace the playing source and corrupt the player's
+      // current index. The UI only swipes upcoming rows, but the API should be
+      // safe regardless of how it is reached.
+      if (sourceIndex <= currentIndex) return;
+
+      // Entries that have played through, been removed or come from another
+      // queue are skipped by the index lookup — their ids go stale harmlessly.
+      var targetIndex = currentIndex + 1;
+      for (final movedId in sessionTopOrder) {
+        if (movedId == queueId) continue;
+        final movedIndex =
+            _effectiveQueue.indexWhere((item) => item.queueId == movedId);
+        if (movedIndex > currentIndex) targetIndex = movedIndex + 1;
+      }
+
+      // Reorder's slot convention: removing the source shifts the target.
+      int target = targetIndex.clamp(0, _effectiveQueue.length);
+      if (sourceIndex < target) target -= 1;
+      if (target < 0 || target >= _effectiveQueue.length) return;
+      if (sourceIndex == target) return;
+
+      final item = _effectiveQueue.removeAt(sourceIndex);
+      _effectiveQueue.insert(target, item);
+      try {
+        await _player.moveAudioSource(sourceIndex, target);
+      } catch (e) {
+        _effectiveQueue.removeAt(target);
+        _effectiveQueue.insert(sourceIndex, item);
         rethrow;
       }
       _updateQueueNotifier();

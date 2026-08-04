@@ -31,6 +31,35 @@ class LyricsPane extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<LyricsPane> createState() => _LyricsPaneState();
+
+  /// Where to put the lyrics viewport on [attempt] while line [index] is still
+  /// being waited on.
+  ///
+  /// A lazy list does not lay a line out until it is near the viewport, so a
+  /// far-off active line has no measured offset. The base term places the line
+  /// near the anchor on the assumption that every line is [estimatedLineHeight]
+  /// tall; the retry term walks the viewport down past that, so a line that is
+  /// taller than the estimate (subtext translations, wrapped lines) still comes
+  /// into build range instead of the caller re-requesting the same fallen-short
+  /// offset forever. The result is clamped to the scroll range.
+  @visibleForTesting
+  static double scrollAttemptOffset({
+    required int index,
+    required int attempt,
+    required double actionStripHeight,
+    required double estimatedLineHeight,
+    required double activeLineAnchor,
+    required double retryViewportStep,
+    required double viewport,
+    required double minExtent,
+    required double maxExtent,
+  }) {
+    final estimate = actionStripHeight +
+        index * estimatedLineHeight -
+        viewport * activeLineAnchor;
+    return (estimate + viewport * retryViewportStep * attempt)
+        .clamp(minExtent, maxExtent);
+  }
 }
 
 class _LyricsPaneState extends ConsumerState<LyricsPane>
@@ -52,6 +81,19 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// its 48pt touch target plus the inset above it. The lyrics list pads by
   /// this much so a line never scrolls under the button.
   static const double _actionStripHeight = 48 + PlayerTokens.s1;
+
+  /// Height assumed for a line that has not been laid out yet. Plain lines are
+  /// ~54px; translated subtext or wrapped lines are taller, so alignment must
+  /// not trust this estimate — see [_alignToLine].
+  static const double _estimatedLineHeight = 56;
+
+  /// How far past a fallen-short estimate each retry pushes the viewport.
+  static const double _alignRetryViewportStep = 0.5;
+
+  /// Upper bound on not-yet-built retries, so a line that keeps eluding the
+  /// estimate can never keep the pane in an endless post-frame loop. The list
+  /// then sits close enough that the next line change re-aligns it.
+  static const int _maxAlignAttempts = 5;
 
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
@@ -96,6 +138,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// Set while we drive the scroll ourselves, so our own motion is not
   /// mistaken for the user taking over.
   bool _autoScrolling = false;
+
+  /// Bumped on every auto-scroll request so a newer active line cancels any
+  /// still-pending alignment from an older one instead of two chains fighting
+  /// over the scroll position.
+  int _scrollRequestId = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -326,21 +373,6 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       return;
     }
 
-    if (_translateService.isAlreadyInTargetScript(content, targetLang)) {
-      await DatabaseService.instance.saveTranslatedLyrics(
-        widget.song.filename,
-        targetLang,
-        '[SAME_LANG]',
-      );
-      if (mounted) {
-        setState(() {
-          _translatedLyrics = null;
-          _hasCachedTranslation = false;
-        });
-      }
-      return;
-    }
-
     setState(() {
       _translating = true;
     });
@@ -420,53 +452,80 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       return;
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || !_scrollController.hasClients) return;
-
-      // Only lines currently built have a live context; ones far off-screen
-      // will be scrolled to as they come into range.
-      final ctx = _lineKeys[index]?.currentContext;
-      if (ctx == null) {
-        // Item not rendered yet (lazy builder). Jump to approximate offset
-        // so the next frame's precise scroll can find it.
-        const double estimatedHeight = 56;
-        final pos = _scrollController.position;
-        final roughTarget = (_actionStripHeight +
-                index * estimatedHeight -
-                pos.viewportDimension * _activeLineAnchor)
-            .clamp(pos.minScrollExtent, pos.maxScrollExtent);
-        pos.jumpTo(roughTarget);
-        _maybeAutoScroll(index);
-        return;
-      }
-
-      // Deliberately not Scrollable.ensureVisible: it walks *every* enclosing
-      // scrollable, so from inside the shell's PageView it would drag the user
-      // back to this pane whenever a line changed while they were on another.
-      // RenderAbstractViewport.maybeOf stops at our own ListView.
-      final box = ctx.findRenderObject() as RenderBox?;
-      final viewport = box == null ? null : RenderAbstractViewport.maybeOf(box);
-      if (box == null || viewport == null) return;
-
-      final position = _scrollController.position;
-      final target = viewport
-          .getOffsetToReveal(box, _activeLineAnchor)
-          .offset
-          .clamp(position.minScrollExtent, position.maxScrollExtent);
-
-      if ((target - position.pixels).abs() < 1) return;
-
-      _autoScrolling = true;
-      try {
-        await _scrollController.animateTo(
-          target,
-          duration: PlayerTokens.dSlow,
-          curve: PlayerTokens.cStandard,
-        );
-      } finally {
-        _autoScrolling = false;
-      }
+    final requestId = ++_scrollRequestId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _alignToLine(index, requestId, attempt: 0);
     });
+  }
+
+  /// Scrolls the active line to the anchor.
+  ///
+  /// Lines further off-screen are not laid out yet by the lazy [ListView], so
+  /// their [GlobalKey] has no context. In that case the line's offset is only
+  /// known approximately: [LyricsLine] is ~54px but subtext translations and
+  /// wrapped lines are taller, so a fixed estimate always runs short of the
+  /// real position. Each retry therefore pushes the viewport further down
+  /// rather than re-requesting the same spot (which would stall forever), and
+  /// the attempt budget bounds the whole thing. Once the line is actually
+  /// built, [RenderAbstractViewport.getOffsetToReveal] pins it exactly.
+  Future<void> _alignToLine(
+    int index,
+    int requestId, {
+    required int attempt,
+  }) async {
+    if (!mounted ||
+        !_scrollController.hasClients ||
+        requestId != _scrollRequestId) {
+      return;
+    }
+
+    final ctx = _lineKeys[index]?.currentContext;
+    final box = ctx?.findRenderObject() as RenderBox?;
+    final viewport = box == null ? null : RenderAbstractViewport.maybeOf(box);
+
+    if (box == null || viewport == null) {
+      if (attempt >= _maxAlignAttempts) return;
+      final pos = _scrollController.position;
+      final target = LyricsPane.scrollAttemptOffset(
+        index: index,
+        attempt: attempt,
+        actionStripHeight: _actionStripHeight,
+        estimatedLineHeight: _estimatedLineHeight,
+        activeLineAnchor: _activeLineAnchor,
+        retryViewportStep: _alignRetryViewportStep,
+        viewport: pos.viewportDimension,
+        minExtent: pos.minScrollExtent,
+        maxExtent: pos.maxScrollExtent,
+      );
+      if ((target - pos.pixels).abs() >= 1) pos.jumpTo(target);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _alignToLine(index, requestId, attempt: attempt + 1);
+      });
+      return;
+    }
+
+    // Deliberately not Scrollable.ensureVisible: it walks *every* enclosing
+    // scrollable, so from inside the shell's PageView it would drag the user
+    // back to this pane whenever a line changed while they were on another.
+    // RenderAbstractViewport.maybeOf stops at our own ListView.
+    final position = _scrollController.position;
+    final target = viewport
+        .getOffsetToReveal(box, _activeLineAnchor)
+        .offset
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+
+    if ((target - position.pixels).abs() < 1) return;
+
+    _autoScrolling = true;
+    try {
+      await _scrollController.animateTo(
+        target,
+        duration: PlayerTokens.dSlow,
+        curve: PlayerTokens.cStandard,
+      );
+    } finally {
+      _autoScrolling = false;
+    }
   }
 
   @override
@@ -567,7 +626,14 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
             String? lineTranslation;
             if (_translatedLyrics != null &&
                 index < _translatedLyrics!.length) {
-              lineTranslation = _translatedLyrics![index].text;
+              final translated = _translatedLyrics![index].text;
+              // Lines the service left untouched (already in the target
+              // language) carry their original text as "translation" — do not
+              // duplicate it as subtext underneath itself.
+              if (translated.trim().isNotEmpty &&
+                  translated.trim() != line.text.trim()) {
+                lineTranslation = translated;
+              }
             }
 
             final lyricWidget = KeyedSubtree(

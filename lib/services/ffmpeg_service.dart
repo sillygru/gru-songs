@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
@@ -608,14 +609,21 @@ class FFmpegService {
         normalizedInput = Uri.parse(inputPath).toFilePath();
       }
 
+      // The heavy part is the image work, and it used to run on the UI isolate
+      // — a full-size cover decode plus a radius-15 blur plus a JPEG encode, all
+      // in the same frame as the player screen finishing its song-change
+      // rebuild. Only the bytes cross the boundary; the file IO stays here.
       final bytes = await File(normalizedInput).readAsBytes();
-      var image = img.decodeImage(bytes);
-      if (image == null) return false;
+      final jpgBytes = await Isolate.run(
+        () => generateBlurredImageBytes(
+          bytes,
+          width: width,
+          height: height,
+          blurSigma: blurSigma,
+        ),
+      );
+      if (jpgBytes == null) return false;
 
-      image = img.copyResize(image, width: width, height: height);
-      image = img.gaussianBlur(image, radius: blurSigma);
-
-      final jpgBytes = img.encodeJpg(image, quality: 80);
       await File(outputPath).writeAsBytes(jpgBytes);
 
       final file = File(outputPath);
@@ -653,5 +661,29 @@ class FFmpegService {
   String _q(String path) {
     final escaped = path.replaceAll('"', '\\"');
     return '"$escaped"';
+  }
+}
+
+/// Decodes, blurs and re-encodes cover bytes to a small JPEG.
+///
+/// Top-level so it can run in a spawned isolate: everything here is pure Dart
+/// (`image` does no platform calls), so the expensive decode + blur + encode
+/// never touches the UI thread. Returns null when [bytes] is not an image.
+Uint8List? generateBlurredImageBytes(
+  Uint8List bytes, {
+  required int width,
+  required int height,
+  required int blurSigma,
+}) {
+  try {
+    var image = img.decodeImage(bytes);
+    if (image == null) return null;
+
+    image = img.copyResize(image, width: width, height: height);
+    image = img.gaussianBlur(image, radius: blurSigma);
+
+    return img.encodeJpg(image, quality: 80);
+  } catch (_) {
+    return null;
   }
 }

@@ -49,6 +49,19 @@ class _QueuePaneState extends ConsumerState<QueuePane>
   late final AnimationController _chrome;
   late final Animation<double> _chromeCurve;
 
+  /// A scroll direction must persist this long before the chrome reacts. A
+  /// finger held still keeps firing idle-flicks in both directions, and the
+  /// pending action gets cancelled each time — so jitter can't flip the chrome,
+  /// only a sustained scroll moves it.
+  static const Duration _chromeSettleDelay = Duration(milliseconds: 120);
+
+  Timer? _chromeSettleTimer;
+
+  /// Queue ids swiped to the top this session, most recent last. RAM only —
+  /// the manager reads it to stack rapid swipes above each other, and it dies
+  /// with this pane, which is exactly the "temporarily" asked for.
+  final List<String> _addedToTop = <String>[];
+
   @override
   bool get wantKeepAlive => true;
 
@@ -70,6 +83,7 @@ class _QueuePaneState extends ConsumerState<QueuePane>
 
   @override
   void dispose() {
+    _cancelChromeSettle();
     _segment.dispose();
     _chrome.dispose();
     super.dispose();
@@ -81,17 +95,42 @@ class _QueuePaneState extends ConsumerState<QueuePane>
     _chrome.forward();
   }
 
+  void _cancelChromeSettle() {
+    _chromeSettleTimer?.cancel();
+    _chromeSettleTimer = null;
+  }
+
+  void _scheduleChromeAction(VoidCallback action) {
+    _chromeSettleTimer?.cancel();
+    _chromeSettleTimer = Timer(_chromeSettleDelay, () {
+      _chromeSettleTimer = null;
+      action();
+    });
+  }
+
   /// Notifications bubble up from whichever list is currently showing, so one
   /// listener here covers both segments.
   bool _onUserScroll(UserScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
 
+    // The one preference governs the app bars and this chrome: with auto-hide
+    // off the chrome stays put, so nothing here may touch it.
+    if (!ref.read(settingsProvider).autoHideBottomBarOnScroll) {
+      _cancelChromeSettle();
+      if (_chrome.value < 1) _chrome.forward();
+      return false;
+    }
+
     switch (notification.direction) {
       case ScrollDirection.reverse:
         // Nothing to hide for a list that doesn't actually scroll.
-        if (notification.metrics.maxScrollExtent > 0) _chrome.reverse();
+        if (notification.metrics.maxScrollExtent > 0) {
+          _scheduleChromeAction(() => _chrome.reverse());
+        } else {
+          _cancelChromeSettle();
+        }
       case ScrollDirection.forward:
-        _chrome.forward();
+        _scheduleChromeAction(() => _chrome.forward());
       case ScrollDirection.idle:
         break;
     }
@@ -101,6 +140,18 @@ class _QueuePaneState extends ConsumerState<QueuePane>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    // If auto-hide is switched off while this pane is alive, whatever is
+    // hidden comes straight back — the setting wins over the current state.
+    ref.listen(
+      settingsProvider.select((s) => s.autoHideBottomBarOnScroll),
+      (_, autoHide) {
+        if (!autoHide && _chrome.value < 1) {
+          _cancelChromeSettle();
+          _chrome.forward();
+        }
+      },
+    );
 
     return Column(
       children: [
@@ -134,6 +185,7 @@ class _QueuePaneState extends ConsumerState<QueuePane>
                       key: const ValueKey('upnext'),
                       accent: widget.accent,
                       chrome: _chromeCurve,
+                      addedToTop: _addedToTop,
                     ),
             ),
           ),
@@ -172,10 +224,16 @@ class _UpNextList extends ConsumerStatefulWidget {
   /// step with the segment pill.
   final Animation<double> chrome;
 
+  /// Queue ids swiped to the top this session, most recent last. Owned by the
+  /// pane so it survives segment switches, and passed down so the manager can
+  /// stack each new swipe after the previous one.
+  final List<String> addedToTop;
+
   const _UpNextList({
     super.key,
     required this.accent,
     required this.chrome,
+    required this.addedToTop,
   });
 
   @override
@@ -258,7 +316,9 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
     try {
       await audioManager.removeFromQueue(absoluteIndex);
     } catch (_) {
-      if (mounted) setState(() => _dismissed.remove(item.queueId));
+      // Rare failure path — same Dismissible hazard as _addToTop: the row must
+      // actually leave the tree before it can come back.
+      _restoreRow(item.queueId);
       return;
     }
 
@@ -269,6 +329,54 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
     });
     _undoTimer = Timer(const Duration(seconds: 4), () {
       if (mounted) setState(() => _pendingRemoval = null);
+    });
+  }
+
+  /// The left-to-right swipe: push the entry to the top of the upcoming
+  /// section, remembering it in [widget.addedToTop] so the next swipe lands
+  /// just after it. Nothing leaves the queue, so nothing needs an undo path —
+  /// the reorder itself is the reversible action.
+  Future<void> _addToTop(
+    AudioPlayerManager audioManager,
+    QueueItem item,
+    List<QueueItem> queue,
+  ) async {
+    final absolute =
+        queue.indexWhere((queued) => queued.queueId == item.queueId);
+    if (absolute == -1) return;
+
+    // The Dismissible must leave the tree the moment onDismissed fires — it
+    // asserts if it survives its resize animation. Hide the row exactly like
+    // _remove does, then bring it back once the move has actually landed.
+    setState(() => _dismissed.add(item.queueId));
+
+    final topOrder = List<String>.of(widget.addedToTop)..add(item.queueId);
+    var moved = false;
+    try {
+      await audioManager.moveUpcomingToTop(item.queueId, topOrder);
+      moved = true;
+    } catch (_) {
+      // The move failed, so the row simply stays where it is.
+    }
+
+    if (!mounted) return;
+    if (moved) {
+      setState(() => widget.addedToTop
+        ..remove(item.queueId)
+        ..add(item.queueId));
+    }
+    _restoreRow(item.queueId);
+  }
+
+  /// Brings a hidden row back after the next frame. The manager's mutation can
+  /// resolve within the same microtask turn as [Dismissible.onDismissed], so
+  /// restoring in that turn rebuilds the row before its resize animation ever
+  /// saw it leave the tree — which trips the "dismissed Dismissible is still
+  /// part of the tree" assert. Waiting one frame guarantees the unmount.
+  void _restoreRow(String queueId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_dismissed.contains(queueId)) return;
+      setState(() => _dismissed.remove(queueId));
     });
   }
 
@@ -477,47 +585,30 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
   ) {
     return Dismissible(
       key: ValueKey('upnext_${item.queueId}'),
-      direction: DismissDirection.endToStart,
-      background: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PlayerTokens.s3,
-          vertical: 3,
-        ),
-        child: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: PlayerTokens.s4),
-          decoration: BoxDecoration(
-            borderRadius: PlayerTokens.brMd,
-            gradient: LinearGradient(
-              colors: [
-                Colors.redAccent.withValues(alpha: 0.0),
-                Colors.redAccent.withValues(alpha: 0.28),
-              ],
-            ),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.delete_outline_rounded, size: 20, color: Colors.white),
-              SizedBox(width: PlayerTokens.s1),
-              Text(
-                'Remove',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
+      direction: DismissDirection.horizontal,
+      background: _buildSwipeBackground(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: PlayerTokens.s4),
+        message: 'Add to top',
+        icon: Icons.vertical_align_top_rounded,
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
       ),
-      onDismissed: (_) {
-        final absolute =
-            queue.indexWhere((queued) => queued.queueId == item.queueId);
-        if (absolute == -1) return;
-        _remove(audioManager, item, absolute);
+      secondaryBackground: _buildSwipeBackground(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: PlayerTokens.s4),
+        message: 'Remove',
+        color: Colors.redAccent,
+        icon: Icons.delete_outline_rounded,
+      ),
+      onDismissed: (direction) {
+        if (direction == DismissDirection.startToEnd) {
+          _addToTop(audioManager, item, queue);
+        } else {
+          final absolute =
+              queue.indexWhere((queued) => queued.queueId == item.queueId);
+          if (absolute == -1) return;
+          _remove(audioManager, item, absolute);
+        }
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: PlayerTokens.s3),
@@ -533,6 +624,40 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Shared background for the swipe affordance: a full-height tinted slab with
+  /// the label and icon anchored to the side the finger is heading towards.
+  Widget _buildSwipeBackground({
+    required Alignment alignment,
+    required EdgeInsets padding,
+    required String message,
+    required IconData icon,
+    Color? color,
+  }) {
+    return Container(
+      alignment: alignment,
+      padding: padding,
+      decoration: BoxDecoration(
+        borderRadius: PlayerTokens.brMd,
+        color: color ?? Colors.white.withValues(alpha: 0.1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: Colors.white),
+          const SizedBox(width: PlayerTokens.s1),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }

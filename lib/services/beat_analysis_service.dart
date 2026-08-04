@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import '../domain/models/beat_map.dart';
 import '../domain/services/beat_analysis.dart';
 import 'cache_service.dart';
+import 'media_decode_gate.dart';
 
 /// Produces and caches the [BeatMap] for a song.
 ///
@@ -122,41 +123,47 @@ class BeatAnalysisService {
   /// Decodes any supported audio file to raw mono PCM at the analyser's sample
   /// rate. No audio filters: `-af` filters like compand or loudnorm introduce
   /// lookahead delay, which would shift every detected beat.
-  Future<File?> _decodeToPcm(String path) async {
-    final supportDir = await getApplicationSupportDirectory();
-    final tempDir = Directory(p.join(supportDir.path, 'beat_analysis_temp'));
-    if (!await tempDir.exists()) await tempDir.create(recursive: true);
+  ///
+  /// The decode goes through the shared gate so it never runs while a waveform
+  /// (or another analysis) is mid-decode of the same file.
+  Future<File?> _decodeToPcm(String path) {
+    return MediaDecodeGate.run(() async {
+      final supportDir = await getApplicationSupportDirectory();
+      final tempDir = Directory(p.join(supportDir.path, 'beat_analysis_temp'));
+      if (!await tempDir.exists()) await tempDir.create(recursive: true);
 
-    final outputPath = p.join(
-      tempDir.path,
-      'pcm_${DateTime.now().microsecondsSinceEpoch}.raw',
-    );
+      final outputPath = p.join(
+        tempDir.path,
+        'pcm_${DateTime.now().microsecondsSinceEpoch}.raw',
+      );
 
-    final session = await FFmpegKit.executeWithArguments([
-      '-threads', '1', // leave headroom for the audio callback
-      '-i', path,
-      '-vn', // ignore cover art and video streams
-      '-ac', '1', // mono
-      '-ar', '$analysisSampleRate',
-      '-f', _pcmFormat,
-      '-y', outputPath,
-    ]);
+      final session = await FFmpegKit.executeWithArguments([
+        '-threads', '1', // leave headroom for the audio callback
+        '-i', path,
+        '-vn', // ignore cover art and video streams
+        '-ac', '1', // mono
+        '-ar', '$analysisSampleRate',
+        '-f', _pcmFormat,
+        '-y', outputPath,
+      ]);
 
-    final rc = await session.getReturnCode();
-    final file = File(outputPath);
+      final rc = await session.getReturnCode();
+      final file = File(outputPath);
 
-    if (!ReturnCode.isSuccess(rc)) {
-      if (kDebugMode) {
-        debugPrint('BeatAnalysisService: ffmpeg decode failed ($rc) for $path');
+      if (!ReturnCode.isSuccess(rc)) {
+        if (kDebugMode) {
+          debugPrint(
+              'BeatAnalysisService: ffmpeg decode failed ($rc) for $path');
+        }
+        try {
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+        return null;
       }
-      try {
-        if (await file.exists()) await file.delete();
-      } catch (_) {}
-      return null;
-    }
 
-    if (!await file.exists() || await file.length() == 0) return null;
-    return file;
+      if (!await file.exists() || await file.length() == 0) return null;
+      return file;
+    });
   }
 
   Future<void> _writeCache(String filename, BeatMap map) async {

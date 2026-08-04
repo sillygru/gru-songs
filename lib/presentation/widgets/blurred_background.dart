@@ -32,6 +32,13 @@ class _BlurredBackgroundState extends State<BlurredBackground>
   /// Whether [_blurFile] is actually on disk.
   bool _blurFileExists = false;
 
+  /// How long an uncached blur waits before the cover is decoded and blurred.
+  ///
+  /// Track changes and screen opens are already a burst of playback and palette
+  /// work; generation is the heaviest single image op in the app, so it stands
+  /// back a beat. The low-res art layer beneath stays visible meanwhile.
+  static const Duration _generationDelay = Duration(milliseconds: 600);
+
   int _requestToken = 0;
   late AnimationController _spinController;
 
@@ -108,6 +115,11 @@ class _BlurredBackgroundState extends State<BlurredBackground>
       await completer.future;
       if (!mounted || token != _requestToken) return;
     }
+
+    // Let the track-change burst (buffering, palette isolates, beat decode)
+    // get a head start before this decode + blur eats the CPU.
+    await Future<void>.delayed(_generationDelay);
+    if (!mounted || token != _requestToken) return;
 
     var coverUrl = widget.url;
     final needsCoverRefresh = coverUrl.isEmpty ||

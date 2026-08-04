@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../providers/providers.dart';
+import '../../services/waveform_service.dart';
 
 /// Thin placeholder height while an uncached waveform is still generating.
 const double _collapsedAmplitude = 0.28;
@@ -53,6 +54,11 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   AnimationStatusListener? _routeStatusListener;
   Animation<double>? _monitoredAnimation;
   StreamSubscription<ProcessingState>? _playerStateSubscription;
+  StreamSubscription<List<double>>? _waveformSubscription;
+
+  /// Whether the uncached collapse→expand reveal has already started, so the
+  /// first partial emission animates it once and later ones do not restart it.
+  bool _revealed = false;
   Timer? _deferTimer;
   int _loadToken = 0;
 
@@ -78,6 +84,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   void dispose() {
     _cleanupRouteListener();
     _cleanupPlayerSubscription();
+    _waveformSubscription?.cancel();
     _deferTimer?.cancel();
     _loadToken++;
     _barAnimationController.dispose();
@@ -122,6 +129,9 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       _deferTimer?.cancel();
       _cleanupRouteListener();
       _cleanupPlayerSubscription();
+      _waveformSubscription?.cancel();
+      _waveformSubscription = null;
+      _revealed = false;
       _positionNotifier.value = Duration.zero;
       _cachedDisplayPeaks = null;
       _cachedWidth = 0;
@@ -222,17 +232,26 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
 
     final token = _loadToken;
     final currentFilename = widget.filename;
+    final waveformService = ref.read(waveformServiceProvider);
 
-    try {
-      final waveformService = ref.read(waveformServiceProvider);
-      final peaks =
-          await waveformService.getWaveform(widget.filename, widget.path);
-
+    // Each emission is a newer snapshot of the same decode: partial lists
+    // while the file is still being read, then the complete waveform. A cached
+    // song emits exactly once.
+    _waveformSubscription?.cancel();
+    _waveformSubscription = waveformService
+        .getWaveformProgressive(widget.filename, widget.path, widget.total)
+        .listen((peaks) {
       if (!mounted ||
           widget.filename != currentFilename ||
           token != _loadToken) {
         return;
       }
+
+      // A poll that was already in flight when the decode finished can land
+      // after the final full emission. The waveform only ever grows, so a
+      // shorter snapshot never wins — otherwise the bar could settle back to
+      // a partial width with nothing left to re-emit the complete one.
+      if (_peaks != null && peaks.length < _peaks!.length) return;
 
       setState(() {
         _peaks = peaks;
@@ -242,15 +261,18 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
 
       if (peaks.isEmpty) return;
 
-      if (expandFromCollapsed) {
+      if (expandFromCollapsed && !_revealed) {
+        _revealed = true;
         _barAnimationController.value = _collapsedAmplitude;
         unawaited(_barAnimationController.forward());
-      } else {
+      } else if (!_barAnimationController.isAnimating) {
+        // Later partials land mid-reveal; leave the animation alone until it
+        // has finished, then hold the bars at full height.
         _barAnimationController.value = 1.0;
       }
-    } catch (e) {
+    }, onError: (e) {
       debugPrint('WaveformProgressBar: load failed: $e');
-    }
+    });
   }
 
   String _formatDuration(Duration duration) {
@@ -344,7 +366,13 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
                 if (_cachedWidth != width || _cachedDisplayPeaks == null) {
                   _cachedWidth = width;
                   final totalBars = (width / 3).floor();
-                  _cachedDisplayPeaks = _downsample(peaks, totalBars);
+                  // Progressive partials carry fewer bars than the full
+                  // waveform; draw only that share of the width so the bars
+                  // grow left-to-right as the decode fills in.
+                  final fraction =
+                      peaks.length / WaveformService.targetWaveformSamples;
+                  final drawBars = math.max(1, (totalBars * fraction).round());
+                  _cachedDisplayPeaks = _downsample(peaks, drawBars);
                 }
 
                 return AnimatedBuilder(
@@ -521,9 +549,14 @@ class WaveformPainter extends CustomPainter {
       return;
     }
 
-    final barOffset = 2.35 / peakData.length;
+    // The playhead lives on the full-width bar grid, not on peakData.length:
+    // a progressive emission draws only the left share of the bars while the
+    // decode fills in, and the playhead must stay where it belongs in the song
+    // regardless. For a complete waveform peakData.length == totalBarsCount, so
+    // this is identical to the old math.
+    final barOffset = 2.35 / totalBarsCount;
     final adjustedProgress = (progress - barOffset).clamp(0.0, 1.0);
-    final progressBarIndex = adjustedProgress * peakData.length;
+    final progressBarIndex = adjustedProgress * totalBarsCount;
 
     for (var i = 0; i < peakData.length; i++) {
       final v = peakData[i];

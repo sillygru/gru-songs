@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 class TranslationResponse {
   final String text;
   final String? detectedSourceLang;
@@ -33,42 +35,110 @@ class LingvaTranslateService {
 
   String get host => hosts.first;
 
+  /// Script range for non-Latin [targetLang]s, or null for Latin-script
+  /// targets (en, es, fr, de, ...) where script detection cannot tell English
+  /// from French — those rely on the backend's auto-detect instead.
+  static RegExp? _scriptFor(String targetLang) {
+    switch (targetLang.toLowerCase()) {
+      case 'ja':
+        return RegExp(r'[\u3040-\u30ff\u4e00-\u9faf]');
+      case 'ko':
+        return RegExp(r'[\uac00-\ud7af]');
+      case 'zh':
+        return RegExp(r'[\u4e00-\u9faf]');
+      case 'ru':
+      case 'uk':
+        return RegExp(r'[\u0400-\u04ff]');
+      case 'ar':
+        return RegExp(r'[\u0600-\u06ff]');
+      case 'hi':
+        return RegExp(r'[\u0900-\u097f]');
+      case 'el':
+        return RegExp(r'[\u0370-\u03ff]');
+      case 'th':
+        return RegExp(r'[\u0e00-\u0e7f]');
+      default:
+        return null;
+    }
+  }
+
   /// Fast offline check to determine if text is already in [targetLang] script.
   bool isAlreadyInTargetScript(String text, String targetLang) {
     if (text.trim().isEmpty) return false;
+    final script = _scriptFor(targetLang);
+    if (script == null) return false;
+    return script.allMatches(text).length > 10;
+  }
 
-    switch (targetLang.toLowerCase()) {
-      case 'ja':
-        final matchCount =
-            RegExp(r'[\u3040-\u30ff\u4e00-\u9faf]').allMatches(text).length;
-        return matchCount > 10;
-      case 'ko':
-        final matchCount = RegExp(r'[\uac00-\ud7af]').allMatches(text).length;
-        return matchCount > 10;
-      case 'zh':
-        final matchCount = RegExp(r'[\u4e00-\u9faf]').allMatches(text).length;
-        return matchCount > 10;
-      case 'ru':
-      case 'uk':
-        final matchCount = RegExp(r'[\u0400-\u04ff]').allMatches(text).length;
-        return matchCount > 10;
-      case 'ar':
-        final matchCount = RegExp(r'[\u0600-\u06ff]').allMatches(text).length;
-        return matchCount > 10;
-      case 'hi':
-        final matchCount = RegExp(r'[\u0900-\u097f]').allMatches(text).length;
-        return matchCount > 10;
-      case 'el':
-        final matchCount = RegExp(r'[\u0370-\u03ff]').allMatches(text).length;
-        return matchCount > 10;
-      default:
-        return false;
+  /// Any character outside the Latin range, digits, whitespace and Unicode
+  /// punctuation/symbols marks a foreign script. Emoji, numbers and full-width
+  /// punctuation are excluded so a stray symbol never flags a line.
+  static final RegExp _foreignScript = RegExp(
+    r'[^\u0000-\u024F\s\d\p{P}\p{S}]',
+    unicode: true,
+  );
+
+  /// Whether [line] carries enough non-Latin characters to count as not being
+  /// written in a Latin-script language. The threshold is low on purpose: a
+  /// mostly-English line that dips into kana should still be translated.
+  @visibleForTesting
+  static bool hasSignificantForeignScript(String line) {
+    return _foreignScript.allMatches(line).length >= 3;
+  }
+
+  /// Whether [line] must be translated before it can count as already in
+  /// [targetLang].
+  ///
+  /// Non-Latin targets are matched by script: a line is already in the target
+  /// when a clear majority of its characters are written in that script.
+  /// Latin-script targets cannot be told apart offline, so the rule inverts —
+  /// a line with significant foreign script needs translation, a Latin line is
+  /// assumed to already be in the target.
+  @visibleForTesting
+  static bool lineNeedsTranslation(String line, String targetLang) {
+    final script = _scriptFor(targetLang);
+    if (script == null) return hasSignificantForeignScript(line);
+    final count = script.allMatches(line).length;
+    if (count == 0) return true;
+    // Majority script wins: a line that is mostly kana/kanji is already in
+    // Japanese, one that only dips into it still needs translating. A pure
+    // count threshold would send short all-target lines to the backend too,
+    // letting them skew the batch's auto-detected language.
+    final meaningful = line.replaceAll(RegExp(r'\s', unicode: true), '').length;
+    return count / meaningful < 0.5;
+  }
+
+  /// Splices translated lines back into their original positions. Entries that
+  /// did not need translation (already in the target language) keep their
+  /// original text; [translatedLines] must hold exactly one entry per line
+  /// that did need translating, in order.
+  @visibleForTesting
+  static List<String> spliceTranslations({
+    required List<String> originalLines,
+    required List<bool>? needsTranslation,
+    required List<String> translatedLines,
+  }) {
+    final result = <String>[];
+    var cursor = 0;
+    for (int i = 0; i < originalLines.length; i++) {
+      if (needsTranslation != null && !needsTranslation[i]) {
+        result.add(originalLines[i]);
+      } else {
+        result.add(translatedLines[cursor++]);
+      }
     }
+    return result;
   }
 
   /// Translates raw lyrics text (LRC format or plain text) into [targetLang].
   /// Preserves LRC timestamps ([mm:ss.xx]), metadata headers ([ar:..]),
   /// and line alignment.
+  ///
+  /// Lines already in the target language are not sent to the backend. The
+  /// backend auto-detects the *dominant* language of the whole payload, so a
+  /// mostly-English song with Japanese lines would be judged "already English"
+  /// and the Japanese parts never translated. Splitting per line means only the
+  /// foreign lines go out, and the translation is spliced back in.
   Future<TranslationResponse> translateLyrics({
     required String lyrics,
     required String targetLang,
@@ -76,13 +146,6 @@ class LingvaTranslateService {
   }) async {
     if (lyrics.trim().isEmpty) {
       return TranslationResponse(text: lyrics);
-    }
-
-    if (isAlreadyInTargetScript(lyrics, targetLang)) {
-      return TranslationResponse(
-        text: lyrics,
-        detectedSourceLang: targetLang.toLowerCase(),
-      );
     }
 
     final lines = lyrics.split('\n');
@@ -132,7 +195,35 @@ class LingvaTranslateService {
       return TranslationResponse(text: lyrics);
     }
 
-    final batches = _createBatches(pendingTextLines);
+    final hasForeignScript =
+        pendingTextLines.any((p) => hasSignificantForeignScript(p.text));
+
+    // Entirely Latin-script lyrics (English, French, German, ...) cannot be
+    // classified offline, so they keep the whole-text path and the backend's
+    // auto-detect decides the language. Mixed-script lyrics are the case the
+    // per-line split exists for.
+    List<bool>? needsTranslation;
+    if (hasForeignScript) {
+      needsTranslation = [
+        for (final p in pendingTextLines)
+          lineNeedsTranslation(p.text, targetLang),
+      ];
+      if (!needsTranslation.any((needs) => needs)) {
+        return TranslationResponse(
+          text: lyrics,
+          detectedSourceLang: targetLang.toLowerCase(),
+        );
+      }
+    }
+
+    final toTranslate = <_PendingLine>[];
+    for (int i = 0; i < pendingTextLines.length; i++) {
+      if (needsTranslation == null || needsTranslation[i]) {
+        toTranslate.add(pendingTextLines[i]);
+      }
+    }
+
+    final batches = _createBatches(toTranslate);
 
     // Translate every batch concurrently; each batch races its backends.
     final batchResults = await Future.wait(
@@ -146,16 +237,24 @@ class LingvaTranslateService {
     );
 
     String? detectedSource;
-    for (int i = 0; i < batches.length; i++) {
-      final batch = batches[i];
-      final batchResult = batchResults[i];
+    for (final batchResult in batchResults) {
       detectedSource ??= batchResult.detectedSourceLang;
+    }
 
-      for (int k = 0; k < batch.length; k++) {
-        final item = batch[k];
-        final translated = batchResult.lines[k];
-        resultLines[item.index] = '${item.timePrefix}$translated';
-      }
+    // The translated lines come back in the same order they were sent; kept
+    // lines (already in the target language) retain their original text.
+    final translatedLines = <String>[
+      for (final batchResult in batchResults) ...batchResult.lines,
+    ];
+    final spliced = spliceTranslations(
+      originalLines: [
+        for (final p in pendingTextLines) '${p.timePrefix}${p.text}',
+      ],
+      needsTranslation: needsTranslation,
+      translatedLines: translatedLines,
+    );
+    for (int i = 0; i < pendingTextLines.length; i++) {
+      resultLines[pendingTextLines[i].index] = spliced[i];
     }
 
     final fullText = resultLines.whereType<String>().join('\n');
