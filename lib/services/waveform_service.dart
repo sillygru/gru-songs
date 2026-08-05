@@ -105,8 +105,11 @@ class WaveformService {
       try {
         await _runProgressive(filename, path, total, controller);
       } finally {
-        if (!controller.isClosed) await controller.close();
+        // Unregister before closing so a request that lands right after the
+        // cache write starts a fresh controller and reads the cache, instead
+        // of subscribing to this just-finished stream and receiving nothing.
         _progressive.remove(filename);
+        if (!controller.isClosed) await controller.close();
       }
     }());
     return controller.stream;

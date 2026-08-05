@@ -90,6 +90,10 @@ class ArtistAlbumArtNotifier extends Notifier<ArtistAlbumArtState> {
       FileImage(File(existingPath)).evict();
     }
     await DatabaseService.instance.deleteArtistArt(artistName);
+    // Lift the persisted miss first, so a future session may try again
+    // instead of treating a removed art as a permanent miss. The re-mark keeps
+    // the in-session suppression, so it is not instantly re-fetched.
+    PassiveArtFetcherService.instance.forgetArtistAttempt(artistName);
     PassiveArtFetcherService.instance.markArtistAttempted(artistName);
     final updated = Map<String, String>.from(state.artistArt);
     updated.remove(artistName.toLowerCase());
@@ -127,8 +131,10 @@ class ArtistAlbumArtNotifier extends Notifier<ArtistAlbumArtState> {
     await DatabaseService.instance.deleteAlbumArt(albumKey);
     final parts = albumKey.split('|');
     if (parts.length == 2) {
+      PassiveArtFetcherService.instance.forgetAlbumAttempt(parts[1], parts[0]);
       PassiveArtFetcherService.instance.markAlbumAttempted(parts[1], parts[0]);
     } else {
+      PassiveArtFetcherService.instance.forgetAlbumAttempt(albumKey, null);
       PassiveArtFetcherService.instance.markAlbumAttempted(albumKey, null);
     }
     final updated = Map<String, String>.from(state.albumArt);
@@ -139,6 +145,9 @@ class ArtistAlbumArtNotifier extends Notifier<ArtistAlbumArtState> {
   Future<void> clearAll() async {
     await DatabaseService.instance.clearArtistArt();
     await DatabaseService.instance.clearAlbumArt();
+    // Art was wiped on purpose: let the fetcher treat the whole library as
+    // unfetched again instead of remembering old attempts.
+    await PassiveArtFetcherService.instance.clearAttempted();
     state = const ArtistAlbumArtState(isLoaded: true);
   }
 }

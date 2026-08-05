@@ -387,11 +387,13 @@ class OnlineMetadataService {
     final clean = cleanTag(artistName);
     if (clean == null) return null;
     final encoded = Uri.encodeComponent(clean).replaceAll('%20', '+');
-    final galleryResult = await _searchLastfmPage('/music/$encoded/+images');
-    if (galleryResult != null && galleryResult.isNotEmpty) {
-      return galleryResult;
+    // The artist page carries an og:image meta tag in the common case; the
+    // images gallery is a heavier page, so fetch it only when needed.
+    final mainResult = await _searchLastfmPage('/music/$encoded');
+    if (mainResult != null && mainResult.isNotEmpty) {
+      return mainResult;
     }
-    return _searchLastfmPage('/music/$encoded');
+    return _searchLastfmPage('/music/$encoded/+images');
   }
 
   /// Searches Last.fm by scraping HTML for an album cover image.
@@ -404,12 +406,12 @@ class OnlineMetadataService {
     final encodedAlbum = Uri.encodeComponent(cleanAlbum).replaceAll('%20', '+');
     final encodedArtist =
         Uri.encodeComponent(cleanArtist).replaceAll('%20', '+');
-    final galleryResult =
-        await _searchLastfmPage('/music/$encodedArtist/$encodedAlbum/+images');
-    if (galleryResult != null && galleryResult.isNotEmpty) {
-      return galleryResult;
+    final mainResult =
+        await _searchLastfmPage('/music/$encodedArtist/$encodedAlbum');
+    if (mainResult != null && mainResult.isNotEmpty) {
+      return mainResult;
     }
-    return _searchLastfmPage('/music/$encodedArtist/$encodedAlbum');
+    return _searchLastfmPage('/music/$encodedArtist/$encodedAlbum/+images');
   }
 
   /// Fetches a Last.fm page and extracts the best image URL from its HTML.

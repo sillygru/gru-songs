@@ -22,6 +22,11 @@ class SyncService {
   String? _deviceName;
 
   static const String _filePrefix = 'wispie_sync_v1_';
+
+  /// Hash of the last successfully uploaded snapshot payload. When a sync runs
+  /// and the local payload is unchanged, the upload is skipped entirely — an
+  /// unchanged library should cost nothing but a tiny file listing.
+  static const String _lastUploadHashKey = 'sync_last_upload_hash';
   static const List<String> _syncableSettingsKeys = [
     'theme_mode',
     'use_cover_color',
@@ -110,6 +115,10 @@ class SyncService {
 
       onProgress?.call('Preparing local snapshot...', 0.2);
       final snapshot = await _composeSnapshot(syncSettings: syncSettings);
+      final prefs = await SharedPreferences.getInstance();
+      final lastUploadHash = prefs.getString(_lastUploadHashKey);
+      final payloadHash =
+          await Isolate.run(() => _snapshotPayloadHash(snapshot));
       final fileName =
           '$_filePrefix${_deviceId}_${DateTime.now().millisecondsSinceEpoch}.json';
 
@@ -144,8 +153,16 @@ class SyncService {
       }
 
       await _setProcessedFiles(processedFiles);
-      onProgress?.call('Uploading snapshot to cloud...', 0.8);
-      await _uploadSnapshot(token, fileName, snapshot);
+
+      if (payloadHash == lastUploadHash) {
+        onProgress?.call('No local changes to upload', 0.8);
+      } else {
+        onProgress?.call('Uploading snapshot to cloud...', 0.8);
+        final uploaded = await _uploadSnapshot(token, fileName, snapshot);
+        if (uploaded) {
+          await prefs.setString(_lastUploadHashKey, payloadHash);
+        }
+      }
       onProgress?.call('Cleaning up old snapshots...', 0.95);
       await _cleanupOldSnapshots(token, existingFiles);
       await _updateLastSyncTimestamp();
@@ -189,7 +206,13 @@ class SyncService {
           '$_filePrefix${_deviceId}_${DateTime.now().millisecondsSinceEpoch}.json';
 
       onProgress?.call('Uploading fresh snapshot...', 0.85);
-      await _uploadSnapshot(token, fileName, snapshot);
+      final uploaded = await _uploadSnapshot(token, fileName, snapshot);
+      if (uploaded) {
+        final prefs = await SharedPreferences.getInstance();
+        final payloadHash =
+            await Isolate.run(() => _snapshotPayloadHash(snapshot));
+        await prefs.setString(_lastUploadHashKey, payloadHash);
+      }
       await _setProcessedFiles({fileName});
       await _updateLastSyncTimestamp();
 
@@ -424,7 +447,7 @@ class SyncService {
     throw Exception('Download failed: ${response.statusCode}');
   }
 
-  Future<void> _uploadSnapshot(
+  Future<bool> _uploadSnapshot(
       String token, String fileName, Map<String, dynamic> snapshot) async {
     final metadata = jsonEncode({
       'name': fileName,
@@ -459,7 +482,39 @@ class SyncService {
     if (response.statusCode != 200 && response.statusCode != 201) {
       debugPrint(
           'SyncService: upload failed: ${response.statusCode} ${response.body}');
+      return false;
     }
+    return true;
+  }
+
+  /// Stable digest of the data that would be uploaded, excluding volatile
+  /// fields like created_at and device_name, so an unchanged library hashes
+  /// identically on the next sync and the upload can be skipped. Row lists are
+  /// sorted by their JSON encoding so the digest never depends on the
+  /// database's row order.
+  static String _snapshotPayloadHash(Map<String, dynamic> snapshot) {
+    final payload = <String, dynamic>{};
+    for (final key in const [
+      'play_events',
+      'favorites',
+      'suggestless',
+      'hidden',
+      'playlists',
+      'merged_groups',
+      'settings',
+      'artist_art',
+      'album_art',
+    ]) {
+      final value = snapshot[key];
+      if (value is List) {
+        final copy = List<Object?>.from(value);
+        copy.sort((a, b) => jsonEncode(a).compareTo(jsonEncode(b)));
+        payload[key] = copy;
+      } else {
+        payload[key] = value;
+      }
+    }
+    return sha256.convert(utf8.encode(jsonEncode(payload))).toString();
   }
 
   Future<void> _deleteFile(String token, String fileId) async {

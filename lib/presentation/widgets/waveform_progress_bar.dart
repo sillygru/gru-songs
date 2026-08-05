@@ -55,10 +55,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   Animation<double>? _monitoredAnimation;
   StreamSubscription<ProcessingState>? _playerStateSubscription;
   StreamSubscription<List<double>>? _waveformSubscription;
-
-  /// Whether the uncached collapse→expand reveal has already started, so the
-  /// first partial emission animates it once and later ones do not restart it.
-  bool _revealed = false;
   Timer? _deferTimer;
   int _loadToken = 0;
 
@@ -68,7 +64,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     _barAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-      value: 0.0,
+      value: 1.0,
     );
     _barAnimation = CurvedAnimation(
       parent: _barAnimationController,
@@ -131,13 +127,12 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       _cleanupPlayerSubscription();
       _waveformSubscription?.cancel();
       _waveformSubscription = null;
-      _revealed = false;
       _positionNotifier.value = Duration.zero;
       _cachedDisplayPeaks = null;
       _cachedWidth = 0;
       _labelStyle = null;
       _peaks = null;
-      _barAnimationController.value = 0.0;
+      _barAnimationController.value = 1.0;
 
       _scheduleWaveformLoad();
     }
@@ -167,7 +162,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     }
 
     if (isCached) {
-      await _loadWaveform(expandFromCollapsed: false);
+      await _loadWaveform();
       return;
     }
 
@@ -223,11 +218,11 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       if (!mounted || widget.filename != filename || token != _loadToken) {
         return;
       }
-      await _loadWaveform(expandFromCollapsed: true);
+      await _loadWaveform();
     });
   }
 
-  Future<void> _loadWaveform({required bool expandFromCollapsed}) async {
+  Future<void> _loadWaveform() async {
     if (widget.filename.isEmpty || widget.path.isEmpty) return;
 
     final token = _loadToken;
@@ -259,17 +254,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
         _cachedWidth = 0;
       });
 
-      if (peaks.isEmpty) return;
-
-      if (expandFromCollapsed && !_revealed) {
-        _revealed = true;
-        _barAnimationController.value = _collapsedAmplitude;
-        unawaited(_barAnimationController.forward());
-      } else if (!_barAnimationController.isAnimating) {
-        // Later partials land mid-reveal; leave the animation alone until it
-        // has finished, then hold the bars at full height.
-        _barAnimationController.value = 1.0;
-      }
+      _barAnimationController.value = 1.0;
     }, onError: (e) {
       debugPrint('WaveformProgressBar: load failed: $e');
     });
