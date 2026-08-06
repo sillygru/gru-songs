@@ -35,9 +35,19 @@ class WaveformService {
   /// one decode instead of starting a second FFmpeg session for the same song.
   final Map<String, StreamController<List<double>>> _progressive = {};
 
-  /// Fast check if the waveform for [filename] is already cached on disk.
+  /// Completed waveforms keyed by filename, so an already-decoded song renders
+  /// immediately on a later open without another disk read.
+  final Map<String, List<double>> _memoryCache = {};
+
+  /// Synchronous lookup of an already-decoded waveform, so the player bar can
+  /// paint it on the very first frame without an async/disk round-trip.
+  List<double>? cachedWaveformSync(String filename) => _memoryCache[filename];
+
+  /// Fast check if the waveform for [filename] is already cached, either in
+  /// memory (decoded this session) or on disk.
   Future<bool> isWaveformCached(String filename) async {
     if (filename.isEmpty) return false;
+    if (_memoryCache.containsKey(filename)) return true;
     final cacheFile = await _cacheService.getWaveformCacheFile(filename);
     return cacheFile.exists();
   }
@@ -58,12 +68,17 @@ class WaveformService {
   }
 
   Future<List<double>> _getWaveform(String filename, String path) async {
+    final cached = _memoryCache[filename];
+    if (cached != null) return cached;
+
     final cacheFile = await _cacheService.getWaveformCacheFile(filename);
     if (await cacheFile.exists()) {
       try {
         final content = await cacheFile.readAsString();
         final List<dynamic> json = jsonDecode(content);
-        return json.cast<double>();
+        final samples = json.cast<double>();
+        _memoryCache[filename] = samples;
+        return samples;
       } catch (e) {
         debugPrint('Error reading waveform cache: $e');
       }
@@ -72,6 +87,7 @@ class WaveformService {
     final samples = await _extractWaveformFast(path);
     if (samples.isEmpty) return const [];
 
+    _memoryCache[filename] = samples;
     try {
       final cachePath = cacheFile.path;
       await Isolate.run(() => writeWaveformCacheFile(cachePath, samples));
@@ -96,6 +112,9 @@ class WaveformService {
     String path,
     Duration total,
   ) {
+    final cached = _memoryCache[filename];
+    if (cached != null) return Stream.value(cached);
+
     final existing = _progressive[filename];
     if (existing != null) return existing.stream;
 
@@ -131,7 +150,9 @@ class WaveformService {
       try {
         final content = await cacheFile.readAsString();
         final List<dynamic> json = jsonDecode(content);
-        controller.add(json.cast<double>());
+        final samples = json.cast<double>();
+        _memoryCache[filename] = samples;
+        controller.add(samples);
       } catch (e) {
         debugPrint('Error reading waveform cache: $e');
       }
@@ -146,6 +167,7 @@ class WaveformService {
       },
     );
     if (samples.isEmpty) return;
+    _memoryCache[filename] = samples;
     if (!controller.isClosed) controller.add(samples);
 
     try {

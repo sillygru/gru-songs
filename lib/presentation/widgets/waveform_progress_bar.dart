@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio/just_audio.dart';
 
 import '../../providers/providers.dart';
 import '../../services/waveform_service.dart';
@@ -51,19 +50,20 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   TextStyle? _labelStyle;
   String _formattedTotalTime = '0:00';
 
-  AnimationStatusListener? _routeStatusListener;
-  Animation<double>? _monitoredAnimation;
-  StreamSubscription<ProcessingState>? _playerStateSubscription;
   StreamSubscription<List<double>>? _waveformSubscription;
   Timer? _deferTimer;
   int _loadToken = 0;
+
+  /// Whether the collapse→full reveal has already run, so a later uncached
+  /// partial (which lands mid-reveal or after) does not restart it.
+  bool _revealed = false;
 
   @override
   void initState() {
     super.initState();
     _barAnimationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 350),
       value: 1.0,
     );
     _barAnimation = CurvedAnimation(
@@ -78,8 +78,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
 
   @override
   void dispose() {
-    _cleanupRouteListener();
-    _cleanupPlayerSubscription();
     _waveformSubscription?.cancel();
     _deferTimer?.cancel();
     _loadToken++;
@@ -88,19 +86,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     _positionNotifier.dispose();
     _dragPositionNotifier.dispose();
     super.dispose();
-  }
-
-  void _cleanupRouteListener() {
-    if (_routeStatusListener != null && _monitoredAnimation != null) {
-      _monitoredAnimation!.removeStatusListener(_routeStatusListener!);
-      _routeStatusListener = null;
-      _monitoredAnimation = null;
-    }
-  }
-
-  void _cleanupPlayerSubscription() {
-    _playerStateSubscription?.cancel();
-    _playerStateSubscription = null;
   }
 
   void _subscribeToPositionStream() {
@@ -123,8 +108,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     if (oldWidget.filename != widget.filename) {
       _loadToken++;
       _deferTimer?.cancel();
-      _cleanupRouteListener();
-      _cleanupPlayerSubscription();
       _waveformSubscription?.cancel();
       _waveformSubscription = null;
       _positionNotifier.value = Duration.zero;
@@ -132,6 +115,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       _cachedWidth = 0;
       _labelStyle = null;
       _peaks = null;
+      _revealed = false;
       _barAnimationController.value = 1.0;
 
       _scheduleWaveformLoad();
@@ -147,8 +131,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   }
 
   Future<void> _scheduleWaveformLoad() async {
-    _cleanupRouteListener();
-    _cleanupPlayerSubscription();
     _deferTimer?.cancel();
     if (widget.filename.isEmpty || widget.path.isEmpty) return;
 
@@ -156,66 +138,36 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     final token = ++_loadToken;
     final waveformService = ref.read(waveformServiceProvider);
 
+    // Already decoded this session: paint it on the very first frame instead of
+    // waiting on an async/disk lookup.
+    final inMemory = waveformService.cachedWaveformSync(currentFilename);
+    if (inMemory != null && inMemory.isNotEmpty && mounted) {
+      setState(() {
+        _peaks = inMemory;
+        _cachedDisplayPeaks = null;
+        _cachedWidth = 0;
+      });
+      _revealWaveform();
+      return;
+    }
+
     final isCached = await waveformService.isWaveformCached(currentFilename);
     if (!mounted || widget.filename != currentFilename || token != _loadToken) {
       return;
     }
 
+    // Cached on disk: load now — no waiting.
     if (isCached) {
       await _loadWaveform();
       return;
     }
 
-    final route = ModalRoute.of(context);
-    final animation = route?.animation;
-    if (animation != null && !animation.isCompleted) {
-      _monitoredAnimation = animation;
-      _routeStatusListener = (status) {
-        if (status == AnimationStatus.completed) {
-          _cleanupRouteListener();
-          if (mounted &&
-              widget.filename == currentFilename &&
-              token == _loadToken) {
-            _waitForPlayerReadyAndExtract(currentFilename, token);
-          }
-        }
-      };
-      animation.addStatusListener(_routeStatusListener!);
-      return;
-    }
-
-    _waitForPlayerReadyAndExtract(currentFilename, token);
-  }
-
-  void _waitForPlayerReadyAndExtract(String filename, int token) {
-    _cleanupPlayerSubscription();
-    _deferTimer?.cancel();
-
-    final audioManager = ref.read(audioPlayerManagerProvider);
-    final player = audioManager.player;
-
-    final currentState = player.processingState;
-    if (currentState == ProcessingState.ready ||
-        currentState == ProcessingState.completed) {
-      _scheduleUncachedExtractAfterDelay(filename, token);
-      return;
-    }
-
-    _playerStateSubscription = player.processingStateStream.listen((state) {
-      if (state == ProcessingState.ready ||
-          state == ProcessingState.completed) {
-        _cleanupPlayerSubscription();
-        if (mounted && widget.filename == filename && token == _loadToken) {
-          _scheduleUncachedExtractAfterDelay(filename, token);
-        }
-      }
-    });
-  }
-
-  void _scheduleUncachedExtractAfterDelay(String filename, int token) {
-    _deferTimer?.cancel();
-    _deferTimer = Timer(const Duration(milliseconds: 1000), () async {
-      if (!mounted || widget.filename != filename || token != _loadToken) {
+    // Uncached: give the player a brief head start, then decode. The stream
+    // fills left-to-right as FFmpeg writes the PCM.
+    _deferTimer = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted ||
+          widget.filename != currentFilename ||
+          token != _loadToken) {
         return;
       }
       await _loadWaveform();
@@ -254,10 +206,23 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
         _cachedWidth = 0;
       });
 
-      _barAnimationController.value = 1.0;
+      _revealWaveform();
     }, onError: (e) {
       debugPrint('WaveformProgressBar: load failed: $e');
     });
+  }
+
+  /// Subtle collapse→full reveal on the first real emission. Later uncached
+  /// partials land mid-reveal (or after it has finished) and leave the running
+  /// animation alone, so the bars keep growing left-to-right instead of
+  /// restarting a bounce each poll.
+  void _revealWaveform() {
+    if (_revealed) return;
+    _revealed = true;
+    // Grow the bars in from zero: each new set of peaks (its own snapshot, and
+    // uncached partials filling left-to-right) holds the bar heights at the
+    // running value until the reveal finishes, then stays fully grown.
+    unawaited(_barAnimationController.forward(from: 0.0));
   }
 
   String _formatDuration(Duration duration) {
