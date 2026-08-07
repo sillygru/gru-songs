@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wispie/models/song.dart';
 import 'package:wispie/providers/providers.dart';
 import 'package:wispie/services/database_service.dart';
@@ -47,6 +48,7 @@ void main() {
   setUpAll(() {
     testEnv = TestEnvironment();
     testEnv.setUp();
+    SharedPreferences.setMockInitialValues({});
   });
 
   tearDownAll(() {

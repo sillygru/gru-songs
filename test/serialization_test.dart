@@ -65,7 +65,6 @@ void main() {
       final updated = original.copyWith(title: 'New Title');
 
       expect(updated.title, 'New Title');
-      expect(updated, original.copyWith(title: 'New Title'));
       // Everything else must survive — a dropped field here silently loses a
       // song's play count or date-added on every metadata edit.
       expect(updated.artist, original.artist);

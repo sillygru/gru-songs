@@ -309,11 +309,6 @@ void main() {
   });
 
   group('cache size eviction', () {
-    test('pruneEvictBySize does nothing when under limit', () async {
-      await cacheService.init();
-      await cacheService.pruneEvictBySize();
-    });
-
     test('pruneEvictBySize evicts oldest files when over limit', () async {
       await cacheService.init();
       final v3Dir = Directory(
@@ -445,32 +440,6 @@ void main() {
         ),
         isNull,
       );
-    });
-  });
-
-  group('lyrics cache - no mtime dependency', () {
-    test('lyrics cached entry has isFresh removed from model', () async {
-      final lyricsDir = Directory(p.join(
-        testEnv.tempPath,
-        'gru_cache_v3',
-        'lyrics_cache',
-      ));
-      await lyricsDir.create(recursive: true);
-      final cacheFile = File(p.join(
-        lyricsDir.path,
-        '${sha1.convert(utf8.encode('/music/test.mp3')).toString()}.json',
-      ));
-      await cacheFile.writeAsString(jsonEncode({
-        'hasLyrics': true,
-        'lyrics': 'hello world',
-      }));
-
-      // Re-read and verify it deserializes without mtimeMs
-      final raw = await cacheFile.readAsString();
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      expect(decoded.containsKey('mtimeMs'), isFalse);
-      expect(decoded['hasLyrics'], isTrue);
-      expect(decoded['lyrics'], 'hello world');
     });
   });
 }

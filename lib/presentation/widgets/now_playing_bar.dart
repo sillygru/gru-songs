@@ -65,6 +65,13 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
           _lastSongId = metadata.id;
         }
 
+        final song = ref
+            .watch(songsProvider)
+            .asData
+            ?.value
+            .where((item) => item.filename == metadata.id)
+            .firstOrNull;
+
         return GestureDetector(
           onTap: () => _openPlayer(context, metadata),
           child: Padding(
@@ -78,6 +85,7 @@ class _NowPlayingBarState extends ConsumerState<NowPlayingBar> {
               isDesktopOrTablet: isDesktop || isIPad,
               compact: widget.compact,
               embedded: widget.embedded,
+              coverVersion: song?.mtime,
             ),
           ),
         );
@@ -95,6 +103,7 @@ class _NowPlayingContent extends ConsumerWidget {
   final bool isDesktopOrTablet;
   final bool compact;
   final bool embedded;
+  final Object? coverVersion;
 
   const _NowPlayingContent({
     required this.metadata,
@@ -105,6 +114,7 @@ class _NowPlayingContent extends ConsumerWidget {
     required this.isDesktopOrTablet,
     required this.compact,
     required this.embedded,
+    this.coverVersion,
   });
 
   @override
@@ -137,6 +147,7 @@ class _NowPlayingContent extends ConsumerWidget {
                             key: ValueKey('now_playing_art_${metadata.id}'),
                             url: metadata.artUri?.toString() ?? '',
                             filename: metadata.id,
+                            cacheVersion: coverVersion,
                             width: imageSize,
                             height: imageSize,
                             fit: BoxFit.cover,

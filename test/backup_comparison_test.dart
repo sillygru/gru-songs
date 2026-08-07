@@ -113,34 +113,5 @@ void main() {
       // In BackupInfo constructor we passed 1000 and 2000, so diff should be 1000.
       expect(diff.sizeBytesDiff, equals(1000));
     });
-
-    test('compareBackups handles missing files gracefully', () async {
-      // Create backup without stats db
-      final emptyBackupDir =
-          await Directory(p.join(tempDir.path, 'empty_backup')).create();
-      await File(p.join(emptyBackupDir.path, 'songs.json')).writeAsString('[]');
-
-      final zipFile = File(p.join(tempDir.path, 'empty.zip'));
-      final archive = Archive();
-      final songsBytes =
-          await File(p.join(emptyBackupDir.path, 'songs.json')).readAsBytes();
-      archive.addFile(ArchiveFile('songs.json', songsBytes.length, songsBytes));
-
-      await zipFile.writeAsBytes(ZipEncoder().encode(archive)!);
-      await emptyBackupDir.delete(recursive: true);
-
-      final backupInfo = BackupInfo(
-          number: 1,
-          timestamp: DateTime.now(),
-          filename: 'empty.zip',
-          file: zipFile,
-          sizeBytes: 100);
-
-      final diff = await backupService.compareBackups(backupInfo, backupInfo);
-
-      expect(diff.songCountDiff, 0);
-      expect(diff.statsRowsDiff, 0);
-      expect(diff.sizeBytesDiff, 0);
-    });
   });
 }

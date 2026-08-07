@@ -1149,10 +1149,16 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
           .read(fileManagerServiceProvider)
           .updateSongCover(song, imagePath);
 
+      final fileMtime = await _statMtime(song.url, song.mtime);
+      final coverRevision = fileMtime == null
+          ? DateTime.now().millisecondsSinceEpoch / 1000.0
+          : (song.mtime != null && fileMtime <= song.mtime!)
+              ? song.mtime! + 0.001
+              : fileMtime;
       final updated = song.copyWith(
         coverUrl: newCoverPath,
         clearCoverUrl: newCoverPath == null,
-        mtime: await _statMtime(song.url, song.mtime),
+        mtime: coverRevision,
       );
 
       // Evict old and new covers from Flutter's decoded-image cache so the next
@@ -1172,6 +1178,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
       // the new artwork rather than re-reading the crop of the old one.
       await _rebuildNotificationCover(song, updated);
       await _applyLocalSongUpdate(updated);
+
       _refreshPaletteIfPlaying(updated);
 
       notifier.success('Cover updated successfully');

@@ -618,6 +618,7 @@ class _EditMetadataScreenState extends ConsumerState<EditMetadataScreen> {
                   borderRadius: AppTokens.brSm,
                   child: AlbumArtImage(
                     url: currentSong.coverUrl ?? '',
+                    cacheVersion: currentSong.mtime,
                     width: 100,
                     height: 100,
                     fit: BoxFit.cover,

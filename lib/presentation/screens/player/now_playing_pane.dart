@@ -423,6 +423,7 @@ class _CoverStage extends ConsumerWidget {
             child: AlbumArtImage(
               url: song.coverUrl ?? '',
               filename: song.filename,
+              cacheVersion: song.mtime,
               width: size,
               height: size,
               // Decoded at the size it is actually drawn at.

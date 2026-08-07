@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -9,6 +10,9 @@ import '../tokens/app_icons.dart';
 class AlbumArtImage extends StatefulWidget {
   final String url;
   final String? filename;
+
+  /// Changes when the bytes at a stable local cover path are replaced.
+  final Object? cacheVersion;
   final double? width;
   final double? height;
   final BoxFit fit;
@@ -25,6 +29,7 @@ class AlbumArtImage extends StatefulWidget {
     super.key,
     required this.url,
     this.filename,
+    this.cacheVersion,
     this.width,
     this.height,
     this.fit = BoxFit.cover,
@@ -45,6 +50,7 @@ class AlbumArtImage extends StatefulWidget {
 class _AlbumArtImageState extends State<AlbumArtImage> {
   Future<String?>? _refreshFuture;
   String? _resolvedUrl;
+  int _imageRevision = 0;
 
   @override
   void didUpdateWidget(covariant AlbumArtImage oldWidget) {
@@ -52,6 +58,13 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
     if (oldWidget.url != widget.url || oldWidget.filename != widget.filename) {
       _refreshFuture = null;
       _resolvedUrl = null;
+      _imageRevision++;
+    } else if (oldWidget.cacheVersion != widget.cacheVersion) {
+      // Cover extraction deliberately reuses the song-scoped path. Evict the
+      // resized provider too: evicting only FileImage leaves Image.file's
+      // cacheWidth variant alive.
+      unawaited(_refreshAfterEviction(oldWidget));
+      _imageRevision++;
     }
   }
 
@@ -128,6 +141,7 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
       // missing file identically.
       content = Image.file(
         File(path),
+        key: ValueKey('$path-$_imageRevision'),
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
@@ -188,6 +202,59 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
     }
 
     return content;
+  }
+
+  Future<void> _refreshAfterEviction(AlbumArtImage image) async {
+    await _evictLocalImage(image);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _evictLocalImage(AlbumArtImage image) async {
+    final path = _localPath(image.url);
+    if (path == null) return;
+
+    final provider = FileImage(File(path));
+    await provider.evict();
+
+    final dimensions = _cacheDimensions(image);
+    if (dimensions.width != null || dimensions.height != null) {
+      await ResizeImage(
+        provider,
+        width: dimensions.width,
+        height: dimensions.height,
+      ).evict();
+    }
+  }
+
+  ({int? width, int? height}) _cacheDimensions(AlbumArtImage image) {
+    var width = image.memCacheWidth;
+    var height = image.memCacheHeight;
+    if (width == null && height == null) {
+      if (image.width != null && image.width! < 400) {
+        width = (image.width! * 2.5).toInt();
+      } else if (image.height != null && image.height! < 400) {
+        height = (image.height! * 2.5).toInt();
+      }
+    }
+    return (
+      width: width ?? image.cacheWidth,
+      height: height ?? image.cacheHeight,
+    );
+  }
+
+  String? _localPath(String value) {
+    final isLocal = value.startsWith('/') ||
+        value.startsWith('C:\\\\') ||
+        value.startsWith('file://') ||
+        value.startsWith('content://');
+    if (!isLocal) return null;
+
+    try {
+      final uri = Uri.parse(value);
+      return uri.isScheme('file') ? uri.toFilePath() : value;
+    } catch (_) {
+      return value;
+    }
   }
 
   Widget _buildPlaceholder() {
