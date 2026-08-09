@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../domain/models/online_search_result.dart';
 import '../models/song.dart';
+import 'music_utils_api_client.dart';
 import 'scanner_service.dart';
 
 /// Client for Deezer & iTunes keyless search APIs.
@@ -27,6 +28,8 @@ class OnlineMetadataService {
   static const String _itunesHost = 'itunes.apple.com';
   static const String _lastfmHost = 'www.last.fm';
   static const Duration _timeout = Duration(seconds: 8);
+
+  final MusicUtilsApiClient _musicUtils = MusicUtilsApiClient.instance;
 
   static String? _userAgent;
 
@@ -99,7 +102,7 @@ class OnlineMetadataService {
       '.opus',
       '.wma',
       '.alac',
-      '.aiff'
+      '.aiff',
     };
     if (validAudioExts.contains(ext)) {
       title = p.basenameWithoutExtension(title);
@@ -107,15 +110,19 @@ class OnlineMetadataService {
 
     // Strip common YouTube/video tag patterns
     title = title.replaceAll(
-        RegExp(
-            r'\([^)]*(official|lyric|music|video|audio|visualizer|hd|4k)[^)]*\)',
-            caseSensitive: false),
-        '');
+      RegExp(
+        r'\([^)]*(official|lyric|music|video|audio|visualizer|hd|4k)[^)]*\)',
+        caseSensitive: false,
+      ),
+      '',
+    );
     title = title.replaceAll(
-        RegExp(
-            r'\[[^\]]*(official|lyric|music|video|audio|visualizer|hd|4k)[^\]]*\]',
-            caseSensitive: false),
-        '');
+      RegExp(
+        r'\[[^\]]*(official|lyric|music|video|audio|visualizer|hd|4k)[^\]]*\]',
+        caseSensitive: false,
+      ),
+      '',
+    );
 
     // Strip leading "Artist - " if present
     if (artist != null &&
@@ -132,7 +139,9 @@ class OnlineMetadataService {
 
     // Strip featured artist markers from title
     title = title.replaceAll(
-        RegExp(r'\b(ft|feat|featuring)[\.\s].*', caseSensitive: false), '');
+      RegExp(r'\b(ft|feat|featuring)[\.\s].*', caseSensitive: false),
+      '',
+    );
 
     return title.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
@@ -154,6 +163,17 @@ class OnlineMetadataService {
 
     if (query.trim().isEmpty) return const [];
 
+    final unified = await _searchMusicUtilsMetadata(
+      query: query,
+      title: cleanTitle,
+      artist: rawArtist,
+    );
+    if (unified.isNotEmpty) return unified;
+
+    return _searchDirectForSong(query);
+  }
+
+  Future<List<OnlineSearchResult>> _searchDirectForSong(String query) async {
     final results = await Future.wait([
       searchDeezerTrack(query),
       searchITunesTrack(query),
@@ -161,7 +181,6 @@ class OnlineMetadataService {
 
     final deezerHits = results[0];
     final iTunesHits = results[1];
-
     final combined = <OnlineSearchResult>[];
     final seenKeys = <String>{};
 
@@ -173,7 +192,6 @@ class OnlineMetadataService {
       }
     }
 
-    // Interleave iTunes (first) and Deezer results, prioritizing iTunes for higher-res artwork
     final maxLen = iTunesHits.length > deezerHits.length
         ? iTunesHits.length
         : deezerHits.length;
@@ -181,8 +199,50 @@ class OnlineMetadataService {
       if (i < iTunesHits.length) addUnique(iTunesHits[i]);
       if (i < deezerHits.length) addUnique(deezerHits[i]);
     }
-
     return combined;
+  }
+
+  Future<List<OnlineSearchResult>> _searchMusicUtilsMetadata({
+    required String query,
+    required String title,
+    required String artist,
+  }) async {
+    final decoded = await _musicUtils.getJson('/metadata/search', {
+      'q': query,
+      'limit': '20',
+    });
+    if (decoded is! List) return const [];
+
+    final results = <OnlineSearchResult>[];
+    for (final entry in decoded) {
+      if (entry is! Map<String, dynamic>) continue;
+      final result = _mapMusicUtilsResult(entry);
+      if (result.title.isEmpty || result.artist.isEmpty) continue;
+      results.add(result);
+    }
+    return results;
+  }
+
+  OnlineSearchResult _mapMusicUtilsResult(Map<String, dynamic> json) {
+    final durationSeconds = (json['duration'] as num?)?.toDouble();
+    final source =
+        (json['metadataSource'] ?? json['coverUrlSource'] ?? 'music-utils')
+            .toString();
+    return OnlineSearchResult(
+      title: (json['trackName'] ?? '').toString(),
+      artist: (json['artistName'] ?? '').toString(),
+      album: (json['albumName'] ?? '').toString(),
+      coverUrl: _nonEmptyString(json['coverUrl']),
+      source: source,
+      duration: durationSeconds == null || durationSeconds <= 0
+          ? null
+          : Duration(milliseconds: (durationSeconds * 1000).round()),
+    );
+  }
+
+  static String? _nonEmptyString(Object? value) {
+    if (value is! String) return null;
+    return value.trim().isEmpty ? null : value;
   }
 
   /// Search Deezer for track
@@ -212,20 +272,37 @@ class OnlineMetadataService {
       final durationSec = item['duration'] as int?;
 
       if (title.isNotEmpty) {
-        results.add(OnlineSearchResult(
-          title: title,
-          artist: artist,
-          album: album,
-          coverUrl: coverUrl,
-          source: 'deezer',
-          duration: durationSec != null ? Duration(seconds: durationSec) : null,
-        ));
+        results.add(
+          OnlineSearchResult(
+            title: title,
+            artist: artist,
+            album: album,
+            coverUrl: coverUrl,
+            source: 'deezer',
+            duration:
+                durationSec != null ? Duration(seconds: durationSec) : null,
+          ),
+        );
       }
     }
     return results;
   }
 
-  /// Search Deezer for artist image
+  /// Resolves artist artwork through music-utils, then direct providers.
+  Future<String?> searchArtistImage(String artistName) async {
+    final clean = cleanTag(artistName);
+    if (clean == null) return null;
+
+    final unified = await _musicUtils.getJson('/cover/artist', {
+      'artist_name': clean,
+    });
+    final unifiedUrl = _coverUrlFromResponse(unified);
+    if (unifiedUrl != null) return unifiedUrl;
+
+    return _searchDirectArtistImage(clean);
+  }
+
+  /// Search Deezer for artist image (direct-provider fallback).
   Future<String?> searchDeezerArtistImage(String artistName) async {
     final clean = cleanTag(artistName);
     if (clean == null) return null;
@@ -249,9 +326,59 @@ class OnlineMetadataService {
     return null;
   }
 
-  /// Search Deezer for album image
-  Future<String?> searchDeezerAlbumImage(String albumName,
-      {String? artistName}) async {
+  /// Returns artist artwork candidates from music-utils, then direct providers.
+  Future<List<Map<String, String>>> searchArtistImageCandidates(
+    String artistName,
+  ) async {
+    final clean = cleanTag(artistName);
+    if (clean == null) return const [];
+
+    final unified = await _musicUtils.getJson('/cover/search', {
+      'q': clean,
+      'type': 'artist',
+      'limit': '10',
+    });
+    final unifiedCandidates = _coverCandidatesFromResponse(unified);
+    if (unifiedCandidates.isNotEmpty) return unifiedCandidates;
+
+    final candidates = <Map<String, String>>[];
+    final lastfm = await searchLastfmArtistImage(clean);
+    if (lastfm != null) candidates.add({'url': lastfm, 'source': 'Last.fm'});
+    final itunes = await searchITunesArtistImage(clean);
+    if (itunes != null && itunes != lastfm) {
+      candidates.add({'url': itunes, 'source': 'iTunes'});
+    }
+    final deezer = await searchDeezerArtistImage(clean);
+    if (deezer != null && deezer != lastfm && deezer != itunes) {
+      candidates.add({'url': deezer, 'source': 'Deezer'});
+    }
+    return candidates;
+  }
+
+  /// Resolves album artwork through music-utils, then direct providers.
+  Future<String?> searchAlbumImage(
+    String albumName, {
+    String? artistName,
+  }) async {
+    final cleanAlbum = cleanTag(albumName);
+    if (cleanAlbum == null) return null;
+    final cleanArtist = cleanTag(artistName);
+
+    final unified = await _musicUtils.getJson('/cover/album', {
+      'album_name': cleanAlbum,
+      if (cleanArtist != null) 'artist_name': cleanArtist,
+    });
+    final unifiedUrl = _coverUrlFromResponse(unified);
+    if (unifiedUrl != null) return unifiedUrl;
+
+    return _searchDirectAlbumImage(cleanAlbum, artistName: cleanArtist);
+  }
+
+  /// Search Deezer for album image (direct-provider fallback).
+  Future<String?> searchDeezerAlbumImage(
+    String albumName, {
+    String? artistName,
+  }) async {
     final cleanAlbum = cleanTag(albumName);
     if (cleanAlbum == null) return null;
     final cleanArtist = cleanTag(artistName);
@@ -308,14 +435,16 @@ class OnlineMetadataService {
       final millis = item['trackTimeMillis'] as int?;
 
       if (title.isNotEmpty) {
-        results.add(OnlineSearchResult(
-          title: title,
-          artist: artist,
-          album: album,
-          coverUrl: artwork,
-          source: 'itunes',
-          duration: millis != null ? Duration(milliseconds: millis) : null,
-        ));
+        results.add(
+          OnlineSearchResult(
+            title: title,
+            artist: artist,
+            album: album,
+            coverUrl: artwork,
+            source: 'itunes',
+            duration: millis != null ? Duration(milliseconds: millis) : null,
+          ),
+        );
       }
     }
     return results;
@@ -351,8 +480,10 @@ class OnlineMetadataService {
   }
 
   /// Search iTunes for album image
-  Future<String?> searchITunesAlbumImage(String albumName,
-      {String? artistName}) async {
+  Future<String?> searchITunesAlbumImage(
+    String albumName, {
+    String? artistName,
+  }) async {
     final cleanAlbum = cleanTag(albumName);
     if (cleanAlbum == null) return null;
     final cleanArtist = cleanTag(artistName);
@@ -382,7 +513,36 @@ class OnlineMetadataService {
     return null;
   }
 
-  /// Searches Last.fm by scraping HTML for an artist avatar image.
+  Future<String?> _searchDirectArtistImage(String artistName) async {
+    final imageUrl = await searchITunesArtistImage(artistName);
+    if (imageUrl != null && imageUrl.isNotEmpty) return imageUrl;
+
+    final deezerUrl = await searchDeezerArtistImage(artistName);
+    if (deezerUrl != null && deezerUrl.isNotEmpty) return deezerUrl;
+
+    return searchLastfmArtistImage(artistName);
+  }
+
+  Future<String?> _searchDirectAlbumImage(
+    String albumName, {
+    String? artistName,
+  }) async {
+    final imageUrl = await searchITunesAlbumImage(
+      albumName,
+      artistName: artistName,
+    );
+    if (imageUrl != null && imageUrl.isNotEmpty) return imageUrl;
+
+    final deezerUrl = await searchDeezerAlbumImage(
+      albumName,
+      artistName: artistName,
+    );
+    if (deezerUrl != null && deezerUrl.isNotEmpty) return deezerUrl;
+
+    return searchLastfmAlbumImage(albumName, artistName: artistName);
+  }
+
+  /// Searches artist artwork directly through Last.fm (fallback provider).
   Future<String?> searchLastfmArtistImage(String artistName) async {
     final clean = cleanTag(artistName);
     if (clean == null) return null;
@@ -396,22 +556,88 @@ class OnlineMetadataService {
     return _searchLastfmPage('/music/$encoded/+images');
   }
 
-  /// Searches Last.fm by scraping HTML for an album cover image.
-  Future<String?> searchLastfmAlbumImage(String albumName,
-      {String? artistName}) async {
+  /// Searches Last.fm directly for an album cover (fallback only).
+  Future<String?> searchLastfmAlbumImage(
+    String albumName, {
+    String? artistName,
+  }) async {
     final cleanAlbum = cleanTag(albumName);
     if (cleanAlbum == null) return null;
     final cleanArtist = cleanTag(artistName);
     if (cleanArtist == null) return null;
     final encodedAlbum = Uri.encodeComponent(cleanAlbum).replaceAll('%20', '+');
-    final encodedArtist =
-        Uri.encodeComponent(cleanArtist).replaceAll('%20', '+');
-    final mainResult =
-        await _searchLastfmPage('/music/$encodedArtist/$encodedAlbum');
+    final encodedArtist = Uri.encodeComponent(
+      cleanArtist,
+    ).replaceAll('%20', '+');
+    final mainResult = await _searchLastfmPage(
+      '/music/$encodedArtist/$encodedAlbum',
+    );
     if (mainResult != null && mainResult.isNotEmpty) {
       return mainResult;
     }
     return _searchLastfmPage('/music/$encodedArtist/$encodedAlbum/+images');
+  }
+
+  /// Returns album artwork candidates from music-utils, then direct providers.
+  Future<List<Map<String, String>>> searchAlbumImageCandidates(
+    String albumName, {
+    String? artistName,
+  }) async {
+    final cleanAlbum = cleanTag(albumName);
+    if (cleanAlbum == null) return const [];
+    final cleanArtist = cleanTag(artistName);
+
+    final unified = await _musicUtils.getJson('/cover/search', {
+      'type': 'album',
+      'album_name': cleanAlbum,
+      if (cleanArtist != null) 'artist_name': cleanArtist,
+      'limit': '10',
+    });
+    final unifiedCandidates = _coverCandidatesFromResponse(unified);
+    if (unifiedCandidates.isNotEmpty) return unifiedCandidates;
+
+    final candidates = <Map<String, String>>[];
+    final lastfm = await searchLastfmAlbumImage(
+      cleanAlbum,
+      artistName: cleanArtist,
+    );
+    if (lastfm != null) candidates.add({'url': lastfm, 'source': 'Last.fm'});
+    final itunes = await searchITunesAlbumImage(
+      cleanAlbum,
+      artistName: cleanArtist,
+    );
+    if (itunes != null && itunes != lastfm) {
+      candidates.add({'url': itunes, 'source': 'iTunes'});
+    }
+    final deezer = await searchDeezerAlbumImage(
+      cleanAlbum,
+      artistName: cleanArtist,
+    );
+    if (deezer != null && deezer != lastfm && deezer != itunes) {
+      candidates.add({'url': deezer, 'source': 'Deezer'});
+    }
+    return candidates;
+  }
+
+  String? _coverUrlFromResponse(Object? decoded) {
+    final candidates = _coverCandidatesFromResponse(decoded);
+    return candidates.isEmpty ? null : candidates.first['url'];
+  }
+
+  List<Map<String, String>> _coverCandidatesFromResponse(Object? decoded) {
+    final entries = decoded is List ? decoded : [decoded];
+    final candidates = <Map<String, String>>[];
+    final seen = <String>{};
+    for (final entry in entries) {
+      if (entry is! Map<String, dynamic>) continue;
+      final url = _nonEmptyString(entry['coverUrl']);
+      if (url == null || !seen.add(url)) continue;
+      candidates.add({
+        'url': url,
+        'source': (entry['coverUrlSource'] ?? 'music-utils').toString(),
+      });
+    }
+    return candidates;
   }
 
   /// Fetches a Last.fm page and extracts the best image URL from its HTML.
@@ -430,8 +656,10 @@ class OnlineMetadataService {
     try {
       final uri = Uri.https(_lastfmHost, path);
       final request = await client.getUrl(uri);
-      request.headers
-          .set(HttpHeaders.userAgentHeader, await _resolveUserAgent());
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        await _resolveUserAgent(),
+      );
 
       final response = await request.close().timeout(_timeout);
       if (response.statusCode != HttpStatus.ok) {
@@ -496,8 +724,10 @@ class OnlineMetadataService {
     try {
       final uri = Uri.parse(imageUrl);
       final request = await client.getUrl(uri);
-      request.headers
-          .set(HttpHeaders.userAgentHeader, await _resolveUserAgent());
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        await _resolveUserAgent(),
+      );
 
       final response = await request.close().timeout(_timeout);
       if (response.statusCode != HttpStatus.ok) {
@@ -529,14 +759,19 @@ class OnlineMetadataService {
   }
 
   Future<Object?> _getJson(
-      String host, String path, Map<String, String> params) async {
+    String host,
+    String path,
+    Map<String, String> params,
+  ) async {
     final client = HttpClient();
     try {
       final uri = Uri.https(host, path, params);
       final request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers
-          .set(HttpHeaders.userAgentHeader, await _resolveUserAgent());
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        await _resolveUserAgent(),
+      );
 
       final response = await request.close().timeout(_timeout);
       if (response.statusCode != HttpStatus.ok) {

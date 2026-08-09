@@ -73,17 +73,21 @@ class SongListScreen extends ConsumerWidget {
         (playlistId == null &&
             !isAlbum &&
             sortedSongs.isNotEmpty &&
-            sortedSongs.any((s) =>
-                s.artist.toLowerCase().contains(title.toLowerCase()) ||
-                title.toLowerCase().contains(s.artist.toLowerCase())));
+            sortedSongs.any(
+              (s) =>
+                  s.artist.toLowerCase().contains(title.toLowerCase()) ||
+                  title.toLowerCase().contains(s.artist.toLowerCase()),
+            ));
 
     final bool effectiveIsAlbum = isAlbum ||
         (playlistId == null &&
             !effectiveIsArtist &&
             sortedSongs.isNotEmpty &&
-            sortedSongs.any((s) =>
-                s.album.toLowerCase().contains(title.toLowerCase()) ||
-                title.toLowerCase().contains(s.album.toLowerCase())));
+            sortedSongs.any(
+              (s) =>
+                  s.album.toLowerCase().contains(title.toLowerCase()) ||
+                  title.toLowerCase().contains(s.album.toLowerCase()),
+            ));
 
     final String effectiveArtistName = artistName ??
         (effectiveIsArtist
@@ -98,28 +102,42 @@ class SongListScreen extends ConsumerWidget {
     final String? artworkPath = effectiveIsArtist
         ? ref.watch(artistAlbumArtProvider).getArtistArt(effectiveArtistName)
         : (effectiveIsAlbum
-            ? ref.watch(artistAlbumArtProvider).getAlbumArt(effectiveAlbumName,
-                artistName: effectiveArtistName)
+            ? ref.watch(artistAlbumArtProvider).getAlbumArt(
+                  effectiveAlbumName,
+                  artistName: effectiveArtistName,
+                )
             : null);
 
     final bool hasCustomArtwork =
         artworkPath != null && File(artworkPath).existsSync();
 
     if (effectiveIsArtist && !hasCustomArtwork) {
-      PassiveArtFetcherService.instance
-          .fetchArtistArtIfNeeded(effectiveArtistName);
+      PassiveArtFetcherService.instance.fetchArtistArtIfNeeded(
+        effectiveArtistName,
+      );
     } else if (effectiveIsAlbum && !hasCustomArtwork) {
-      PassiveArtFetcherService.instance
-          .fetchAlbumArtIfNeeded(effectiveAlbumName, effectiveArtistName);
+      PassiveArtFetcherService.instance.fetchAlbumArtIfNeeded(
+        effectiveAlbumName,
+        effectiveArtistName,
+      );
     }
 
     void handleFetchCover() {
       if (effectiveIsArtist) {
         _showChangeArtistArtworkDialog(
-            context, ref, effectiveArtistName, sortedSongs);
+          context,
+          ref,
+          effectiveArtistName,
+          sortedSongs,
+        );
       } else if (effectiveIsAlbum) {
         _showChangeAlbumArtworkDialog(
-            context, ref, effectiveAlbumName, effectiveArtistName, sortedSongs);
+          context,
+          ref,
+          effectiveAlbumName,
+          effectiveArtistName,
+          sortedSongs,
+        );
       } else {
         _showChangeArtistArtworkDialog(context, ref, title, sortedSongs);
       }
@@ -154,7 +172,10 @@ class SongListScreen extends ConsumerWidget {
                   IconButton(
                     icon: const AppIcon(AppIcons.manageSearch),
                     onPressed: () => songActionFetchMissingMetadataForList(
-                        context, ref, sortedSongs),
+                      context,
+                      ref,
+                      sortedSongs,
+                    ),
                     tooltip: 'Fetch Missing Metadata',
                   )
                 else if (canFetchCover)
@@ -194,11 +215,15 @@ class SongListScreen extends ConsumerWidget {
                           try {
                             await ref
                                 .read(userDataProvider.notifier)
-                                .createMergedGroup(selected,
-                                    priorityFilename: priority);
+                                .createMergedGroup(
+                                  selected,
+                                  priorityFilename: priority,
+                                );
                             if (context.mounted) {
                               appSnack(
-                                  context, 'Merged ${selected.length} songs');
+                                context,
+                                'Merged ${selected.length} songs',
+                              );
                             }
                           } catch (e) {
                             if (context.mounted) {
@@ -270,8 +295,10 @@ class SongListScreen extends ConsumerWidget {
                         FilledButton.tonalIcon(
                           onPressed: sortedSongs.isNotEmpty
                               ? () {
-                                  audioManager.shuffleAndPlay(sortedSongs,
-                                      isRestricted: true);
+                                  audioManager.shuffleAndPlay(
+                                    sortedSongs,
+                                    isRestricted: true,
+                                  );
                                 }
                               : null,
                           icon: const AppIcon(AppIcons.shuffle),
@@ -311,7 +338,10 @@ class SongListScreen extends ConsumerWidget {
                       OutlinedButton.icon(
                         onPressed: sortedSongs.isNotEmpty
                             ? () => songActionFetchMissingMetadataForList(
-                                context, ref, sortedSongs)
+                                  context,
+                                  ref,
+                                  sortedSongs,
+                                )
                             : null,
                         icon: const AppIcon(AppIcons.manageSearch),
                         label: const Text('Fetch Missing Metadata'),
@@ -338,22 +368,22 @@ class SongListScreen extends ConsumerWidget {
               )
             else
               SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final song = sortedSongs[index];
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final song = sortedSongs[index];
 
-                    return SongListItem(
-                      song: song,
-                      heroTagPrefix: 'song_list_$title',
-                      playlistId: playlistId,
-                      onTap: () {
-                        audioManager.playSong(song,
-                            contextQueue: sortedSongs, playlistId: playlistId);
-                      },
-                    );
-                  },
-                  childCount: sortedSongs.length,
-                ),
+                  return SongListItem(
+                    song: song,
+                    heroTagPrefix: 'song_list_$title',
+                    playlistId: playlistId,
+                    onTap: () {
+                      audioManager.playSong(
+                        song,
+                        contextQueue: sortedSongs,
+                        playlistId: playlistId,
+                      );
+                    },
+                  );
+                }, childCount: sortedSongs.length),
               ),
             const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
           ],
@@ -404,15 +434,16 @@ class SongListScreen extends ConsumerWidget {
       confirmLabel: 'Rename',
     );
     if (newName != null && newName != title) {
-      ref.read(userDataProvider.notifier).updatePlaylistName(
-            playlistId!,
-            newName,
-          );
+      ref
+          .read(userDataProvider.notifier)
+          .updatePlaylistName(playlistId!, newName);
     }
   }
 
   Future<void> _showDeleteConfirmation(
-      BuildContext context, WidgetRef ref) async {
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     if (playlistId == null) return;
 
     final confirmed = await showAppConfirm(
@@ -440,25 +471,7 @@ class SongListScreen extends ConsumerWidget {
     final results = <Map<String, String>>[];
 
     try {
-      final lastfmImage = await onlineService.searchLastfmArtistImage(artist);
-      if (lastfmImage != null && lastfmImage.isNotEmpty) {
-        results.add({'url': lastfmImage, 'source': 'Last.fm'});
-      }
-
-      final iTunesImage = await onlineService.searchITunesArtistImage(artist);
-      if (iTunesImage != null &&
-          iTunesImage.isNotEmpty &&
-          iTunesImage != lastfmImage) {
-        results.add({'url': iTunesImage, 'source': 'iTunes'});
-      }
-
-      final deezerImage = await onlineService.searchDeezerArtistImage(artist);
-      if (deezerImage != null &&
-          deezerImage.isNotEmpty &&
-          deezerImage != lastfmImage &&
-          deezerImage != iTunesImage) {
-        results.add({'url': deezerImage, 'source': 'Deezer'});
-      }
+      results.addAll(await onlineService.searchArtistImageCandidates(artist));
     } catch (_) {}
 
     if (!context.mounted) return;
@@ -485,20 +498,24 @@ class SongListScreen extends ConsumerWidget {
                 onTap: () => Navigator.pop(dialogContext, 'custom'),
               ),
               if (results.isNotEmpty) const Divider(),
-              ...results.map((res) => ListTile(
-                    leading: Image.network(
-                      res['url']!,
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          const AppIcon(AppIcons.image),
-                    ),
-                    title: Text('Artwork from ${res['source']}'),
-                    subtitle: Text(res['url']!,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    onTap: () => Navigator.pop(dialogContext, res['url']),
-                  )),
+              ...results.map(
+                (res) => ListTile(
+                  leading: Image.network(
+                    res['url']!,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const AppIcon(AppIcons.image),
+                  ),
+                  title: Text('Artwork from ${res['source']}'),
+                  subtitle: Text(
+                    res['url']!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.pop(dialogContext, res['url']),
+                ),
+              ),
               if (results.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(16.0),
@@ -578,28 +595,12 @@ class SongListScreen extends ConsumerWidget {
     final results = <Map<String, String>>[];
 
     try {
-      final lastfmImage =
-          await onlineService.searchLastfmAlbumImage(album, artistName: artist);
-      if (lastfmImage != null && lastfmImage.isNotEmpty) {
-        results.add({'url': lastfmImage, 'source': 'Last.fm'});
-      }
-
-      final iTunesImage =
-          await onlineService.searchITunesAlbumImage(album, artistName: artist);
-      if (iTunesImage != null &&
-          iTunesImage.isNotEmpty &&
-          iTunesImage != lastfmImage) {
-        results.add({'url': iTunesImage, 'source': 'iTunes'});
-      }
-
-      final deezerImage =
-          await onlineService.searchDeezerAlbumImage(album, artistName: artist);
-      if (deezerImage != null &&
-          deezerImage.isNotEmpty &&
-          deezerImage != lastfmImage &&
-          deezerImage != iTunesImage) {
-        results.add({'url': deezerImage, 'source': 'Deezer'});
-      }
+      results.addAll(
+        await onlineService.searchAlbumImageCandidates(
+          album,
+          artistName: artist,
+        ),
+      );
     } catch (_) {}
 
     if (!context.mounted) return;
@@ -626,20 +627,24 @@ class SongListScreen extends ConsumerWidget {
                 onTap: () => Navigator.pop(dialogContext, 'custom'),
               ),
               if (results.isNotEmpty) const Divider(),
-              ...results.map((res) => ListTile(
-                    leading: Image.network(
-                      res['url']!,
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          const AppIcon(AppIcons.image),
-                    ),
-                    title: Text('Artwork from ${res['source']}'),
-                    subtitle: Text(res['url']!,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    onTap: () => Navigator.pop(dialogContext, res['url']),
-                  )),
+              ...results.map(
+                (res) => ListTile(
+                  leading: Image.network(
+                    res['url']!,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const AppIcon(AppIcons.image),
+                  ),
+                  title: Text('Artwork from ${res['source']}'),
+                  subtitle: Text(
+                    res['url']!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.pop(dialogContext, res['url']),
+                ),
+              ),
               if (results.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(16.0),

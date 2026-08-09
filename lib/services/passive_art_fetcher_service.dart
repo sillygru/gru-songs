@@ -192,8 +192,9 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
     }
 
     final item = {'album': cleanAlbum, 'artist': cleanArtist ?? ''};
-    if (!_priorityAlbumQueue.any((m) =>
-        m['album'] == cleanAlbum && m['artist'] == (cleanArtist ?? ''))) {
+    if (!_priorityAlbumQueue.any(
+      (m) => m['album'] == cleanAlbum && m['artist'] == (cleanArtist ?? ''),
+    )) {
       _priorityAlbumQueue.insert(0, item);
     }
     start();
@@ -217,8 +218,9 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
 
   Future<void> _flushPersist() {
     // Coalesce concurrent flushes (timer + lifecycle) into one write pass.
-    final inFlight = _flushInFlight ??=
-        _doFlushPersist().whenComplete(() => _flushInFlight = null);
+    final inFlight = _flushInFlight ??= _doFlushPersist().whenComplete(
+      () => _flushInFlight = null,
+    );
     return inFlight;
   }
 
@@ -240,8 +242,12 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  Future<void> _applyDelta(SharedPreferences prefs, String key,
-      Set<String> adds, Set<String> removes) async {
+  Future<void> _applyDelta(
+    SharedPreferences prefs,
+    String key,
+    Set<String> adds,
+    Set<String> removes,
+  ) async {
     if (adds.isEmpty && removes.isEmpty) return;
     final current = (prefs.getStringList(key) ?? const []).toSet()
       ..removeAll(removes)
@@ -326,9 +332,11 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
           .toSet();
 
       final missingArtists = artists
-          .where((a) =>
-              !_attemptedArtists.contains(a.toLowerCase()) &&
-              ref.read(artistAlbumArtProvider).getArtistArt(a) == null)
+          .where(
+            (a) =>
+                !_attemptedArtists.contains(a.toLowerCase()) &&
+                ref.read(artistAlbumArtProvider).getArtistArt(a) == null,
+          )
           .toList();
 
       for (final artist in missingArtists) {
@@ -428,18 +436,11 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
 
     // Cheap JSON APIs first; the Last.fm scrape downloads whole HTML pages,
     // so it is the last resort.
-    var imageUrl = await onlineService.searchITunesArtistImage(artist);
-    var source = 'itunes';
-
-    if (imageUrl == null || imageUrl.isEmpty) {
-      imageUrl = await onlineService.searchDeezerArtistImage(artist);
-      source = 'deezer';
-    }
-
-    if (imageUrl == null || imageUrl.isEmpty) {
-      imageUrl = await onlineService.searchLastfmArtistImage(artist);
-      source = 'lastfm';
-    }
+    final candidates = await onlineService.searchArtistImageCandidates(artist);
+    if (candidates.isEmpty) return false;
+    final selected = candidates.first;
+    final imageUrl = selected['url'];
+    final source = selected['source'] ?? 'online';
 
     if (imageUrl == null || imageUrl.isEmpty) return false;
 
@@ -472,34 +473,31 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
     final notifier = ref.read(artistAlbumArtProvider.notifier);
     final onlineService = OnlineMetadataService.instance;
 
-    if (ref.read(artistAlbumArtProvider).getAlbumArt(album,
-            artistName: artist.isNotEmpty ? artist : null) !=
+    if (ref.read(artistAlbumArtProvider).getAlbumArt(
+              album,
+              artistName: artist.isNotEmpty ? artist : null,
+            ) !=
         null) {
       return true;
     }
 
     final saveKey = artist.isNotEmpty ? '$artist|$album' : album;
 
-    var imageUrl = await onlineService.searchITunesAlbumImage(album,
-        artistName: artist.isNotEmpty ? artist : null);
-    var source = 'itunes';
-
-    if (imageUrl == null || imageUrl.isEmpty) {
-      imageUrl = await onlineService.searchDeezerAlbumImage(album,
-          artistName: artist.isNotEmpty ? artist : null);
-      source = 'deezer';
-    }
-
-    if (imageUrl == null || imageUrl.isEmpty) {
-      imageUrl = await onlineService.searchLastfmAlbumImage(album,
-          artistName: artist.isNotEmpty ? artist : null);
-      source = 'lastfm';
-    }
+    final candidates = await onlineService.searchAlbumImageCandidates(
+      album,
+      artistName: artist.isNotEmpty ? artist : null,
+    );
+    if (candidates.isEmpty) return false;
+    final selected = candidates.first;
+    final imageUrl = selected['url'];
+    final source = selected['source'] ?? 'online';
 
     if (imageUrl == null || imageUrl.isEmpty) return false;
 
-    if (ref.read(artistAlbumArtProvider).getAlbumArt(album,
-            artistName: artist.isNotEmpty ? artist : null) !=
+    if (ref.read(artistAlbumArtProvider).getAlbumArt(
+              album,
+              artistName: artist.isNotEmpty ? artist : null,
+            ) !=
         null) {
       return true;
     }
@@ -510,8 +508,10 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
     );
     if (localPath == null || localPath.isEmpty) return false;
 
-    if (ref.read(artistAlbumArtProvider).getAlbumArt(album,
-            artistName: artist.isNotEmpty ? artist : null) ==
+    if (ref.read(artistAlbumArtProvider).getAlbumArt(
+              album,
+              artistName: artist.isNotEmpty ? artist : null,
+            ) ==
         null) {
       await notifier.setAlbumArt(
         albumKey: saveKey,

@@ -83,10 +83,7 @@ void songActionPlayNext(BuildContext host, WidgetRef ref, Song song) {
 }
 
 void songActionShare(Song song) {
-  Share.shareXFiles(
-    [XFile(song.url)],
-    text: '${song.title} by ${song.artist}',
-  );
+  Share.shareXFiles([XFile(song.url)], text: '${song.title} by ${song.artist}');
 }
 
 /// Adds to the most recently updated playlist directly, offering a "Change"
@@ -141,9 +138,9 @@ void songActionAddToNewPlaylist(
     ref.read(userDataProvider.notifier).createPlaylist(name, filename);
     Navigator.pop(dialogContext);
     if (!host.mounted) return;
-    ScaffoldMessenger.of(host).showSnackBar(
-      SnackBar(content: Text('Created playlist "$name"')),
-    );
+    ScaffoldMessenger.of(
+      host,
+    ).showSnackBar(SnackBar(content: Text('Created playlist "$name"')));
   }
 
   showDialog<void>(
@@ -185,10 +182,9 @@ void songActionRemoveFromPlaylist(
   String filename,
   String title,
 ) {
-  ref.read(userDataProvider.notifier).removeSongFromPlaylist(
-        playlistId,
-        filename,
-      );
+  ref
+      .read(userDataProvider.notifier)
+      .removeSongFromPlaylist(playlistId, filename);
   if (!host.mounted) return;
   ScaffoldMessenger.of(host).showSnackBar(
     SnackBar(
@@ -227,22 +223,18 @@ Future<void> songActionMoveToFolder(
     );
   } catch (e) {
     if (!host.mounted) return;
-    ScaffoldMessenger.of(host).showSnackBar(
-      SnackBar(content: Text('Error moving song: $e')),
-    );
+    ScaffoldMessenger.of(
+      host,
+    ).showSnackBar(SnackBar(content: Text('Error moving song: $e')));
   }
 }
 
-Future<void> songActionHide(
-  BuildContext host,
-  WidgetRef ref,
-  Song song,
-) async {
+Future<void> songActionHide(BuildContext host, WidgetRef ref, Song song) async {
   await ref.read(songsProvider.notifier).hideSong(song);
   if (!host.mounted) return;
-  ScaffoldMessenger.of(host).showSnackBar(
-    SnackBar(content: Text('Removed ${song.title} from library')),
-  );
+  ScaffoldMessenger.of(
+    host,
+  ).showSnackBar(SnackBar(content: Text('Removed ${song.title} from library')));
 }
 
 Future<void> songActionDelete(
@@ -279,14 +271,14 @@ Future<void> songActionDelete(
   try {
     await ref.read(songsProvider.notifier).deleteSongFile(song);
     if (!host.mounted) return;
-    ScaffoldMessenger.of(host).showSnackBar(
-      SnackBar(content: Text('Deleted ${song.title}')),
-    );
+    ScaffoldMessenger.of(
+      host,
+    ).showSnackBar(SnackBar(content: Text('Deleted ${song.title}')));
   } catch (e) {
     if (!host.mounted) return;
-    ScaffoldMessenger.of(host).showSnackBar(
-      SnackBar(content: Text('Error deleting file: $e')),
-    );
+    ScaffoldMessenger.of(
+      host,
+    ).showSnackBar(SnackBar(content: Text('Error deleting file: $e')));
   }
 }
 
@@ -379,18 +371,21 @@ Future<void> songActionFetchMissingCover(
   try {
     final onlineService = OnlineMetadataService.instance;
 
-    // Try Last.fm first (album page scrape)
     String? coverUrl;
     String? source;
     final cleanArtist = OnlineMetadataService.cleanTag(song.artist);
     final cleanAlbum = OnlineMetadataService.cleanTag(song.album);
     if (cleanArtist != null && cleanAlbum != null) {
-      coverUrl = await onlineService.searchLastfmAlbumImage(cleanAlbum,
-          artistName: cleanArtist);
-      source = 'lastfm';
+      final candidates = await onlineService.searchAlbumImageCandidates(
+        cleanAlbum,
+        artistName: cleanArtist,
+      );
+      if (candidates.isNotEmpty) {
+        coverUrl = candidates.first['url'];
+        source = candidates.first['source'];
+      }
     }
 
-    // Fallback to Deezer + iTunes parallel search
     if (coverUrl == null || coverUrl.isEmpty) {
       final results = await onlineService.searchParallelForSong(song);
       for (final res in results) {
@@ -420,7 +415,8 @@ Future<void> songActionFetchMissingCover(
       if (!host.mounted) return;
       ScaffoldMessenger.of(host).showSnackBar(
         SnackBar(
-            content: Text('Updated cover art for "${song.title}" ($source)')),
+          content: Text('Updated cover art for "${song.title}" ($source)'),
+        ),
       );
     } else if (host.mounted) {
       ScaffoldMessenger.of(host).showSnackBar(
@@ -429,9 +425,9 @@ Future<void> songActionFetchMissingCover(
     }
   } catch (e) {
     if (!host.mounted) return;
-    ScaffoldMessenger.of(host).showSnackBar(
-      SnackBar(content: Text('Error fetching cover: $e')),
-    );
+    ScaffoldMessenger.of(
+      host,
+    ).showSnackBar(SnackBar(content: Text('Error fetching cover: $e')));
   }
 }
 
@@ -574,7 +570,9 @@ Future<void> _showMetadataResultsDialog(
                               style: TextButton.styleFrom(
                                 foregroundColor: AppTokens.danger,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 0),
+                                  horizontal: 8,
+                                  vertical: 0,
+                                ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
@@ -610,88 +608,92 @@ Future<void> _showMetadataResultsDialog(
                           ],
                         ),
                         const SizedBox(height: 8),
-                        ...remaining.take(20).map((rec) => Padding(
-                              padding: const EdgeInsets.only(bottom: 4.0),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2.0),
-                                    child: AppIcon(
-                                      AppIcons.checkCircle,
-                                      color: AppTokens.success,
-                                      size: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          rec.newTitle.isNotEmpty
-                                              ? rec.newTitle
-                                              : rec.originalSong.filename,
-                                          style: AppTokens.rowTitle(context),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Text(
-                                          '${rec.newArtist.isNotEmpty ? rec.newArtist : '?'} — ${rec.newAlbum.isNotEmpty ? rec.newAlbum : '?'}',
-                                          style: AppTokens.rowSubtitle(context),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        if (rec.source.isNotEmpty)
-                                          Text(
-                                            'via ${rec.source}',
-                                            style: AppTokens.meta(context)
-                                                .copyWith(
-                                              color: AppTokens.fgTertiary,
-                                              fontSize: 11,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 32,
-                                    height: 32,
-                                    child: IconButton(
-                                      icon: const AppIcon(
-                                        AppIcons.restore,
-                                        size: 14,
+                        ...remaining.take(20).map(
+                              (rec) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4.0),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: AppIcon(
+                                        AppIcons.checkCircle,
+                                        color: AppTokens.success,
+                                        size: 16,
                                       ),
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Undo this song',
-                                      color: AppTokens.fgTertiary,
-                                      onPressed: () async {
-                                        await ref
-                                            .read(songsProvider.notifier)
-                                            .updateSongMetadata(
-                                              rec.originalSong,
-                                              rec.originalSong.title,
-                                              rec.originalSong.artist,
-                                              rec.originalSong.album,
-                                            );
-                                        if (rec.originalSong.coverUrl !=
-                                            rec.newCoverPath) {
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            rec.newTitle.isNotEmpty
+                                                ? rec.newTitle
+                                                : rec.originalSong.filename,
+                                            style: AppTokens.rowTitle(context),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            '${rec.newArtist.isNotEmpty ? rec.newArtist : '?'} — ${rec.newAlbum.isNotEmpty ? rec.newAlbum : '?'}',
+                                            style: AppTokens.rowSubtitle(
+                                              context,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (rec.source.isNotEmpty)
+                                            Text(
+                                              'via ${rec.source}',
+                                              style: AppTokens.meta(context)
+                                                  .copyWith(
+                                                color: AppTokens.fgTertiary,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 32,
+                                      height: 32,
+                                      child: IconButton(
+                                        icon: const AppIcon(
+                                          AppIcons.restore,
+                                          size: 14,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        tooltip: 'Undo this song',
+                                        color: AppTokens.fgTertiary,
+                                        onPressed: () async {
                                           await ref
                                               .read(songsProvider.notifier)
-                                              .updateSongCover(
+                                              .updateSongMetadata(
                                                 rec.originalSong,
-                                                rec.originalSong.coverUrl,
+                                                rec.originalSong.title,
+                                                rec.originalSong.artist,
+                                                rec.originalSong.album,
                                               );
-                                        }
-                                        remaining.remove(rec);
-                                        setDialogState(() {});
-                                      },
+                                          if (rec.originalSong.coverUrl !=
+                                              rec.newCoverPath) {
+                                            await ref
+                                                .read(songsProvider.notifier)
+                                                .updateSongCover(
+                                                  rec.originalSong,
+                                                  rec.originalSong.coverUrl,
+                                                );
+                                          }
+                                          remaining.remove(rec);
+                                          setDialogState(() {});
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            )),
+                            ),
                         if (remaining.length > 20) ...[
                           const SizedBox(height: 4),
                           Text(
@@ -713,47 +715,51 @@ Future<void> _showMetadataResultsDialog(
                           ),
                         ),
                         const SizedBox(height: 8),
-                        ...notFoundSongs.take(15).map((song) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2.0),
-                                    child: AppIcon(
-                                      AppIcons.searchOff,
-                                      color: AppTokens.fgSecondary,
-                                      size: 16,
+                        ...notFoundSongs.take(15).map(
+                              (song) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: AppIcon(
+                                        AppIcons.searchOff,
+                                        color: AppTokens.fgSecondary,
+                                        size: 16,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          song.title.isEmpty
-                                              ? song.filename
-                                              : song.title,
-                                          style: AppTokens.rowTitle(context),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Text(
-                                          song.artist.isEmpty
-                                              ? 'Unknown Artist'
-                                              : song.artist,
-                                          style: AppTokens.rowSubtitle(context),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            song.title.isEmpty
+                                                ? song.filename
+                                                : song.title,
+                                            style: AppTokens.rowTitle(context),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            song.artist.isEmpty
+                                                ? 'Unknown Artist'
+                                                : song.artist,
+                                            style: AppTokens.rowSubtitle(
+                                              context,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            )),
+                            ),
                         if (notFoundSongs.length > 15) ...[
                           const SizedBox(height: 4),
                           Text(
@@ -799,10 +805,7 @@ Widget _statChip(AppIconData icon, Color color, String value, String label) {
       ),
       Text(
         label,
-        style: TextStyle(
-          fontSize: 11,
-          color: color.withValues(alpha: 0.7),
-        ),
+        style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.7)),
       ),
     ],
   );
@@ -822,9 +825,8 @@ class _MetadataFetchDialogState extends ChangeNotifier {
   _MetadataFetchProgress progress;
   bool cancelled = false;
 
-  _MetadataFetchDialogState({
-    _MetadataFetchProgress? progress,
-  }) : progress = progress ?? _MetadataFetchProgress(total: 0);
+  _MetadataFetchDialogState({_MetadataFetchProgress? progress})
+      : progress = progress ?? _MetadataFetchProgress(total: 0);
 
   void updateProgress(_MetadataFetchProgress newProgress) {
     progress = newProgress;
@@ -885,9 +887,9 @@ _MetadataFetchDialogState _showMetadataProgressDialog(
                       children: [
                         Text(
                           '${p.processed} / ${p.total}',
-                          style: AppTokens.rowTitle(context).copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: AppTokens.rowTitle(
+                            context,
+                          ).copyWith(fontWeight: FontWeight.bold),
                         ),
                         Text(
                           '${(p.progress * 100).round()}%',
@@ -901,7 +903,10 @@ _MetadataFetchDialogState _showMetadataProgressDialog(
                         _miniStat('Updated', p.updated, AppTokens.success),
                         const SizedBox(width: 16),
                         _miniStat(
-                            'Not found', p.notFound, AppTokens.fgSecondary),
+                          'Not found',
+                          p.notFound,
+                          AppTokens.fgSecondary,
+                        ),
                         if (p.skipped > 0) ...[
                           const SizedBox(width: 16),
                           _miniStat('Skipped', p.skipped, AppTokens.fgTertiary),
@@ -912,9 +917,9 @@ _MetadataFetchDialogState _showMetadataProgressDialog(
                       const SizedBox(height: 8),
                       Text(
                         p.currentSong,
-                        style: AppTokens.meta(context).copyWith(
-                          color: AppTokens.fgTertiary,
-                        ),
+                        style: AppTokens.meta(
+                          context,
+                        ).copyWith(color: AppTokens.fgTertiary),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -958,10 +963,7 @@ Widget _miniStat(String label, int value, Color color) {
       ),
       Text(
         label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color.withValues(alpha: 0.7),
-        ),
+        style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7)),
       ),
     ],
   );
@@ -1029,8 +1031,10 @@ Future<_SongSearchOutcome> _searchSingleSong(
       final cleanArtist = OnlineMetadataService.cleanTag(song.artist);
       final cleanAlbum = OnlineMetadataService.cleanTag(song.album);
       if (cleanArtist != null && cleanAlbum != null) {
-        coverUrl = await onlineService.searchLastfmAlbumImage(cleanAlbum,
-            artistName: cleanArtist);
+        coverUrl = await onlineService.searchAlbumImage(
+          cleanAlbum,
+          artistName: cleanArtist,
+        );
       }
       if ((coverUrl == null || coverUrl.isEmpty) &&
           match.coverUrl != null &&
@@ -1040,10 +1044,7 @@ Future<_SongSearchOutcome> _searchSingleSong(
       if (coverUrl != null && coverUrl.isNotEmpty) {
         newCoverPath = await onlineService
             .downloadAndCacheCover(coverUrl, song.filename)
-            .timeout(
-              const Duration(seconds: 10),
-              onTimeout: () => null,
-            );
+            .timeout(const Duration(seconds: 10), onTimeout: () => null);
       }
     }
 
@@ -1081,10 +1082,12 @@ Future<void> songActionFetchMissingMetadataForList(
 
   // Pre-filter: only process songs with truly missing metadata
   final targetSongs = songs
-      .where((s) =>
-          OnlineMetadataService.cleanTag(s.artist) == null ||
-          OnlineMetadataService.cleanTag(s.album) == null ||
-          OnlineMetadataService.cleanTag(s.title) == null)
+      .where(
+        (s) =>
+            OnlineMetadataService.cleanTag(s.artist) == null ||
+            OnlineMetadataService.cleanTag(s.album) == null ||
+            OnlineMetadataService.cleanTag(s.title) == null,
+      )
       .toList();
 
   final skippedCount = songs.length - targetSongs.length;
@@ -1118,16 +1121,20 @@ Future<void> songActionFetchMissingMetadataForList(
   for (int batchStart = 0;
       batchStart < targetSongs.length && !dialogState.cancelled;
       batchStart += _batchConcurrency) {
-    final batchEnd =
-        (batchStart + _batchConcurrency).clamp(0, targetSongs.length);
+    final batchEnd = (batchStart + _batchConcurrency).clamp(
+      0,
+      targetSongs.length,
+    );
     final batch = targetSongs.sublist(batchStart, batchEnd);
 
     // Show pre-search progress
     final batchNum = batchStart ~/ _batchConcurrency + 1;
-    dialogState.updateProgress(dialogState.progress.copyWith(
-      processed: processed,
-      currentSong: 'Searching batch $batchNum...',
-    ));
+    dialogState.updateProgress(
+      dialogState.progress.copyWith(
+        processed: processed,
+        currentSong: 'Searching batch $batchNum...',
+      ),
+    );
 
     // Run all searches in this batch concurrently
     final outcomes = await Future.wait(
@@ -1160,36 +1167,43 @@ Future<void> songActionFetchMissingMetadataForList(
               .updateSongCover(song, outcome.newCoverPath);
         }
 
-        updatedRecords.add(_MetadataUpdateRecord(
-          originalSong: song,
-          newTitle: title,
-          newArtist: artist,
-          newAlbum: album,
-          newCoverPath: outcome.newCoverPath,
-          source: outcome.source,
-        ));
-        dialogState.updateProgress(dialogState.progress.copyWith(
-          updated: dialogState.progress.updated + 1,
-        ));
+        updatedRecords.add(
+          _MetadataUpdateRecord(
+            originalSong: song,
+            newTitle: title,
+            newArtist: artist,
+            newAlbum: album,
+            newCoverPath: outcome.newCoverPath,
+            source: outcome.source,
+          ),
+        );
+        dialogState.updateProgress(
+          dialogState.progress.copyWith(
+            updated: dialogState.progress.updated + 1,
+          ),
+        );
       } else if (outcome.notFound) {
         notFoundSongs.add(outcome.song);
-        dialogState.updateProgress(dialogState.progress.copyWith(
-          notFound: dialogState.progress.notFound + 1,
-        ));
+        dialogState.updateProgress(
+          dialogState.progress.copyWith(
+            notFound: dialogState.progress.notFound + 1,
+          ),
+        );
       }
     }
 
     processed = batchEnd;
-    dialogState.updateProgress(dialogState.progress.copyWith(
-      processed: processed,
-      currentSong: '',
-    ));
+    dialogState.updateProgress(
+      dialogState.progress.copyWith(processed: processed, currentSong: ''),
+    );
   }
 
-  dialogState.updateProgress(dialogState.progress.copyWith(
-    processed: targetSongs.length,
-    currentSong: '',
-  ));
+  dialogState.updateProgress(
+    dialogState.progress.copyWith(
+      processed: targetSongs.length,
+      currentSong: '',
+    ),
+  );
 
   // Close the progress dialog
   if (host.mounted && Navigator.of(host, rootNavigator: true).canPop()) {
@@ -1210,11 +1224,21 @@ Future<void> songActionFetchMissingMetadataForList(
     // Still show partial results if there were updates
     if (updatedRecords.isNotEmpty) {
       await _showMetadataResultsDialog(
-          host, ref, updatedRecords, notFoundSongs, skippedCount);
+        host,
+        ref,
+        updatedRecords,
+        notFoundSongs,
+        skippedCount,
+      );
     }
     return;
   }
 
   await _showMetadataResultsDialog(
-      host, ref, updatedRecords, notFoundSongs, skippedCount);
+    host,
+    ref,
+    updatedRecords,
+    notFoundSongs,
+    skippedCount,
+  );
 }
