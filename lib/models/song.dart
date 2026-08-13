@@ -251,6 +251,51 @@ class LyricLine extends Equatable {
     return lyrics;
   }
 
+  /// Aligns a translated parse with the source parse by timestamp and line
+  /// type. Translation responses may lose blank lines, so list indexes alone
+  /// are not a safe correspondence.
+  static List<LyricLine?> alignTranslation(
+    List<LyricLine> source,
+    List<LyricLine> translated,
+  ) {
+    if (source.isEmpty || translated.isEmpty) {
+      return List<LyricLine?>.filled(source.length, null);
+    }
+
+    final buckets = <String, List<LyricLine>>{};
+    for (final line in translated) {
+      final key =
+          line.isSynced ? 'synced:${line.time.inMilliseconds}' : 'plain';
+      buckets.putIfAbsent(key, () => []).add(line);
+    }
+
+    final cursors = <String, int>{};
+    return [
+      for (int i = 0; i < source.length; i++)
+        () {
+          final sourceLine = source[i];
+          final key = sourceLine.isSynced
+              ? 'synced:${sourceLine.time.inMilliseconds}'
+              : 'plain';
+          final candidates = buckets[key];
+          final cursor = cursors[key] ?? 0;
+          if (candidates != null && cursor < candidates.length) {
+            cursors[key] = cursor + 1;
+            return candidates[cursor];
+          }
+          // A same-length fallback is safe only when the timestamp shape also
+          // matches. Never display a line at a plausible but wrong timestamp.
+          if (source.length == translated.length &&
+              i < translated.length &&
+              sourceLine.isSynced == translated[i].isSynced &&
+              (!sourceLine.isSynced || sourceLine.time == translated[i].time)) {
+            return translated[i];
+          }
+          return null;
+        }(),
+    ];
+  }
+
   /// Extracts plain text content from LRC format (removes all timestamps)
   /// This is used for search indexing to avoid indexing timestamps
   static String extractPlainText(String content) {

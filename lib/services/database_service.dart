@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
@@ -202,10 +204,20 @@ class DatabaseService {
           filename TEXT,
           target_lang TEXT,
           translated_content TEXT,
+          source_hash TEXT,
           updated_at REAL,
           PRIMARY KEY (filename, target_lang)
         )
     ''');
+
+    final translatedColumns = await db.rawQuery(
+      'PRAGMA table_info(translated_lyrics)',
+    );
+    if (!translatedColumns.any((column) => column['name'] == 'source_hash')) {
+      await db.execute(
+        'ALTER TABLE translated_lyrics ADD COLUMN source_hash TEXT',
+      );
+    }
 
     // 2. Create indexes for the song table
     await db
@@ -3596,24 +3608,39 @@ class DatabaseService {
   }
 
   Future<String?> getTranslatedLyrics(
-      String filename, String targetLang) async {
+    String filename,
+    String targetLang, {
+    String? sourceContent,
+  }) async {
     await _ensureInitialized();
     final results = await _userDataDatabase!.query(
       'translated_lyrics',
-      columns: ['translated_content'],
+      columns: ['translated_content', 'source_hash'],
       where: 'filename = ? AND target_lang = ?',
       whereArgs: [filename, targetLang.toLowerCase()],
       limit: 1,
     );
     if (results.isEmpty) return null;
+
+    final storedHash = results.first['source_hash'] as String?;
+    // Entries created before source hashing are deliberately not trusted when
+    // a caller supplies the current lyrics. Otherwise an old translation can
+    // be paired with a newly fetched lyric list and appear random.
+    if (sourceContent != null &&
+        (storedHash == null ||
+            storedHash != _translatedLyricsHash(sourceContent))) {
+      return null;
+    }
+
     return results.first['translated_content'] as String?;
   }
 
   Future<void> saveTranslatedLyrics(
     String filename,
     String targetLang,
-    String content,
-  ) async {
+    String content, {
+    String? sourceContent,
+  }) async {
     await _ensureInitialized();
     await _userDataDatabase!.insert(
       'translated_lyrics',
@@ -3621,10 +3648,16 @@ class DatabaseService {
         'filename': filename,
         'target_lang': targetLang.toLowerCase(),
         'translated_content': content,
+        if (sourceContent != null)
+          'source_hash': _translatedLyricsHash(sourceContent),
         'updated_at': DateTime.now().millisecondsSinceEpoch / 1000.0,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  String _translatedLyricsHash(String content) {
+    return sha256.convert(utf8.encode(content)).toString();
   }
 
   Future<void> deleteTranslatedLyrics(String filename,

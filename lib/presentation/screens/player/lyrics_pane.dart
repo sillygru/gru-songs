@@ -101,7 +101,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   List<LyricLine>? _lyrics;
   String? _rawLyricsContent;
-  List<LyricLine>? _translatedLyrics;
+  List<LyricLine?>? _translatedLyrics;
   bool _translating = false;
   bool _hasCachedTranslation = false;
   bool _loading = true;
@@ -255,6 +255,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       _rawLyricsContent = content;
       _translatedLyrics = null;
       _hasCachedTranslation = false;
+      _translating = false;
       _hasSynced = parsed.any((l) => l.isSynced);
       _loading = false;
     });
@@ -264,6 +265,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       final cached = await DatabaseService.instance.getTranslatedLyrics(
         filename,
         settings.lyricsTargetLanguage,
+        sourceContent: content,
       );
 
       if (!mounted || _loadedFilename != filename) return;
@@ -277,7 +279,10 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
           cached.trim().isNotEmpty &&
           cached.trim() != content?.trim()) {
         setState(() {
-          _translatedLyrics = LyricLine.parse(cached);
+          _translatedLyrics = LyricLine.alignTranslation(
+            parsed,
+            LyricLine.parse(cached),
+          );
           _hasCachedTranslation = true;
         });
       } else {
@@ -317,17 +322,18 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   }
 
   Future<void> _openTranslationSheet() async {
+    final filename = widget.song.filename;
     final config = await showLyricsTranslationSheet(
       context,
       currentSongTitle: widget.song.title,
       hasCachedTranslation: _hasCachedTranslation,
     );
 
-    if (config == null || !mounted) return;
+    if (config == null || !mounted || _loadedFilename != filename) return;
 
     if (config.clearCache) {
-      await DatabaseService.instance
-          .deleteTranslatedLyrics(widget.song.filename);
+      await DatabaseService.instance.deleteTranslatedLyrics(filename);
+      if (!mounted || _loadedFilename != filename) return;
       setState(() {
         _translatedLyrics = null;
         _hasCachedTranslation = false;
@@ -345,13 +351,16 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   Future<void> _performTranslation(String targetLang,
       {bool silent = false}) async {
+    final filename = widget.song.filename;
     final content = _rawLyricsContent;
     if (content == null || content.trim().isEmpty) return;
 
     final cached = await DatabaseService.instance.getTranslatedLyrics(
-      widget.song.filename,
+      filename,
       targetLang,
+      sourceContent: content,
     );
+    if (!mounted || _loadedFilename != filename) return;
 
     if (cached == '[SAME_LANG]') {
       if (!mounted) return;
@@ -367,7 +376,10 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         cached.trim() != content.trim()) {
       if (!mounted) return;
       setState(() {
-        _translatedLyrics = LyricLine.parse(cached);
+        _translatedLyrics = LyricLine.alignTranslation(
+          _lyrics ?? const <LyricLine>[],
+          LyricLine.parse(cached),
+        );
         _hasCachedTranslation = true;
       });
       return;
@@ -382,21 +394,19 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         lyrics: content,
         targetLang: targetLang,
       );
+      if (!mounted || _loadedFilename != filename) return;
 
-      final detected = response.detectedSourceLang?.toLowerCase();
-      final target = targetLang.toLowerCase();
+      final isUnchanged = response.text.trim() == content.trim();
 
-      final isSameLang = detected != null &&
-          (detected == target || target.startsWith(detected));
-
-      if (isSameLang) {
+      if (isUnchanged) {
         await DatabaseService.instance.saveTranslatedLyrics(
-          widget.song.filename,
+          filename,
           targetLang,
           '[SAME_LANG]',
+          sourceContent: content,
         );
 
-        if (!mounted) return;
+        if (!mounted || _loadedFilename != filename) return;
         setState(() {
           _translatedLyrics = null;
           _hasCachedTranslation = false;
@@ -407,17 +417,23 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         }
       } else if (response.text.trim().isNotEmpty) {
         await DatabaseService.instance.saveTranslatedLyrics(
-          widget.song.filename,
+          filename,
           targetLang,
           response.text,
+          sourceContent: content,
         );
 
-        if (!mounted) return;
+        if (!mounted || _loadedFilename != filename) return;
         setState(() {
-          _translatedLyrics = LyricLine.parse(response.text);
+          _translatedLyrics = LyricLine.alignTranslation(
+            _lyrics ?? const <LyricLine>[],
+            LyricLine.parse(response.text),
+          );
           _hasCachedTranslation = true;
         });
-        appSnack(context, 'Lyrics translated', tone: AppTone.success);
+        if (!silent) {
+          appSnack(context, 'Lyrics translated', tone: AppTone.success);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -626,13 +642,14 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
             String? lineTranslation;
             if (_translatedLyrics != null &&
                 index < _translatedLyrics!.length) {
-              final translated = _translatedLyrics![index].text;
+              final translated = _translatedLyrics![index];
               // Lines the service left untouched (already in the target
               // language) carry their original text as "translation" — do not
               // duplicate it as subtext underneath itself.
-              if (translated.trim().isNotEmpty &&
-                  translated.trim() != line.text.trim()) {
-                lineTranslation = translated;
+              if (translated != null &&
+                  translated.text.trim().isNotEmpty &&
+                  translated.text.trim() != line.text.trim()) {
+                lineTranslation = translated.text;
               }
             }
 

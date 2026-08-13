@@ -50,7 +50,7 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
   static const Duration _gapCollapseHold = PlayerTokens.dSlow;
 
   List<LyricLine> _lines = const [];
-  List<LyricLine> _translatedLines = const [];
+  List<LyricLine?> _translatedLines = const [];
   bool _hasSynced = false;
   String? _loadedFilename;
 
@@ -147,17 +147,19 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
 
     final settings = ref.read(settingsProvider);
     final mode = settings.lyricsTranslationMode;
-    final hasTranslation = _translatedLines.isNotEmpty &&
-        activeIndex < _translatedLines.length &&
-        _translatedLines[activeIndex].text.trim().isNotEmpty;
-
-    if (!hasTranslation) return _lines[activeIndex].text.trim();
+    final translated =
+        _translatedLines.isNotEmpty && activeIndex < _translatedLines.length
+            ? _translatedLines[activeIndex]
+            : null;
+    if (translated == null || translated.text.trim().isEmpty) {
+      return _lines[activeIndex].text.trim();
+    }
 
     // Both 'replace' and 'subtext' modes show the translated text in the peek
     // (the full pane shows subtext alongside the original; the peek is
     // constrained to one line so it shows the translation directly).
     if (mode == 'replace' || mode == 'subtext') {
-      return _translatedLines[activeIndex].text.trim();
+      return translated.text.trim();
     }
 
     return _lines[activeIndex].text.trim();
@@ -195,6 +197,7 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
           await DatabaseService.instance.getTranslatedLyrics(
         filename,
         settings.lyricsTargetLanguage,
+        sourceContent: content,
       );
 
       if (!mounted || _loadedFilename != filename) return;
@@ -202,7 +205,10 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
       if (translatedContent != null &&
           translatedContent != '[SAME_LANG]' &&
           translatedContent.trim().isNotEmpty) {
-        final translatedParsed = LyricLine.parse(translatedContent);
+        final translatedParsed = LyricLine.alignTranslation(
+          parsed,
+          LyricLine.parse(translatedContent),
+        );
         if (mounted) {
           setState(() {
             _translatedLines = translatedParsed;

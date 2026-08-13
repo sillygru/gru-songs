@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wispie/models/song.dart';
 import 'package:wispie/services/lingva_translate_service.dart';
 
 void main() {
@@ -193,6 +194,24 @@ void main() {
         ),
         equals(const ['X', 'Y']),
       );
+    });
+  });
+
+  group('LyricLine.alignTranslation', () {
+    test('matches translated lines by timestamp instead of shifted indexes',
+        () {
+      final source = LyricLine.parse(
+        '[00:01.00]First\n[00:02.00]Second\n[00:03.00]Third',
+      );
+      final translated =
+          LyricLine.parse('[00:02.00]Segundo\n[00:03.00]Tercero');
+
+      final aligned = LyricLine.alignTranslation(source, translated);
+
+      expect(aligned, hasLength(3));
+      expect(aligned[0], isNull);
+      expect(aligned[1]?.text, 'Segundo');
+      expect(aligned[2]?.text, 'Tercero');
     });
   });
 

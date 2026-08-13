@@ -38,6 +38,34 @@ void main() {
       expect(retrieved, isNull);
     });
 
+    test('does not reuse a translation for changed source lyrics', () async {
+      const oldSource = '[00:10.00] Hello';
+      const newSource = '[00:10.00] Goodbye';
+      await DatabaseService.instance.saveTranslatedLyrics(
+        filename,
+        'de',
+        '[00:10.00] Hallo',
+        sourceContent: oldSource,
+      );
+
+      expect(
+        await DatabaseService.instance.getTranslatedLyrics(
+          filename,
+          'de',
+          sourceContent: oldSource,
+        ),
+        '[00:10.00] Hallo',
+      );
+      expect(
+        await DatabaseService.instance.getTranslatedLyrics(
+          filename,
+          'de',
+          sourceContent: newSource,
+        ),
+        isNull,
+      );
+    });
+
     test('deletes translated lyrics by target language or filename', () async {
       await DatabaseService.instance
           .saveTranslatedLyrics(filename, 'fr', '[00:10.00] Bonjour');

@@ -121,10 +121,15 @@ class LingvaTranslateService {
     final result = <String>[];
     var cursor = 0;
     for (int i = 0; i < originalLines.length; i++) {
-      if (needsTranslation != null && !needsTranslation[i]) {
+      if (needsTranslation != null &&
+          i < needsTranslation.length &&
+          !needsTranslation[i]) {
         result.add(originalLines[i]);
-      } else {
+      } else if (cursor < translatedLines.length) {
         result.add(translatedLines[cursor++]);
+      } else {
+        // A malformed backend response must not shift or delete later lines.
+        result.add(originalLines[i]);
       }
     }
     return result;
@@ -134,11 +139,11 @@ class LingvaTranslateService {
   /// Preserves LRC timestamps ([mm:ss.xx]), metadata headers ([ar:..]),
   /// and line alignment.
   ///
-  /// Lines already in the target language are not sent to the backend. The
-  /// backend auto-detects the *dominant* language of the whole payload, so a
-  /// mostly-English song with Japanese lines would be judged "already English"
-  /// and the Japanese parts never translated. Splitting per line means only the
-  /// foreign lines go out, and the translation is spliced back in.
+  /// Non-Latin lines that are confidently already in the target script are
+  /// kept locally. Latin-script lines are sent because English, Spanish,
+  /// French, and similar languages cannot be distinguished by script alone.
+  /// Batches are split when their scripts change, then spliced back into the
+  /// original positions.
   Future<TranslationResponse> translateLyrics({
     required String lyrics,
     required String targetLang,
@@ -195,30 +200,29 @@ class LingvaTranslateService {
       return TranslationResponse(text: lyrics);
     }
 
-    final hasForeignScript =
-        pendingTextLines.any((p) => hasSignificantForeignScript(p.text));
+    // Script detection can identify target-language lines for non-Latin
+    // targets. Latin-script languages cannot be distinguished reliably without
+    // a language detector, so every line is sent to the translator; a line
+    // already in Spanish, for example, is safely returned as Spanish instead
+    // of being mistaken for English and left untranslated.
+    final targetScript = _scriptFor(targetLang);
+    final needsTranslation = targetScript == null
+        ? List<bool>.filled(pendingTextLines.length, true)
+        : [
+            for (final p in pendingTextLines)
+              lineNeedsTranslation(p.text, targetLang),
+          ];
 
-    // Entirely Latin-script lyrics (English, French, German, ...) cannot be
-    // classified offline, so they keep the whole-text path and the backend's
-    // auto-detect decides the language. Mixed-script lyrics are the case the
-    // per-line split exists for.
-    List<bool>? needsTranslation;
-    if (hasForeignScript) {
-      needsTranslation = [
-        for (final p in pendingTextLines)
-          lineNeedsTranslation(p.text, targetLang),
-      ];
-      if (!needsTranslation.any((needs) => needs)) {
-        return TranslationResponse(
-          text: lyrics,
-          detectedSourceLang: targetLang.toLowerCase(),
-        );
-      }
+    if (!needsTranslation.any((needs) => needs)) {
+      return TranslationResponse(
+        text: lyrics,
+        detectedSourceLang: targetLang.toLowerCase(),
+      );
     }
 
     final toTranslate = <_PendingLine>[];
     for (int i = 0; i < pendingTextLines.length; i++) {
-      if (needsTranslation == null || needsTranslation[i]) {
+      if (needsTranslation[i]) {
         toTranslate.add(pendingTextLines[i]);
       }
     }
@@ -268,17 +272,23 @@ class LingvaTranslateService {
     final List<List<_PendingLine>> batches = [];
     List<_PendingLine> currentBatch = [];
     int currentChars = 0;
+    String? currentScript;
 
     for (final item in items) {
       final itemLen = item.text.length + 1;
+      final itemScript = _scriptBucket(item.text);
+      final scriptChanged =
+          currentScript != null && currentScript != itemScript;
       if (currentBatch.isNotEmpty &&
-          (currentChars + itemLen > _maxBatchChars)) {
+          (scriptChanged || currentChars + itemLen > _maxBatchChars)) {
         batches.add(currentBatch);
         currentBatch = [];
         currentChars = 0;
+        currentScript = null;
       }
       currentBatch.add(item);
       currentChars += itemLen;
+      currentScript ??= itemScript;
     }
 
     if (currentBatch.isNotEmpty) {
@@ -286,6 +296,18 @@ class LingvaTranslateService {
     }
 
     return batches;
+  }
+
+  String _scriptBucket(String text) {
+    if (RegExp(r'[\u3040-\u30ff]').hasMatch(text)) return 'ja';
+    if (RegExp(r'[\uac00-\ud7af]').hasMatch(text)) return 'ko';
+    if (RegExp(r'[\u4e00-\u9faf]').hasMatch(text)) return 'zh';
+    if (RegExp(r'[\u0400-\u04ff]').hasMatch(text)) return 'cyrillic';
+    if (RegExp(r'[\u0600-\u06ff]').hasMatch(text)) return 'arabic';
+    if (RegExp(r'[\u0900-\u097f]').hasMatch(text)) return 'devanagari';
+    if (RegExp(r'[\u0370-\u03ff]').hasMatch(text)) return 'greek';
+    if (RegExp(r'[\u0e00-\u0e7f]').hasMatch(text)) return 'thai';
+    return 'latin';
   }
 
   Future<_BatchResult> _translateBatch({
@@ -300,21 +322,50 @@ class LingvaTranslateService {
       sourceLang: sourceLang,
     );
 
-    final splitLines = fetchResult.text.split('\n');
+    final splitLines = fetchResult.text
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .split('\n');
 
-    final List<String> mappedResults = [];
-    for (int i = 0; i < batch.length; i++) {
-      if (i < splitLines.length && splitLines[i].trim().isNotEmpty) {
-        mappedResults.add(splitLines[i].trim());
-      } else {
-        mappedResults.add(batch[i].text);
-      }
+    // Translation endpoints are not consistent about preserving newlines. Do
+    // not shift every following lyric when one endpoint collapses a line: fall
+    // back to one request per line, where the response cannot be ambiguous.
+    if (splitLines.length != batch.length) {
+      final individualResults = await Future.wait(
+        batch.map(
+          (item) => _raceTranslation(
+            query: item.text,
+            targetLang: targetLang,
+            sourceLang: sourceLang,
+          ),
+        ),
+      );
+      return _BatchResult(
+        lines: [
+          for (int i = 0; i < batch.length; i++)
+            _cleanTranslatedLine(
+              individualResults[i].text,
+              batch[i].text,
+            ),
+        ],
+        detectedSourceLang: individualResults
+            .map((result) => result.detectedSourceLang)
+            .firstWhere((lang) => lang != null, orElse: () => null),
+      );
     }
 
     return _BatchResult(
-      lines: mappedResults,
+      lines: [
+        for (int i = 0; i < batch.length; i++)
+          _cleanTranslatedLine(splitLines[i], batch[i].text),
+      ],
       detectedSourceLang: fetchResult.detectedSourceLang,
     );
+  }
+
+  String _cleanTranslatedLine(String translated, String fallback) {
+    final cleaned = translated.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return cleaned.isEmpty ? fallback : cleaned;
   }
 
   /// Fires every keyless backend at once and keeps the first usable reply.
