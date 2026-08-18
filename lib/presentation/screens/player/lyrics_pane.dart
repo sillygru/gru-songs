@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../domain/models/rich_lyrics.dart';
 import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/database_service.dart';
 import '../../../services/lingva_translate_service.dart';
+import '../../../services/lrclib_service.dart';
 import '../../components/app_feedback.dart';
 import '../../dialogs/lyrics_search_sheet.dart';
 import '../../dialogs/lyrics_translation_sheet.dart';
@@ -98,8 +100,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
   final LingvaTranslateService _translateService = LingvaTranslateService();
+  final LrclibService _lrclibService = LrclibService();
 
   List<LyricLine>? _lyrics;
+  List<RichLyricLine?> _wordLines = const [];
+  bool _richSyncAvailable = false;
   String? _rawLyricsContent;
   List<LyricLine?>? _translatedLyrics;
   bool _translating = false;
@@ -118,6 +123,8 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// changes every few seconds. Splitting the two means the ticks land on three
   /// small notifiers and the list rebuilds when the singing moves on.
   final ValueNotifier<int> _activeLine = ValueNotifier(-1);
+  final ValueNotifier<Duration> _playbackPosition =
+      ValueNotifier(Duration.zero);
 
   /// Index the gap loader is inserted before, or -1 when it is hidden. Changes
   /// once per instrumental break.
@@ -172,6 +179,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     _scrollController.removeListener(_onUserScroll);
     _scrollController.dispose();
     _activeLine.dispose();
+    _playbackPosition.dispose();
     _gapSlot.dispose();
     _gapProgress.dispose();
     super.dispose();
@@ -181,6 +189,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// Runs off the widget tree entirely: nothing here rebuilds unless one of the
   /// values changed.
   void _onPosition(Duration position) {
+    _playbackPosition.value = position;
     final lyrics = _lyrics;
     if (lyrics == null || lyrics.isEmpty || !_hasSynced) return;
 
@@ -231,6 +240,8 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     setState(() {
       _loading = true;
       _lyrics = null;
+      _wordLines = const [];
+      _richSyncAvailable = false;
       _hasSynced = false;
       _loadedFilename = filename;
       _lineKeys.clear();
@@ -250,8 +261,15 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         ? const <LyricLine>[]
         : LyricLine.parse(content);
 
+    final generatedWords = RichLyrics.fromLyricLines(
+      parsed,
+      songDuration: widget.song.duration,
+    );
+
     setState(() {
       _lyrics = parsed;
+      _wordLines = generatedWords.lines;
+      _richSyncAvailable = false;
       _rawLyricsContent = content;
       _translatedLyrics = null;
       _hasCachedTranslation = false;
@@ -259,6 +277,8 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       _hasSynced = parsed.any((l) => l.isSynced);
       _loading = false;
     });
+
+    unawaited(_loadRichSync(filename, parsed));
 
     if (parsed.isNotEmpty) {
       final settings = ref.read(settingsProvider);
@@ -301,6 +321,69 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     // Land on the right line straight away rather than waiting for the next
     // playhead tick.
     _onPosition(ref.read(audioPlayerManagerProvider).player.position);
+  }
+
+  Future<void> _loadRichSync(String filename, List<LyricLine> local) async {
+    final rich = await _lrclibService.getRichSync(widget.song);
+    if (!mounted || _loadedFilename != filename || rich == null) return;
+
+    final aligned = _alignRichLyrics(local, rich);
+    final hasLocalLyrics = local.isNotEmpty;
+    if (hasLocalLyrics && aligned.whereType<RichLyricLine>().isEmpty) return;
+
+    if (!hasLocalLyrics) {
+      final onlineLines = rich.lines
+          .where((line) => line.text.trim().isNotEmpty)
+          .map((line) => LyricLine(
+                time: line.start,
+                text: line.text,
+                isSynced: true,
+              ))
+          .toList();
+      if (onlineLines.isEmpty) return;
+      setState(() {
+        _lyrics = onlineLines;
+        _wordLines = rich.lines;
+        _richSyncAvailable = rich.lines.any((line) => line.words.isNotEmpty);
+        _hasSynced = true;
+        _loading = false;
+      });
+    } else {
+      setState(() {
+        _wordLines = aligned;
+        _richSyncAvailable = aligned.any(
+          (line) => line != null && line.words.isNotEmpty,
+        );
+      });
+    }
+
+    _onPosition(ref.read(audioPlayerManagerProvider).player.position);
+  }
+
+  List<RichLyricLine?> _alignRichLyrics(
+    List<LyricLine> local,
+    RichLyrics rich,
+  ) {
+    final richLines =
+        rich.lines.where((line) => line.text.trim().isNotEmpty).toList();
+    final localTimed = local.where((line) => line.isSynced).toList();
+    if (richLines.length != localTimed.length) {
+      return List<RichLyricLine?>.filled(local.length, null);
+    }
+
+    final aligned = <RichLyricLine?>[];
+    var timedIndex = 0;
+    for (final localLine in local) {
+      if (!localLine.isSynced) {
+        aligned.add(null);
+        continue;
+      }
+      final candidate = richLines[timedIndex];
+      timedIndex++;
+      final delta = (candidate.start - localLine.time).abs();
+      aligned.add(delta <= const Duration(seconds: 2) ? candidate : null);
+    }
+    return aligned;
   }
 
   /// Looks lyrics up on LRCLIB and writes the chosen result into the file.
@@ -565,6 +648,31 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_richSyncAvailable)
+                Padding(
+                  padding: const EdgeInsets.only(right: PlayerTokens.s1),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: widget.accent.withValues(alpha: 0.16),
+                      borderRadius: PlayerTokens.brPill,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: PlayerTokens.s2,
+                        vertical: PlayerTokens.s1,
+                      ),
+                      child: Text(
+                        'WORD SYNC',
+                        style: PlayerTokens.meta(context).copyWith(
+                          color: widget.accent,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               IconButton(
                 icon: _translating
                     ? const SizedBox(
@@ -655,23 +763,29 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
             final lyricWidget = KeyedSubtree(
               key: key,
-              child: LyricsLine(
-                text: line.text,
-                translatedText: lineTranslation,
-                translationMode: settings.lyricsTranslationMode,
-                isActive: index == active,
-                isPlayed: active >= 0 && index <= active,
-                hasTime: line.isSynced,
-                blurSigma: _blurFor(
-                  index: index,
-                  active: active,
-                  enabled: blurEnabled && hasSynced,
+              child: ValueListenableBuilder<Duration>(
+                valueListenable: _playbackPosition,
+                builder: (context, position, _) => LyricsLine(
+                  text: line.text,
+                  translatedText: lineTranslation,
+                  translationMode: settings.lyricsTranslationMode,
+                  isActive: index == active,
+                  isPlayed: active >= 0 && index <= active,
+                  hasTime: line.isSynced,
+                  blurSigma: _blurFor(
+                    index: index,
+                    active: active,
+                    enabled: blurEnabled && hasSynced,
+                  ),
+                  activeFontSize: 24,
+                  inactiveFontSize: 22,
+                  activeColor: widget.accent,
+                  glowIntensity: index == active ? 1.0 : 0.0,
+                  playbackPosition: position,
+                  wordLine:
+                      index < _wordLines.length ? _wordLines[index] : null,
+                  onTap: () => player.seek(line.time),
                 ),
-                activeFontSize: 24,
-                inactiveFontSize: 22,
-                activeColor: widget.accent,
-                glowIntensity: index == active ? 1.0 : 0.0,
-                onTap: () => player.seek(line.time),
               ),
             );
 

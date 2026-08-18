@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import 'rich_lyrics.dart';
+
 /// One lyrics record from LRCLIB.
 ///
 /// Mirrors the API payload exactly — `duration` arrives as a float count of
@@ -15,6 +17,7 @@ class LrclibResult extends Equatable {
   final bool instrumental;
   final String? plainLyrics;
   final String? syncedLyrics;
+  final RichLyrics? richLyrics;
 
   const LrclibResult({
     required this.id,
@@ -25,6 +28,7 @@ class LrclibResult extends Equatable {
     this.instrumental = false,
     this.plainLyrics,
     this.syncedLyrics,
+    this.richLyrics,
   });
 
   factory LrclibResult.fromJson(Map<String, dynamic> json) {
@@ -40,7 +44,14 @@ class LrclibResult extends Equatable {
       instrumental: json['instrumental'] == true,
       plainLyrics: _nonEmpty(json['plainLyrics']),
       syncedLyrics: _nonEmpty(json['syncedLyrics']),
+      richLyrics: _richLyrics(json['richSync']),
     );
+  }
+
+  static RichLyrics? _richLyrics(Object? value) {
+    if (value is! Map<String, dynamic>) return null;
+    final parsed = RichLyrics.fromApi(value);
+    return parsed.lines.isEmpty ? null : parsed;
   }
 
   static String? _nonEmpty(Object? value) {
@@ -50,18 +61,19 @@ class LrclibResult extends Equatable {
 
   bool get hasSynced => syncedLyrics != null;
   bool get hasPlain => plainLyrics != null;
+  bool get hasRichSync => richLyrics != null;
 
   /// Whether this record can supply anything at all. An instrumental counts:
   /// applying it deliberately writes empty lyrics, which is a real answer to
   /// "why does this track have no words".
-  bool get isUsable => instrumental || hasSynced || hasPlain;
+  bool get isUsable => instrumental || hasSynced || hasPlain || hasRichSync;
 
   /// The text to embed. Synced is preferred when present unless [preferPlain]
   /// is set; an instrumental resolves to an empty string either way.
   String? lyricsFor({bool preferPlain = false}) {
     if (instrumental) return '';
-    if (preferPlain) return plainLyrics ?? syncedLyrics;
-    return syncedLyrics ?? plainLyrics;
+    if (preferPlain) return plainLyrics ?? syncedLyrics ?? richLyrics?.toLrc();
+    return syncedLyrics ?? plainLyrics ?? richLyrics?.toLrc();
   }
 
   @override
@@ -74,5 +86,6 @@ class LrclibResult extends Equatable {
         instrumental,
         plainLyrics,
         syncedLyrics,
+        richLyrics,
       ];
 }

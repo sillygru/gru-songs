@@ -59,6 +59,7 @@ double scoreLrclibResult(
     if (result.hasPlain) score += 100;
   } else {
     if (result.hasSynced) score += 100;
+    if (result.hasRichSync) score += 15;
   }
 
   final local = song.duration;

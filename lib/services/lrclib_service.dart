@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../domain/models/lrclib_result.dart';
+import '../domain/models/rich_lyrics.dart';
 import '../domain/services/lrclib_match.dart';
 import '../domain/services/lrclib_query.dart';
 import '../models/song.dart';
@@ -85,6 +86,8 @@ class LrclibService {
       'artist_name': artistName,
       if (albumName != null && albumName.isNotEmpty) 'album_name': albumName,
       if (duration != null) 'duration': '${duration.inSeconds}',
+      'include_rich_sync': 'true',
+      'sync_type': 'richsync',
     });
     final unifiedResult = _resultFromObject(unified);
     if (unifiedResult != null) return unifiedResult;
@@ -95,6 +98,26 @@ class LrclibService {
       albumName: albumName,
       duration: duration,
     );
+  }
+
+  /// Fetches the optional word/syllable payload without replacing local lyrics.
+  /// A missing rich result is normal: callers should keep line-synced lyrics.
+  Future<RichLyrics?> getRichSync(Song song) async {
+    final trackName = cleanTag(song.title);
+    final artistName = cleanTag(song.artist);
+    if (trackName == null || artistName == null) return null;
+
+    final decoded = await _musicUtils.getJson('/lyrics/get', {
+      'track_name': cleanSearchTitle(trackName, artist: artistName),
+      'artist_name': artistName,
+      if (cleanTag(song.album) case final album?) 'album_name': album,
+      if (song.duration case final duration?)
+        'duration': '${duration.inSeconds}',
+      'include_rich_sync': 'true',
+      'sync_type': 'richsync',
+    });
+    final result = _resultFromObject(decoded);
+    return result?.richLyrics;
   }
 
   /// music-utils `/api/lyrics/search`, with direct LRCLIB fallback.
@@ -111,6 +134,8 @@ class LrclibService {
         'artist_name': artistName,
       if (albumName != null && albumName.isNotEmpty) 'album_name': albumName,
       'limit': '20',
+      'include_rich_sync': 'true',
+      'sync_type': 'richsync',
     });
     final unifiedResults = _resultsFromObject(unified);
     if (unifiedResults.isNotEmpty) return unifiedResults;
@@ -131,6 +156,8 @@ class LrclibService {
     final unified = await _musicUtils.getJson('/lyrics/search', {
       'q': trimmed,
       'limit': '20',
+      'include_rich_sync': 'true',
+      'sync_type': 'richsync',
     });
     final unifiedResults = _resultsFromObject(unified);
     if (unifiedResults.isNotEmpty) return unifiedResults;
