@@ -25,6 +25,12 @@ jobs:
         with:
           flutter-version: "3.44.2"
           cache: true
+      - name: Clear stale pub.dev credentials
+        run: |
+          rm -f "$HOME/.pub-cache/credentials.json"
+          rm -f "$HOME/.config/dart/pub-credentials.json" "$HOME/.config/dart/pub-tokens.json"
+          dart pub token remove --all || true
+
       - name: Install dependencies
         run: flutter pub get
       - name: Check formatting
@@ -41,6 +47,12 @@ jobs:
         with:
           flutter-version: "3.44.2"
           cache: true
+      - name: Clear stale pub.dev credentials
+        run: |
+          rm -f "$HOME/.pub-cache/credentials.json"
+          rm -f "$HOME/.config/dart/pub-credentials.json" "$HOME/.config/dart/pub-tokens.json"
+          dart pub token remove --all || true
+
       - name: Install dependencies
         run: flutter pub get
       - name: Run tests

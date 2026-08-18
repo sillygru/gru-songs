@@ -32,6 +32,12 @@ jobs:
           channel: "stable"
           cache: true
 
+      - name: Clear stale pub.dev credentials
+        run: |
+          rm -f "$HOME/.pub-cache/credentials.json"
+          rm -f "$HOME/.config/dart/pub-credentials.json" "$HOME/.config/dart/pub-tokens.json"
+          dart pub token remove --all || true
+
       - name: Install dependencies
         run: flutter pub get
 
