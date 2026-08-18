@@ -281,7 +281,7 @@ class DatabaseOptimizerService {
       }
       if (shortSessionsResult['deletedEvents'] > 0) {
         fixes.add(
-            'Deleted ${shortSessionsResult['deletedEvents']} orphaned play events');
+            'Deleted ${shortSessionsResult['deletedEvents']} associated/orphaned play events');
       }
       details['short_sessions_cleanup'] = shortSessionsResult['details'];
 
@@ -305,37 +305,57 @@ class DatabaseOptimizerService {
     return {'issues': issues, 'fixes': fixes, 'details': details};
   }
 
-  /// Deletes sessions shorter than 60 seconds and their associated events
-  /// Short sessions are often accidental plays or quick skips that clutter the database
+  /// Deletes sessions shorter than 60 seconds and their associated events via DatabaseService
   Future<Map<String, dynamic>> _deleteShortSessionsViaService() async {
+    final statsDb = DatabaseService.instance.getStatsDatabase();
+    if (statsDb == null) {
+      return {
+        'deletedSessions': 0,
+        'deletedEvents': 0,
+        'details': {'error': 'Stats database not available'}
+      };
+    }
+    return await _deleteShortSessions(statsDb);
+  }
+
+  /// Deletes sessions shorter than minDurationSeconds (default 60s) and their associated events.
+  /// This removes both the short sessions and all their corresponding playevent records,
+  /// as well as any orphaned play events.
+  Future<Map<String, dynamic>> _deleteShortSessions(
+    Database statsDb, {
+    double minDurationSeconds = 60.0,
+  }) async {
     int deletedSessions = 0;
     int deletedEvents = 0;
     final details = <String, dynamic>{};
 
     try {
-      final statsDb = DatabaseService.instance.getStatsDatabase();
-      if (statsDb == null) {
-        details['error'] = 'Stats database not available';
-        return {
-          'deletedSessions': deletedSessions,
-          'deletedEvents': deletedEvents,
-          'details': details
-        };
-      }
+      await statsDb.transaction((txn) async {
+        // 1. Delete associated play events for short/invalid sessions and orphaned events
+        deletedEvents = await txn.rawDelete('''
+          DELETE FROM playevent 
+          WHERE session_id IN (
+            SELECT id FROM playsession 
+            WHERE (end_time - start_time) < ? 
+               OR start_time IS NULL 
+               OR end_time IS NULL
+          )
+          OR session_id NOT IN (SELECT id FROM playsession)
+          OR session_id IS NULL
+        ''', [minDurationSeconds]);
 
-      deletedSessions = await statsDb.rawDelete('''
-        DELETE FROM playsession 
-        WHERE (end_time - start_time) < 60 
-        AND end_time IS NOT NULL 
-        AND start_time IS NOT NULL
-      ''');
+        // 2. Delete short/invalid sessions
+        deletedSessions = await txn.rawDelete('''
+          DELETE FROM playsession 
+          WHERE (end_time - start_time) < ? 
+             OR start_time IS NULL 
+             OR end_time IS NULL
+        ''', [minDurationSeconds]);
+      });
+
       details['sessions_deleted'] = deletedSessions;
-
-      deletedEvents = await statsDb.rawDelete('''
-        DELETE FROM playevent 
-        WHERE session_id NOT IN (SELECT id FROM playsession)
-      ''');
-      details['orphaned_events_deleted'] = deletedEvents;
+      details['events_deleted'] = deletedEvents;
+      details['min_duration_seconds'] = minDurationSeconds;
     } catch (e) {
       debugPrint('Error deleting short sessions: $e');
       details['error'] = e.toString();
@@ -344,22 +364,28 @@ class DatabaseOptimizerService {
     return {
       'deletedSessions': deletedSessions,
       'deletedEvents': deletedEvents,
-      'details': details
+      'details': details,
     };
   }
 
-  /// Deletes tiny immediate follow-up events after near-full/multi-full plays.
+  /// Deletes tiny immediate follow-up events after near-full/multi-full plays via DatabaseService.
   Future<Map<String, dynamic>> _deleteShortFollowUpsViaService() async {
+    final statsDb = DatabaseService.instance.getStatsDatabase();
+    if (statsDb == null) {
+      return {
+        'deleted': 0,
+        'details': {'error': 'Stats database not available'}
+      };
+    }
+    return await _deleteShortFollowUps(statsDb);
+  }
+
+  /// Deletes tiny immediate follow-up events after near-full/multi-full plays.
+  Future<Map<String, dynamic>> _deleteShortFollowUps(Database statsDb) async {
     int deleted = 0;
     final details = <String, dynamic>{};
 
     try {
-      final statsDb = DatabaseService.instance.getStatsDatabase();
-      if (statsDb == null) {
-        details['error'] = 'Stats database not available';
-        return {'deleted': deleted, 'details': details};
-      }
-
       final events = await statsDb.rawQuery('''
         SELECT id, song_filename, timestamp, duration_played, total_length
         FROM playevent
@@ -740,4 +766,15 @@ class DatabaseOptimizerService {
   @visibleForTesting
   Future<Map<String, dynamic>> fixDuplicateRecordsForTest(Database db) =>
       _fixDuplicateRecords(db);
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> deleteShortSessionsForTest(
+    Database statsDb, {
+    double minDurationSeconds = 60.0,
+  }) =>
+      _deleteShortSessions(statsDb, minDurationSeconds: minDurationSeconds);
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> deleteShortFollowUpsForTest(Database statsDb) =>
+      _deleteShortFollowUps(statsDb);
 }

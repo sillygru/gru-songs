@@ -2,6 +2,13 @@ import 'package:equatable/equatable.dart';
 
 import 'rich_lyrics.dart';
 
+enum LyricsSyncType {
+  word,
+  line,
+  plain,
+  instrumental,
+}
+
 /// One lyrics record from LRCLIB.
 ///
 /// Mirrors the API payload exactly — `duration` arrives as a float count of
@@ -62,6 +69,14 @@ class LrclibResult extends Equatable {
   bool get hasSynced => syncedLyrics != null;
   bool get hasPlain => plainLyrics != null;
   bool get hasRichSync => richLyrics != null;
+  bool get hasWordSync => richLyrics?.hasWordSync ?? false;
+
+  LyricsSyncType get syncType {
+    if (instrumental) return LyricsSyncType.instrumental;
+    if (hasWordSync) return LyricsSyncType.word;
+    if (hasSynced || hasRichSync) return LyricsSyncType.line;
+    return LyricsSyncType.plain;
+  }
 
   /// Whether this record can supply anything at all. An instrumental counts:
   /// applying it deliberately writes empty lyrics, which is a real answer to

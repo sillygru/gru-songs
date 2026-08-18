@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqlite3/open.dart';
 import 'package:wispie/services/database_service.dart';
 import 'package:wispie/services/storage_service.dart';
 import 'package:wispie/services/wispie_paths.dart';
@@ -45,12 +47,22 @@ class TestEnvironment {
     // Create a real temporary directory for test files
     _tempDir = Directory.systemTemp.createTempSync('wispie_test_');
 
-    // Initialize SQLite for testing
-    sqfliteFfiInit();
-    // Reset to null first to suppress the sqflite warning about changing
-    // the default factory. This is intentional for test environment setup.
-    databaseFactory = null;
-    databaseFactory = databaseFactoryFfi;
+    if (Platform.isLinux) {
+      open.overrideFor(OperatingSystem.linux, () {
+        try {
+          return DynamicLibrary.open('libsqlite3.so.0');
+        } catch (_) {
+          return DynamicLibrary.open('/usr/lib/x86_64-linux-gnu/libsqlite3.so.0');
+        }
+      });
+      databaseFactory = null;
+      databaseFactory = createDatabaseFactoryFfi(noIsolate: true);
+    } else {
+      // Initialize SQLite for testing
+      sqfliteFfiInit();
+      databaseFactory = null;
+      databaseFactory = databaseFactoryFfi;
+    }
 
     // Mock path_provider via MethodChannel - this is more reliable than
     // platform mocking because it intercepts calls before caching

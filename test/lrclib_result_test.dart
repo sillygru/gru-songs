@@ -32,6 +32,7 @@ void main() {
       expect(result.instrumental, isFalse);
       expect(result.hasSynced, isTrue);
       expect(result.hasPlain, isTrue);
+      expect(result.syncType, LyricsSyncType.line);
     });
 
     test('keeps fractional seconds', () {
@@ -44,6 +45,34 @@ void main() {
       });
 
       expect(result.duration, const Duration(milliseconds: 353500));
+    });
+
+    test('identifies rich word sync before line and plain sync', () {
+      final result = LrclibResult.fromJson(const {
+        'id': 10,
+        'trackName': 'Rich',
+        'artistName': 'Artist',
+        'richSync': {
+          'content': {
+            'lines': [
+              [
+                0,
+                1,
+                'hello world',
+                [
+                  [0, 0.4, 'hello'],
+                  [0.4, 1, 'world'],
+                ],
+              ],
+            ],
+          },
+        },
+        'syncedLyrics': '[00:00.00] hello world',
+        'plainLyrics': 'hello world',
+      });
+
+      expect(result.syncType, LyricsSyncType.word);
+      expect(result.hasWordSync, isTrue);
     });
 
     test('treats a null or blank lyric field as absent', () {

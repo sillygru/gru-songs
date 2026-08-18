@@ -13,8 +13,6 @@ class LyricsLine extends StatelessWidget {
   final bool isPlayed;
   final double blurSigma;
   final bool hasTime;
-  final double activeFontSize;
-  final double inactiveFontSize;
   final Color activeColor;
   final double glowIntensity;
   final Duration playbackPosition;
@@ -30,8 +28,6 @@ class LyricsLine extends StatelessWidget {
     required this.isPlayed,
     required this.blurSigma,
     required this.hasTime,
-    required this.activeFontSize,
-    required this.inactiveFontSize,
     required this.activeColor,
     required this.glowIntensity,
     this.playbackPosition = Duration.zero,
@@ -51,12 +47,11 @@ class LyricsLine extends StatelessWidget {
         translation.isNotEmpty;
     final primaryText = isReplace ? translation : text;
 
-    final fontSize = isActive ? activeFontSize : inactiveFontSize;
     final lineOpacity = isActive ? 1.0 : (isPlayed ? 0.58 : 0.34);
 
     return RepaintBoundary(
       child: AnimatedContainer(
-        duration: PlayerTokens.dFast,
+        duration: PlayerTokens.dBase,
         curve: PlayerTokens.cStandard,
         padding: const EdgeInsets.symmetric(
           horizontal: PlayerTokens.s5,
@@ -76,60 +71,55 @@ class LyricsLine extends StatelessWidget {
                 child: child,
               );
             },
-            child: AnimatedScale(
-              scale: isActive ? 1.0 : 0.95,
-              alignment: Alignment.centerLeft,
-              duration: PlayerTokens.dFast,
+            child: AnimatedDefaultTextStyle(
+              duration: PlayerTokens.dBase,
               curve: PlayerTokens.cStandard,
-              child: AnimatedDefaultTextStyle(
-                duration: PlayerTokens.dFast,
-                curve: PlayerTokens.cStandard,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: lineOpacity),
-                  height: 1.22,
-                  letterSpacing: -0.55,
-                  shadows: isActive
-                      ? [
-                          Shadow(
-                            color: activeColor.withValues(
-                              alpha: 0.22 * glowIntensity,
-                            ),
-                            blurRadius: 14 * glowIntensity,
-                            offset: const Offset(0, 1),
+              style: TextStyle(
+                fontSize: PlayerTokens.lyricsFontSize,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: lineOpacity),
+                height: 1.22,
+                letterSpacing: -0.55,
+                shadows: isActive
+                    ? [
+                        Shadow(
+                          color: activeColor.withValues(
+                            alpha: 0.22 * glowIntensity,
                           ),
-                        ]
-                      : null,
-                ),
-                child: FractionallySizedBox(
-                  widthFactor: 0.94,
-                  alignment: Alignment.centerLeft,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildPrimaryText(primaryText, lineOpacity),
-                      if (showSubtext) ...[
-                        const SizedBox(height: PlayerTokens.s1),
-                        Text(
-                          translation,
-                          textAlign: TextAlign.left,
-                          style: TextStyle(
-                            fontSize: fontSize * 0.68,
-                            fontWeight: FontWeight.w500,
-                            color: isActive
-                                ? activeColor.withValues(alpha: 0.88)
-                                : Colors.white.withValues(
-                                    alpha: isPlayed ? 0.48 : 0.28,
-                                  ),
-                            height: 1.2,
-                            letterSpacing: -0.2,
-                          ),
+                          blurRadius: 14 * glowIntensity,
+                          offset: const Offset(0, 1),
                         ),
-                      ],
+                      ]
+                    : null,
+              ),
+              child: FractionallySizedBox(
+                widthFactor: 0.94,
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildPrimaryText(primaryText, lineOpacity),
+                    if (showSubtext) ...[
+                      const SizedBox(height: PlayerTokens.s1),
+                      Text(
+                        translation,
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          fontSize: PlayerTokens.lyricsFontSize *
+                              PlayerTokens.lyricsTranslationScale,
+                          fontWeight: FontWeight.w500,
+                          color: isActive
+                              ? activeColor.withValues(alpha: 0.88)
+                              : Colors.white.withValues(
+                                  alpha: isPlayed ? 0.48 : 0.28,
+                                ),
+                          height: 1.2,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -149,66 +139,44 @@ class LyricsLine extends StatelessWidget {
       return Text(primaryText, textAlign: TextAlign.left);
     }
 
-    return Wrap(
-      alignment: WrapAlignment.start,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        for (var index = 0; index < timedLine.words.length; index++)
-          _TimedWord(
-            word: timedLine.words[index],
-            position: playbackPosition,
-            activeColor: activeColor,
-            baseColor: Colors.white.withValues(alpha: lineOpacity),
-            appendSpace: index < timedLine.words.length - 1,
-          ),
-      ],
-    );
-  }
-}
-
-/// A small animated word overlay. Rich-sync supplies exact word times; the
-/// generated fallback supplies weighted line timing and punctuation pauses.
-class _TimedWord extends StatelessWidget {
-  final RichLyricWord word;
-  final Duration position;
-  final Color activeColor;
-  final Color baseColor;
-  final bool appendSpace;
-
-  const _TimedWord({
-    required this.word,
-    required this.position,
-    required this.activeColor,
-    required this.baseColor,
-    required this.appendSpace,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final durationMs = word.duration.inMilliseconds;
-    final progress = durationMs <= 0
-        ? (position >= word.start ? 1.0 : 0.0)
-        : ((position - word.start).inMilliseconds / durationMs).clamp(0.0, 1.0);
-    final targetColor =
-        Color.lerp(baseColor, activeColor, progress) ?? baseColor;
+    final initialPosition = playbackPosition.inMicroseconds.toDouble();
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: progress),
+      tween: Tween<double>(end: initialPosition),
       duration: PlayerTokens.dFast,
-      curve: Curves.easeOut,
-      builder: (context, animatedProgress, child) {
-        final color =
-            Color.lerp(baseColor, activeColor, animatedProgress) ?? targetColor;
-        return AnimatedDefaultTextStyle(
-          duration: PlayerTokens.dFast,
-          curve: PlayerTokens.cStandard,
-          style: DefaultTextStyle.of(context).style.copyWith(color: color),
-          child: Transform.scale(
-            scale: 1.0 + animatedProgress * 0.018,
-            alignment: Alignment.center,
-            child: Text('${word.text}${appendSpace ? ' ' : ''}'),
-          ),
+      curve: PlayerTokens.cStandard,
+      builder: (context, animatedPosition, _) {
+        final position = Duration(microseconds: animatedPosition.round());
+        final baseColor = Colors.white.withValues(alpha: lineOpacity);
+        final defaultStyle = DefaultTextStyle.of(context).style;
+        final spans = <TextSpan>[];
+
+        for (var index = 0; index < timedLine.words.length; index++) {
+          final word = timedLine.words[index];
+          final progress = _wordProgress(word, position);
+          final color =
+              Color.lerp(baseColor, activeColor, progress) ?? baseColor;
+          spans.add(
+            TextSpan(
+              text:
+                  '${word.text}${index < timedLine.words.length - 1 ? ' ' : ''}',
+              style: defaultStyle.copyWith(color: color),
+            ),
+          );
+        }
+
+        return RichText(
+          textAlign: TextAlign.left,
+          text: TextSpan(style: defaultStyle, children: spans),
         );
       },
     );
+  }
+
+  static double _wordProgress(RichLyricWord word, Duration position) {
+    if (position < word.start) return 0;
+    if (position >= word.end) return 1;
+    final duration = word.duration.inMicroseconds;
+    if (duration <= 0) return 1;
+    return ((position - word.start).inMicroseconds / duration).clamp(0.0, 1.0);
   }
 }

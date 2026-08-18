@@ -777,8 +777,6 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
                     active: active,
                     enabled: blurEnabled && hasSynced,
                   ),
-                  activeFontSize: 24,
-                  inactiveFontSize: 22,
                   activeColor: widget.accent,
                   glowIntensity: index == active ? 1.0 : 0.0,
                   playbackPosition: position,

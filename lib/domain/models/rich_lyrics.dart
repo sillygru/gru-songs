@@ -75,7 +75,7 @@ class RichLyrics {
       final end = _durationFromSeconds(endSeconds);
       if (end <= start || text.trim().isEmpty) continue;
 
-      final words = <RichLyricWord>[];
+      final timedSegments = <RichLyricWord>[];
       final rawWords = rawLine.length > 3 ? rawLine[3] : null;
       if (rawWords is List) {
         for (final rawWord in rawWords) {
@@ -86,16 +86,16 @@ class RichLyrics {
           if (wordStart == null ||
               wordEnd == null ||
               wordText is! String ||
-              wordText.isEmpty) {
+              wordText.trim().isEmpty) {
             continue;
           }
           final wordStartDuration = _durationFromSeconds(wordStart);
           final wordEndDuration = _durationFromSeconds(wordEnd);
           if (wordEndDuration <= wordStartDuration) continue;
-          words.add(RichLyricWord(
+          timedSegments.add(RichLyricWord(
             start: wordStartDuration,
             end: wordEndDuration,
-            text: wordText,
+            text: wordText.trim(),
           ));
         }
       }
@@ -104,7 +104,7 @@ class RichLyrics {
         start: start,
         end: end,
         text: text,
-        words: words,
+        words: _mergeTimedSegments(text, timedSegments),
       ));
     }
 
@@ -116,6 +116,8 @@ class RichLyrics {
       lines: parsedLines,
     );
   }
+
+  bool get hasWordSync => lines.any((line) => line.words.isNotEmpty);
 
   /// Makes a rich line list that retains the source line indexes.
   ///
@@ -162,6 +164,70 @@ class RichLyrics {
         .where((line) => line.text.trim().isNotEmpty)
         .map((line) => '[${_formatTimestamp(line.start)}]${line.text}')
         .join('\n');
+  }
+
+  /// The rich API times syllables, while the lyric text contains whole words.
+  /// Rebuild the display words from the source line so syllables such as
+  /// `ig`, `nor`, and `ing,` never acquire artificial spaces or line breaks.
+  static List<RichLyricWord> _mergeTimedSegments(
+    String text,
+    List<RichLyricWord> segments,
+  ) {
+    if (segments.isEmpty) return const [];
+
+    final sourceWords = RegExp(r'\S+')
+        .allMatches(text)
+        .map((match) => match.group(0) ?? '')
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (sourceWords.isEmpty) return segments;
+
+    final merged = <RichLyricWord>[];
+    var segmentIndex = 0;
+    for (final sourceWord in sourceWords) {
+      if (segmentIndex >= segments.length) break;
+
+      final expected = _normaliseForMatching(sourceWord);
+      final first = segments[segmentIndex];
+      var last = first;
+      var combined = '';
+      var matched = false;
+
+      while (segmentIndex < segments.length) {
+        last = segments[segmentIndex];
+        combined += last.text;
+        segmentIndex++;
+        final normalised = _normaliseForMatching(combined);
+        if (normalised == expected || normalised.length >= expected.length) {
+          matched = normalised == expected;
+          break;
+        }
+      }
+
+      // The source line is authoritative for display text. Even if a provider
+      // has a punctuation or apostrophe variant, its segment timing still
+      // covers one source word and should not make the word split visually.
+      merged.add(RichLyricWord(
+        start: first.start,
+        end: last.end,
+        text: sourceWord,
+      ));
+
+      // A malformed provider segment should not prevent the remaining source
+      // words from being displayed, but keep the normal path explicit for
+      // analyzers and future parser changes.
+      if (!matched && segmentIndex >= segments.length) break;
+    }
+
+    return merged;
+  }
+
+  static String _normaliseForMatching(String value) {
+    return value
+        .replaceAll('’', "'")
+        .replaceAll('‘', "'")
+        .replaceAll(RegExp(r'\s+'), '')
+        .toLowerCase();
   }
 
   static Duration? _nextTimedLine(List<LyricLine> source, int index) {

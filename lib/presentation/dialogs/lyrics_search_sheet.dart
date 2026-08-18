@@ -403,10 +403,14 @@ class _ResultRow extends StatelessWidget {
   }
 
   Widget _badge(BuildContext context) {
-    final (label, color) = switch (result) {
-      final r when r.instrumental => ('INSTRUMENTAL', AppTokens.fgTertiary),
-      final r when r.hasSynced && !preferPlain => ('SYNCED', accent),
-      _ => ('PLAIN', AppTokens.fgTertiary),
+    final (label, color) = switch (result.syncType) {
+      LyricsSyncType.word => ('WORD SYNC', accent),
+      LyricsSyncType.line => ('LINE SYNC', accent),
+      LyricsSyncType.instrumental => (
+          'INSTRUMENTAL',
+          AppTokens.fgTertiary,
+        ),
+      LyricsSyncType.plain => ('PLAIN', AppTokens.fgTertiary),
     };
 
     return Container(
