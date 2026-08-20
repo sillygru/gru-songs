@@ -38,6 +38,7 @@ class PlayerTokens {
   static const Duration dLyricsLine = Duration(milliseconds: 166);
   static const Duration dLyricsHighlightIn = Duration(milliseconds: 330);
   static const Duration dLyricsWordWobble = Duration(seconds: 1);
+  static const Duration dLyricsWordProgress = Duration(milliseconds: 240);
   static const Duration dLyricsScroll = Duration(milliseconds: 650);
   static const double lyricsWordWobbleScale = 0.025;
   static const double lyricsWordWobbleShiftEm = 0.05;
@@ -63,7 +64,7 @@ class PlayerTokens {
   static const double coverMaxFraction = 0.72;
   static const double rowHeight = 68;
   static const double artSize = 48;
-  static const double lyricsFontSize = 28;
+  static const double lyricsFontSize = 32;
   static const double lyricsTranslationScale = 0.68;
 
   /// The accent colour for the whole screen: the palette extracted from the

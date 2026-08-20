@@ -85,9 +85,9 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   static const double _actionStripHeight = 48 + PlayerTokens.s1;
 
   /// Height assumed for a line that has not been laid out yet. Plain lines are
-  /// ~54px; translated subtext or wrapped lines are taller, so alignment must
+  /// ~68px; translated subtext or wrapped lines are taller, so alignment must
   /// not trust this estimate — see [_alignToLine].
-  static const double _estimatedLineHeight = 56;
+  static const double _estimatedLineHeight = 72;
 
   /// How far past a fallen-short estimate each retry pushes the viewport.
   static const double _alignRetryViewportStep = 0.5;
