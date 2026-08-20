@@ -312,7 +312,8 @@ void main() {
       expect(result['deletedSessions'], 3);
       expect(result['deletedEvents'], 3);
 
-      final remainingSessions = await db.query('playsession', orderBy: 'id ASC');
+      final remainingSessions =
+          await db.query('playsession', orderBy: 'id ASC');
       expect(remainingSessions.length, 2);
       expect(remainingSessions.map((s) => s['id']),
           containsAll(['exact_60s_sess', 'long_sess_5']));
@@ -406,4 +407,3 @@ void main() {
     });
   });
 }
-

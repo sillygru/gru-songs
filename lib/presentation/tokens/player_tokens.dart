@@ -35,6 +35,15 @@ class PlayerTokens {
   static const Duration dFast = Duration(milliseconds: 180);
   static const Duration dBase = Duration(milliseconds: 260);
   static const Duration dSlow = Duration(milliseconds: 420);
+  static const Duration dLyricsLine = Duration(milliseconds: 166);
+  static const Duration dLyricsHighlightIn = Duration(milliseconds: 330);
+  static const Duration dLyricsWordWobble = Duration(seconds: 1);
+  static const Duration dLyricsScroll = Duration(milliseconds: 650);
+  static const double lyricsWordWobbleScale = 0.025;
+  static const double lyricsWordWobbleShiftEm = 0.05;
+  static const double lyricsWordGlowBlur = 14;
+  static const double lyricsHighlightLeadRatio = 0.1;
+  static const double lyricsHighlightDurationRatio = 1.6;
   static const Curve cStandard = Curves.easeOutCubic;
   static const Curve cEmphasized = Curves.easeOutQuart;
 

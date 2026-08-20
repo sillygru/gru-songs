@@ -265,19 +265,20 @@ void main() {
           reason: 'Only long session and exact 60s session should remain');
       expect(postSessions.map((s) => s['id']),
           containsAll(['sess_long_5min', 'sess_exact_60s']));
-      expect(postSessions.map((s) => s['id']),
-          isNot(contains('sess_short_15s')));
-      expect(postSessions.map((s) => s['id']),
-          isNot(contains('sess_short_0s')));
-      expect(postSessions.map((s) => s['id']),
-          isNot(contains('sess_short_59s')));
-      expect(postSessions.map((s) => s['id']),
-          isNot(contains('sess_null_time')));
+      expect(
+          postSessions.map((s) => s['id']), isNot(contains('sess_short_15s')));
+      expect(
+          postSessions.map((s) => s['id']), isNot(contains('sess_short_0s')));
+      expect(
+          postSessions.map((s) => s['id']), isNot(contains('sess_short_59s')));
+      expect(
+          postSessions.map((s) => s['id']), isNot(contains('sess_null_time')));
 
       // B. Stats Database: Play Events
       final postEvents = await statsDb.query('playevent', orderBy: 'id ASC');
       expect(postEvents.length, 3,
-          reason: 'Only playevents from surviving valid sessions should remain');
+          reason:
+              'Only playevents from surviving valid sessions should remain');
       final eventIds = postEvents.map((e) => e['id'] as int).toList();
       expect(eventIds, containsAll([101, 102, 103]));
       expect(eventIds, isNot(contains(104)));

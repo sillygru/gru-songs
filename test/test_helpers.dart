@@ -52,7 +52,8 @@ class TestEnvironment {
         try {
           return DynamicLibrary.open('libsqlite3.so.0');
         } catch (_) {
-          return DynamicLibrary.open('/usr/lib/x86_64-linux-gnu/libsqlite3.so.0');
+          return DynamicLibrary.open(
+              '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0');
         }
       });
       databaseFactory = null;

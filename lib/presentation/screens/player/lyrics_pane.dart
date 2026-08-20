@@ -619,7 +619,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     try {
       await _scrollController.animateTo(
         target,
-        duration: PlayerTokens.dSlow,
+        duration: PlayerTokens.dLyricsScroll,
         curve: PlayerTokens.cStandard,
       );
     } finally {

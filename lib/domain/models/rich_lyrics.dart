@@ -21,12 +21,14 @@ class RichLyricLine {
   final Duration end;
   final String text;
   final List<RichLyricWord> words;
+  final bool isSimulated;
 
   const RichLyricLine({
     required this.start,
     required this.end,
     required this.text,
     this.words = const [],
+    this.isSimulated = false,
   });
 }
 
@@ -119,13 +121,12 @@ class RichLyrics {
 
   bool get hasWordSync => lines.any((line) => line.words.isNotEmpty);
 
-  /// Makes a rich line list that retains the source line indexes.
+  /// Makes a renderable line list while retaining the source line indexes.
   ///
-  /// Better Lyrics gives line-synced lyrics a small delay per word. The
-  /// fallback uses the available line interval, weighted by word length, and
-  /// adds deliberate pauses after commas and sentence punctuation. It is not
-  /// presented as provider-accurate timing, but it feels natural while keeping
-  /// every line's words moving with the song.
+  /// A line timestamp cannot reveal the singer's word timing. The renderer uses
+  /// a short fixed stagger instead: each word gets a zero-length activation
+  /// 50ms after the previous one. That creates the same visual handoff as a
+  /// word-timed line without claiming that the inferred timings are factual.
   factory RichLyrics.fromLyricLines(
     List<LyricLine> source, {
     Duration? songDuration,
@@ -147,12 +148,13 @@ class RichLyrics {
           nextTimed ?? songDuration ?? line.time + const Duration(seconds: 4);
       final lineEnd =
           end > line.time ? end : line.time + const Duration(seconds: 1);
-      final words = _fallbackWords(line.text, line.time, lineEnd);
+      final words = _simulatedWords(line.text, line.time);
       lines.add(RichLyricLine(
         start: line.time,
         end: lineEnd,
         text: line.text,
         words: words,
+        isSimulated: true,
       ));
     }
     return RichLyrics(duration: songDuration, lines: lines);
@@ -237,49 +239,18 @@ class RichLyrics {
     return null;
   }
 
-  static List<RichLyricWord> _fallbackWords(
-    String text,
-    Duration start,
-    Duration end,
-  ) {
+  static List<RichLyricWord> _simulatedWords(String text, Duration start) {
     final tokens = RegExp(r'\S+').allMatches(text).toList();
     if (tokens.isEmpty) return const [];
 
-    final weights = <double>[];
-    for (final token in tokens) {
-      final value = token.group(0) ?? '';
-      var weight = value.runes.length.clamp(1, 12).toDouble();
-      if (RegExp(r'[,;:]$').hasMatch(value)) weight += 2.5;
-      if (RegExp(r'[.!?]$').hasMatch(value)) weight += 4.0;
-      weights.add(weight);
-    }
-
-    final totalWeight = weights.fold<double>(0, (sum, value) => sum + value);
-    final spanMs = (end - start).inMilliseconds;
-    if (totalWeight <= 0 || spanMs <= 0) return const [];
-
-    final words = <RichLyricWord>[];
-    var elapsedWeight = 0.0;
-    for (var index = 0; index < tokens.length; index++) {
-      final wordStart = start +
-          Duration(
-            milliseconds: (spanMs * elapsedWeight / totalWeight).round(),
-          );
-      elapsedWeight += weights[index];
-      final wordEnd = start +
-          Duration(
-            milliseconds: (spanMs * elapsedWeight / totalWeight).round(),
-          );
-      final safeEnd = wordEnd > wordStart
-          ? wordEnd
-          : wordStart + const Duration(milliseconds: 50);
-      words.add(RichLyricWord(
-        start: wordStart,
-        end: safeEnd,
-        text: tokens[index].group(0) ?? '',
-      ));
-    }
-    return words;
+    return [
+      for (var index = 0; index < tokens.length; index++)
+        RichLyricWord(
+          start: start + Duration(milliseconds: index * 50),
+          end: start + Duration(milliseconds: index * 50),
+          text: tokens[index].group(0) ?? '',
+        ),
+    ];
   }
 
   static double? _number(Object? value) {

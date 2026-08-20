@@ -27,6 +27,7 @@ void main() {
 
     expect(rich.lines, hasLength(1));
     expect(rich.lines.single.start, const Duration(milliseconds: 1250));
+    expect(rich.lines.single.isSimulated, isFalse);
     expect(rich.lines.single.words, hasLength(2));
     expect(rich.lines.single.words.last.text, 'world');
     expect(rich.toLrc(), '[00:01.25]Hello, world');
@@ -71,7 +72,7 @@ void main() {
     expect(words[4].end, const Duration(milliseconds: 11285));
   });
 
-  test('creates word timings for line-synced lyrics and pauses at commas', () {
+  test('creates a short stagger for line-synced lyrics', () {
     const lines = [
       LyricLine(
         time: Duration(seconds: 0),
@@ -86,12 +87,15 @@ void main() {
     ];
 
     final rich = RichLyrics.fromLyricLines(lines);
-    final words = rich.lines.first.words;
+    final line = rich.lines.first;
+    final words = line.words;
 
+    expect(line.isSimulated, isTrue);
     expect(words, hasLength(3));
-    expect(words[1].start - words[0].start,
-        greaterThan(words[2].start - words[1].start));
+    expect(words[1].start - words[0].start, const Duration(milliseconds: 50));
+    expect(words[2].start - words[1].start, const Duration(milliseconds: 50));
     expect(words.first.start, Duration.zero);
-    expect(words.last.end, const Duration(seconds: 6));
+    expect(words.first.duration, Duration.zero);
+    expect(line.end, const Duration(seconds: 6));
   });
 }
