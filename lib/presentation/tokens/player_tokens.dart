@@ -63,7 +63,7 @@ class PlayerTokens {
   static const double coverMaxFraction = 0.72;
   static const double rowHeight = 68;
   static const double artSize = 48;
-  static const double lyricsFontSize = 22;
+  static const double lyricsFontSize = 28;
   static const double lyricsTranslationScale = 0.68;
 
   /// The accent colour for the whole screen: the palette extracted from the

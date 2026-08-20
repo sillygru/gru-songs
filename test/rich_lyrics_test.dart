@@ -72,7 +72,8 @@ void main() {
     expect(words[4].end, const Duration(milliseconds: 11285));
   });
 
-  test('creates a short stagger for line-synced lyrics', () {
+  test('creates natural character-weighted word timings for line-synced lyrics',
+      () {
     const lines = [
       LyricLine(
         time: Duration(seconds: 0),
@@ -92,10 +93,12 @@ void main() {
 
     expect(line.isSimulated, isTrue);
     expect(words, hasLength(3));
-    expect(words[1].start - words[0].start, const Duration(milliseconds: 50));
-    expect(words[2].start - words[1].start, const Duration(milliseconds: 50));
+    expect(words.map((w) => w.text), ['One,', 'two', 'three']);
     expect(words.first.start, Duration.zero);
-    expect(words.first.duration, Duration.zero);
+    expect(words[1].start, greaterThan(words[0].start));
+    expect(words[2].start, greaterThan(words[1].start));
+    expect(words.every((w) => w.duration > Duration.zero), isTrue);
+    expect(words.last.end, lessThanOrEqualTo(line.end));
     expect(line.end, const Duration(seconds: 6));
   });
 }

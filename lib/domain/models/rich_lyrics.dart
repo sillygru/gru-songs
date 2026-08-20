@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../models/song.dart';
 
 /// One word or syllable segment in a rich-synchronized lyric line.
@@ -148,7 +150,7 @@ class RichLyrics {
           nextTimed ?? songDuration ?? line.time + const Duration(seconds: 4);
       final lineEnd =
           end > line.time ? end : line.time + const Duration(seconds: 1);
-      final words = _simulatedWords(line.text, line.time);
+      final words = _simulatedWords(line.text, line.time, lineEnd);
       lines.add(RichLyricLine(
         start: line.time,
         end: lineEnd,
@@ -239,18 +241,57 @@ class RichLyrics {
     return null;
   }
 
-  static List<RichLyricWord> _simulatedWords(String text, Duration start) {
+  static List<RichLyricWord> _simulatedWords(
+    String text,
+    Duration start,
+    Duration end,
+  ) {
     final tokens = RegExp(r'\S+').allMatches(text).toList();
     if (tokens.isEmpty) return const [];
 
-    return [
-      for (var index = 0; index < tokens.length; index++)
-        RichLyricWord(
-          start: start + Duration(milliseconds: index * 50),
-          end: start + Duration(milliseconds: index * 50),
-          text: tokens[index].group(0) ?? '',
-        ),
-    ];
+    final lineDurationUs = (end - start).inMicroseconds;
+    if (lineDurationUs <= 0) {
+      return [
+        for (var index = 0; index < tokens.length; index++)
+          RichLyricWord(
+            start: start + Duration(milliseconds: index * 50),
+            end: start + Duration(milliseconds: (index + 1) * 50),
+            text: tokens[index].group(0) ?? '',
+          ),
+      ];
+    }
+
+    // Distribute singing duration across the line:
+    // Reserve ~12% trailing breath pause before the next line (capped at 800ms)
+    final pauseUs = ((lineDurationUs * 0.12).round()).clamp(0, 800000);
+    final vocalSpanUs =
+        math.max(tokens.length * 250000, lineDurationUs - pauseUs);
+
+    // Weight each word proportionally to its non-whitespace character count (minimum 2 chars)
+    final weights = tokens
+        .map((m) => math.max(2, (m.group(0) ?? '').length))
+        .toList();
+    final totalWeight = weights.fold<int>(0, (sum, w) => sum + w);
+
+    var cursorUs = 0;
+    final words = <RichLyricWord>[];
+    for (var i = 0; i < tokens.length; i++) {
+      final wordText = tokens[i].group(0) ?? '';
+      final wordWeight = weights[i];
+      final wordDurationUs = totalWeight > 0
+          ? (vocalSpanUs * wordWeight / totalWeight).round()
+          : (vocalSpanUs / tokens.length).round();
+      final wordStart = start + Duration(microseconds: cursorUs);
+      final wordEnd = wordStart + Duration(microseconds: wordDurationUs);
+      cursorUs += wordDurationUs;
+
+      words.add(RichLyricWord(
+        start: wordStart,
+        end: wordEnd,
+        text: wordText,
+      ));
+    }
+    return words;
   }
 
   static double? _number(Object? value) {
