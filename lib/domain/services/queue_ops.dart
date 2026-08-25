@@ -53,38 +53,140 @@ int findInQueue(
   return -1;
 }
 
-/// Plans "play this next": the entry lands immediately after [currentIndex].
+/// Updates the RAM-based top order queue.
 ///
-/// An entry already in the queue is *moved* there rather than duplicated, so
-/// tapping a queued song from search or the library can never leave two copies
-/// behind. Pass [allowDuplicate] to force a second copy anyway.
+/// When [isOverride] is true, [queueId] moves to the front so it plays next.
+/// Otherwise, [queueId] is appended to the end of the top order list.
+List<String> updateSessionTopOrder(
+  List<String> currentOrder,
+  String queueId, {
+  required bool isOverride,
+}) {
+  final filtered = currentOrder.where((id) => id != queueId).toList();
+  if (isOverride) {
+    return [queueId, ...filtered];
+  } else {
+    return [...filtered, queueId];
+  }
+}
+
+/// Prunes entries that are no longer upcoming in [queue] (either already played,
+/// currently playing, or removed).
+List<String> pruneSessionTopOrder(
+  List<QueueItem> queue,
+  int currentIndex,
+  List<String> sessionTopOrder,
+) {
+  if (sessionTopOrder.isEmpty) return const [];
+  return sessionTopOrder.where((id) {
+    final idx = queue.indexWhere((item) => item.queueId == id);
+    return idx > currentIndex;
+  }).toList();
+}
+
+/// Plans moving an already-queued upcoming entry to the top section.
+///
+/// If [queueId] is already present in [sessionTopOrder], this is an override
+/// request and it moves immediately after [currentIndex]. Otherwise, it stacks
+/// after the last active top entry in [sessionTopOrder] (or right after
+/// [currentIndex] if none are present).
+QueuePlan? planMoveUpcomingToTop(
+  List<QueueItem> queue,
+  int currentIndex,
+  String queueId, {
+  List<String> sessionTopOrder = const [],
+}) {
+  if (currentIndex < 0 || currentIndex >= queue.length) return null;
+
+  final sourceIndex = queue.indexWhere((item) => item.queueId == queueId);
+  if (sourceIndex <= currentIndex) return null;
+
+  final isOverride = sessionTopOrder.contains(queueId);
+  final int targetIndex;
+
+  if (isOverride) {
+    targetIndex = currentIndex + 1;
+  } else {
+    var lastTopIndex = currentIndex;
+    for (final topId in sessionTopOrder) {
+      if (topId == queueId) continue;
+      final idx = queue.indexWhere((item) => item.queueId == topId);
+      if (idx > currentIndex && idx > lastTopIndex) {
+        lastTopIndex = idx;
+      }
+    }
+    targetIndex = lastTopIndex + 1;
+  }
+
+  int target = targetIndex.clamp(0, queue.length);
+  if (sourceIndex < target) target -= 1;
+  if (target < 0 || target >= queue.length) return null;
+  if (sourceIndex == target) return null;
+
+  return QueuePlan(
+    from: sourceIndex,
+    to: target,
+    item: queue[sourceIndex],
+  );
+}
+
+/// Plans "play this next": the entry lands after any previously added top items,
+/// or at [currentIndex + 1] if none exist or if overriding an existing top item.
+///
+/// An entry already in the upcoming queue is *moved* rather than duplicated.
+/// Pass [allowDuplicate] to force a second copy anyway.
 QueuePlan planPlayNext(
   List<QueueItem> queue,
   int currentIndex,
   QueueItem candidate, {
+  List<String> sessionTopOrder = const [],
   List<String> mergedSiblings = const [],
   bool allowDuplicate = false,
 }) {
-  final targetIndex = (currentIndex + 1).clamp(0, queue.length);
-
+  int existingIdx = -1;
   if (!allowDuplicate) {
-    final existingIdx = findInQueue(
+    existingIdx = findInQueue(
       queue,
       candidate.song.filename,
       mergedSiblings: mergedSiblings,
     );
-    if (existingIdx != -1) {
-      // Removing the entry first shifts everything after it down by one, so a
-      // move from below the target lands one slot earlier.
-      final adjusted =
-          existingIdx >= targetIndex ? targetIndex : targetIndex - 1;
-      return QueuePlan(
-        from: existingIdx,
-        to: adjusted,
-        item: queue[existingIdx],
-      );
+  }
+
+  if (existingIdx > currentIndex) {
+    final existingItem = queue[existingIdx];
+    final isOverride = sessionTopOrder.contains(existingItem.queueId);
+    final int targetIndex;
+
+    if (isOverride) {
+      targetIndex = (currentIndex + 1).clamp(0, queue.length);
+    } else {
+      var lastTopIndex = currentIndex;
+      for (final topId in sessionTopOrder) {
+        if (topId == existingItem.queueId) continue;
+        final idx = queue.indexWhere((item) => item.queueId == topId);
+        if (idx > currentIndex && idx > lastTopIndex) {
+          lastTopIndex = idx;
+        }
+      }
+      targetIndex = (lastTopIndex + 1).clamp(0, queue.length);
+    }
+
+    final adjusted = existingIdx >= targetIndex ? targetIndex : targetIndex - 1;
+    return QueuePlan(
+      from: existingIdx,
+      to: adjusted,
+      item: existingItem,
+    );
+  }
+
+  var lastTopIndex = currentIndex;
+  for (final topId in sessionTopOrder) {
+    final idx = queue.indexWhere((item) => item.queueId == topId);
+    if (idx > currentIndex && idx > lastTopIndex) {
+      lastTopIndex = idx;
     }
   }
+  final targetIndex = (lastTopIndex + 1).clamp(0, queue.length);
 
   return QueuePlan(to: targetIndex, item: candidate);
 }

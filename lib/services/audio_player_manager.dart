@@ -50,6 +50,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   List<QueueItem> _originalQueue = [];
   List<QueueItem> _effectiveQueue = [];
+  List<String> _sessionTopOrder = [];
   List<Song> _allSongs = [];
   Map<String, Song> _songMap = {};
 
@@ -307,20 +308,6 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     return [];
   }
 
-  int _findSongInQueue(String filename, {bool checkMergedSiblings = false}) {
-    final queueFilenames = _effectiveQueue.map((e) => e.song.filename).toList();
-    final idx = queueFilenames.indexOf(filename);
-    if (idx != -1) return idx;
-    if (checkMergedSiblings) {
-      final siblings = _getMergedSiblings(filename);
-      for (final sibling in siblings) {
-        final siblingIdx = queueFilenames.indexOf(sibling);
-        if (siblingIdx != -1) return siblingIdx;
-      }
-    }
-    return -1;
-  }
-
   Future<void> updateShuffleConfig(
     ShuffleConfig config, {
     bool applyToCurrentQueue = true,
@@ -376,6 +363,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _savePlaybackState();
       return;
     }
+
+    _sessionTopOrder.clear();
 
     bool usedContextQueue = false;
     if (_originalQueue.isEmpty) {
@@ -1899,6 +1888,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _pendingQueueSongs = null;
     _pendingQueuePlaylistId = null;
     pendingQueueNotifier.value = false;
+    _sessionTopOrder.clear();
 
     _currentPlaylistId = playlistId;
 
@@ -2555,41 +2545,60 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   Future<void> playNext(Song song, {bool allowDuplicate = false}) async {
     await _runSerializedQueueMutation(() async {
       final currentIndex = _player.currentIndex ?? -1;
-      final targetIndex = (currentIndex + 1).clamp(0, _effectiveQueue.length);
-
       final preventMerged =
           _ref?.read(settingsProvider).preventMergedDuplicates ?? true;
       final checkMergedSiblings = !allowDuplicate && preventMerged;
 
-      final existingIdx = _findSongInQueue(song.filename,
-          checkMergedSiblings: checkMergedSiblings);
-      if (existingIdx != -1) {
-        final existingItem = _effectiveQueue.removeAt(existingIdx);
-        final actualTargetIndex =
-            (existingIdx >= targetIndex) ? targetIndex : targetIndex - 1;
-        _effectiveQueue.insert(actualTargetIndex, existingItem);
+      final mergedSiblings = checkMergedSiblings
+          ? _getMergedSiblings(song.filename)
+          : const <String>[];
+
+      final candidate = QueueItem(song: song);
+      final plan = queue_ops.planPlayNext(
+        _effectiveQueue,
+        currentIndex,
+        candidate,
+        sessionTopOrder: _sessionTopOrder,
+        mergedSiblings: mergedSiblings,
+        allowDuplicate: allowDuplicate,
+      );
+
+      final isOverride =
+          plan.isMove && _sessionTopOrder.contains(plan.item.queueId);
+
+      if (plan.isMove) {
+        final from = plan.from!;
+        final item = _effectiveQueue.removeAt(from);
+        _effectiveQueue.insert(plan.to, item);
         try {
-          await _player.moveAudioSource(existingIdx, actualTargetIndex);
+          await _player.moveAudioSource(from, plan.to);
         } catch (e) {
-          _effectiveQueue.removeAt(actualTargetIndex);
-          _effectiveQueue.insert(existingIdx, existingItem);
+          _effectiveQueue.removeAt(plan.to);
+          _effectiveQueue.insert(from, item);
           rethrow;
         }
-        _updateQueueNotifier();
-        _savePlaybackState();
-        await _updateCurrentSnapshotSongs();
-        return;
+      } else {
+        _effectiveQueue.insert(plan.to, plan.item);
+        try {
+          final source = await _createAudioSource(plan.item);
+          await _player.insertAudioSource(plan.to, source);
+        } catch (e) {
+          _effectiveQueue.removeAt(plan.to);
+          rethrow;
+        }
       }
 
-      final item = QueueItem(song: song);
-      _effectiveQueue.insert(targetIndex, item);
-      try {
-        final source = await _createAudioSource(item);
-        await _player.insertAudioSource(targetIndex, source);
-      } catch (e) {
-        _effectiveQueue.removeAt(targetIndex);
-        rethrow;
-      }
+      _sessionTopOrder = queue_ops.updateSessionTopOrder(
+        _sessionTopOrder,
+        plan.item.queueId,
+        isOverride: isOverride,
+      );
+      _sessionTopOrder = queue_ops.pruneSessionTopOrder(
+        _effectiveQueue,
+        _player.currentIndex ?? -1,
+        _sessionTopOrder,
+      );
+
       _updateQueueNotifier();
       _savePlaybackState();
       await _updateCurrentSnapshotSongs();
@@ -2622,55 +2631,45 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   /// Moves a queued entry to the top of the upcoming section — immediately
-  /// after the current track, or after the furthest-along entry in
-  /// [sessionTopOrder] that is still present up there, so swiping several
-  /// songs to the top stacks them in swipe order.
-  ///
-  /// [sessionTopOrder] is the RAM-only swipe history owned by the queue pane.
-  /// The insertion point is resolved *inside* the serialized mutation, so a
-  /// burst of swipes cannot target a stale offset while earlier moves are
-  /// still churning through the player.
-  Future<void> moveUpcomingToTop(
-    String queueId,
-    List<String> sessionTopOrder,
-  ) async {
+  /// after the current track (if already in top order, overriding position), or
+  /// after the furthest-along top entry in [_sessionTopOrder] that is still
+  /// upcoming.
+  Future<void> moveUpcomingToTop(String queueId) async {
     await _runSerializedQueueMutation(() async {
       final currentIndex = _player.currentIndex ?? -1;
       if (currentIndex < 0 || currentIndex >= _effectiveQueue.length) return;
 
-      final sourceIndex =
-          _effectiveQueue.indexWhere((item) => item.queueId == queueId);
-      // Never touch the current track or anything behind it — moving a played
-      // entry here would displace the playing source and corrupt the player's
-      // current index. The UI only swipes upcoming rows, but the API should be
-      // safe regardless of how it is reached.
-      if (sourceIndex <= currentIndex) return;
+      final isOverride = _sessionTopOrder.contains(queueId);
+      final plan = queue_ops.planMoveUpcomingToTop(
+        _effectiveQueue,
+        currentIndex,
+        queueId,
+        sessionTopOrder: _sessionTopOrder,
+      );
+      if (plan == null) return;
 
-      // Entries that have played through, been removed or come from another
-      // queue are skipped by the index lookup — their ids go stale harmlessly.
-      var targetIndex = currentIndex + 1;
-      for (final movedId in sessionTopOrder) {
-        if (movedId == queueId) continue;
-        final movedIndex =
-            _effectiveQueue.indexWhere((item) => item.queueId == movedId);
-        if (movedIndex > currentIndex) targetIndex = movedIndex + 1;
-      }
-
-      // Reorder's slot convention: removing the source shifts the target.
-      int target = targetIndex.clamp(0, _effectiveQueue.length);
-      if (sourceIndex < target) target -= 1;
-      if (target < 0 || target >= _effectiveQueue.length) return;
-      if (sourceIndex == target) return;
-
-      final item = _effectiveQueue.removeAt(sourceIndex);
-      _effectiveQueue.insert(target, item);
+      final from = plan.from!;
+      final item = _effectiveQueue.removeAt(from);
+      _effectiveQueue.insert(plan.to, item);
       try {
-        await _player.moveAudioSource(sourceIndex, target);
+        await _player.moveAudioSource(from, plan.to);
       } catch (e) {
-        _effectiveQueue.removeAt(target);
-        _effectiveQueue.insert(sourceIndex, item);
+        _effectiveQueue.removeAt(plan.to);
+        _effectiveQueue.insert(from, item);
         rethrow;
       }
+
+      _sessionTopOrder = queue_ops.updateSessionTopOrder(
+        _sessionTopOrder,
+        queueId,
+        isOverride: isOverride,
+      );
+      _sessionTopOrder = queue_ops.pruneSessionTopOrder(
+        _effectiveQueue,
+        _player.currentIndex ?? -1,
+        _sessionTopOrder,
+      );
+
       _updateQueueNotifier();
       _savePlaybackState();
       await _updateCurrentSnapshotSongs();
@@ -2683,6 +2682,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       if (index < 0 || index >= _effectiveQueue.length) return;
 
       final removedItem = _effectiveQueue.removeAt(index);
+      _sessionTopOrder.remove(removedItem.queueId);
       try {
         await _player.removeAudioSourceAt(index);
       } catch (e) {
@@ -2729,6 +2729,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         }
       }
 
+      _sessionTopOrder.clear();
       _updateQueueNotifier();
       _savePlaybackState();
       await _updateCurrentSnapshotSongs();

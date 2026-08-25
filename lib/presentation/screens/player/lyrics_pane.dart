@@ -18,6 +18,7 @@ import '../../models/lyrics_gap_loader_state.dart';
 import '../../tokens/player_tokens.dart';
 import '../../widgets/lyrics_gap_loader.dart';
 import '../../widgets/lyrics_line.dart';
+import '../../widgets/lyrics_resume_button.dart';
 
 /// Left pane. Content only — the shell owns the backdrop, header, pill and
 /// transport dock. Do not add a Scaffold, AppBar or background here.
@@ -67,7 +68,7 @@ class LyricsPane extends ConsumerStatefulWidget {
 class _LyricsPaneState extends ConsumerState<LyricsPane>
     with AutomaticKeepAliveClientMixin {
   /// How far down the viewport the active line sits while auto-scrolling.
-  static const double _activeLineAnchor = 0.38;
+  static const double _activeLineAnchor = PlayerTokens.lyricsScrollPosRatio;
 
   /// Auto-scroll stays out of the way for this long after a manual scroll.
   static const Duration _manualScrollGrace = Duration(milliseconds: 2500);
@@ -134,10 +135,13 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// tick, so it is scoped to the loader widget alone.
   final ValueNotifier<double> _gapProgress = ValueNotifier(0);
 
+  /// True when manual scroll paused autoscroll, revealing the resume pill.
+  final ValueNotifier<bool> _autoscrollPaused = ValueNotifier(false);
+
   /// After the gap ends we keep the slot for one collapse animation so the
   /// reserved space can AnimatedSize shut instead of vanishing in a frame.
   Timer? _gapCollapseTimer;
-  static const Duration _gapCollapseHold = PlayerTokens.dSlow;
+  static const Duration _gapCollapseHold = PlayerTokens.dLyricsLoaderTransition;
 
   StreamSubscription<Duration>? _positionSub;
   DateTime? _lastManualScroll;
@@ -182,6 +186,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     _playbackPosition.dispose();
     _gapSlot.dispose();
     _gapProgress.dispose();
+    _autoscrollPaused.dispose();
     super.dispose();
   }
 
@@ -189,11 +194,17 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// Runs off the widget tree entirely: nothing here rebuilds unless one of the
   /// values changed.
   void _onPosition(Duration position) {
-    _playbackPosition.value = position;
+    final timingOffset = _richSyncAvailable
+        ? PlayerTokens.dLyricsRichSyncTimingOffset
+        : PlayerTokens.dLyricsTimingOffset;
+    final lyricsPosition = position + timingOffset;
+    _playbackPosition.value = lyricsPosition;
     final lyrics = _lyrics;
     if (lyrics == null || lyrics.isEmpty || !_hasSynced) return;
 
-    final active = _activeIndexFor(lyrics, position);
+    final scrollPosition =
+        lyricsPosition + PlayerTokens.dLyricsScrollTimingOffset;
+    final active = _activeIndexFor(lyrics, scrollPosition);
     if (active != _activeLine.value) {
       _activeLine.value = active;
       if (active >= 0) _maybeAutoScroll(active);
@@ -230,6 +241,18 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     if (_scrollController.position.userScrollDirection !=
         ScrollDirection.idle) {
       _lastManualScroll = DateTime.now();
+      if (!_autoscrollPaused.value) {
+        _autoscrollPaused.value = true;
+      }
+    }
+  }
+
+  void _resumeAutoscroll() {
+    _lastManualScroll = null;
+    _autoscrollPaused.value = false;
+    final active = _activeLine.value;
+    if (active >= 0) {
+      _maybeAutoScroll(active);
     }
   }
 
@@ -249,6 +272,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     _activeLine.value = -1;
     _gapSlot.value = -1;
     _gapProgress.value = 0;
+    _autoscrollPaused.value = false;
 
     // The repository caches to disk, so re-entering the pane is cheap.
     final content = await ref.read(songRepositoryProvider).getLyrics(
@@ -546,9 +570,12 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   void _maybeAutoScroll(int index) {
     final since = _lastManualScroll;
-    if (since != null &&
-        DateTime.now().difference(since) < _manualScrollGrace) {
-      return;
+    if (since != null) {
+      if (DateTime.now().difference(since) < _manualScrollGrace) {
+        return;
+      }
+      _lastManualScroll = null;
+      _autoscrollPaused.value = false;
     }
 
     final requestId = ++_scrollRequestId;
@@ -620,7 +647,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       await _scrollController.animateTo(
         target,
         duration: PlayerTokens.dLyricsScroll,
-        curve: PlayerTokens.cStandard,
+        curve: PlayerTokens.cLyricsScroll,
       );
     } finally {
       _autoScrolling = false;
@@ -698,6 +725,21 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
                 onPressed: _findLyricsOnline,
               ),
             ],
+          ),
+        ),
+        Positioned(
+          bottom: PlayerTokens.s4,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _autoscrollPaused,
+              builder: (context, paused, _) => LyricsResumeButton(
+                visible: paused && _hasSynced,
+                accent: widget.accent,
+                onTap: _resumeAutoscroll,
+              ),
+            ),
           ),
         ),
       ],
@@ -793,8 +835,8 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 AnimatedSize(
-                  duration: PlayerTokens.dSlow,
-                  curve: PlayerTokens.cStandard,
+                  duration: PlayerTokens.dLyricsLoaderTransition,
+                  curve: PlayerTokens.cLyricsLoader,
                   alignment: Alignment.topCenter,
                   child: gapSlot == index
                       ? Padding(

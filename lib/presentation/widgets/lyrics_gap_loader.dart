@@ -1,5 +1,8 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+import '../tokens/player_tokens.dart';
 
 /// Three dots that fill one at a time across an instrumental gap, so a full row
 /// means the next lyric is about to land.
@@ -44,7 +47,7 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
 
   /// The position stream ticks about five times a second; this smooths those
   /// steps into continuous motion.
-  static const Duration _smoothing = Duration(milliseconds: 240);
+  static const Duration _smoothing = PlayerTokens.dLyricsInstrumentalFill;
 
   late final AnimationController _pulse;
 
@@ -59,7 +62,7 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
     super.initState();
     _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      duration: PlayerTokens.dLyricsInstrumentalOscillation,
     )..repeat();
   }
 

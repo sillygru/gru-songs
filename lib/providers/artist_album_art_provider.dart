@@ -29,19 +29,23 @@ class ArtistAlbumArtState {
   }
 
   String? getArtistArt(String? artistName) {
-    if (artistName == null || artistName.isEmpty) return null;
-    return artistArt[artistName.toLowerCase()];
+    if (artistName == null) return null;
+    final trimmed = artistName.trim();
+    if (trimmed.isEmpty) return null;
+    return artistArt[trimmed.toLowerCase()];
   }
 
   String? getAlbumArt(String? albumName, {String? artistName}) {
-    if (albumName == null || albumName.isEmpty) return null;
-    if (artistName != null && artistName.isNotEmpty) {
+    if (albumName == null) return null;
+    final cleanAlbum = albumName.trim();
+    if (cleanAlbum.isEmpty) return null;
+    if (artistName != null && artistName.trim().isNotEmpty) {
       final compositeKey =
-          '${artistName.toLowerCase()}|${albumName.toLowerCase()}';
+          '${artistName.trim().toLowerCase()}|${cleanAlbum.toLowerCase()}';
       final art = albumArt[compositeKey];
       if (art != null) return art;
     }
-    return albumArt[albumName.toLowerCase()];
+    return albumArt[cleanAlbum.toLowerCase()];
   }
 }
 
@@ -71,32 +75,34 @@ class ArtistAlbumArtNotifier extends Notifier<ArtistAlbumArtState> {
     String? imageUrl,
     String? source,
   }) async {
+    final cleanArtist = artistName.trim();
     FileImage(File(localPath)).evict();
     await DatabaseService.instance.saveArtistArt(
-      artistName: artistName,
+      artistName: cleanArtist,
       localPath: localPath,
       imageUrl: imageUrl,
       source: source,
     );
-    PassiveArtFetcherService.instance.markArtistAttempted(artistName);
+    PassiveArtFetcherService.instance.markArtistAttempted(cleanArtist);
     final updated = Map<String, String>.from(state.artistArt);
-    updated[artistName.toLowerCase()] = localPath;
+    updated[cleanArtist.toLowerCase()] = localPath;
     state = state.copyWith(artistArt: updated);
   }
 
   Future<void> removeArtistArt(String artistName) async {
-    final existingPath = state.artistArt[artistName.toLowerCase()];
+    final cleanArtist = artistName.trim();
+    final existingPath = state.artistArt[cleanArtist.toLowerCase()];
     if (existingPath != null) {
       FileImage(File(existingPath)).evict();
     }
-    await DatabaseService.instance.deleteArtistArt(artistName);
+    await DatabaseService.instance.deleteArtistArt(cleanArtist);
     // Lift the persisted miss first, so a future session may try again
     // instead of treating a removed art as a permanent miss. The re-mark keeps
     // the in-session suppression, so it is not instantly re-fetched.
-    PassiveArtFetcherService.instance.forgetArtistAttempt(artistName);
-    PassiveArtFetcherService.instance.markArtistAttempted(artistName);
+    PassiveArtFetcherService.instance.forgetArtistAttempt(cleanArtist);
+    PassiveArtFetcherService.instance.markArtistAttempted(cleanArtist);
     final updated = Map<String, String>.from(state.artistArt);
-    updated.remove(artistName.toLowerCase());
+    updated.remove(cleanArtist.toLowerCase());
     state = state.copyWith(artistArt: updated);
   }
 
@@ -108,37 +114,39 @@ class ArtistAlbumArtNotifier extends Notifier<ArtistAlbumArtState> {
     String? imageUrl,
     String? source,
   }) async {
+    final cleanKey = albumKey.trim();
     FileImage(File(localPath)).evict();
     await DatabaseService.instance.saveAlbumArt(
-      albumKey: albumKey,
-      albumName: albumName,
-      artistName: artistName,
+      albumKey: cleanKey,
+      albumName: albumName.trim(),
+      artistName: artistName?.trim(),
       localPath: localPath,
       imageUrl: imageUrl,
       source: source,
     );
     PassiveArtFetcherService.instance.markAlbumAttempted(albumName, artistName);
     final updated = Map<String, String>.from(state.albumArt);
-    updated[albumKey.toLowerCase()] = localPath;
+    updated[cleanKey.toLowerCase()] = localPath;
     state = state.copyWith(albumArt: updated);
   }
 
   Future<void> removeAlbumArt(String albumKey) async {
-    final existingPath = state.albumArt[albumKey.toLowerCase()];
+    final cleanKey = albumKey.trim();
+    final existingPath = state.albumArt[cleanKey.toLowerCase()];
     if (existingPath != null) {
       FileImage(File(existingPath)).evict();
     }
-    await DatabaseService.instance.deleteAlbumArt(albumKey);
-    final parts = albumKey.split('|');
+    await DatabaseService.instance.deleteAlbumArt(cleanKey);
+    final parts = cleanKey.split('|');
     if (parts.length == 2) {
       PassiveArtFetcherService.instance.forgetAlbumAttempt(parts[1], parts[0]);
       PassiveArtFetcherService.instance.markAlbumAttempted(parts[1], parts[0]);
     } else {
-      PassiveArtFetcherService.instance.forgetAlbumAttempt(albumKey, null);
-      PassiveArtFetcherService.instance.markAlbumAttempted(albumKey, null);
+      PassiveArtFetcherService.instance.forgetAlbumAttempt(cleanKey, null);
+      PassiveArtFetcherService.instance.markAlbumAttempted(cleanKey, null);
     }
     final updated = Map<String, String>.from(state.albumArt);
-    updated.remove(albumKey.toLowerCase());
+    updated.remove(cleanKey.toLowerCase());
     state = state.copyWith(albumArt: updated);
   }
 

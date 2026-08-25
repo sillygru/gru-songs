@@ -57,11 +57,6 @@ class _QueuePaneState extends ConsumerState<QueuePane>
 
   Timer? _chromeSettleTimer;
 
-  /// Queue ids swiped to the top this session, most recent last. RAM only —
-  /// the manager reads it to stack rapid swipes above each other, and it dies
-  /// with this pane, which is exactly the "temporarily" asked for.
-  final List<String> _addedToTop = <String>[];
-
   @override
   bool get wantKeepAlive => true;
 
@@ -185,7 +180,6 @@ class _QueuePaneState extends ConsumerState<QueuePane>
                       key: const ValueKey('upnext'),
                       accent: widget.accent,
                       chrome: _chromeCurve,
-                      addedToTop: _addedToTop,
                     ),
             ),
           ),
@@ -224,16 +218,10 @@ class _UpNextList extends ConsumerStatefulWidget {
   /// step with the segment pill.
   final Animation<double> chrome;
 
-  /// Queue ids swiped to the top this session, most recent last. Owned by the
-  /// pane so it survives segment switches, and passed down so the manager can
-  /// stack each new swipe after the previous one.
-  final List<String> addedToTop;
-
   const _UpNextList({
     super.key,
     required this.accent,
     required this.chrome,
-    required this.addedToTop,
   });
 
   @override
@@ -333,8 +321,7 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
   }
 
   /// The left-to-right swipe: push the entry to the top of the upcoming
-  /// section, remembering it in [widget.addedToTop] so the next swipe lands
-  /// just after it. Nothing leaves the queue, so nothing needs an undo path —
+  /// section. Nothing leaves the queue, so nothing needs an undo path —
   /// the reorder itself is the reversible action.
   Future<void> _addToTop(
     AudioPlayerManager audioManager,
@@ -350,21 +337,13 @@ class _UpNextListState extends ConsumerState<_UpNextList> {
     // _remove does, then bring it back once the move has actually landed.
     setState(() => _dismissed.add(item.queueId));
 
-    final topOrder = List<String>.of(widget.addedToTop)..add(item.queueId);
-    var moved = false;
     try {
-      await audioManager.moveUpcomingToTop(item.queueId, topOrder);
-      moved = true;
+      await audioManager.moveUpcomingToTop(item.queueId);
     } catch (_) {
       // The move failed, so the row simply stays where it is.
     }
 
     if (!mounted) return;
-    if (moved) {
-      setState(() => widget.addedToTop
-        ..remove(item.queueId)
-        ..add(item.queueId));
-    }
     _restoreRow(item.queueId);
   }
 

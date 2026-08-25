@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../models/song.dart';
 import 'album_art_image.dart';
@@ -18,25 +17,21 @@ class FolderGridImage extends StatelessWidget {
     this.isGridItem = false,
   });
 
-  /// Resolves a cover URL to a local path and its file size.
-  /// Returns null if the file doesn't exist or the URL isn't a local path.
-  /// Single stat call per file: existence + size in one syscall.
-  static ({String path, int size})? _resolveCover(String? url) {
-    if (url == null || url.trim().isEmpty) return null;
+  /// Resolves a cover URL to a normalized local path.
+  /// Returns null if the URL is empty or not a local path.
+  static String? _resolveCover(String? url) {
+    if (url == null) return null;
     final trimmed = url.trim();
+    if (trimmed.isEmpty) return null;
     if (!trimmed.startsWith('/') &&
         !trimmed.startsWith('file://') &&
         !trimmed.startsWith('C:\\')) {
       return null;
     }
     try {
-      final path = trimmed.startsWith('file://')
+      return trimmed.startsWith('file://')
           ? Uri.parse(trimmed).toFilePath()
           : trimmed;
-      final file = File(path);
-      final stat = file.statSync();
-      if (stat.type == FileSystemEntityType.notFound) return null;
-      return (path: path, size: stat.size);
     } catch (_) {
       return null;
     }
@@ -46,32 +41,12 @@ class FolderGridImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final uniqueCovers = <String>{};
     final List<String> covers = [];
-    int? firstSize;
-    bool allSameSize = true;
 
     for (final song in songs) {
       if (covers.length >= 4) break;
-      final result = _resolveCover(song.coverUrl);
-      if (result == null || !uniqueCovers.add(result.path)) continue;
-
-      // Track file size as we go to detect duplicates (same image extracted
-      // from different songs in the same album).
-      if (allSameSize) {
-        if (firstSize == null) {
-          firstSize = result.size;
-        } else if (result.size != firstSize) {
-          allSameSize = false;
-        }
-      }
-
-      covers.add(result.path);
-    }
-
-    // If all unique covers have the same file size, they're the same image
-    // extracted from different songs — show a single full cover instead of
-    // repeating it in a grid.
-    if (covers.length >= 2 && allSameSize) {
-      covers.removeRange(1, covers.length);
+      final path = _resolveCover(song.coverUrl);
+      if (path == null || !uniqueCovers.add(path)) continue;
+      covers.add(path);
     }
 
     if (covers.isEmpty) {

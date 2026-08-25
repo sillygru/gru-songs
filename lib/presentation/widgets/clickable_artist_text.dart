@@ -42,6 +42,11 @@ class _ClickableArtistTextState extends State<ClickableArtistText> {
     _recognizers.clear();
   }
 
+  static final RegExp _splitRegex = RegExp(
+    r'\s*(?:,|&|/|;|\b(?:and|featuring|x)\b|\b(?:ft|feat|vs)\b\.?)\s*',
+    caseSensitive: false,
+  );
+
   @override
   Widget build(BuildContext context) {
     _clearRecognizers();
@@ -57,12 +62,7 @@ class _ClickableArtistTextState extends State<ClickableArtistText> {
       );
     }
 
-    final splitRegex = RegExp(
-      r'\s*(?:,|&|/|;|\b(?:and|featuring|x)\b|\b(?:ft|feat|vs)\b\.?)\s*',
-      caseSensitive: false,
-    );
-
-    final matches = splitRegex.allMatches(artistField).toList();
+    final matches = _splitRegex.allMatches(artistField).toList();
     if (matches.isEmpty) {
       final trimmed = artistField.trim();
       final recognizer = TapGestureRecognizer()

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:wispie/models/song.dart';
+import 'package:wispie/providers/artist_album_art_provider.dart';
 import 'package:wispie/services/library_logic.dart';
 
 void main() {
@@ -253,6 +254,51 @@ void main() {
       final sorted = LibraryLogic.sortArtistsByTrackCount(artistMap);
 
       expect(sorted, ['Artist Many', 'Artist Few']);
+    });
+  });
+
+  group('ArtistAlbumArtState', () {
+    test('normalizes trimmed and lowercased artist names', () {
+      const state = ArtistAlbumArtState(
+        artistArt: {
+          'beach weather': '/path/to/beach_weather.jpg',
+          'the weeknd': '/path/to/weeknd.jpg',
+        },
+        albumArt: {
+          'pineapple sunrise': '/path/to/pineapple.jpg',
+          'the weeknd|after hours': '/path/to/after_hours.jpg',
+        },
+      );
+
+      expect(state.getArtistArt('Beach Weather'), '/path/to/beach_weather.jpg');
+      expect(
+        state.getArtistArt(' Beach Weather '),
+        '/path/to/beach_weather.jpg',
+      );
+      expect(
+          state.getArtistArt('BEACH WEATHER\n'), '/path/to/beach_weather.jpg');
+      expect(state.getArtistArt('The Weeknd'), '/path/to/weeknd.jpg');
+      expect(state.getArtistArt('  The Weeknd  '), '/path/to/weeknd.jpg');
+      expect(state.getArtistArt('Non Existent'), null);
+      expect(state.getArtistArt(null), null);
+      expect(state.getArtistArt('   '), null);
+
+      expect(
+        state.getAlbumArt('Pineapple Sunrise'),
+        '/path/to/pineapple.jpg',
+      );
+      expect(
+        state.getAlbumArt('  Pineapple Sunrise  '),
+        '/path/to/pineapple.jpg',
+      );
+      expect(
+        state.getAlbumArt('After Hours', artistName: 'The Weeknd'),
+        '/path/to/after_hours.jpg',
+      );
+      expect(
+        state.getAlbumArt(' After Hours ', artistName: ' The Weeknd '),
+        '/path/to/after_hours.jpg',
+      );
     });
   });
 }

@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
 import 'database_service.dart';
+import '../domain/services/cover_optimizer.dart';
 import '../domain/services/embedded_cover_bytes.dart';
 import '../domain/services/search_service.dart';
 import 'storage_service.dart';
@@ -813,7 +814,6 @@ class ScannerService {
     if (!await file.exists()) return null;
 
     final coversDir = Directory(coversDirPath);
-    final hash = coverKeyForFilename(filename);
 
     try {
       // getImage: true is required — the parser skips picture frames
@@ -822,10 +822,11 @@ class ScannerService {
       if (metadata.pictures.isNotEmpty) {
         final cover = recoverEmbeddedCover(metadata.pictures.first.bytes);
         if (cover != null) {
-          final coverFile =
-              File(p.join(coversDir.path, '$hash${cover.extension}'));
-          await coverFile.writeAsBytes(cover.bytes);
-          return coverFile.path;
+          return await CoverOptimizer.saveOptimizedCover(
+            cover.bytes,
+            coversDir.path,
+            fallbackExtension: cover.extension,
+          );
         }
       }
     } catch (e) {
@@ -1027,6 +1028,62 @@ class ScannerService {
     return coverResults;
   }
 
+  /// Compacts and deduplicates existing cached covers.
+  /// Converts legacy raw/uncompressed cover files to deduplicated, dimension-capped
+  /// format and updates song database records.
+  static Future<int> compactCoverCache({
+    void Function(double progress)? onProgress,
+  }) async {
+    final songs = await DatabaseService.instance.getSongs();
+    final coversDir = await coversDirectory();
+    final updated = <Song>[];
+    final total = songs.length;
+    if (total == 0) return 0;
+
+    final needsCompaction = songs.any((s) =>
+        s.coverUrl != null &&
+        s.coverUrl!.isNotEmpty &&
+        !p.basename(s.coverUrl!).startsWith('c_'));
+    if (!needsCompaction) {
+      onProgress?.call(1.0);
+      return 0;
+    }
+
+    for (int i = 0; i < total; i++) {
+      final song = songs[i];
+      final coverPath = song.coverUrl;
+      if (coverPath != null && coverPath.isNotEmpty) {
+        final file = File(coverPath);
+        if (file.existsSync()) {
+          if (!p.basename(coverPath).startsWith('c_')) {
+            try {
+              final bytes = await file.readAsBytes();
+              if (bytes.isNotEmpty) {
+                final newPath = await CoverOptimizer.saveOptimizedCover(
+                  bytes,
+                  coversDir.path,
+                );
+                if (newPath != coverPath) {
+                  final updatedSong = song.copyWith(coverUrl: newPath);
+                  updated.add(updatedSong);
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      }
+      if (i % 20 == 0) {
+        onProgress?.call((i + 1) / total);
+      }
+    }
+
+    if (updated.isNotEmpty) {
+      await DatabaseService.instance.insertSongsBatch(updated);
+    }
+    onProgress?.call(1.0);
+    return updated.length;
+  }
+
   static Future<void> _isolateRebuildCovers(_RebuildParams params) async {
     final coversDir = Directory(params.coversDirPath);
     final folderCoverCache = <String, String?>{};
@@ -1041,7 +1098,6 @@ class ScannerService {
         RandomAccessFile? lockHandle;
         try {
           lockHandle = await _acquireSharedLock(params.lockDirPath, file.path);
-          final hash = coverKeyForFilename(file.path);
 
           // Check if already exists - unless force is true
           if (!params.force) {
@@ -1063,10 +1119,11 @@ class ScannerService {
                   final cover =
                       recoverEmbeddedCover(metadata.pictures.first.bytes);
                   if (cover != null) {
-                    final coverFile =
-                        File(p.join(coversDir.path, '$hash${cover.extension}'));
-                    await coverFile.writeAsBytes(cover.bytes);
-                    resolvedCoverUrl = coverFile.path;
+                    resolvedCoverUrl = await CoverOptimizer.saveOptimizedCover(
+                      cover.bytes,
+                      coversDir.path,
+                      fallbackExtension: cover.extension,
+                    );
                   }
                 }
               } catch (e) {
@@ -1327,8 +1384,6 @@ class ScannerService {
         DateTime.now().millisecondsSinceEpoch / 1000.0;
     final isVideo = _isVideoFile(file.path);
 
-    final hash = coverKeyForFilename(filename);
-
     // Check for valid cache first
     for (final cachedPath in coverCandidatePaths(coversDir.path, filename)) {
       final cachedFile = File(cachedPath);
@@ -1363,13 +1418,11 @@ class ScannerService {
         if (coverUrl == null && metadata.pictures.isNotEmpty) {
           final cover = recoverEmbeddedCover(metadata.pictures.first.bytes);
           if (cover != null) {
-            final coverFile =
-                File(p.join(coversDir.path, '$hash${cover.extension}'));
-
-            if (!await coverFile.exists()) {
-              await coverFile.writeAsBytes(cover.bytes);
-            }
-            coverUrl = coverFile.path;
+            coverUrl = await CoverOptimizer.saveOptimizedCover(
+              cover.bytes,
+              coversDir.path,
+              fallbackExtension: cover.extension,
+            );
           }
         }
       } catch (e) {
@@ -1479,7 +1532,6 @@ class ScannerService {
 
   static Future<String?> _scanForCovrBox(List<int> bytes, RandomAccessFile raf,
       int offset, Directory coversDir, String filename) async {
-    final hash = coverKeyForFilename(filename);
     for (int i = 0; i < bytes.length - 24; i++) {
       if (bytes[i] == 0x63 &&
           bytes[i + 1] == 0x6F &&
@@ -1508,9 +1560,11 @@ class ScannerService {
                 type = 'bmp';
               }
 
-              final coverFile = File(p.join(coversDir.path, '$hash.$type'));
-              await coverFile.writeAsBytes(imgData);
-              return coverFile.path;
+              return await CoverOptimizer.saveOptimizedCover(
+                imgData,
+                coversDir.path,
+                fallbackExtension: '.$type',
+              );
             }
           }
         }
@@ -1559,7 +1613,6 @@ class ScannerService {
 
   static Future<String?> _extractImageAt(RandomAccessFile raf, int pos,
       String type, Directory coversDir, String filename) async {
-    final hash = coverKeyForFilename(filename);
     await raf.setPosition(pos);
     final data = await raf.read(15 * 1024 * 1024);
 
@@ -1597,9 +1650,12 @@ class ScannerService {
     }
 
     if (actualEnd > 1024) {
-      final coverFile = File(p.join(coversDir.path, '$hash.$type'));
-      await coverFile.writeAsBytes(data.sublist(0, actualEnd));
-      return coverFile.path;
+      final rawData = Uint8List.fromList(data.sublist(0, actualEnd));
+      return await CoverOptimizer.saveOptimizedCover(
+        rawData,
+        coversDir.path,
+        fallbackExtension: '.$type',
+      );
     }
     return null;
   }

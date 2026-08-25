@@ -303,22 +303,31 @@ class LibraryLogic {
   /// - "Artist 1, Artist 2 and Artist 3"
   /// - "Artist 1 / Artist 2"
   /// - "Artist 1 x Artist 2"
+  static final RegExp _splitRegex = RegExp(
+    r'\s*(?:,|&|/|;|\b(?:and|featuring|x)\b|\b(?:ft|feat|vs)\b\.?)\s*',
+    caseSensitive: false,
+  );
+
+  /// Splits a multi-artist string into individual artist names.
+  /// Handles formats like:
+  /// - "Artist 1 & Artist 2"
+  /// - "Artist 1 ft. Artist 2"
+  /// - "Artist 1 feat. Artist 2"
+  /// - "Artist 1, Artist 2 and Artist 3"
+  /// - "Artist 1 / Artist 2"
+  /// - "Artist 1 x Artist 2"
   static List<String> splitArtistNames(String artistField) {
-    if (artistField.trim().isEmpty) return [];
+    final trimmed = artistField.trim();
+    if (trimmed.isEmpty) return [];
 
-    final splitRegex = RegExp(
-      r'\s*(?:,|&|/|;|\b(?:and|featuring|x)\b|\b(?:ft|feat|vs)\b\.?)\s*',
-      caseSensitive: false,
-    );
-
-    final parts = artistField
-        .split(splitRegex)
+    final parts = trimmed
+        .split(_splitRegex)
         .map((part) => part.trim())
         .where((part) => part.isNotEmpty)
         .toList();
 
-    if (parts.isEmpty && artistField.trim().isNotEmpty) {
-      return [artistField.trim()];
+    if (parts.isEmpty && trimmed.isNotEmpty) {
+      return [trimmed];
     }
 
     return parts;
@@ -335,9 +344,10 @@ class LibraryLogic {
           parsedArtists.isEmpty ? ['Unknown Artist'] : parsedArtists;
 
       for (final artist in artists) {
-        final lowerKey = artist.toLowerCase();
+        final cleanArtist = artist.trim();
+        final lowerKey = cleanArtist.toLowerCase();
         final canonicalName =
-            canonicalNames.putIfAbsent(lowerKey, () => artist);
+            canonicalNames.putIfAbsent(lowerKey, () => cleanArtist);
 
         final list = artistMap.putIfAbsent(canonicalName, () => []);
         if (!list.contains(song)) {

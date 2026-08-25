@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
@@ -23,6 +24,11 @@ class VolumeMonitorService {
   });
 
   Future<void> initialize() async {
+    // The wispie/volume channels have native implementations only on mobile;
+    // auto-pause-on-mute stays off elsewhere.
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return;
+    }
     try {
       _currentVolume =
           await _channel.invokeMethod<double>('getCurrentVolume') ?? 1.0;

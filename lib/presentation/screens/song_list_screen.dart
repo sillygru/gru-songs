@@ -89,15 +89,17 @@ class SongListScreen extends ConsumerWidget {
                   title.toLowerCase().contains(s.album.toLowerCase()),
             ));
 
-    final String effectiveArtistName = artistName ??
-        (effectiveIsArtist
-            ? title
-            : (sortedSongs.isNotEmpty ? sortedSongs.first.artist : ''));
+    final String effectiveArtistName = (artistName ??
+            (effectiveIsArtist
+                ? title
+                : (sortedSongs.isNotEmpty ? sortedSongs.first.artist : '')))
+        .trim();
 
-    final String effectiveAlbumName = albumName ??
-        (effectiveIsAlbum
-            ? title
-            : (sortedSongs.isNotEmpty ? sortedSongs.first.album : title));
+    final String effectiveAlbumName = (albumName ??
+            (effectiveIsAlbum
+                ? title
+                : (sortedSongs.isNotEmpty ? sortedSongs.first.album : title)))
+        .trim();
 
     final String? artworkPath = effectiveIsArtist
         ? ref.watch(artistAlbumArtProvider).getArtistArt(effectiveArtistName)
@@ -257,6 +259,8 @@ class SongListScreen extends ConsumerWidget {
                                     File(artworkPath),
                                     width: 220,
                                     height: 220,
+                                    cacheWidth: 550,
+                                    cacheHeight: 550,
                                     fit: BoxFit.cover,
                                   )
                                 : FolderGridImage(

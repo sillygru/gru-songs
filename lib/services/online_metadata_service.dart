@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 
 import '../domain/models/online_search_result.dart';
+import '../domain/services/cover_optimizer.dart';
 import '../models/song.dart';
 import 'music_utils_api_client.dart';
 import 'scanner_service.dart';
@@ -39,6 +40,12 @@ class OnlineMetadataService {
   // Rate limiter for Last.fm scraping
   DateTime? _lastLastfmRequest;
   static const Duration _lastfmMinInterval = Duration(seconds: 1);
+
+  // In-memory caches for artwork candidates and query resolutions
+  final Map<String, List<Map<String, String>>> _artistCandidatesCache = {};
+  final Map<String, List<Map<String, String>>> _albumCandidatesCache = {};
+  final Map<String, String> _artistImageCache = {};
+  final Map<String, String> _albumImageCache = {};
 
   // Last.fm HTML scraping regexes (artist/album images)
   static final _lastfmAnyImageRegex = RegExp(
@@ -292,14 +299,26 @@ class OnlineMetadataService {
   Future<String?> searchArtistImage(String artistName) async {
     final clean = cleanTag(artistName);
     if (clean == null) return null;
+    final cacheKey = clean.toLowerCase();
+    final cached = _artistImageCache[cacheKey];
+    if (cached != null) return cached;
 
     final unified = await _musicUtils.getJson('/cover/artist', {
       'artist_name': clean,
     });
     final unifiedUrl = _coverUrlFromResponse(unified);
-    if (unifiedUrl != null) return unifiedUrl;
+    if (unifiedUrl != null) {
+      if (_artistImageCache.length > 200) _artistImageCache.clear();
+      _artistImageCache[cacheKey] = unifiedUrl;
+      return unifiedUrl;
+    }
 
-    return _searchDirectArtistImage(clean);
+    final directUrl = await _searchDirectArtistImage(clean);
+    if (directUrl != null) {
+      if (_artistImageCache.length > 200) _artistImageCache.clear();
+      _artistImageCache[cacheKey] = directUrl;
+    }
+    return directUrl;
   }
 
   /// Search Deezer for artist image (direct-provider fallback).
@@ -332,6 +351,9 @@ class OnlineMetadataService {
   ) async {
     final clean = cleanTag(artistName);
     if (clean == null) return const [];
+    final cacheKey = clean.toLowerCase();
+    final cached = _artistCandidatesCache[cacheKey];
+    if (cached != null) return cached;
 
     final unified = await _musicUtils.getJson('/cover/search', {
       'q': clean,
@@ -339,19 +361,37 @@ class OnlineMetadataService {
       'limit': '10',
     });
     final unifiedCandidates = _coverCandidatesFromResponse(unified);
-    if (unifiedCandidates.isNotEmpty) return unifiedCandidates;
+    if (unifiedCandidates.isNotEmpty) {
+      if (_artistCandidatesCache.length > 200) _artistCandidatesCache.clear();
+      _artistCandidatesCache[cacheKey] = unifiedCandidates;
+      return unifiedCandidates;
+    }
+
+    final directHits = await Future.wait([
+      searchDeezerArtistImage(clean),
+      searchITunesArtistImage(clean),
+      searchLastfmArtistImage(clean),
+    ]);
+
+    final deezer = directHits[0];
+    final itunes = directHits[1];
+    final lastfm = directHits[2];
 
     final candidates = <Map<String, String>>[];
-    final lastfm = await searchLastfmArtistImage(clean);
-    if (lastfm != null) candidates.add({'url': lastfm, 'source': 'Last.fm'});
-    final itunes = await searchITunesArtistImage(clean);
-    if (itunes != null && itunes != lastfm) {
-      candidates.add({'url': itunes, 'source': 'iTunes'});
-    }
-    final deezer = await searchDeezerArtistImage(clean);
-    if (deezer != null && deezer != lastfm && deezer != itunes) {
+    if (deezer != null && deezer.isNotEmpty) {
       candidates.add({'url': deezer, 'source': 'Deezer'});
     }
+    if (itunes != null && itunes.isNotEmpty && itunes != deezer) {
+      candidates.add({'url': itunes, 'source': 'iTunes'});
+    }
+    if (lastfm != null &&
+        lastfm.isNotEmpty &&
+        lastfm != deezer &&
+        lastfm != itunes) {
+      candidates.add({'url': lastfm, 'source': 'Last.fm'});
+    }
+    if (_artistCandidatesCache.length > 200) _artistCandidatesCache.clear();
+    _artistCandidatesCache[cacheKey] = candidates;
     return candidates;
   }
 
@@ -363,15 +403,31 @@ class OnlineMetadataService {
     final cleanAlbum = cleanTag(albumName);
     if (cleanAlbum == null) return null;
     final cleanArtist = cleanTag(artistName);
+    final cacheKey = cleanArtist != null
+        ? '${cleanArtist.toLowerCase()}|${cleanAlbum.toLowerCase()}'
+        : cleanAlbum.toLowerCase();
+
+    final cached = _albumImageCache[cacheKey];
+    if (cached != null) return cached;
 
     final unified = await _musicUtils.getJson('/cover/album', {
       'album_name': cleanAlbum,
       if (cleanArtist != null) 'artist_name': cleanArtist,
     });
     final unifiedUrl = _coverUrlFromResponse(unified);
-    if (unifiedUrl != null) return unifiedUrl;
+    if (unifiedUrl != null) {
+      if (_albumImageCache.length > 200) _albumImageCache.clear();
+      _albumImageCache[cacheKey] = unifiedUrl;
+      return unifiedUrl;
+    }
 
-    return _searchDirectAlbumImage(cleanAlbum, artistName: cleanArtist);
+    final directUrl =
+        await _searchDirectAlbumImage(cleanAlbum, artistName: cleanArtist);
+    if (directUrl != null) {
+      if (_albumImageCache.length > 200) _albumImageCache.clear();
+      _albumImageCache[cacheKey] = directUrl;
+    }
+    return directUrl;
   }
 
   /// Search Deezer for album image (direct-provider fallback).
@@ -586,6 +642,12 @@ class OnlineMetadataService {
     final cleanAlbum = cleanTag(albumName);
     if (cleanAlbum == null) return const [];
     final cleanArtist = cleanTag(artistName);
+    final cacheKey = cleanArtist != null
+        ? '${cleanArtist.toLowerCase()}|${cleanAlbum.toLowerCase()}'
+        : cleanAlbum.toLowerCase();
+
+    final cached = _albumCandidatesCache[cacheKey];
+    if (cached != null) return cached;
 
     final unified = await _musicUtils.getJson('/cover/search', {
       'type': 'album',
@@ -594,28 +656,37 @@ class OnlineMetadataService {
       'limit': '10',
     });
     final unifiedCandidates = _coverCandidatesFromResponse(unified);
-    if (unifiedCandidates.isNotEmpty) return unifiedCandidates;
+    if (unifiedCandidates.isNotEmpty) {
+      if (_albumCandidatesCache.length > 200) _albumCandidatesCache.clear();
+      _albumCandidatesCache[cacheKey] = unifiedCandidates;
+      return unifiedCandidates;
+    }
+
+    final directHits = await Future.wait([
+      searchDeezerAlbumImage(cleanAlbum, artistName: cleanArtist),
+      searchITunesAlbumImage(cleanAlbum, artistName: cleanArtist),
+      searchLastfmAlbumImage(cleanAlbum, artistName: cleanArtist),
+    ]);
+
+    final deezer = directHits[0];
+    final itunes = directHits[1];
+    final lastfm = directHits[2];
 
     final candidates = <Map<String, String>>[];
-    final lastfm = await searchLastfmAlbumImage(
-      cleanAlbum,
-      artistName: cleanArtist,
-    );
-    if (lastfm != null) candidates.add({'url': lastfm, 'source': 'Last.fm'});
-    final itunes = await searchITunesAlbumImage(
-      cleanAlbum,
-      artistName: cleanArtist,
-    );
-    if (itunes != null && itunes != lastfm) {
-      candidates.add({'url': itunes, 'source': 'iTunes'});
-    }
-    final deezer = await searchDeezerAlbumImage(
-      cleanAlbum,
-      artistName: cleanArtist,
-    );
-    if (deezer != null && deezer != lastfm && deezer != itunes) {
+    if (deezer != null && deezer.isNotEmpty) {
       candidates.add({'url': deezer, 'source': 'Deezer'});
     }
+    if (itunes != null && itunes.isNotEmpty && itunes != deezer) {
+      candidates.add({'url': itunes, 'source': 'iTunes'});
+    }
+    if (lastfm != null &&
+        lastfm.isNotEmpty &&
+        lastfm != deezer &&
+        lastfm != itunes) {
+      candidates.add({'url': lastfm, 'source': 'Last.fm'});
+    }
+    if (_albumCandidatesCache.length > 200) _albumCandidatesCache.clear();
+    _albumCandidatesCache[cacheKey] = candidates;
     return candidates;
   }
 
@@ -644,7 +715,7 @@ class OnlineMetadataService {
   /// Tries GIF image, then og:image meta tag, then any avatar image.
   Future<String?> _searchLastfmPage(String path) async {
     final now = DateTime.now();
-    if (_lastLastfmRequest != null) {
+    if (_lastLastfmRequest != null && !path.endsWith('/+images')) {
       final elapsed = now.difference(_lastLastfmRequest!);
       if (elapsed < _lastfmMinInterval) {
         await Future.delayed(_lastfmMinInterval - elapsed);
@@ -743,13 +814,11 @@ class OnlineMetadataService {
       if (bytes.isEmpty) return null;
 
       final coversDir = await ScannerService.coversDirectory();
-      final sanitizedKey = keyName.replaceAll(RegExp(r'[^\w\-]'), '_');
-      final fileName =
-          'online_${sanitizedKey}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final file = File(p.join(coversDir.path, fileName));
-      await file.writeAsBytes(bytes);
-
-      return file.path;
+      return await CoverOptimizer.saveOptimizedCover(
+        bytes,
+        coversDir.path,
+        fallbackExtension: '.jpg',
+      );
     } catch (e) {
       debugPrint('Error downloading cover from $imageUrl: $e');
       return null;

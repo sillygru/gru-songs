@@ -1,7 +1,7 @@
 name: wispie
 description: "A feature packed local music player."
 publish_to: "none"
-version: 1.1.1-release+7
+version: 1.2.0-release+8
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -35,6 +35,10 @@ dependencies:
   wakelock_plus: ^1.3.3
   hugeicons: ^1.1.7
   http: ^1.2.1
+  just_audio_media_kit: ^2.1.0
+  media_kit_libs_linux: ^1.2.1
+  sqflite_common_ffi: ^2.3.0
+  sqlite3: ^2.4.0
 
 dev_dependencies:
   flutter_test:
@@ -44,8 +48,6 @@ dev_dependencies:
   path_provider_platform_interface: ^2.1.2
   build_runner: ^2.4.9
   shared_preferences_platform_interface: ^2.3.2
-  sqflite_common_ffi: ^2.3.0
-  sqlite3: ^2.4.0
   package_info_plus_platform_interface: ^3.0.0
 
 flutter_launcher_icons:
@@ -58,3 +60,14 @@ flutter:
   uses-material-design: true
   assets:
     - assets/app_icon.png
+
+dependency_overrides:
+  # Vendored without linux/: upstream Linux support is x86_64-only and
+  # fatal-errors on aarch64. Features degrade gracefully (see FFmpegService).
+  ffmpeg_kit_flutter_new_min:
+    path: third_party/ffmpeg_kit_flutter_new_min
+  # Vendored: upstream concatenatingInsertAll moves from an out-of-bounds
+  # index, so inserted songs land at the playlist end and mid-queue playback
+  # desyncs on media_kit (Linux/Windows).
+  just_audio_media_kit:
+    path: third_party/just_audio_media_kit

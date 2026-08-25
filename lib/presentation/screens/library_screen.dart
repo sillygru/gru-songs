@@ -477,51 +477,29 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
   }
 
   Widget _buildArtistsView(BuildContext context, List<Song> allSongs) {
-    final artistsAsync = ref.watch(artistListProvider);
+    final artists = ref.watch(artistListProvider);
+    final artistMap = ref.watch(artistMapProvider);
 
-    return artistsAsync.when(
-      data: (artists) {
-        final artistMap = LibraryLogic.groupByArtist(allSongs);
-        return _buildCollectionGrid(
-          keys: artists,
-          songsFor: (artist) => artistMap[artist] ?? const [],
-          subtitleFor: collectionSummary,
-          emptyTitle: 'No artists yet',
-          isArtist: true,
-        );
-      },
-      loading: () => const AppLoading(),
-      error: (e, s) => AppEmptyState(
-        icon: AppIcons.error,
-        title: 'Could not load artists',
-        message: '$e',
-        tone: AppTone.danger,
-      ),
+    return _buildCollectionGrid(
+      keys: artists,
+      songsFor: (artist) => artistMap[artist] ?? const [],
+      subtitleFor: collectionSummary,
+      emptyTitle: 'No artists yet',
+      isArtist: true,
     );
   }
 
   Widget _buildAlbumsView(BuildContext context, List<Song> allSongs) {
-    final albumsAsync = ref.watch(albumListProvider);
+    final albums = ref.watch(albumListProvider);
+    final albumMap = ref.watch(albumMapProvider);
 
-    return albumsAsync.when(
-      data: (albums) {
-        final albumMap = LibraryLogic.groupByAlbum(allSongs);
-        return _buildCollectionGrid(
-          keys: albums,
-          songsFor: (album) => albumMap[album] ?? const [],
-          subtitleFor: (songs) =>
-              '${songs.first.artist} · ${collectionSummary(songs)}',
-          emptyTitle: 'No albums yet',
-          isAlbum: true,
-        );
-      },
-      loading: () => const AppLoading(),
-      error: (e, s) => AppEmptyState(
-        icon: AppIcons.error,
-        title: 'Could not load albums',
-        message: '$e',
-        tone: AppTone.danger,
-      ),
+    return _buildCollectionGrid(
+      keys: albums,
+      songsFor: (album) => albumMap[album] ?? const [],
+      subtitleFor: (songs) =>
+          '${songs.first.artist} · ${collectionSummary(songs)}',
+      emptyTitle: 'No albums yet',
+      isAlbum: true,
     );
   }
 
@@ -549,13 +527,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     }
 
     final artState = ref.watch(artistAlbumArtProvider);
-    final sortOrder = ref.watch(settingsProvider).sortOrder;
-    final userData = ref.watch(userDataProvider);
-    final audioManager = ref.watch(audioPlayerManagerProvider);
-    final shuffleConfig = audioManager.shuffleStateNotifier.value.config;
-    final playCounts = ref.watch(playCountsProvider);
-    final lastPlayedAsync = ref.watch(lastPlayedTimestampsProvider);
-    final lastPlayedTimestamps = lastPlayedAsync.asData?.value ?? const {};
 
     return NotificationListener<ScrollNotification>(
       onNotification: handleScrollNotification,
@@ -575,19 +546,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         itemCount: entries.length,
         itemBuilder: (context, index) {
           final entry = entries[index];
-          final sortedEntrySongs = LibraryLogic.sortSongs(
-            entry.songs,
-            sortOrder,
-            userData: userData,
-            shuffleConfig: shuffleConfig,
-            playCounts: playCounts,
-            lastPlayedTimestamps: lastPlayedTimestamps,
-          );
           final String? artistName = isArtist
               ? entry.key
-              : (sortedEntrySongs.isNotEmpty
-                  ? sortedEntrySongs.first.artist
-                  : null);
+              : (entry.songs.isNotEmpty ? entry.songs.first.artist : null);
           final String? albumName = isAlbum ? entry.key : null;
 
           final cachedArt = isArtist
@@ -595,19 +556,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
               : (isAlbum
                   ? artState.getAlbumArt(albumName, artistName: artistName)
                   : null);
-          final hasImage = cachedArt != null && File(cachedArt).existsSync();
 
-          final Widget artworkWidget = hasImage
-              ? ClipRRect(
-                  borderRadius: AppTokens.brSm,
-                  child: Image.file(
-                    File(cachedArt),
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                  ),
-                )
-              : FolderGridImage(songs: sortedEntrySongs, isGridItem: true);
+          final Widget artworkWidget =
+              (cachedArt != null && cachedArt.isNotEmpty)
+                  ? ClipRRect(
+                      borderRadius: AppTokens.brSm,
+                      child: Image.file(
+                        File(cachedArt),
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        cacheWidth: 350,
+                        cacheHeight: 350,
+                        errorBuilder: (_, __, ___) => FolderGridImage(
+                          songs: entry.songs,
+                          isGridItem: true,
+                        ),
+                      ),
+                    )
+                  : FolderGridImage(songs: entry.songs, isGridItem: true);
 
           return AppMediaCard(
             expand: true,

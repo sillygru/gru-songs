@@ -32,6 +32,8 @@ void main() {
       expect(OnlineMetadataService.cleanTag('unknown album'), null);
       expect(OnlineMetadataService.cleanTag('unknown'), null);
       expect(OnlineMetadataService.cleanTag('Beach Weather'), 'Beach Weather');
+      expect(
+          OnlineMetadataService.cleanTag('  Beach Weather  '), 'Beach Weather');
     });
   });
 }

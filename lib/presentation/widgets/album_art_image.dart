@@ -116,6 +116,13 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
         effectiveMemCacheWidth = (widget.width! * 2.5).toInt();
       } else if (widget.height != null && widget.height! < 400) {
         effectiveMemCacheHeight = (widget.height! * 2.5).toInt();
+      } else if (widget.width != null) {
+        effectiveMemCacheWidth = (widget.width! * 2.0).toInt().clamp(100, 1024);
+      } else if (widget.height != null) {
+        effectiveMemCacheHeight =
+            (widget.height! * 2.0).toInt().clamp(100, 1024);
+      } else {
+        effectiveMemCacheWidth = 1024;
       }
     }
 
@@ -234,6 +241,12 @@ class _AlbumArtImageState extends State<AlbumArtImage> {
         width = (image.width! * 2.5).toInt();
       } else if (image.height != null && image.height! < 400) {
         height = (image.height! * 2.5).toInt();
+      } else if (image.width != null) {
+        width = (image.width! * 2.0).toInt().clamp(100, 1024);
+      } else if (image.height != null) {
+        height = (image.height! * 2.0).toInt().clamp(100, 1024);
+      } else {
+        width = 1024;
       }
     }
     return (

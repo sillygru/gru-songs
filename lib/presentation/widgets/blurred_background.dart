@@ -59,6 +59,12 @@ class _BlurredBackgroundState extends State<BlurredBackground>
   void didUpdateWidget(BlurredBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url || oldWidget.filename != widget.filename) {
+      _spinController.value = 0.0;
+      if (widget.slowSpin) {
+        _spinController.repeat();
+      } else {
+        _spinController.stop();
+      }
       _loadBlurredImage();
     }
     if (oldWidget.slowSpin != widget.slowSpin) {
@@ -205,44 +211,39 @@ class _BlurredBackgroundState extends State<BlurredBackground>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Slow spinning blur layers — displayed as a large square so
-          // no rectangular borders are visible during rotation.
-          if (widget.slowSpin)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                // Square big enough that its corners, when rotated, stay
-                // outside the viewport on every device.
-                final squareSize =
-                    math.max(constraints.maxWidth, constraints.maxHeight) *
-                        math.sqrt2;
-                return OverflowBox(
-                  maxWidth: squareSize,
-                  maxHeight: squareSize,
-                  alignment: Alignment.center,
-                  child: AnimatedBuilder(
-                    animation: _spinController,
-                    builder: (context, child) {
-                      final angle = _spinController.value * 2 * math.pi;
-                      final breathe =
-                          math.sin(_spinController.value * 2 * math.pi);
-                      final scale = 1.0 + 0.015 * breathe;
-                      return Transform.scale(
-                        scale: scale,
+          // Blur layers displayed in a square OverflowBox so no rectangular
+          // borders show during rotation.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Square big enough that its corners, when rotated, stay
+              // outside the viewport on every device.
+              final squareSize =
+                  math.max(constraints.maxWidth, constraints.maxHeight) *
+                      math.sqrt2;
+              return OverflowBox(
+                maxWidth: squareSize,
+                maxHeight: squareSize,
+                alignment: Alignment.center,
+                child: AnimatedBuilder(
+                  animation: _spinController,
+                  builder: (context, child) {
+                    final angle = _spinController.value * 2 * math.pi;
+                    final scale = 1.0 + 0.015 * math.sin(angle);
+                    return Transform.scale(
+                      scale: scale,
+                      alignment: Alignment.center,
+                      child: Transform.rotate(
+                        angle: angle,
                         alignment: Alignment.center,
-                        child: Transform.rotate(
-                          angle: angle,
-                          alignment: Alignment.center,
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: _buildImageLayers(squareSize: squareSize),
-                  ),
-                );
-              },
-            )
-          else
-            _buildImageLayers(),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: _buildImageLayers(squareSize: squareSize),
+                ),
+              );
+            },
+          ),
 
           // Static gradient overlay stays fixed while blur spins beneath
           Positioned.fill(

@@ -1566,24 +1566,32 @@ final libraryRootPathProvider = Provider<AsyncValue<String?>>((ref) {
   );
 });
 
-final artistListProvider = FutureProvider<List<String>>((ref) async {
-  final songsAsync = ref.watch(songsProvider);
-  final songs = songsAsync.value;
-  if (songs != null && songs.isNotEmpty) {
-    final artistMap = LibraryLogic.groupByArtist(songs);
-    return LibraryLogic.sortArtistsByTrackCount(artistMap);
-  }
-  return [];
+final artistMapProvider = Provider<Map<String, List<Song>>>((ref) {
+  final songs = ref.watch(songsProvider).value ?? const <Song>[];
+  if (songs.isEmpty) return const {};
+  return LibraryLogic.groupByArtist(songs);
 });
 
-final albumListProvider = FutureProvider<List<String>>((ref) async {
-  final songsAsync = ref.watch(songsProvider);
-  final songs = songsAsync.value;
-  if (songs != null && songs.isNotEmpty) {
-    final albumMap = LibraryLogic.groupByAlbum(songs);
+final albumMapProvider = Provider<Map<String, List<Song>>>((ref) {
+  final songs = ref.watch(songsProvider).value ?? const <Song>[];
+  if (songs.isEmpty) return const {};
+  return LibraryLogic.groupByAlbum(songs);
+});
+
+final artistListProvider = Provider<List<String>>((ref) {
+  final artistMap = ref.watch(artistMapProvider);
+  if (artistMap.isNotEmpty) {
+    return LibraryLogic.sortArtistsByTrackCount(artistMap);
+  }
+  return const [];
+});
+
+final albumListProvider = Provider<List<String>>((ref) {
+  final albumMap = ref.watch(albumMapProvider);
+  if (albumMap.isNotEmpty) {
     return LibraryLogic.sortAlbumsByTrackCount(albumMap);
   }
-  return [];
+  return const [];
 });
 
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(() {

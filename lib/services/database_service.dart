@@ -3100,8 +3100,11 @@ class DatabaseService {
     for (final map in maps) {
       final name = map['artist_name'] as String?;
       final path = map['local_path'] as String?;
-      if (name != null && path != null && name.isNotEmpty && path.isNotEmpty) {
-        result[name.toLowerCase()] = path;
+      if (name != null &&
+          path != null &&
+          name.trim().isNotEmpty &&
+          path.isNotEmpty) {
+        result[name.trim().toLowerCase()] = path;
       }
     }
     return result;
@@ -3117,7 +3120,7 @@ class DatabaseService {
     await _userDataDatabase!.insert(
       'artist_art',
       {
-        'artist_name': artistName,
+        'artist_name': artistName.trim(),
         'image_url': imageUrl,
         'local_path': localPath,
         'source': source,
@@ -3131,8 +3134,8 @@ class DatabaseService {
     await _ensureInitialized();
     await _userDataDatabase!.delete(
       'artist_art',
-      where: 'LOWER(artist_name) = ?',
-      whereArgs: [artistName.toLowerCase()],
+      where: 'LOWER(TRIM(artist_name)) = ?',
+      whereArgs: [artistName.trim().toLowerCase()],
     );
   }
 
@@ -3149,8 +3152,11 @@ class DatabaseService {
     for (final map in maps) {
       final key = map['album_key'] as String?;
       final path = map['local_path'] as String?;
-      if (key != null && path != null && key.isNotEmpty && path.isNotEmpty) {
-        result[key.toLowerCase()] = path;
+      if (key != null &&
+          path != null &&
+          key.trim().isNotEmpty &&
+          path.isNotEmpty) {
+        result[key.trim().toLowerCase()] = path;
       }
     }
     return result;

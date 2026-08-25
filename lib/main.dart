@@ -1,8 +1,15 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:metadata_god/metadata_god.dart';
+import 'package:sqflite/sqflite.dart' show databaseFactory;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart'
+    show createDatabaseFactoryFfi, sqfliteFfiInit;
+import 'dart:ffi' show DynamicLibrary;
+import 'package:sqlite3/open.dart' as sqlite3_open;
 import 'dart:async';
 import 'dart:io';
 import 'presentation/screens/main_screen.dart';
@@ -27,11 +34,29 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Linux has no platform implementations for metadata_god, audio_session or
+  // audio_service; playback goes through just_audio_media_kit instead.
+  final isLinux = !kIsWeb && Platform.isLinux;
+
+  if (isLinux) {
+    // Fedora and friends ship only the versioned soname; the unversioned
+    // libsqlite3.so lives in -devel packages that end users should not need.
+    sqlite3_open.open.overrideFor(
+      sqlite3_open.OperatingSystem.linux,
+      () => DynamicLibrary.open('libsqlite3.so.0'),
+    );
+    sqfliteFfiInit();
+    // In-process ffi factory: the isolate-based one loads sqlite3 in its own
+    // isolate where the libsqlite3.so.0 override above would not apply.
+    databaseFactory = createDatabaseFactoryFfi(noIsolate: true);
+    JustAudioMediaKit.ensureInitialized();
+  }
+
   // Parallel initialization
   await Future.wait([
-    _initializeMetadataGod(),
-    _setupAudioSession(),
-    _setupJustAudioBackground(),
+    if (!isLinux) _initializeMetadataGod(),
+    if (!isLinux) _setupAudioSession(),
+    if (!isLinux) _setupJustAudioBackground(),
   ], eagerError: false);
 
   PaintingBinding.instance.imageCache.maximumSize = 250;

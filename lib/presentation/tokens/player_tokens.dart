@@ -37,16 +37,43 @@ class PlayerTokens {
   static const Duration dSlow = Duration(milliseconds: 420);
   static const Duration dLyricsLine = Duration(milliseconds: 166);
   static const Duration dLyricsHighlightIn = Duration(milliseconds: 330);
+  static const Duration dLyricsHighlightOut = Duration(milliseconds: 500);
   static const Duration dLyricsWordWobble = Duration(seconds: 1);
   static const Duration dLyricsWordProgress = Duration(milliseconds: 240);
   static const Duration dLyricsScroll = Duration(milliseconds: 650);
+  static const Duration dLyricsTimingOffset = Duration(milliseconds: 115);
+  static const Duration dLyricsRichSyncTimingOffset =
+      Duration(milliseconds: 150);
+  static const Duration dLyricsScrollTimingOffset = Duration(milliseconds: 500);
+  static const Duration dLyricsLoaderTransition = Duration(milliseconds: 600);
+  static const Duration dLyricsInstrumentalFill = Duration(milliseconds: 150);
+  static const Duration dLyricsInstrumentalOscillation =
+      Duration(milliseconds: 1250);
+  static const Duration dLyricsResumeSlideIn = Duration(milliseconds: 200);
+  static const Duration dLyricsResumeSlideOut = Duration(milliseconds: 150);
+  static const Duration dLyricsResumeOpacityIn = Duration(milliseconds: 150);
+  static const Duration dLyricsResumeOpacityOut = Duration(milliseconds: 100);
+
   static const double lyricsWordWobbleScale = 0.025;
   static const double lyricsWordWobbleShiftEm = 0.05;
   static const double lyricsWordGlowBlur = 14;
   static const double lyricsHighlightLeadRatio = 0.1;
   static const double lyricsHighlightDurationRatio = 1.6;
+  static const double lyricsHighlightGlowDurationRatio = 1.2;
+  static const Duration lyricsHighlightGlowMinDuration =
+      Duration(milliseconds: 1200);
+  static const double lyricsScrollPosRatio = 0.37;
+  static const double lyricsActiveOpacity = 1.0;
+  static const double lyricsInactiveOpacity = 0.30;
+  static const double lyricsPlayedOpacity = 0.60;
+
   static const Curve cStandard = Curves.easeOutCubic;
   static const Curve cEmphasized = Curves.easeOutQuart;
+  static const Curve cLyricsScroll = Cubic(0.86, 0.0, 0.2, 1.0);
+  static const Curve cLyricsLoader = Cubic(0.22, 1.0, 0.36, 1.0);
+  static const Curve cLyricsResumeSlide = Cubic(0.5, 1.0, 0.89, 1.0);
+  static const Curve cLyricsLine = Curves.ease;
+  static const Curve cLyricsHighlight = Curves.ease;
 
   // Glass recipe — one blur, one fill, one border, used by every raised surface
   static const double glassBlur = 22;
@@ -66,6 +93,9 @@ class PlayerTokens {
   static const double artSize = 48;
   static const double lyricsFontSize = 32;
   static const double lyricsTranslationScale = 0.68;
+  static const double lyricsActiveScale = 1.0;
+  static const double lyricsInactiveScale = 0.95;
+  static const int lyricsLongWordThresholdMs = 1500;
 
   /// The accent colour for the whole screen: the palette extracted from the
   /// current cover, falling back to the theme primary.

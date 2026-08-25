@@ -11,6 +11,17 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 class FFmpegService {
+  // ffmpeg_kit ships no Linux/Windows build; call sites treat this like any
+  // other FFmpeg failure instead of hitting MissingPluginException.
+  void _ensurePlatformSupported() {
+    if (!kIsWeb &&
+        !Platform.isAndroid &&
+        !Platform.isIOS &&
+        !Platform.isMacOS) {
+      throw UnsupportedError('FFmpeg is not available on this platform');
+    }
+  }
+
   Future<String?> prepareIosAudioProxy(String inputPath) async {
     final file = File(inputPath);
     if (!await file.exists()) return null;
@@ -144,6 +155,7 @@ class FFmpegService {
     required String outputPath,
     String? imagePath,
   }) async {
+    _ensurePlatformSupported();
     final List<String> args;
     if (imagePath == null || imagePath.isEmpty) {
       // Remove attached picture streams, keep audio + metadata.
@@ -198,6 +210,7 @@ class FFmpegService {
     required String outputPath,
     required String? lyrics,
   }) async {
+    _ensurePlatformSupported();
     final normalizedLyrics = lyrics?.trim() ?? '';
     final hasVideo = await hasVideoStream(inputPath);
     final ext = p.extension(inputPath).toLowerCase();

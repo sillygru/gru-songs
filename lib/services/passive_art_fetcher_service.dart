@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song.dart';
 import '../providers/artist_album_art_provider.dart';
 import '../providers/providers.dart';
+import 'library_logic.dart';
 import 'online_metadata_service.dart';
 
 /// Passively fetches missing artist and album artwork while the app is foregrounded.
@@ -326,10 +327,19 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
     final songs = ref.read(songsProvider).value ?? const <Song>[];
 
     if (songs.isNotEmpty) {
-      final artists = songs
-          .map((s) => OnlineMetadataService.cleanTag(s.artist))
-          .whereType<String>()
-          .toSet();
+      final artists = <String>{};
+      for (final song in songs) {
+        final split = LibraryLogic.splitArtistNames(song.artist);
+        if (split.isEmpty) {
+          final clean = OnlineMetadataService.cleanTag(song.artist);
+          if (clean != null) artists.add(clean);
+        } else {
+          for (final a in split) {
+            final clean = OnlineMetadataService.cleanTag(a);
+            if (clean != null) artists.add(clean);
+          }
+        }
+      }
 
       final missingArtists = artists
           .where(
@@ -358,7 +368,7 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
           _isForegrounded &&
           _priorityArtistQueue.isEmpty &&
           _priorityAlbumQueue.isEmpty) {
-        final albums = <Map<String, String>>[];
+        final albums = <Map<String, dynamic>>[];
         final seenKeys = <String>{};
 
         for (final song in songs) {
@@ -369,15 +379,32 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
               ? '${artist.toLowerCase()}|${album.toLowerCase()}'
               : album.toLowerCase();
 
+          final hasLocalCover =
+              song.coverUrl != null && song.coverUrl!.trim().isNotEmpty;
+
           if (!seenKeys.contains(key)) {
             seenKeys.add(key);
-            albums.add({'album': album, 'artist': artist ?? ''});
+            albums.add({
+              'album': album,
+              'artist': artist ?? '',
+              'hasLocalCover': hasLocalCover,
+            });
+          } else if (hasLocalCover) {
+            final existing = albums.firstWhere((a) {
+              final aArtist = a['artist'] as String;
+              final aKey = aArtist.isNotEmpty
+                  ? '${aArtist.toLowerCase()}|${(a['album'] as String).toLowerCase()}'
+                  : (a['album'] as String).toLowerCase();
+              return aKey == key;
+            });
+            existing['hasLocalCover'] = true;
           }
         }
 
         final missingAlbums = albums.where((item) {
-          final album = item['album']!;
-          final artist = item['artist']!;
+          if (item['hasLocalCover'] == true) return false;
+          final album = item['album'] as String;
+          final artist = item['artist'] as String;
           final key = artist.isNotEmpty
               ? '${artist.toLowerCase()}|${album.toLowerCase()}'
               : album.toLowerCase();
@@ -396,8 +423,8 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
             break;
           }
 
-          final album = item['album']!;
-          final artist = item['artist']!;
+          final album = item['album'] as String;
+          final artist = item['artist'] as String;
           final compositeKey = artist.isNotEmpty
               ? '${artist.toLowerCase()}|${album.toLowerCase()}'
               : album.toLowerCase();

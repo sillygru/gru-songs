@@ -12,6 +12,8 @@ import 'wispie_paths.dart';
 
 import '../models/song.dart';
 import 'color_extraction_service.dart';
+import 'database_service.dart';
+import 'scanner_service.dart';
 
 /// CacheService V3 - Offline First
 /// Only handles app settings and sync data.
@@ -112,6 +114,11 @@ class CacheService {
         }
 
         await _cleanupLegacyCaches();
+        await ScannerService.compactCoverCache();
+        final songs = await DatabaseService.instance.getSongs();
+        if (songs.isNotEmpty) {
+          await pruneStaleSongCaches(songs);
+        }
 
         await prefs.setString(_startupMaintenanceVersionKey, currentVersion);
         await prefs.setBool(_startupMaintenancePendingKey, false);

@@ -319,7 +319,7 @@ class BulkSelectionBar extends ConsumerWidget {
             ref.read(selectionProvider.notifier).getOrderedSelection();
         final audioManager = ref.read(audioPlayerManagerProvider);
 
-        for (final filename in orderedFilenames.reversed) {
+        for (final filename in orderedFilenames) {
           final song = songs.firstWhere((s) => s.filename == filename);
           audioManager.playNext(song);
         }

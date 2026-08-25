@@ -122,6 +122,11 @@ class AutoBackupService {
   }
 
   Future<bool> _checkStoragePermission() async {
+    // Desktop has full filesystem access; permission_handler has no Linux
+    // implementation and would throw.
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return true;
+    }
     try {
       final status = await Permission.manageExternalStorage.status;
       if (status.isGranted) {
