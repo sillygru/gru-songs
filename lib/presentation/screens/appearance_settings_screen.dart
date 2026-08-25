@@ -85,6 +85,14 @@ class _AppearanceSettingsScreenState
                 onChanged: notifier.setShowWaveform,
               ),
               AppSettingsSwitch(
+                icon: AppIcons.touchApp,
+                searchId: 'appearance.waveform_haptics',
+                title: 'Waveform Scrubbing Haptics',
+                subtitle: 'Haptic feedback for each bar while seeking',
+                value: settings.waveformHapticsEnabled,
+                onChanged: notifier.setWaveformHapticsEnabled,
+              ),
+              AppSettingsSwitch(
                 icon: AppIcons.timer,
                 searchId: 'appearance.song_duration',
                 title: 'Show Song Duration',

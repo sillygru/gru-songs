@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/providers.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/waveform_service.dart';
 
 /// Thin placeholder height while an uncached waveform is still generating.
@@ -39,6 +41,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   late AnimationController _barAnimationController;
   late Animation<double> _barAnimation;
   double? _dragPosition;
+  int? _lastHapticBarIndex;
   StreamSubscription<Duration>? _positionSubscription;
   DateTime? _lastPositionUpdate;
   final ValueNotifier<Duration> _positionNotifier =
@@ -235,6 +238,12 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     return '${duration.inMinutes}:$twoDigitSeconds';
   }
 
+  int _calculateBarIndex(double x, double width) {
+    final totalBars = (width / 3.0).floor();
+    if (totalBars <= 0) return 0;
+    return (x.clamp(0.0, width) / 3.0).floor().clamp(0, totalBars - 1);
+  }
+
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).colorScheme.primary;
@@ -258,21 +267,37 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             final x = details.localPosition.dx;
             _dragPosition = (x / box.size.width).clamp(0.0, 1.0);
             _dragPositionNotifier.value = _dragPosition;
+            _lastHapticBarIndex = _calculateBarIndex(x, box.size.width);
           },
           onHorizontalDragUpdate: (details) {
             final box = context.findRenderObject() as RenderBox;
             final x = details.localPosition.dx;
             _dragPosition = (x / box.size.width).clamp(0.0, 1.0);
             _dragPositionNotifier.value = _dragPosition;
+            final currentBar = _calculateBarIndex(x, box.size.width);
+            if (_lastHapticBarIndex != null &&
+                currentBar != _lastHapticBarIndex) {
+              if (ref.read(settingsProvider).waveformHapticsEnabled) {
+                HapticFeedback.selectionClick();
+              }
+            }
+            _lastHapticBarIndex = currentBar;
           },
           onHorizontalDragEnd: (details) {
+            _lastHapticBarIndex = null;
             if (_dragPosition != null) {
               widget.onSeek(widget.total * _dragPosition!);
             }
             _dragPosition = null;
             _dragPositionNotifier.value = null;
           },
+          onHorizontalDragCancel: () {
+            _lastHapticBarIndex = null;
+            _dragPosition = null;
+            _dragPositionNotifier.value = null;
+          },
           onTapUp: (details) {
+            _lastHapticBarIndex = null;
             final box = context.findRenderObject() as RenderBox;
             final x = details.localPosition.dx.clamp(0.0, box.size.width);
             final percent = (x / box.size.width).clamp(0.0, 1.0);
@@ -286,6 +311,12 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             final percent = (x / box.size.width).clamp(0.0, 1.0);
             _dragPosition = percent;
             _dragPositionNotifier.value = percent;
+            _lastHapticBarIndex = _calculateBarIndex(x, box.size.width);
+          },
+          onTapCancel: () {
+            _lastHapticBarIndex = null;
+            _dragPosition = null;
+            _dragPositionNotifier.value = null;
           },
           child: Container(
             height: 60,

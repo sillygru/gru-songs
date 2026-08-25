@@ -298,6 +298,9 @@ class FFmpegKitInitializer {
   }
 
   Future<int?> _getLogLevel() async {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
+      return null;
+    }
     try {
       // const MethodChannel _channel =
       // const MethodChannel('flutter.arthenica.com/ffmpeg_kit');
@@ -311,6 +314,9 @@ class FFmpegKitInitializer {
   }
 
   Future<void> _initialize() async {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
+      return;
+    }
     debugPrint("Loading ffmpeg-kit-flutter.");
 
     _eventChannel.receiveBroadcastStream().listen(_onEvent, onError: _onError);

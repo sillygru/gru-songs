@@ -5,21 +5,157 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+class FFmpegExecutionResult {
+  final int returnCode;
+  final String output;
+  final String logs;
+
+  bool get isSuccess => returnCode == 0;
+
+  const FFmpegExecutionResult({
+    required this.returnCode,
+    this.output = '',
+    this.logs = '',
+  });
+}
+
 class FFmpegService {
-  // ffmpeg_kit ships no Linux/Windows build; call sites treat this like any
-  // other FFmpeg failure instead of hitting MissingPluginException.
-  void _ensurePlatformSupported() {
-    if (!kIsWeb &&
-        !Platform.isAndroid &&
-        !Platform.isIOS &&
-        !Platform.isMacOS) {
-      throw UnsupportedError('FFmpeg is not available on this platform');
+  static final FFmpegService instance = FFmpegService();
+
+  static bool get usesSystemProcess =>
+      !kIsWeb && !Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS;
+
+  static bool? _cachedFfmpegAvailable;
+  static bool? _cachedFfprobeAvailable;
+
+  Future<bool> isFFmpegAvailable() async {
+    if (!usesSystemProcess) return true;
+    if (_cachedFfmpegAvailable != null) return _cachedFfmpegAvailable!;
+    try {
+      final res = await Process.run('ffmpeg', ['-version']);
+      _cachedFfmpegAvailable = (res.exitCode == 0);
+    } catch (_) {
+      _cachedFfmpegAvailable = false;
     }
+    return _cachedFfmpegAvailable!;
+  }
+
+  Future<bool> isFFprobeAvailable() async {
+    if (!usesSystemProcess) return true;
+    if (_cachedFfprobeAvailable != null) return _cachedFfprobeAvailable!;
+    try {
+      final res = await Process.run('ffprobe', ['-version']);
+      _cachedFfprobeAvailable = (res.exitCode == 0);
+    } catch (_) {
+      _cachedFfprobeAvailable = false;
+    }
+    return _cachedFfprobeAvailable!;
+  }
+
+  Future<FFmpegExecutionResult> executeFFmpeg(List<String> args) async {
+    if (usesSystemProcess) {
+      if (!await isFFmpegAvailable()) {
+        return const FFmpegExecutionResult(
+          returnCode: -1,
+          logs: 'ffmpeg executable not found on system',
+        );
+      }
+      try {
+        final res = await Process.run('ffmpeg', args);
+        return FFmpegExecutionResult(
+          returnCode: res.exitCode,
+          output: res.stdout.toString(),
+          logs: res.stderr.toString(),
+        );
+      } catch (e) {
+        return FFmpegExecutionResult(
+          returnCode: -1,
+          logs: e.toString(),
+        );
+      }
+    }
+
+    try {
+      final session = await FFmpegKit.executeWithArguments(args);
+      final rc = await session.getReturnCode();
+      final logs = await session.getAllLogsAsString();
+      final output = await session.getOutput();
+      return FFmpegExecutionResult(
+        returnCode: rc?.getValue() ?? -1,
+        output: output ?? '',
+        logs: logs ?? '',
+      );
+    } catch (e) {
+      return FFmpegExecutionResult(
+        returnCode: -1,
+        logs: e.toString(),
+      );
+    }
+  }
+
+  Future<FFmpegExecutionResult> executeFFprobe(List<String> args) async {
+    if (usesSystemProcess) {
+      if (!await isFFprobeAvailable()) {
+        return const FFmpegExecutionResult(
+          returnCode: -1,
+          logs: 'ffprobe executable not found on system',
+        );
+      }
+      try {
+        final res = await Process.run('ffprobe', args);
+        return FFmpegExecutionResult(
+          returnCode: res.exitCode,
+          output: res.stdout.toString(),
+          logs: res.stderr.toString(),
+        );
+      } catch (e) {
+        return FFmpegExecutionResult(
+          returnCode: -1,
+          logs: e.toString(),
+        );
+      }
+    }
+
+    try {
+      final session = await FFprobeKit.executeWithArguments(args);
+      final rc = await session.getReturnCode();
+      final logs = await session.getAllLogsAsString();
+      final output = await session.getOutput();
+      return FFmpegExecutionResult(
+        returnCode: rc?.getValue() ?? -1,
+        output: output ?? '',
+        logs: logs ?? '',
+      );
+    } catch (e) {
+      return FFmpegExecutionResult(
+        returnCode: -1,
+        logs: e.toString(),
+      );
+    }
+  }
+
+  Future<Process?> startFFmpeg(List<String> args) async {
+    if (!await isFFmpegAvailable()) return null;
+    try {
+      return await Process.start('ffmpeg', args);
+    } catch (e) {
+      if (kDebugMode) debugPrint('FFmpegService: Failed to start ffmpeg: $e');
+      return null;
+    }
+  }
+
+  Future<void> _ensurePlatformSupported() async {
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS)) {
+      return;
+    }
+    if (await isFFmpegAvailable()) {
+      return;
+    }
+    throw UnsupportedError('FFmpeg is not available on this platform');
   }
 
   Future<String?> prepareIosAudioProxy(String inputPath) async {
@@ -32,7 +168,7 @@ class FFmpegService {
       return outputPath;
     }
 
-    final session = await FFmpegKit.executeWithArguments([
+    final result = await executeFFmpeg([
       '-y',
       '-i',
       inputPath,
@@ -47,11 +183,10 @@ class FFmpegService {
       '+faststart',
       outputPath,
     ]);
-    final rc = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(rc)) {
+    if (!result.isSuccess) {
       if (kDebugMode) {
-        final logs = await session.getAllLogsAsString();
-        debugPrint('FFmpegService: iOS audio proxy failed: $rc\n$logs');
+        debugPrint(
+            'FFmpegService: iOS audio proxy failed: ${result.returnCode}\n${result.logs}');
       }
       return null;
     }
@@ -120,12 +255,11 @@ class FFmpegService {
   }
 
   Future<bool> _runProxyCommand(List<String> args) async {
-    final session = await FFmpegKit.executeWithArguments(args);
-    final rc = await session.getReturnCode();
-    if (ReturnCode.isSuccess(rc)) return true;
+    final result = await executeFFmpeg(args);
+    if (result.isSuccess) return true;
     if (kDebugMode) {
-      final logs = await session.getAllLogsAsString();
-      debugPrint('FFmpegService: proxy command failed: $rc\n$logs');
+      debugPrint(
+          'FFmpegService: proxy command failed: ${result.returnCode}\n${result.logs}');
     }
     return false;
   }
@@ -155,23 +289,22 @@ class FFmpegService {
     required String outputPath,
     String? imagePath,
   }) async {
-    _ensurePlatformSupported();
+    await _ensurePlatformSupported();
     final List<String> args;
     if (imagePath == null || imagePath.isEmpty) {
-      // Remove attached picture streams, keep audio + metadata.
       args = [
         '-y',
-        '-i', inputPath,
-        '-map', '0:a?', // Safely map all audio streams
-        '-c', 'copy',
-        '-map_metadata', '0',
+        '-i',
+        inputPath,
+        '-map',
+        '0:a?',
+        '-c',
+        'copy',
+        '-map_metadata',
+        '0',
         outputPath,
       ];
     } else {
-      // Add/replace cover art as attached picture mirroring Namida's method.
-      // 1. Map all audio from first input (0:a?)
-      // 2. Map the image from second input (1)
-      // 3. Mark the image as 'attached_pic'
       args = [
         '-y',
         '-i',
@@ -192,11 +325,9 @@ class FFmpegService {
       ];
     }
 
-    final session = await FFmpegKit.executeWithArguments(args);
-    final rc = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(rc)) {
-      final logs = await session.getAllLogsAsString();
-      throw Exception('FFmpeg failed: $rc\n$logs');
+    final result = await executeFFmpeg(args);
+    if (!result.isSuccess) {
+      throw Exception('FFmpeg failed: ${result.returnCode}\n${result.logs}');
     }
 
     final file = File(outputPath);
@@ -210,14 +341,12 @@ class FFmpegService {
     required String outputPath,
     required String? lyrics,
   }) async {
-    _ensurePlatformSupported();
+    await _ensurePlatformSupported();
     final normalizedLyrics = lyrics?.trim() ?? '';
     final hasVideo = await hasVideoStream(inputPath);
     final ext = p.extension(inputPath).toLowerCase();
     final isMp3 = ext == '.mp3';
 
-    // Stream-copy audio and embedded cover art if present. Specifying attached_pic
-    // disposition prevents FFmpeg from failing when remuxing cover art into audio containers.
     final args = [
       '-y',
       '-i',
@@ -245,11 +374,10 @@ class FFmpegService {
       outputPath,
     ];
 
-    final session = await FFmpegKit.executeWithArguments(args);
-    final rc = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(rc)) {
-      final logs = await session.getAllLogsAsString();
-      throw Exception('FFmpeg lyrics write failed: $rc\n$logs');
+    final result = await executeFFmpeg(args);
+    if (!result.isSuccess) {
+      throw Exception(
+          'FFmpeg lyrics write failed: ${result.returnCode}\n${result.logs}');
     }
 
     final outFile = File(outputPath);
@@ -275,11 +403,9 @@ class FFmpegService {
         'csv=p=0',
         filePath,
       ];
-      final session = await FFprobeKit.executeWithArguments(args);
-      final rc = await session.getReturnCode();
-      if (!ReturnCode.isSuccess(rc)) return false;
-      final output = await session.getOutput();
-      return output != null && output.trim().isNotEmpty;
+      final result = await executeFFprobe(args);
+      if (!result.isSuccess) return false;
+      return result.output.trim().isNotEmpty;
     } catch (_) {
       return false;
     }
@@ -305,24 +431,23 @@ class FFmpegService {
         filePath,
       ];
 
-      final session = await FFprobeKit.executeWithArguments(args);
-      final rc = await session.getReturnCode();
-
-      if (!ReturnCode.isSuccess(rc)) {
-        final logs = await session.getAllLogsAsString();
-        if (kDebugMode) debugPrint('FFmpegService: FFprobe failed: $rc\n$logs');
+      final result = await executeFFprobe(args);
+      if (!result.isSuccess) {
+        if (kDebugMode) {
+          debugPrint(
+              'FFmpegService: FFprobe failed: ${result.returnCode}\n${result.logs}');
+        }
         return null;
       }
 
-      final output = await session.getOutput();
-      if (output == null || output.isEmpty) {
+      final output = result.output;
+      if (output.trim().isEmpty) {
         if (kDebugMode) {
           debugPrint('FFmpegService: Empty output for: $filePath');
         }
         return null;
       }
 
-      // Parse JSON output
       final json = jsonDecode(output);
       final tags = json['format']?['tags'];
 
@@ -404,11 +529,9 @@ class FFmpegService {
         'csv=p=0',
         filePath,
       ];
-      final session = await FFprobeKit.executeWithArguments(args);
-      final rc = await session.getReturnCode();
-      if (!ReturnCode.isSuccess(rc)) return false;
-      final output = await session.getOutput();
-      return output != null && output.trim().isNotEmpty;
+      final result = await executeFFprobe(args);
+      if (!result.isSuccess) return false;
+      return result.output.trim().isNotEmpty;
     } catch (_) {
       return false;
     }
@@ -421,16 +544,21 @@ class FFmpegService {
       final file = File(filePath);
       if (!await file.exists()) return null;
 
-      final input = _q(filePath);
-      // Only read stream metadata, no decoding
-      final cmd =
-          '-v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 $input';
-      final session = await FFprobeKit.execute(cmd);
-      final rc = await session.getReturnCode();
-      if (!ReturnCode.isSuccess(rc)) return null;
-      final output = await session.getOutput();
-      final codec = output?.trim().toLowerCase();
-      return codec;
+      final args = [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=codec_name',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ];
+      final result = await executeFFprobe(args);
+      if (!result.isSuccess) return null;
+      final codec = result.output.trim().toLowerCase();
+      return codec.isEmpty ? null : codec;
     } catch (_) {
       return null;
     }
@@ -446,7 +574,6 @@ class FFmpegService {
     required String inputPath,
     required String outputPath,
   }) async {
-    // Skip AV1 files entirely - we cannot decode them
     final isAV1 = await isAV1File(inputPath);
     if (isAV1) {
       if (kDebugMode) {
@@ -455,9 +582,8 @@ class FFmpegService {
       return null;
     }
 
-    // Optimized: Stream copy mirroring Namida's extraction logic
     try {
-      final session = await FFmpegKit.executeWithArguments([
+      final result = await executeFFmpeg([
         '-y',
         '-i',
         inputPath,
@@ -467,16 +593,15 @@ class FFmpegService {
         'copy',
         outputPath,
       ]);
-      final rc = await session.getReturnCode();
 
-      if (ReturnCode.isSuccess(rc)) {
+      if (result.isSuccess) {
         final file = File(outputPath);
         if (await file.exists() && await file.length() > 0) {
           return outputPath;
         }
       } else {
         // Fallback: If copy fails (e.g. stream issue), try simple re-encode
-        final session2 = await FFmpegKit.executeWithArguments([
+        final result2 = await executeFFmpeg([
           '-y',
           '-i',
           inputPath,
@@ -487,8 +612,7 @@ class FFmpegService {
           '2',
           outputPath,
         ]);
-        final rc2 = await session2.getReturnCode();
-        if (ReturnCode.isSuccess(rc2)) {
+        if (result2.isSuccess) {
           final file = File(outputPath);
           if (await file.exists() && await file.length() > 0) {
             return outputPath;
@@ -517,7 +641,6 @@ class FFmpegService {
     required String outputPath,
     int frameNumber = 5,
   }) async {
-    // Skip AV1 files entirely - we cannot decode them
     final isAV1 = await isAV1File(inputPath);
     if (isAV1) {
       if (kDebugMode) {
@@ -531,7 +654,7 @@ class FFmpegService {
 
       // 1) Try stream-copy first. This is fast and succeeds if the source has
       // an attached picture stream.
-      final copySession = await FFmpegKit.executeWithArguments([
+      final copyResult = await executeFFmpeg([
         '-y',
         '-i',
         inputPath,
@@ -541,8 +664,7 @@ class FFmpegService {
         'copy',
         outputPath,
       ]);
-      final copyRc = await copySession.getReturnCode();
-      if (ReturnCode.isSuccess(copyRc)) {
+      if (copyResult.isSuccess) {
         final copiedFile = File(outputPath);
         if (await copiedFile.exists() && await copiedFile.length() > 0) {
           return outputPath;
@@ -553,7 +675,7 @@ class FFmpegService {
       final durationSec = await _getMediaDurationSeconds(inputPath);
       final seekSec =
           durationSec != null && durationSec > 0 ? (durationSec * 0.1) : 0.0;
-      final seekSession = await FFmpegKit.executeWithArguments([
+      final seekResult = await executeFFmpeg([
         '-y',
         '-ss',
         seekSec.toStringAsFixed(3),
@@ -565,8 +687,7 @@ class FFmpegService {
         '3',
         outputPath,
       ]);
-      final seekRc = await seekSession.getReturnCode();
-      if (ReturnCode.isSuccess(seekRc)) {
+      if (seekResult.isSuccess) {
         final seekFile = File(outputPath);
         if (await seekFile.exists() && await seekFile.length() > 0) {
           return outputPath;
@@ -575,7 +696,7 @@ class FFmpegService {
 
       // 3) Fallback to selecting a specific decoded frame index.
       final zeroBasedFrameIndex = normalizedFrameNumber - 1;
-      final selectSession = await FFmpegKit.executeWithArguments([
+      final selectResult = await executeFFmpeg([
         '-y',
         '-i',
         inputPath,
@@ -587,18 +708,16 @@ class FFmpegService {
         '3',
         outputPath,
       ]);
-      final selectRc = await selectSession.getReturnCode();
-      if (ReturnCode.isSuccess(selectRc)) {
+      if (selectResult.isSuccess) {
         final file = File(outputPath);
         if (await file.exists() && await file.length() > 0) {
           return outputPath;
         }
       }
       if (kDebugMode) {
-        final logs2 = await selectSession.getAllLogsAsString();
         debugPrint(
             'FFmpegService.extractVideoThumbnail: extraction failed for frame '
-            '$normalizedFrameNumber\n$logs2');
+            '$normalizedFrameNumber\n${selectResult.logs}');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -622,10 +741,6 @@ class FFmpegService {
         normalizedInput = Uri.parse(inputPath).toFilePath();
       }
 
-      // The heavy part is the image work, and it used to run on the UI isolate
-      // — a full-size cover decode plus a radius-15 blur plus a JPEG encode, all
-      // in the same frame as the player screen finishing its song-change
-      // rebuild. Only the bytes cross the boundary; the file IO stays here.
       final bytes = await File(normalizedInput).readAsBytes();
       final jpgBytes = await Isolate.run(
         () => generateBlurredImageBytes(
@@ -660,20 +775,14 @@ class FFmpegService {
         'default=noprint_wrappers=1:nokey=1',
         filePath,
       ];
-      final session = await FFprobeKit.executeWithArguments(args);
-      final rc = await session.getReturnCode();
-      if (!ReturnCode.isSuccess(rc)) return null;
-      final output = await session.getOutput();
-      if (output == null) return null;
-      return double.tryParse(output.trim());
+      final result = await executeFFprobe(args);
+      if (!result.isSuccess) return null;
+      final output = result.output.trim();
+      if (output.isEmpty) return null;
+      return double.tryParse(output);
     } catch (_) {
       return null;
     }
-  }
-
-  String _q(String path) {
-    final escaped = path.replaceAll('"', '\\"');
-    return '"$escaped"';
   }
 }
 

@@ -469,7 +469,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     // emits several times during startup (loading flag, initial load,
     // recommendation rebuild) and each emission would otherwise re-run this
     // build — meaning another full getAllSongs() on the UI thread.
-    ref.watch(userDataProvider.select((s) => s.hidden));
+    ref.watch(userDataProvider.select((s) => s.hidden.join('\x00')));
     final userData = ref.read(userDataProvider);
 
     CoverRefreshService.instance.onCoverResolved = (song) {

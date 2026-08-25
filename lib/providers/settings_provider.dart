@@ -14,6 +14,7 @@ class SettingsState {
   final bool showSongDuration;
   final bool animatedSoundWaveEnabled;
   final bool showWaveform;
+  final bool waveformHapticsEnabled;
   final double fadeOutDuration;
   final double fadeInDuration;
   final double delayDuration;
@@ -57,6 +58,7 @@ class SettingsState {
     this.showSongDuration = false,
     this.animatedSoundWaveEnabled = true,
     this.showWaveform = true,
+    this.waveformHapticsEnabled = true,
     this.fadeOutDuration = 0.0,
     this.fadeInDuration = 0.0,
     this.delayDuration = 0.0,
@@ -101,6 +103,7 @@ class SettingsState {
     bool? showSongDuration,
     bool? animatedSoundWaveEnabled,
     bool? showWaveform,
+    bool? waveformHapticsEnabled,
     double? fadeOutDuration,
     double? fadeInDuration,
     double? delayDuration,
@@ -148,6 +151,8 @@ class SettingsState {
       animatedSoundWaveEnabled:
           animatedSoundWaveEnabled ?? this.animatedSoundWaveEnabled,
       showWaveform: showWaveform ?? this.showWaveform,
+      waveformHapticsEnabled:
+          waveformHapticsEnabled ?? this.waveformHapticsEnabled,
       fadeOutDuration: fadeOutDuration ?? this.fadeOutDuration,
       fadeInDuration: fadeInDuration ?? this.fadeInDuration,
       delayDuration: delayDuration ?? this.delayDuration,
@@ -209,6 +214,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyShowSongDuration = 'show_song_duration';
   static const _keyAnimatedSoundWaveEnabled = 'animated_sound_wave_enabled';
   static const _keyShowWaveform = 'show_waveform';
+  static const _keyWaveformHapticsEnabled = 'waveform_haptics_enabled';
   static const _keyFadeOutDuration = 'fade_out_duration';
   static const _keyFadeInDuration = 'fade_in_duration';
   static const _keyDelayDuration = 'delay_duration';
@@ -312,6 +318,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       animatedSoundWaveEnabled:
           prefs.getBool(_keyAnimatedSoundWaveEnabled) ?? true,
       showWaveform: prefs.getBool(_keyShowWaveform) ?? true,
+      waveformHapticsEnabled: prefs.getBool(_keyWaveformHapticsEnabled) ?? true,
       fadeOutDuration: prefs.getDouble(_keyFadeOutDuration) ?? 0.0,
       fadeInDuration: prefs.getDouble(_keyFadeInDuration) ?? 0.0,
       delayDuration: prefs.getDouble(_keyDelayDuration) ?? 0.0,
@@ -485,6 +492,12 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(showWaveform: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyShowWaveform, enabled);
+  }
+
+  Future<void> setWaveformHapticsEnabled(bool enabled) async {
+    state = state.copyWith(waveformHapticsEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyWaveformHapticsEnabled, enabled);
   }
 
   Future<void> setQuickActionConfig(QuickActionConfig config) async {

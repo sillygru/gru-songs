@@ -4,8 +4,6 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../domain/models/beat_map.dart';
 import '../domain/services/beat_analysis.dart';
 import 'cache_service.dart';
+import 'ffmpeg_service.dart';
 import 'media_decode_gate.dart';
 
 /// Produces and caches the [BeatMap] for a song.
@@ -105,7 +104,7 @@ class BeatAnalysisService {
       if (raw == null) return null;
 
       final rawPath = raw.path;
-      final map = await Isolate.run(() => _analyzeRawFile(rawPath));
+      final map = await _isolateAnalyzeRawFile(rawPath);
       if (map == null) return null;
 
       await _writeCache(filename, map);
@@ -137,7 +136,7 @@ class BeatAnalysisService {
         'pcm_${DateTime.now().microsecondsSinceEpoch}.raw',
       );
 
-      final session = await FFmpegKit.executeWithArguments([
+      final result = await FFmpegService.instance.executeFFmpeg([
         '-threads', '1', // leave headroom for the audio callback
         '-i', path,
         '-vn', // ignore cover art and video streams
@@ -147,13 +146,12 @@ class BeatAnalysisService {
         '-y', outputPath,
       ]);
 
-      final rc = await session.getReturnCode();
       final file = File(outputPath);
 
-      if (!ReturnCode.isSuccess(rc)) {
+      if (!result.isSuccess) {
         if (kDebugMode) {
           debugPrint(
-              'BeatAnalysisService: ffmpeg decode failed ($rc) for $path');
+              'BeatAnalysisService: ffmpeg decode failed (${result.returnCode}) for $path\n${result.logs}');
         }
         try {
           if (await file.exists()) await file.delete();
@@ -202,6 +200,10 @@ class BeatAnalysisService {
 ///
 /// The file is read here rather than in the caller so the main isolate never
 /// holds the ~10 MB sample buffer.
+Future<BeatMap?> _isolateAnalyzeRawFile(String rawPath) {
+  return Isolate.run(() => _analyzeRawFile(rawPath));
+}
+
 BeatMap? _analyzeRawFile(String rawPath) {
   try {
     final bytes = File(rawPath).readAsBytesSync();

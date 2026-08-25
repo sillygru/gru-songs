@@ -206,6 +206,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> _initLocal() async {
     // Initialize local database (single user mode)
     await DatabaseService.instance.init();
+    if (!ref.mounted) return;
 
     // Load from local database
     try {
@@ -219,6 +220,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
           await DatabaseService.instance.getRecommendationPreferences();
       final localRemovedRecommendations =
           await DatabaseService.instance.getRemovedRecommendations();
+
+      if (!ref.mounted) return;
 
       // Extract groups and priorities from the new format
       final groups = <String, List<String>>{};
@@ -242,6 +245,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
       _updateManager();
 
       final songs = await DatabaseService.instance.getAllSongs();
+      if (!ref.mounted) return;
       if (songs.isNotEmpty) {
         _latestSongs = songs;
         await updateRecommendationPlaylists(force: true, allSongs: songs);
@@ -989,7 +993,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
     _latestSongs = songs;
 
     final playCounts = await DatabaseService.instance.getPlayCounts();
+    if (!ref.mounted) return;
     final sessions = await ref.read(sessionHistoryProvider.future);
+    if (!ref.mounted) return;
 
     final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
     final audioManager = ref.read(audioPlayerManagerProvider);

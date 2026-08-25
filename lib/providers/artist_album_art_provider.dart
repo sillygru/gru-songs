@@ -33,9 +33,7 @@ class ArtistAlbumArtState {
     if (artistName == null) return null;
     final trimmed = artistName.trim();
     if (trimmed.isEmpty) return null;
-    final path = artistArt[trimmed.toLowerCase()];
-    if (path == null || !File(path).existsSync()) return null;
-    return path;
+    return artistArt[trimmed.toLowerCase()];
   }
 
   String? getAlbumArt(String? albumName, {String? artistName}) {
@@ -46,11 +44,9 @@ class ArtistAlbumArtState {
       final compositeKey =
           '${artistName.trim().toLowerCase()}|${cleanAlbum.toLowerCase()}';
       final art = albumArt[compositeKey];
-      if (art != null && File(art).existsSync()) return art;
+      if (art != null) return art;
     }
-    final art = albumArt[cleanAlbum.toLowerCase()];
-    if (art != null && File(art).existsSync()) return art;
-    return null;
+    return albumArt[cleanAlbum.toLowerCase()];
   }
 }
 

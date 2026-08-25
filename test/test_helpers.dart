@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus_platform_interface/package_info_data.dart';
+import 'package:package_info_plus_platform_interface/package_info_platform_interface.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -115,6 +117,10 @@ class TestEnvironment {
     // Mock SharedPreferences
     SharedPreferencesStorePlatform.instance = MockSharedPreferencesStore();
 
+    // Mock PackageInfo
+    _originalPackageInfoPlatform = PackageInfoPlatform.instance;
+    PackageInfoPlatform.instance = _MockPackageInfoPlatform();
+
     // Belt-and-suspenders: override path-based services directly so they
     // cannot write to the real Documents folder even if the method channel
     // or platform interface mock fails.
@@ -124,6 +130,7 @@ class TestEnvironment {
   }
 
   PathProviderPlatform? _originalPathProvider;
+  PackageInfoPlatform? _originalPackageInfoPlatform;
 
   /// Cleans up the temporary directory.
   Future<void> tearDown() async {
@@ -147,6 +154,12 @@ class TestEnvironment {
     if (original != null) {
       PathProviderPlatform.instance = original;
       _originalPathProvider = null;
+    }
+
+    final originalPkg = _originalPackageInfoPlatform;
+    if (originalPkg != null) {
+      PackageInfoPlatform.instance = originalPkg;
+      _originalPackageInfoPlatform = null;
     }
 
     // Clear static path overrides and reset the search index database
@@ -229,5 +242,18 @@ class MockSharedPreferencesStore extends SharedPreferencesStorePlatform {
   Future<bool> setValue(String valueType, String key, Object value) async {
     _storage[key] = value;
     return true;
+  }
+}
+
+class _MockPackageInfoPlatform extends PackageInfoPlatform {
+  @override
+  Future<PackageInfoData> getAll({String? baseUrl}) async {
+    return PackageInfoData(
+      appName: 'wispie',
+      packageName: 'com.example.wispie',
+      version: '1.0.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
   }
 }

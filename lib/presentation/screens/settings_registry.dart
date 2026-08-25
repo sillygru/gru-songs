@@ -260,6 +260,23 @@ final List<SettingsDestination> settingsRegistry = [
         const AppearanceSettingsScreen(highlightId: 'appearance.waveform'),
   ),
   SettingsDestination(
+    anchorId: 'appearance.waveform_haptics',
+    icon: AppIcons.touchApp,
+    title: 'Waveform Scrubbing Haptics',
+    subtitle: 'Haptic feedback for each bar while seeking',
+    breadcrumb: 'Settings › Appearance › Display',
+    keywords: const [
+      'vibrate',
+      'haptic',
+      'feedback',
+      'waveform',
+      'scrub',
+      'seek'
+    ],
+    open: () => const AppearanceSettingsScreen(
+        highlightId: 'appearance.waveform_haptics'),
+  ),
+  SettingsDestination(
     anchorId: 'appearance.song_duration',
     icon: AppIcons.timer,
     title: 'Show Song Duration',

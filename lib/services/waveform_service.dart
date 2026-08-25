@@ -4,13 +4,12 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'cache_service.dart';
+import 'ffmpeg_service.dart';
 import 'media_decode_gate.dart';
 
 class WaveformService {
@@ -90,7 +89,7 @@ class WaveformService {
     _memoryCache[filename] = samples;
     try {
       final cachePath = cacheFile.path;
-      await Isolate.run(() => writeWaveformCacheFile(cachePath, samples));
+      await _isolateWriteWaveformCache(cachePath, samples);
     } catch (e) {
       debugPrint('Error writing waveform cache: $e');
     }
@@ -172,7 +171,7 @@ class WaveformService {
 
     try {
       final cachePath = cacheFile.path;
-      await Isolate.run(() => writeWaveformCacheFile(cachePath, samples));
+      await _isolateWriteWaveformCache(cachePath, samples);
     } catch (e) {
       debugPrint('Error writing waveform cache: $e');
     }
@@ -205,9 +204,7 @@ class WaveformService {
       }
 
       final rawPath = raw.path;
-      return await Isolate.run(
-        () => extractWaveformPeaksFromS16File(rawPath, targetSamples),
-      );
+      return await _isolateExtractPeaks(rawPath, targetSamples);
     } catch (e) {
       debugPrint('Error in direct waveform extraction: $e');
       return generateWaveformPlaceholderSamples(targetSamples);
@@ -249,11 +246,10 @@ class WaveformService {
   Future<bool> _decodeToPcmFile(String path, String outputPath) {
     return MediaDecodeGate.run(
       () async {
-        final session = await FFmpegKit.executeWithArguments(
+        final result = await FFmpegService.instance.executeFFmpeg(
           _waveformDecodeArgs(path, outputPath),
         );
-        final returnCode = await session.getReturnCode();
-        return ReturnCode.isSuccess(returnCode);
+        return result.isSuccess;
       },
       priority: MediaDecodePriority.high,
     );
@@ -284,14 +280,10 @@ class WaveformService {
 
       final decodeSucceeded = await MediaDecodeGate.run(
         () async {
-          final session = await FFmpegKit.executeWithArguments(
-            _waveformDecodeArgs(path, outputPath),
-          );
-
+          final args = _waveformDecodeArgs(path, outputPath);
           Timer? poller;
-          if (expectedBytes > 0) {
-            // A tick is skipped while the previous one is still extracting,
-            // so overlapping 250 ms ticks cannot pile up isolate work.
+          void startPoller() {
+            if (expectedBytes <= 0) return;
             var yielding = false;
             poller = Timer.periodic(const Duration(milliseconds: 250), (_) {
               if (yielding) return;
@@ -302,12 +294,10 @@ class WaveformService {
                   if (length <= lastYieldedBytes) return;
                   lastYieldedBytes = length;
                   final rawPath = rawFile.path;
-                  final peaks = await Isolate.run(
-                    () => progressiveWaveformPeaksFromS16File(
-                      rawPath,
-                      targetSamples,
-                      expectedBytes,
-                    ),
+                  final peaks = await _isolateProgressivePeaks(
+                    rawPath,
+                    targetSamples,
+                    expectedBytes,
                   );
                   if (peaks.isNotEmpty) onPartial(peaks);
                 } catch (_) {
@@ -321,8 +311,17 @@ class WaveformService {
           }
 
           try {
-            final returnCode = await session.getReturnCode();
-            return ReturnCode.isSuccess(returnCode);
+            if (FFmpegService.usesSystemProcess) {
+              final process = await FFmpegService.instance.startFFmpeg(args);
+              if (process == null) return false;
+              startPoller();
+              final exitCode = await process.exitCode;
+              return exitCode == 0;
+            } else {
+              startPoller();
+              final result = await FFmpegService.instance.executeFFmpeg(args);
+              return result.isSuccess;
+            }
           } finally {
             poller?.cancel();
           }
@@ -339,9 +338,7 @@ class WaveformService {
       }
 
       final rawPath = rawFile.path;
-      return await Isolate.run(
-        () => extractWaveformPeaksFromS16File(rawPath, targetSamples),
-      );
+      return await _isolateExtractPeaks(rawPath, targetSamples);
     } catch (e) {
       debugPrint('Error in progressive waveform extraction: $e');
       return generateWaveformPlaceholderSamples(targetSamples);
@@ -366,6 +363,29 @@ class WaveformService {
   }
 
   void dispose() {}
+}
+
+Future<void> _isolateWriteWaveformCache(String path, List<double> samples) {
+  return Isolate.run(() => writeWaveformCacheFile(path, samples));
+}
+
+Future<List<double>> _isolateExtractPeaks(String path, int targetSamples) {
+  return Isolate.run(
+      () => extractWaveformPeaksFromS16File(path, targetSamples));
+}
+
+Future<List<double>> _isolateProgressivePeaks(
+  String path,
+  int targetSamples,
+  int expectedBytes,
+) {
+  return Isolate.run(
+    () => progressiveWaveformPeaksFromS16File(
+      path,
+      targetSamples,
+      expectedBytes,
+    ),
+  );
 }
 
 void writeWaveformCacheFile(String path, List<double> samples) {
