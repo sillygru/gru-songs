@@ -665,11 +665,18 @@ class IndexerNotifier extends Notifier<IndexerState> {
         final file = File(song.url);
         if (await file.exists()) {
           bool hasCover = false;
-          for (final cachedPath in ScannerService.coverCandidatePaths(
-              coversDir.path, song.filename)) {
-            if (await hasValidCache(File(cachedPath))) {
+          if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
+            if (await hasValidCache(File(song.coverUrl!))) {
               hasCover = true;
-              break;
+            }
+          }
+          if (!hasCover) {
+            for (final cachedPath in ScannerService.coverCandidatePaths(
+                coversDir.path, song.filename)) {
+              if (await hasValidCache(File(cachedPath))) {
+                hasCover = true;
+                break;
+              }
             }
           }
           if (!hasCover) {

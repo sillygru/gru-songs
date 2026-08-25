@@ -13,7 +13,6 @@ import 'wispie_paths.dart';
 import '../models/song.dart';
 import 'color_extraction_service.dart';
 import 'database_service.dart';
-import 'scanner_service.dart';
 
 /// CacheService V3 - Offline First
 /// Only handles app settings and sync data.
@@ -114,7 +113,6 @@ class CacheService {
         }
 
         await _cleanupLegacyCaches();
-        await ScannerService.compactCoverCache();
         final songs = await DatabaseService.instance.getSongs();
         if (songs.isNotEmpty) {
           await pruneStaleSongCaches(songs);
@@ -158,9 +156,20 @@ class CacheService {
             })
         .toList(growable: false);
 
+    List<String> extraCoverPaths = const [];
+    try {
+      final artistArtMap = await DatabaseService.instance.getArtistArtMap();
+      final albumArtMap = await DatabaseService.instance.getAlbumArtMap();
+      extraCoverPaths = [
+        ...artistArtMap.values.where((p) => p.isNotEmpty),
+        ...albumArtMap.values.where((p) => p.isNotEmpty),
+      ];
+    } catch (_) {}
+
     await Isolate.run(() => _pruneCachesInIsolate({
           'supportDir': supportDir,
           'songs': songPayload,
+          'extraCoverPaths': extraCoverPaths,
         }));
     _notifCoverGeneration++;
     await ColorExtractionService.pruneCacheToImagePaths(
@@ -381,6 +390,13 @@ Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {
   final songs = List<Map<String, dynamic>>.from(payload['songs'] as List);
 
   final currentCoverPaths = <String>{};
+  final extraCoverPaths =
+      List<String>.from(payload['extraCoverPaths'] as List? ?? const []);
+  for (final path in extraCoverPaths) {
+    if (path.isNotEmpty) {
+      currentCoverPaths.add(p.normalize(path));
+    }
+  }
   final currentBlurredPaths = <String>{};
   final currentNotificationPaths = <String>{};
   final currentLyricsPaths = <String>{};

@@ -156,7 +156,6 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
     final clean = OnlineMetadataService.cleanTag(artist);
     if (clean == null) return;
     final lower = clean.toLowerCase();
-    if (_attemptedArtists.contains(lower)) return;
 
     final ref = _containerRef;
     if (ref != null) {
@@ -165,6 +164,10 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
         _attemptedArtists.add(lower);
         return;
       }
+    }
+
+    if (_attemptedArtists.contains(lower)) {
+      _attemptedArtists.remove(lower);
     }
 
     if (!_priorityArtistQueue.contains(clean)) {
@@ -181,8 +184,6 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
         ? '${cleanArtist.toLowerCase()}|${cleanAlbum.toLowerCase()}'
         : cleanAlbum.toLowerCase();
 
-    if (_attemptedAlbums.contains(compositeKey)) return;
-
     final ref = _containerRef;
     if (ref != null) {
       final artState = ref.read(artistAlbumArtProvider);
@@ -190,6 +191,10 @@ class PassiveArtFetcherService with WidgetsBindingObserver {
         _attemptedAlbums.add(compositeKey);
         return;
       }
+    }
+
+    if (_attemptedAlbums.contains(compositeKey)) {
+      _attemptedAlbums.remove(compositeKey);
     }
 
     final item = {'album': cleanAlbum, 'artist': cleanArtist ?? ''};

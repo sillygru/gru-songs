@@ -214,12 +214,24 @@ Future<bool> archiveHasContent(
     final path = p.join(archiveRoot, artifact.archivePath);
     if (artifact.isDirectory) {
       final dir = Directory(path);
-      if (await dir.exists() &&
-          await dir.list(recursive: true).any((e) => e is File)) {
-        return true;
+      if (await dir.exists()) {
+        final hasFiles = await dir.list(recursive: true).any((e) {
+          if (e is! File) return false;
+          try {
+            return e.lengthSync() > 0;
+          } catch (_) {
+            return false;
+          }
+        });
+        if (hasFiles) return true;
       }
-    } else if (await File(path).exists()) {
-      return true;
+    } else {
+      final file = File(path);
+      if (await file.exists()) {
+        try {
+          if (await file.length() > 0) return true;
+        } catch (_) {}
+      }
     }
   }
   return false;

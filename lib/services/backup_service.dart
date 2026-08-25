@@ -390,13 +390,19 @@ class BackupService {
     }
   }
 
-  Future<bool> _checkTableExists(String dbPath, String tableName) async {
+  Future<bool> _checkTableHasData(String dbPath, String tableName) async {
     try {
       final db = await openDatabase(dbPath, readOnly: true);
-      final result = await db.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'");
+      final tableCheck = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+          [tableName]);
+      if (tableCheck.isEmpty) {
+        await db.close();
+        return false;
+      }
+      final rows = await db.rawQuery("SELECT 1 FROM $tableName LIMIT 1");
       await db.close();
-      return result.isNotEmpty;
+      return rows.isNotEmpty;
     } catch (e) {
       return false;
     }
@@ -478,6 +484,21 @@ class BackupService {
       bool hasQueueHistoryJson = false;
       bool hasAppSettingsJson = false;
 
+      bool isNonEmptyJson(File jsonFile) {
+        try {
+          final content = jsonFile.readAsStringSync().trim();
+          if (content.isEmpty || content == '[]' || content == '{}') {
+            return false;
+          }
+          final decoded = jsonDecode(content);
+          if (decoded is List) return decoded.isNotEmpty;
+          if (decoded is Map) return decoded.isNotEmpty;
+          return false;
+        } catch (_) {
+          return false;
+        }
+      }
+
       await for (final entity in Directory(contentPath).list(recursive: true)) {
         if (entity is! File) continue;
         final name = p.basename(entity.path);
@@ -490,38 +511,44 @@ class BackupService {
             (name.endsWith('_data.db') && !name.startsWith('wispie_'))) {
           foundData = entity;
         }
-        if (name == 'songs.json') hasSongsJson = true;
+        if (name == 'songs.json') hasSongsJson = isNonEmptyJson(entity);
         if (name == 'user_data.json' || name.startsWith('user_data_')) {
-          hasUserDataJson = true;
+          hasUserDataJson = isNonEmptyJson(entity);
         }
         if (name == 'shuffle_state.json' || name.startsWith('shuffle_state_')) {
-          hasShuffleStateJson = true;
+          hasShuffleStateJson = isNonEmptyJson(entity);
         }
         if (name == 'playback_state.json' ||
             name.startsWith('playback_state_')) {
-          hasPlaybackStateJson = true;
+          hasPlaybackStateJson = isNonEmptyJson(entity);
         }
-        if (name == 'merged_groups.json') hasMergedGroupsJson = true;
-        if (name == 'queue_history.json') hasQueueHistoryJson = true;
-        if (name == 'app_settings.json') hasAppSettingsJson = true;
+        if (name == 'merged_groups.json') {
+          hasMergedGroupsJson = isNonEmptyJson(entity);
+        }
+        if (name == 'queue_history.json') {
+          hasQueueHistoryJson = isNonEmptyJson(entity);
+        }
+        if (name == 'app_settings.json') {
+          hasAppSettingsJson = isNonEmptyJson(entity);
+        }
       }
 
       final hasFavorites = foundData != null &&
-          await _checkTableExists(foundData.path, 'favorite');
+          await _checkTableHasData(foundData.path, 'favorite');
       final hasSuggestless = foundData != null &&
-          await _checkTableExists(foundData.path, 'suggestless');
+          await _checkTableHasData(foundData.path, 'suggestless');
       final hasHidden = foundData != null &&
-          await _checkTableExists(foundData.path, 'hidden');
+          await _checkTableHasData(foundData.path, 'hidden');
       final hasPlaylists = foundData != null &&
-          await _checkTableExists(foundData.path, 'playlist');
+          await _checkTableHasData(foundData.path, 'playlist');
       final hasMergedGroups = foundData != null &&
-          await _checkTableExists(foundData.path, 'merged_song_group');
+          await _checkTableHasData(foundData.path, 'merged_song_group');
       final hasRecommendations = foundData != null &&
-          await _checkTableExists(foundData.path, 'recommendation_preference');
+          await _checkTableHasData(foundData.path, 'recommendation_preference');
       final hasUserdata = foundData != null &&
-          await _checkTableExists(foundData.path, 'userdata');
+          await _checkTableHasData(foundData.path, 'userdata');
       final hasPlayHistory = foundStats != null &&
-          await _checkTableExists(foundStats.path, 'playsession');
+          await _checkTableHasData(foundStats.path, 'playsession');
 
       final artifacts = await cacheArtifacts();
       final cacheFlags = <BackupContentType, bool>{};

@@ -40,16 +40,16 @@ class FolderGridImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final uniqueCovers = <String>{};
-    final List<String> covers = [];
+    final coverEntries = <({String url, String filename})>[];
 
     for (final song in songs) {
-      if (covers.length >= 4) break;
+      if (coverEntries.length >= 4) break;
       final path = _resolveCover(song.coverUrl);
       if (path == null || !uniqueCovers.add(path)) continue;
-      covers.add(path);
+      coverEntries.add((url: path, filename: song.filename));
     }
 
-    if (covers.isEmpty) {
+    if (coverEntries.isEmpty) {
       return Container(
         width: size,
         height: size,
@@ -65,12 +65,12 @@ class FolderGridImage extends StatelessWidget {
       );
     }
 
-    if (covers.length == 1) {
+    if (coverEntries.length == 1) {
       return ClipRRect(
         borderRadius: AppTokens.brSm,
         child: AlbumArtImage(
-          url: covers[0],
-          filename: covers[0],
+          url: coverEntries[0].url,
+          filename: coverEntries[0].filename,
           width: size,
           height: size,
           fit: BoxFit.cover,
@@ -82,7 +82,7 @@ class FolderGridImage extends StatelessWidget {
 
     const double gap = 1.0;
 
-    if (covers.length == 2) {
+    if (coverEntries.length == 2) {
       return ClipRRect(
         borderRadius: AppTokens.brSm,
         child: SizedBox(
@@ -92,8 +92,8 @@ class FolderGridImage extends StatelessWidget {
             children: [
               Expanded(
                 child: AlbumArtImage(
-                  url: covers[0],
-                  filename: covers[0],
+                  url: coverEntries[0].url,
+                  filename: coverEntries[0].filename,
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.cover,
@@ -104,8 +104,8 @@ class FolderGridImage extends StatelessWidget {
               const SizedBox(width: gap),
               Expanded(
                 child: AlbumArtImage(
-                  url: covers[1],
-                  filename: covers[1],
+                  url: coverEntries[1].url,
+                  filename: coverEntries[1].filename,
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.cover,
@@ -119,7 +119,7 @@ class FolderGridImage extends StatelessWidget {
       );
     }
 
-    if (covers.length == 3) {
+    if (coverEntries.length == 3) {
       return ClipRRect(
         borderRadius: AppTokens.brSm,
         child: SizedBox(
@@ -129,8 +129,8 @@ class FolderGridImage extends StatelessWidget {
             children: [
               Expanded(
                 child: AlbumArtImage(
-                  url: covers[0],
-                  filename: covers[0],
+                  url: coverEntries[0].url,
+                  filename: coverEntries[0].filename,
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.cover,
@@ -144,8 +144,8 @@ class FolderGridImage extends StatelessWidget {
                   children: [
                     Expanded(
                       child: AlbumArtImage(
-                        url: covers[1],
-                        filename: covers[1],
+                        url: coverEntries[1].url,
+                        filename: coverEntries[1].filename,
                         width: double.infinity,
                         height: double.infinity,
                         fit: BoxFit.cover,
@@ -156,8 +156,8 @@ class FolderGridImage extends StatelessWidget {
                     const SizedBox(height: gap),
                     Expanded(
                       child: AlbumArtImage(
-                        url: covers[2],
-                        filename: covers[2],
+                        url: coverEntries[2].url,
+                        filename: coverEntries[2].filename,
                         width: double.infinity,
                         height: double.infinity,
                         fit: BoxFit.cover,
@@ -186,8 +186,8 @@ class FolderGridImage extends StatelessWidget {
                 children: [
                   Expanded(
                     child: AlbumArtImage(
-                      url: covers[0],
-                      filename: covers[0],
+                      url: coverEntries[0].url,
+                      filename: coverEntries[0].filename,
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
@@ -198,8 +198,8 @@ class FolderGridImage extends StatelessWidget {
                   const SizedBox(width: gap),
                   Expanded(
                     child: AlbumArtImage(
-                      url: covers[1],
-                      filename: covers[1],
+                      url: coverEntries[1].url,
+                      filename: coverEntries[1].filename,
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
@@ -216,8 +216,8 @@ class FolderGridImage extends StatelessWidget {
                 children: [
                   Expanded(
                     child: AlbumArtImage(
-                      url: covers[2],
-                      filename: covers[2],
+                      url: coverEntries[2].url,
+                      filename: coverEntries[2].filename,
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
@@ -228,8 +228,8 @@ class FolderGridImage extends StatelessWidget {
                   const SizedBox(width: gap),
                   Expanded(
                     child: AlbumArtImage(
-                      url: covers[3],
-                      filename: covers[3],
+                      url: coverEntries[3].url,
+                      filename: coverEntries[3].filename,
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,

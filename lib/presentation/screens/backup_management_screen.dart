@@ -128,7 +128,6 @@ class _BackupManagementScreenState
       context: context,
       builder: (context) => ImportOptionsDialog(
         availableCategories: availableCategories,
-        defaultAdditive: false,
         defaultRestoreDatabases: true,
       ),
     );

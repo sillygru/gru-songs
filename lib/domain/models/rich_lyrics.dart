@@ -1,6 +1,5 @@
-import 'dart:math' as math;
-
 import '../../models/song.dart';
+import '../services/lyrics_prosodic_estimator.dart';
 
 /// One word or syllable segment in a rich-synchronized lyric line.
 class RichLyricWord {
@@ -151,7 +150,7 @@ class RichLyrics {
           nextTimed ?? songDuration ?? line.time + const Duration(seconds: 4);
       final lineEnd =
           end > line.time ? end : line.time + const Duration(seconds: 1);
-      final words = _simulatedWords(
+      final words = LyricsProsodicEstimator.estimateLineWords(
         line.text,
         line.time,
         lineEnd,
@@ -269,146 +268,6 @@ class RichLyrics {
     speeds.sort();
     final median = speeds[speeds.length ~/ 2];
     return median.clamp(8.0, 22.0);
-  }
-
-  static int _estimateSyllables(String word) {
-    var syllables = 0;
-    final latinBuffer = StringBuffer();
-
-    for (final rune in word.runes) {
-      if ((rune >= 0x4E00 && rune <= 0x9FFF) ||
-          (rune >= 0x3040 && rune <= 0x309F) ||
-          (rune >= 0x30A0 && rune <= 0x30FF) ||
-          (rune >= 0xAC00 && rune <= 0xD7AF)) {
-        syllables++;
-      } else {
-        latinBuffer.writeCharCode(rune);
-      }
-    }
-
-    final latin =
-        latinBuffer.toString().toLowerCase().replaceAll(RegExp(r"[^a-z']"), '');
-    if (latin.isNotEmpty) {
-      var count = 0;
-      var inVowels = false;
-      const vowels = {'a', 'e', 'i', 'o', 'u', 'y'};
-
-      for (var i = 0; i < latin.length; i++) {
-        final char = latin[i];
-        final isVowel = vowels.contains(char);
-        if (isVowel && !inVowels) {
-          count++;
-          inVowels = true;
-        } else if (!isVowel) {
-          inVowels = false;
-        }
-      }
-
-      if (count > 1 && latin.endsWith('e') && !latin.endsWith('le')) {
-        count--;
-      }
-
-      syllables += math.max(1, count);
-    }
-
-    return math.max(1, syllables);
-  }
-
-  static List<RichLyricWord> _simulatedWords(
-    String text,
-    Duration start,
-    Duration end, {
-    double songCps = 13.5,
-  }) {
-    final tokens = RegExp(r'\S+').allMatches(text).toList();
-    if (tokens.isEmpty) return const [];
-
-    final lineDurationUs = (end - start).inMicroseconds;
-    if (lineDurationUs <= 0) {
-      return [
-        for (var index = 0; index < tokens.length; index++)
-          RichLyricWord(
-            start: start + Duration(milliseconds: index * 50),
-            end: start + Duration(milliseconds: (index + 1) * 50),
-            text: tokens[index].group(0) ?? '',
-          ),
-      ];
-    }
-
-    final totalCleanChars = text.replaceAll(RegExp(r'\s+'), '').length;
-    var totalSyllables = 0;
-    final tokenWeights = <int>[];
-    final tokenPausesUs = <int>[];
-
-    for (final token in tokens) {
-      final str = token.group(0) ?? '';
-      final syl = _estimateSyllables(str);
-      totalSyllables += syl;
-
-      final cleanLen = str.replaceAll(RegExp(r'[^\w]'), '').length;
-      final weight = (syl * 3) + math.max<int>(1, cleanLen);
-      tokenWeights.add(weight);
-
-      var pauseUs = 0;
-      if (str.endsWith(',') ||
-          str.endsWith(';') ||
-          str.endsWith('-') ||
-          str.endsWith('~')) {
-        pauseUs = 80000;
-      } else if (str.endsWith('.') || str.endsWith('!') || str.endsWith('?')) {
-        pauseUs = 120000;
-      }
-      tokenPausesUs.add(pauseUs);
-    }
-
-    final totalWeight = tokenWeights.fold<int>(0, (sum, w) => sum + w);
-    final totalPauseUs = tokenPausesUs.fold<int>(0, (sum, p) => sum + p);
-
-    final expectedFromCharsUs = ((totalCleanChars / songCps) * 1000000).round();
-    final sylSec = songCps > 16.0 ? 0.20 : (songCps < 10.0 ? 0.32 : 0.26);
-    final expectedFromSyllablesUs =
-        ((totalSyllables * sylSec) * 1000000).round();
-    final expectedVocalUs =
-        ((expectedFromCharsUs * 0.65) + (expectedFromSyllablesUs * 0.35))
-            .round();
-
-    final minVocalUs =
-        math.max(tokens.length * 180000, totalCleanChars * 45000);
-    final maxVocalUs = math.max(minVocalUs, (expectedVocalUs * 1.35).round());
-
-    int vocalSpanUs;
-    if (lineDurationUs <= expectedVocalUs + 400000) {
-      final breathUs = ((lineDurationUs * 0.08).round()).clamp(50000, 300000);
-      final upperBound = math.max(minVocalUs, lineDurationUs);
-      vocalSpanUs = (lineDurationUs - breathUs).clamp(minVocalUs, upperBound);
-    } else {
-      final maxAvailableUs =
-          math.max(minVocalUs, math.min(lineDurationUs - 400000, maxVocalUs));
-      vocalSpanUs = expectedVocalUs.clamp(minVocalUs, maxAvailableUs);
-    }
-
-    final allocatableUs = math.max(0, vocalSpanUs - totalPauseUs);
-    var cursorUs = 0;
-    final words = <RichLyricWord>[];
-
-    for (var i = 0; i < tokens.length; i++) {
-      final wordText = tokens[i].group(0) ?? '';
-      final wordWeight = tokenWeights[i];
-      final wordDurationUs = totalWeight > 0
-          ? (allocatableUs * wordWeight / totalWeight).round()
-          : (allocatableUs / tokens.length).round();
-
-      final wordStart = start + Duration(microseconds: cursorUs);
-      final wordEnd = wordStart + Duration(microseconds: wordDurationUs);
-      cursorUs += wordDurationUs + tokenPausesUs[i];
-
-      words.add(RichLyricWord(
-        start: wordStart,
-        end: wordEnd,
-        text: wordText,
-      ));
-    }
-    return words;
   }
 
   static double? _number(Object? value) {

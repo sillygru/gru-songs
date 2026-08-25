@@ -22,6 +22,8 @@ import 'file_manager_service.dart';
 import 'notification_cover_warmer.dart';
 import 'volume_monitor_service.dart';
 import 'color_extraction_service.dart';
+import 'scanner_service.dart';
+import '../domain/services/cover_optimizer.dart';
 import '../providers/theme_provider.dart';
 import '../providers/queue_history_provider.dart';
 
@@ -555,6 +557,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           currentSongNotifier.value = song;
           _updateEffectivePlaybackMode(song);
           _warmBeatAnalysis(song);
+          _optimizeCoverForCurrentSong(song);
           _isResumedFromPreviousSession = false;
           _savePlaybackState();
 
@@ -1274,6 +1277,38 @@ class AudioPlayerManager extends WidgetsBindingObserver {
         useIsolate: true,
       ),
     );
+  }
+
+  void _optimizeCoverForCurrentSong(Song? song) {
+    if (song == null || song.coverUrl == null || song.coverUrl!.isEmpty) return;
+    final coverPath = song.coverUrl!;
+    if (p.basename(coverPath).startsWith('c_')) return;
+
+    unawaited(() async {
+      try {
+        final coversDir = await ScannerService.coversDirectory();
+        final file = File(coverPath);
+        if (!await file.exists()) return;
+        final bytes = await file.readAsBytes();
+        if (bytes.isEmpty) return;
+        final coversDirPath = coversDir.path;
+        final newPath =
+            await Isolate.run(() => CoverOptimizer.saveOptimizedCover(
+                  bytes,
+                  coversDirPath,
+                ));
+        if (newPath != coverPath) {
+          final updatedSong = song.copyWith(coverUrl: newPath);
+          await DatabaseService.instance.insertSongsBatch([updatedSong]);
+          _songMap[song.filename] = updatedSong;
+          if (_currentSongFilename == song.filename) {
+            currentSongNotifier.value = updatedSong;
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed to optimize cover for ${song.title}: $e');
+      }
+    }());
   }
 
   /// Purely a head start on the theme for tracks either side of this one. The

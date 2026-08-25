@@ -5,13 +5,11 @@ import '../tokens/app_icons.dart';
 
 class ImportOptionsDialog extends StatefulWidget {
   final Set<ImportDataCategory> availableCategories;
-  final bool defaultAdditive;
   final bool defaultRestoreDatabases;
 
   const ImportOptionsDialog({
     super.key,
     this.availableCategories = const {},
-    this.defaultAdditive = false,
     this.defaultRestoreDatabases = true,
   });
 
@@ -21,14 +19,12 @@ class ImportOptionsDialog extends StatefulWidget {
 
 class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
   late Set<ImportDataCategory> _selectedCategories;
-  late bool _additive;
   late bool _restoreDatabases;
 
   @override
   void initState() {
     super.initState();
     _selectedCategories = Set.from(widget.availableCategories);
-    _additive = widget.defaultAdditive;
     _restoreDatabases = widget.defaultRestoreDatabases;
   }
 
@@ -70,8 +66,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     };
     final databaseCategoriesAvailable =
         databaseCategories.intersection(widget.availableCategories);
-    final databaseCategoriesDisabled =
-        databaseCategories.difference(widget.availableCategories);
 
     final storageCategories = {
       ImportDataCategory.songs,
@@ -81,8 +75,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     };
     final storageCategoriesAvailable =
         storageCategories.intersection(widget.availableCategories);
-    final storageCategoriesDisabled =
-        storageCategories.difference(widget.availableCategories);
 
     final settingsCategories = {
       ImportDataCategory.themeSettings,
@@ -93,8 +85,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     };
     final settingsCategoriesAvailable =
         settingsCategories.intersection(widget.availableCategories);
-    final settingsCategoriesDisabled =
-        settingsCategories.difference(widget.availableCategories);
 
     final cacheCategories = {
       ImportDataCategory.coverCache,
@@ -106,8 +96,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     };
     final cacheCategoriesAvailable =
         cacheCategories.intersection(widget.availableCategories);
-    final cacheCategoriesDisabled =
-        cacheCategories.difference(widget.availableCategories);
 
     return AlertDialog(
       contentPadding: EdgeInsets.zero,
@@ -129,41 +117,33 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (databaseCategories.isNotEmpty)
+              if (databaseCategoriesAvailable.isNotEmpty)
                 _buildCategorySection(
                   context,
                   'Database',
                   databaseCategoriesAvailable,
-                  databaseCategoriesDisabled,
                   AppIcons.storage,
-                  databaseCategories,
                 ),
-              if (storageCategories.isNotEmpty)
+              if (storageCategoriesAvailable.isNotEmpty)
                 _buildCategorySection(
                   context,
                   'Storage',
                   storageCategoriesAvailable,
-                  storageCategoriesDisabled,
                   AppIcons.folder,
-                  storageCategories,
                 ),
-              if (settingsCategories.isNotEmpty)
+              if (settingsCategoriesAvailable.isNotEmpty)
                 _buildCategorySection(
                   context,
                   'Settings',
                   settingsCategoriesAvailable,
-                  settingsCategoriesDisabled,
                   AppIcons.settings,
-                  settingsCategories,
                 ),
-              if (cacheCategories.isNotEmpty)
+              if (cacheCategoriesAvailable.isNotEmpty)
                 _buildCategorySection(
                   context,
                   'Cache',
                   cacheCategoriesAvailable,
-                  cacheCategoriesDisabled,
                   AppIcons.folderZip,
-                  cacheCategories,
                 ),
               const Divider(),
               Padding(
@@ -189,39 +169,6 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
                       contentPadding: EdgeInsets.zero,
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
-                    const Divider(),
-                    Text(
-                      'Import Mode',
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    RadioGroup<bool>(
-                      groupValue: _additive,
-                      onChanged: (value) {
-                        setState(() {
-                          _additive = value ?? false;
-                        });
-                      },
-                      child: Column(
-                        children: [
-                          RadioListTile<bool>(
-                            title: const Text('Replace'),
-                            subtitle: const Text('Overwrite existing data'),
-                            value: false,
-                            contentPadding: EdgeInsets.zero,
-                            controlAffinity: ListTileControlAffinity.leading,
-                          ),
-                          RadioListTile<bool>(
-                            title: const Text('Merge'),
-                            subtitle: const Text(
-                                'Add to existing data (skip duplicates)'),
-                            value: true,
-                            contentPadding: EdgeInsets.zero,
-                            controlAffinity: ListTileControlAffinity.leading,
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -240,7 +187,7 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
               : () {
                   final options = ImportOptions(
                     categories: _selectedCategories,
-                    additive: _additive,
+                    additive: false,
                     restoreDatabases: _restoreDatabases,
                   );
                   Navigator.of(context).pop(options);
@@ -255,10 +202,12 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
     BuildContext context,
     String title,
     Set<ImportDataCategory> availableCategories,
-    Set<ImportDataCategory> disabledCategories,
     AppIconData icon,
-    Set<ImportDataCategory> allCategories,
   ) {
+    if (availableCategories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     final theme = Theme.of(context);
 
     return Column(
@@ -289,23 +238,12 @@ class _ImportOptionsDialogState extends State<ImportOptionsDialog> {
             ],
           ),
         ),
-        ...allCategories.map((category) {
-          final isDisabled = disabledCategories.contains(category);
+        ...availableCategories.map((category) {
           return CheckboxListTile(
-            title: Text(
-              category.displayName,
-              style: TextStyle(
-                color: isDisabled ? theme.disabledColor : null,
-              ),
-            ),
-            subtitle: Text(
-              category.description,
-              style: TextStyle(
-                color: isDisabled ? theme.disabledColor.withAlpha(150) : null,
-              ),
-            ),
+            title: Text(category.displayName),
+            subtitle: Text(category.description),
             value: _selectedCategories.contains(category),
-            onChanged: isDisabled ? null : (_) => _toggleCategory(category),
+            onChanged: (_) => _toggleCategory(category),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16),
             controlAffinity: ListTileControlAffinity.leading,
           );

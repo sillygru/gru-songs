@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,7 +33,9 @@ class ArtistAlbumArtState {
     if (artistName == null) return null;
     final trimmed = artistName.trim();
     if (trimmed.isEmpty) return null;
-    return artistArt[trimmed.toLowerCase()];
+    final path = artistArt[trimmed.toLowerCase()];
+    if (path == null || !File(path).existsSync()) return null;
+    return path;
   }
 
   String? getAlbumArt(String? albumName, {String? artistName}) {
@@ -43,9 +46,11 @@ class ArtistAlbumArtState {
       final compositeKey =
           '${artistName.trim().toLowerCase()}|${cleanAlbum.toLowerCase()}';
       final art = albumArt[compositeKey];
-      if (art != null) return art;
+      if (art != null && File(art).existsSync()) return art;
     }
-    return albumArt[cleanAlbum.toLowerCase()];
+    final art = albumArt[cleanAlbum.toLowerCase()];
+    if (art != null && File(art).existsSync()) return art;
+    return null;
   }
 }
 
@@ -59,11 +64,47 @@ class ArtistAlbumArtNotifier extends Notifier<ArtistAlbumArtState> {
   Future<void> _load() async {
     try {
       final db = DatabaseService.instance;
-      final artists = await db.getArtistArtMap();
-      final albums = await db.getAlbumArtMap();
+      final rawArtists = await db.getArtistArtMap();
+      final rawAlbums = await db.getAlbumArtMap();
+
+      final validArtists = <String, String>{};
+      final staleArtists = <String>[];
+      for (final entry in rawArtists.entries) {
+        if (File(entry.value).existsSync()) {
+          validArtists[entry.key] = entry.value;
+        } else {
+          staleArtists.add(entry.key);
+        }
+      }
+
+      final validAlbums = <String, String>{};
+      final staleAlbums = <String>[];
+      for (final entry in rawAlbums.entries) {
+        if (File(entry.value).existsSync()) {
+          validAlbums[entry.key] = entry.value;
+        } else {
+          staleAlbums.add(entry.key);
+        }
+      }
+
+      for (final key in staleArtists) {
+        unawaited(db.deleteArtistArt(key));
+        PassiveArtFetcherService.instance.forgetArtistAttempt(key);
+      }
+      for (final key in staleAlbums) {
+        unawaited(db.deleteAlbumArt(key));
+        final parts = key.split('|');
+        if (parts.length == 2) {
+          PassiveArtFetcherService.instance
+              .forgetAlbumAttempt(parts[1], parts[0]);
+        } else {
+          PassiveArtFetcherService.instance.forgetAlbumAttempt(key, null);
+        }
+      }
+
       state = ArtistAlbumArtState(
-        artistArt: artists,
-        albumArt: albums,
+        artistArt: validArtists,
+        albumArt: validAlbums,
         isLoaded: true,
       );
     } catch (_) {}

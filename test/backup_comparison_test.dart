@@ -6,11 +6,19 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 
+import 'test_helpers.dart';
+
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-  sqfliteFfiInit();
-  databaseFactory = null;
-  databaseFactory = databaseFactoryFfi;
+  late TestEnvironment testEnv;
+
+  setUpAll(() {
+    testEnv = TestEnvironment();
+    testEnv.setUp();
+  });
+
+  tearDownAll(() {
+    testEnv.tearDown();
+  });
 
   group('Backup Comparison Tests', () {
     late Directory tempDir;

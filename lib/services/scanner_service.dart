@@ -941,6 +941,31 @@ class ScannerService {
       await lockDir.create(recursive: true);
     }
 
+    if (force) {
+      try {
+        final keepSet = <String>{};
+        try {
+          final artists = await DatabaseService.instance.getArtistArtMap();
+          final albums = await DatabaseService.instance.getAlbumArtMap();
+          keepSet.addAll(
+              artists.values.where((p) => p.isNotEmpty).map(p.normalize));
+          keepSet.addAll(
+              albums.values.where((p) => p.isNotEmpty).map(p.normalize));
+        } catch (_) {}
+        if (await coversDir.exists()) {
+          await for (final entity in coversDir.list(followLinks: false)) {
+            if (entity is File && !keepSet.contains(p.normalize(entity.path))) {
+              try {
+                await entity.delete();
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error wiping cover cache before force rebuild: $e');
+      }
+    }
+
     // Separate video files from audio files - video thumbnails must be extracted
     // on the main thread via FFmpeg (platform channels don't work in isolates).
     final videoSongs = <Song>[];

@@ -328,7 +328,6 @@ class _DataManagementSettingsScreenState
         context: context,
         builder: (context) => ImportOptionsDialog(
           availableCategories: availableCategories,
-          defaultAdditive: false,
           defaultRestoreDatabases: true,
         ),
       );
