@@ -82,7 +82,7 @@ class _CoverGlowPainter extends CustomPainter {
     required this.coverKey,
     required this.shellKey,
     required this.accent,
-  }) : super(repaint: controller);
+  }) : super(repaint: controller.decorativeRepaint);
 
   @override
   void paint(Canvas canvas, Size size) {

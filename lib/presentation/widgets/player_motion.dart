@@ -307,17 +307,16 @@ class PlayerMotionController extends ChangeNotifier {
   /// Shortest gap between two emitted frames, at normal power and in power-save.
   ///
   /// The ticker fires at the display refresh rate, which is 120 Hz on a good
-  /// share of current phones. Everything beat-reactive on the screen — cover,
-  /// glow and the whole particle field — repaints off this one notifier, so an
-  /// uncapped controller pays for all of that twice over on exactly the devices
-  /// whose batteries are already working hardest. 60 Hz is the floor of what
-  /// reads as smooth for motion this small.
-  ///
-  /// Only the *notification* is skipped. [_elapsed] still advances on every
-  /// tick, because the particle simulation integrates real elapsed seconds and
-  /// dropping time would slow the field down rather than just redraw it less.
+  /// share of current phones. The cover keeps the 60 Hz output cap, while the
+  /// full-screen glow and particle field use [decorativeRepaint] below to paint
+  /// at 30 Hz. Only the notification is skipped; [_elapsed] still advances on
+  /// every tick so decorative simulation speed and beat timing stay unchanged.
   static const Duration _frameInterval = Duration(microseconds: 16667);
+  static const Duration _decorativeFrameInterval =
+      Duration(microseconds: 33333);
   static const Duration _powerSaveFrameInterval = Duration(microseconds: 33333);
+
+  final ChangeNotifier _decorativeRepaint = ChangeNotifier();
 
   Ticker? _ticker;
   StreamSubscription<Duration>? _positionSub;
@@ -347,6 +346,12 @@ class PlayerMotionController extends ChangeNotifier {
   /// [_elapsed] at the last emitted frame, or null when the ticker has just
   /// started and the next tick should be emitted immediately.
   Duration? _lastEmitted;
+  Duration? _lastDecorativeEmitted;
+
+  /// Repaint signal for expensive decorative layers. It intentionally runs at
+  /// half the cover rate; the controller still exposes its normal 60 Hz signal
+  /// for small, user-focused motion such as the artwork transform.
+  Listenable get decorativeRepaint => _decorativeRepaint;
 
   /// How much of the beat-driven motion is faded in, 0..1.
   ///
@@ -513,7 +518,9 @@ class PlayerMotionController extends ChangeNotifier {
       // Settle to rest rather than freezing mid-punch.
       _frame = BeatFrame.idle;
       _lastEmitted = null;
+      _lastDecorativeEmitted = null;
       notifyListeners();
+      _decorativeRepaint.notifyListeners();
     }
   }
 
@@ -544,6 +551,13 @@ class PlayerMotionController extends ChangeNotifier {
 
     _frame = computeFrame(_visualPositionMs()).scaleBeat(_gridBlend);
     notifyListeners();
+
+    final lastDecorative = _lastDecorativeEmitted;
+    if (lastDecorative == null ||
+        _elapsed - lastDecorative >= _decorativeFrameInterval) {
+      _lastDecorativeEmitted = _elapsed;
+      _decorativeRepaint.notifyListeners();
+    }
   }
 
   /// Drives one frame by hand, standing in for the ticker so widget tests can
@@ -554,6 +568,7 @@ class PlayerMotionController extends ChangeNotifier {
     _elapsed = elapsed;
     _frame = computeFrame(positionMs);
     notifyListeners();
+    _decorativeRepaint.notifyListeners();
   }
 
   /// Feeds the real ticker path, frame cap included, so a test can drive the
@@ -769,6 +784,7 @@ class PlayerMotionController extends ChangeNotifier {
     _ticker?.stop();
     _ticker?.dispose();
     _ticker = null;
+    _decorativeRepaint.dispose();
     super.dispose();
   }
 }

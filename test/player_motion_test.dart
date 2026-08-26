@@ -395,6 +395,15 @@ void main() {
       expect(frames, closeTo(30, 1));
     });
 
+    test('decorative layers emit about 30 frames at 120 Hz', () {
+      var decorativeFrames = 0;
+      controller.decorativeRepaint.addListener(() => decorativeFrames++);
+
+      tickFor(hz: 120);
+
+      expect(decorativeFrames, closeTo(30, 1));
+    });
+
     test('power save thins the field without emptying it', () {
       controller.particleIntensity = PlayerMotionIntensity.bold;
       final full = controller.particleSpec.particleCount;

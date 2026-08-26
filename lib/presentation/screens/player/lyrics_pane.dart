@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,11 +26,13 @@ import '../../widgets/lyrics_resume_button.dart';
 class LyricsPane extends ConsumerStatefulWidget {
   final Song song;
   final Color accent;
+  final ValueListenable<bool> paneVisible;
 
   const LyricsPane({
     super.key,
     required this.song,
     required this.accent,
+    required this.paneVisible,
   });
 
   @override
@@ -145,6 +148,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   StreamSubscription<Duration>? _positionSub;
   DateTime? _lastManualScroll;
+  bool _positionSubscriptionActive = false;
 
   /// Set while we drive the scroll ourselves, so our own motion is not
   /// mistaken for the user taking over.
@@ -162,23 +166,45 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   void initState() {
     super.initState();
     _scrollController.addListener(_onUserScroll);
-    _positionSub = ref
-        .read(audioPlayerManagerProvider)
-        .player
-        .positionStream
-        .listen(_onPosition);
+    widget.paneVisible.addListener(_syncPositionSubscription);
+    _syncPositionSubscription();
     _load();
   }
 
   @override
   void didUpdateWidget(LyricsPane oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.paneVisible != widget.paneVisible) {
+      oldWidget.paneVisible.removeListener(_syncPositionSubscription);
+      widget.paneVisible.addListener(_syncPositionSubscription);
+      _syncPositionSubscription();
+    }
     if (oldWidget.song.filename != widget.song.filename) _load();
+  }
+
+  void _syncPositionSubscription() {
+    final wanted = widget.paneVisible.value;
+    if (wanted == _positionSubscriptionActive) return;
+    _positionSubscriptionActive = wanted;
+
+    if (!wanted) {
+      _positionSub?.cancel();
+      _positionSub = null;
+      return;
+    }
+
+    _positionSub = ref
+        .read(audioPlayerManagerProvider)
+        .player
+        .positionStream
+        .listen(_onPosition);
+    _onPosition(ref.read(audioPlayerManagerProvider).player.position);
   }
 
   @override
   void dispose() {
     _gapCollapseTimer?.cancel();
+    widget.paneVisible.removeListener(_syncPositionSubscription);
     _positionSub?.cancel();
     _scrollController.removeListener(_onUserScroll);
     _scrollController.dispose();
@@ -803,30 +829,50 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
               }
             }
 
+            final wordLine =
+                index < _wordLines.length ? _wordLines[index] : null;
+            final lineContent = LyricsLine(
+              text: line.text,
+              translatedText: lineTranslation,
+              translationMode: settings.lyricsTranslationMode,
+              isActive: index == active,
+              isPlayed: active >= 0 && index <= active,
+              hasTime: line.isSynced,
+              blurSigma: _blurFor(
+                index: index,
+                active: active,
+                enabled: blurEnabled && hasSynced,
+              ),
+              activeColor: widget.accent,
+              glowIntensity: index == active ? 1.0 : 0.0,
+              playbackPosition: _playbackPosition.value,
+              wordLine: wordLine,
+              onTap: () => player.seek(line.time),
+            );
+
             final lyricWidget = KeyedSubtree(
               key: key,
-              child: ValueListenableBuilder<Duration>(
-                valueListenable: _playbackPosition,
-                builder: (context, position, _) => LyricsLine(
-                  text: line.text,
-                  translatedText: lineTranslation,
-                  translationMode: settings.lyricsTranslationMode,
-                  isActive: index == active,
-                  isPlayed: active >= 0 && index <= active,
-                  hasTime: line.isSynced,
-                  blurSigma: _blurFor(
-                    index: index,
-                    active: active,
-                    enabled: blurEnabled && hasSynced,
-                  ),
-                  activeColor: widget.accent,
-                  glowIntensity: index == active ? 1.0 : 0.0,
-                  playbackPosition: position,
-                  wordLine:
-                      index < _wordLines.length ? _wordLines[index] : null,
-                  onTap: () => player.seek(line.time),
-                ),
-              ),
+              child: index == active &&
+                      wordLine != null &&
+                      wordLine.words.isNotEmpty
+                  ? ValueListenableBuilder<Duration>(
+                      valueListenable: _playbackPosition,
+                      builder: (context, position, _) => LyricsLine(
+                        text: line.text,
+                        translatedText: lineTranslation,
+                        translationMode: settings.lyricsTranslationMode,
+                        isActive: true,
+                        isPlayed: true,
+                        hasTime: line.isSynced,
+                        blurSigma: 0,
+                        activeColor: widget.accent,
+                        glowIntensity: 1.0,
+                        playbackPosition: position,
+                        wordLine: wordLine,
+                        onTap: () => player.seek(line.time),
+                      ),
+                    )
+                  : lineContent,
             );
 
             // AnimatedSize on every row so opening/closing a gap grows and

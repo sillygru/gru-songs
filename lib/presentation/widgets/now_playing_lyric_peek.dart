@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,11 +31,13 @@ import 'lyrics_gap_loader.dart';
 class NowPlayingLyricPeek extends ConsumerStatefulWidget {
   final Song song;
   final Color accent;
+  final ValueListenable<bool> paneVisible;
 
   const NowPlayingLyricPeek({
     super.key,
     required this.song,
     required this.accent,
+    required this.paneVisible,
   });
 
   @override
@@ -71,21 +74,39 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
 
   Timer? _gapCollapseTimer;
   StreamSubscription<Duration>? _positionSub;
+  bool _positionSubscriptionActive = false;
 
   @override
   void initState() {
     super.initState();
+    widget.paneVisible.addListener(_syncPositionSubscription);
+    _syncPositionSubscription();
+    _load();
+  }
+
+  void _syncPositionSubscription() {
+    final wanted = widget.paneVisible.value;
+    if (wanted == _positionSubscriptionActive) return;
+    _positionSubscriptionActive = wanted;
+
+    if (!wanted) {
+      _positionSub?.cancel();
+      _positionSub = null;
+      return;
+    }
+
     _positionSub = ref
         .read(audioPlayerManagerProvider)
         .player
         .positionStream
         .listen(_onPosition);
-    _load();
+    _onPosition(ref.read(audioPlayerManagerProvider).player.position);
   }
 
   @override
   void dispose() {
     _gapCollapseTimer?.cancel();
+    widget.paneVisible.removeListener(_syncPositionSubscription);
     _positionSub?.cancel();
     _line.dispose();
     _gapVisible.dispose();
@@ -137,6 +158,11 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
   @override
   void didUpdateWidget(NowPlayingLyricPeek oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.paneVisible != widget.paneVisible) {
+      oldWidget.paneVisible.removeListener(_syncPositionSubscription);
+      widget.paneVisible.addListener(_syncPositionSubscription);
+      _syncPositionSubscription();
+    }
     if (oldWidget.song.filename != widget.song.filename) _load();
   }
 

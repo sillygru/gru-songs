@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'album_art_image.dart';
 import '../../services/cache_service.dart';
 import '../../services/cover_refresh_service.dart';
@@ -25,8 +26,7 @@ class BlurredBackground extends StatefulWidget {
   State<BlurredBackground> createState() => _BlurredBackgroundState();
 }
 
-class _BlurredBackgroundState extends State<BlurredBackground>
-    with SingleTickerProviderStateMixin {
+class _BlurredBackgroundState extends State<BlurredBackground> {
   File? _blurFile;
 
   /// Whether [_blurFile] is actually on disk.
@@ -40,18 +40,9 @@ class _BlurredBackgroundState extends State<BlurredBackground>
   static const Duration _generationDelay = Duration(milliseconds: 600);
 
   int _requestToken = 0;
-  late AnimationController _spinController;
-
   @override
   void initState() {
     super.initState();
-    _spinController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 90),
-    );
-    if (widget.slowSpin) {
-      _spinController.repeat();
-    }
     _loadBlurredImage();
   }
 
@@ -59,26 +50,12 @@ class _BlurredBackgroundState extends State<BlurredBackground>
   void didUpdateWidget(BlurredBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url || oldWidget.filename != widget.filename) {
-      _spinController.value = 0.0;
-      if (widget.slowSpin) {
-        _spinController.repeat();
-      } else {
-        _spinController.stop();
-      }
       _loadBlurredImage();
-    }
-    if (oldWidget.slowSpin != widget.slowSpin) {
-      if (widget.slowSpin) {
-        _spinController.repeat();
-      } else {
-        _spinController.stop();
-      }
     }
   }
 
   @override
   void dispose() {
-    _spinController.dispose();
     super.dispose();
   }
 
@@ -224,21 +201,9 @@ class _BlurredBackgroundState extends State<BlurredBackground>
                 maxWidth: squareSize,
                 maxHeight: squareSize,
                 alignment: Alignment.center,
-                child: AnimatedBuilder(
-                  animation: _spinController,
-                  builder: (context, child) {
-                    final angle = _spinController.value * 2 * math.pi;
-                    final scale = 1.0 + 0.015 * math.sin(angle);
-                    return Transform.scale(
-                      scale: scale,
-                      alignment: Alignment.center,
-                      child: Transform.rotate(
-                        angle: angle,
-                        alignment: Alignment.center,
-                        child: child,
-                      ),
-                    );
-                  },
+                child: _ThrottledSpin(
+                  key: ValueKey(widget.filename),
+                  enabled: widget.slowSpin,
                   child: _buildImageLayers(squareSize: squareSize),
                 ),
               );
@@ -262,6 +227,104 @@ class _BlurredBackgroundState extends State<BlurredBackground>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Rotates the cached backdrop at 30 painted frames per second. The background
+/// remains visually continuous at this size and speed, while avoiding repeated
+/// full-screen raster work on high-refresh-rate phones.
+class _ThrottledSpin extends StatefulWidget {
+  final bool enabled;
+  final Widget child;
+
+  const _ThrottledSpin({
+    super.key,
+    required this.enabled,
+    required this.child,
+  });
+
+  @override
+  State<_ThrottledSpin> createState() => _ThrottledSpinState();
+}
+
+class _ThrottledSpinState extends State<_ThrottledSpin>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const Duration _paintInterval = Duration(microseconds: 33333);
+  static const Duration _spinDuration = Duration(seconds: 90);
+
+  late final Ticker _ticker;
+  Duration? _lastPaint;
+  Duration _lastElapsed = Duration.zero;
+  Duration _elapsedBase = Duration.zero;
+  double _value = 0;
+  bool _appActive = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _appActive = WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    _ticker = createTicker(_onTick);
+    _syncTicker();
+  }
+
+  @override
+  void didUpdateWidget(_ThrottledSpin oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.enabled == widget.enabled) return;
+    _syncTicker();
+    if (!widget.enabled && mounted) setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appActive = state == AppLifecycleState.resumed;
+    _syncTicker();
+  }
+
+  void _syncTicker() {
+    if (widget.enabled && _appActive) {
+      _lastPaint = null;
+      if (!_ticker.isActive) _ticker.start();
+    } else if (_ticker.isActive) {
+      _elapsedBase += _lastElapsed;
+      _lastElapsed = Duration.zero;
+      _ticker.stop();
+    }
+  }
+
+  void _onTick(Duration elapsed) {
+    final last = _lastPaint;
+    if (last != null && elapsed - last < _paintInterval) return;
+    _lastPaint = elapsed;
+    _lastElapsed = elapsed;
+    final totalElapsed = _elapsedBase + elapsed;
+    _value = totalElapsed.inMicroseconds / _spinDuration.inMicroseconds;
+    if (_value >= 1) _value %= 1;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final angle = _value * 2 * math.pi;
+    final scale = 1.0 + 0.015 * math.sin(angle);
+    return Transform.scale(
+      scale: scale,
+      alignment: Alignment.center,
+      child: Transform.rotate(
+        angle: angle,
+        alignment: Alignment.center,
+        child: widget.child,
       ),
     );
   }

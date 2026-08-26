@@ -55,8 +55,8 @@ class _BeatParticleFieldState extends State<BeatParticleField> {
     return IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
-          // Repainting off the controller directly means this subtree never
-          // rebuilds — the painter just redraws when a frame lands.
+          // Particles stay on the normal motion signal so their movement remains
+          // smooth; only the simulation work is shared with the controller.
           painter: _ParticlePainter(
             controller: widget.controller,
             system: _system,

@@ -197,39 +197,10 @@ class LyricsProsodicEstimator {
     'te',
   };
 
-  static const Set<String> _diphthongs = {
-    'ai',
-    'ay',
-    'ea',
-    'ee',
-    'ei',
-    'ey',
-    'ie',
-    'oa',
-    'oe',
-    'oi',
-    'oy',
-    'oo',
-    'ou',
-    'ow',
-    'au',
-    'aw',
-    'igh',
-    'eigh'
-  };
+  static const Set<String> _diphthongs = {'ai', 'ay', 'ea', 'ee', 'ei', 'ey', 'ie', 'oa', 'oe', 'oi', 'oy', 'oo', 'ou', 'ow', 'au', 'aw', 'igh', 'eigh'};
 
   static const Set<String> _plosives = {'p', 'b', 't', 'd', 'k', 'g'};
-  static const Set<String> _fricatives = {
-    's',
-    'z',
-    'f',
-    'v',
-    'th',
-    'sh',
-    'ch',
-    'j',
-    'h'
-  };
+  static const Set<String> _fricatives = {'s', 'z', 'f', 'v', 'th', 'sh', 'ch', 'j', 'h'};
   static const Set<String> _sonorants = {'m', 'n', 'l', 'r', 'w', 'y'};
 
   /// Computes the forward pass of the Res-MLP on a 30-D word feature vector.
@@ -294,8 +265,7 @@ class LyricsProsodicEstimator {
     Duration lineEnd, {
     double songCps = 13.5,
   }) {
-    final tokens =
-        text.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    final tokens = text.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
     final n = tokens.length;
     if (n == 0) return const [];
     if (n == 1) {
@@ -332,16 +302,8 @@ class LyricsProsodicEstimator {
       final isPickup = (idx == 0 && isFunc > 0.5 && n > 2) ? 1.0 : 0.0;
       final relPos = idx / math.max(1.0, (n - 1).toDouble());
 
-      final hasComma = (tok.endsWith(',') ||
-              tok.endsWith(';') ||
-              tok.endsWith('-') ||
-              tok.endsWith('~'))
-          ? 1.0
-          : 0.0;
-      final hasStop =
-          (tok.endsWith('.') || tok.endsWith('!') || tok.endsWith('?'))
-              ? 1.0
-              : 0.0;
+      final hasComma = (tok.endsWith(',') || tok.endsWith(';') || tok.endsWith('-') || tok.endsWith('~')) ? 1.0 : 0.0;
+      final hasStop = (tok.endsWith('.') || tok.endsWith('!') || tok.endsWith('?')) ? 1.0 : 0.0;
 
       var plosives = 0;
       var fricatives = 0;
@@ -406,8 +368,7 @@ class LyricsProsodicEstimator {
       pausesRaw.add(pType);
     }
 
-    final baseDurationUs =
-        ((lineChars / math.max(6.0, songCps)) * 1000000.0).round();
+    final baseDurationUs = ((lineChars / math.max(6.0, songCps)) * 1000000.0).round();
     final minVocalUs = math.max<int>(tokens.length * 140000, lineChars * 32000);
 
     final isCjk = RegExp(r'[一-鿿぀-ゟ゠-ヿ가-힯]').hasMatch(text);
@@ -428,31 +389,23 @@ class LyricsProsodicEstimator {
       final breathUs = ((lineDurUs * 0.08).round()).clamp(150000, 400000);
       final availableSpanUs = math.max(minVocalUs, lineDurUs - breathUs);
 
-      final isSustainedPhrase = n == 1 ||
-          (songCps <= 12.5 && n <= 6) ||
-          (songCps <= 14.5 && n <= 4 && lineDurUs <= 6800000);
+      final isSustainedPhrase = n == 1 || (songCps <= 12.5 && n <= 6) || (songCps <= 14.5 && n <= 4 && lineDurUs <= 6800000);
 
       if (lineDurUs <= (baseDurationUs * 1.15).round()) {
         vocalSpanUs = availableSpanUs;
       } else if (isSustainedPhrase) {
-        final maxPhraseCeilingUs = isCjk
-            ? math.min(lineChars * 550000, availableSpanUs)
-            : math.min(6500000, availableSpanUs);
+        final maxPhraseCeilingUs = isCjk ? math.min(lineChars * 550000, availableSpanUs) : math.min(6500000, availableSpanUs);
         vocalSpanUs = maxPhraseCeilingUs.clamp(minVocalUs, availableSpanUs);
       } else {
         final maxElasticity = songCps > 16.0 ? 0.25 : 0.40;
         final elasticity = (1.0 - (n - 3) * 0.14).clamp(0.12, maxElasticity);
-        final elasticUs =
-            (baseDurationUs + (availableSpanUs - baseDurationUs) * elasticity)
-                .round();
+        final elasticUs = (baseDurationUs + (availableSpanUs - baseDurationUs) * elasticity).round();
         vocalSpanUs = elasticUs.clamp(minVocalUs, availableSpanUs);
       }
     }
 
-    final commaPauseUs =
-        songCps > 14.0 ? 180000 : (songCps < 9.0 ? 340000 : 280000);
-    final stopPauseUs =
-        songCps > 14.0 ? 280000 : (songCps < 9.0 ? 520000 : 420000);
+    final commaPauseUs = songCps > 14.0 ? 180000 : (songCps < 9.0 ? 340000 : 280000);
+    final stopPauseUs = songCps > 14.0 ? 280000 : (songCps < 9.0 ? 520000 : 420000);
 
     final pausesUs = <int>[];
     for (final pt in pausesRaw) {
@@ -481,9 +434,7 @@ class LyricsProsodicEstimator {
     final result = <RichLyricWord>[];
     var cursorUs = 0;
     for (var i = 0; i < n; i++) {
-      final wordDurationUs = totalWeight > 0
-          ? ((allocatableUs * wordWeights[i]) / totalWeight).round()
-          : (allocatableUs / n).round();
+      final wordDurationUs = totalWeight > 0 ? ((allocatableUs * wordWeights[i]) / totalWeight).round() : (allocatableUs / n).round();
 
       final wordStart = lineStart + Duration(microseconds: cursorUs);
       final wordEnd = wordStart + Duration(microseconds: wordDurationUs);
@@ -503,18 +454,14 @@ class LyricsProsodicEstimator {
     final latinBuffer = StringBuffer();
 
     for (final rune in word.runes) {
-      if ((rune >= 0x4E00 && rune <= 0x9FFF) ||
-          (rune >= 0x3040 && rune <= 0x309F) ||
-          (rune >= 0x30A0 && rune <= 0x30FF) ||
-          (rune >= 0xAC00 && rune <= 0xD7AF)) {
+      if ((rune >= 0x4E00 && rune <= 0x9FFF) || (rune >= 0x3040 && rune <= 0x309F) || (rune >= 0x30A0 && rune <= 0x30FF) || (rune >= 0xAC00 && rune <= 0xD7AF)) {
         syllables++;
       } else {
         latinBuffer.writeCharCode(rune);
       }
     }
 
-    final latin =
-        latinBuffer.toString().toLowerCase().replaceAll(RegExp(r"[^\w']"), '');
+    final latin = latinBuffer.toString().toLowerCase().replaceAll(RegExp(r"[^\w']"), '');
     if (latin.isNotEmpty) {
       var count = 0;
       var inVowels = false;

@@ -115,7 +115,11 @@ class _NowPlayingPaneState extends ConsumerState<NowPlayingPane>
             const SizedBox(height: PlayerTokens.s4),
             _buildTitleBlock(context),
             const SizedBox(height: PlayerTokens.s2),
-            NowPlayingLyricPeek(song: widget.song, accent: widget.accent),
+            NowPlayingLyricPeek(
+              song: widget.song,
+              accent: widget.accent,
+              paneVisible: widget.paneVisible,
+            ),
             const SizedBox(height: PlayerTokens.s2),
           ],
         );

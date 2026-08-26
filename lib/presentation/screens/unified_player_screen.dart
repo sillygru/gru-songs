@@ -73,6 +73,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   /// alive across swipes, which is right for state but wrong for a video
   /// decoder — it would keep running behind the Lyrics or Queue pane.
   final ValueNotifier<bool> _nowPlayingVisible = ValueNotifier(false);
+  final ValueNotifier<bool> _lyricsVisible = ValueNotifier(false);
 
   /// Let the glow layer locate the artwork inside the pane, and convert it into
   /// the shell's coordinates. The glow is painted up here so it can spill past
@@ -82,6 +83,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
 
   late int _pane;
   bool _wakeLockHeld = false;
+  bool _appActive = true;
   double _dismissDrag = 0;
 
   /// Mirrors the OS "remove animations" accessibility switch. When it is on,
@@ -100,6 +102,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     _pane = widget.initialPane.index;
     _pagePosition.value = _pane.toDouble();
     _nowPlayingVisible.value = _isNowPlayingVisible(_pagePosition.value);
+    _lyricsVisible.value = _isLyricsVisible(_pagePosition.value);
     _pageController = PageController(initialPage: _pane);
     _pageController.addListener(_onPageScroll);
 
@@ -131,6 +134,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     _pageController.dispose();
     _pagePosition.dispose();
     _nowPlayingVisible.dispose();
+    _lyricsVisible.dispose();
     _releaseWakeLock();
     super.dispose();
   }
@@ -151,9 +155,17 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Backgrounded means nobody is watching: stop the ticker rather than
-    // animating a screen that isn't on.
-    _motion.appActive = state == AppLifecycleState.resumed;
+    // Backgrounded means nobody is watching: stop every visual and lyric
+    // listener rather than animating a screen that is not on.
+    _appActive = state == AppLifecycleState.resumed;
+    _motion.appActive = _appActive;
+    if (_appActive) {
+      _nowPlayingVisible.value = _isNowPlayingVisible(_pagePosition.value);
+      _lyricsVisible.value = _isLyricsVisible(_pagePosition.value);
+    } else {
+      _nowPlayingVisible.value = false;
+      _lyricsVisible.value = false;
+    }
   }
 
   /// Loads the beat map for whatever is now playing.
@@ -222,11 +234,15 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   bool _isNowPlayingVisible(double page) =>
       (page - PlayerPane.player.index).abs() <= 0.6;
 
+  bool _isLyricsVisible(double page) =>
+      (page - PlayerPane.lyrics.index).abs() <= 0.6;
+
   void _onPageScroll() {
     final page = _pageController.page;
     if (page == null) return;
     _pagePosition.value = page;
-    _nowPlayingVisible.value = _isNowPlayingVisible(page);
+    _nowPlayingVisible.value = _appActive && _isNowPlayingVisible(page);
+    _lyricsVisible.value = _appActive && _isLyricsVisible(page);
 
     // Deliberately no setState: nothing in build() depends on _pane, and
     // rebuilding the shell mid-swipe would re-render the backdrop and dock,
@@ -368,11 +384,18 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
         // top of it.
         if (showGlow)
           Positioned.fill(
-            child: BeatCoverGlow(
-              controller: _motion,
-              coverKey: _coverKey,
-              shellKey: _shellKey,
-              accent: accent,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _nowPlayingVisible,
+              child: BeatCoverGlow(
+                controller: _motion,
+                coverKey: _coverKey,
+                shellKey: _shellKey,
+                accent: accent,
+              ),
+              builder: (context, visible, child) {
+                if (!visible || child == null) return const SizedBox.shrink();
+                return child;
+              },
             ),
           ),
         // Chrome, so the field carries across all three panes rather than
@@ -402,7 +425,11 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
                   controller: _pageController,
                   physics: const ClampingScrollPhysics(),
                   children: [
-                    LyricsPane(song: song, accent: accent),
+                    LyricsPane(
+                      song: song,
+                      accent: accent,
+                      paneVisible: _lyricsVisible,
+                    ),
                     NowPlayingPane(
                       song: song,
                       accent: accent,
