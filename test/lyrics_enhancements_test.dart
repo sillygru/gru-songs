@@ -173,5 +173,28 @@ void main() {
 
       expect(find.byType(LyricsLine), findsOneWidget);
     });
+
+    testWidgets(
+        'splits parenthetical backing vocals into main text and sub-line',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: LyricsLine(
+              text: 'I want it that way (tell me why)',
+              isActive: true,
+              isPlayed: true,
+              blurSigma: 0,
+              hasTime: true,
+              activeColor: Colors.amber,
+              glowIntensity: 1.0,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('I want it that way'), findsOneWidget);
+      expect(find.text('(tell me why)'), findsOneWidget);
+    });
   });
 }

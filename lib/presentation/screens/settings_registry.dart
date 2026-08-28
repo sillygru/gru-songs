@@ -181,14 +181,59 @@ final List<SettingsDestination> settingsRegistry = [
     ),
   ),
   SettingsDestination(
+    anchorId: 'playback.lyrics_rich_sync',
+    icon: AppIcons.autoAwesome,
+    title: 'Simulate Word Sync',
+    subtitle:
+        'Generate word-level timing from line-synced lyrics using prosodic estimation',
+    breadcrumb: 'Settings › Playback › Lyrics',
+    keywords: const ['lyrics', 'richsync', 'karaoke', 'word', 'sync'],
+    open: () => const PlaybackSettingsScreen(
+      highlightId: 'playback.lyrics_rich_sync',
+    ),
+  ),
+  SettingsDestination(
     anchorId: 'playback.keep_screen_awake',
     icon: AppIcons.screenLock,
     title: 'Keep Screen Awake on Lyrics',
     subtitle: 'Prevent sleep while the lyrics pane is open',
-    breadcrumb: 'Settings › Playback › Audio',
+    breadcrumb: 'Settings › Playback › Lyrics',
     keywords: const ['sleep', 'wakelock', 'display', 'lyrics'],
     open: () => const PlaybackSettingsScreen(
       highlightId: 'playback.keep_screen_awake',
+    ),
+  ),
+  SettingsDestination(
+    anchorId: 'playback.lyrics_auto_translate',
+    icon: AppIcons.translate,
+    title: 'Auto-Translate Lyrics',
+    subtitle: 'Automatically translate lyrics using selected target language',
+    breadcrumb: 'Settings › Playback › Lyrics',
+    keywords: const ['translate', 'translation', 'language', 'lyrics', 'auto'],
+    open: () => const PlaybackSettingsScreen(
+      highlightId: 'playback.lyrics_auto_translate',
+    ),
+  ),
+  SettingsDestination(
+    anchorId: 'playback.lyrics_target_lang',
+    icon: AppIcons.translate,
+    title: 'Target Language',
+    subtitle: 'Language to translate lyrics into',
+    breadcrumb: 'Settings › Playback › Lyrics',
+    keywords: const ['translate', 'language', 'spanish', 'english', 'japanese'],
+    open: () => const PlaybackSettingsScreen(
+      highlightId: 'playback.lyrics_target_lang',
+    ),
+  ),
+  SettingsDestination(
+    anchorId: 'playback.lyrics_translation_mode',
+    icon: AppIcons.subtitles,
+    title: 'Translation Display',
+    subtitle: 'Show subtext below lyrics or replace base lyrics',
+    breadcrumb: 'Settings › Playback › Lyrics',
+    keywords: const ['translate', 'mode', 'subtext', 'replace', 'display'],
+    open: () => const PlaybackSettingsScreen(
+      highlightId: 'playback.lyrics_translation_mode',
     ),
   ),
   SettingsDestination(

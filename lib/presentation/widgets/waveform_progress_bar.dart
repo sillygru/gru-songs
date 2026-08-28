@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,9 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/waveform_service.dart';
-
-/// Thin placeholder height while an uncached waveform is still generating.
-const double _collapsedAmplitude = 0.28;
 
 class WaveformProgressBar extends ConsumerStatefulWidget {
   final String filename;
@@ -36,10 +34,14 @@ class WaveformProgressBar extends ConsumerStatefulWidget {
 }
 
 class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   List<double>? _peaks;
-  late AnimationController _barAnimationController;
-  late Animation<double> _barAnimation;
+  late AnimationController _revealController;
+  late AnimationController _scrubController;
+  late Animation<double> _scrubAnimation;
+  Duration _dragOriginDuration = Duration.zero;
+  final ValueNotifier<int?> _scrubDeltaNotifier = ValueNotifier<int?>(null);
+
   double? _dragPosition;
   int? _lastHapticBarIndex;
   StreamSubscription<Duration>? _positionSubscription;
@@ -48,8 +50,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       ValueNotifier(Duration.zero);
   final ValueNotifier<double?> _dragPositionNotifier = ValueNotifier(null);
 
-  List<double>? _cachedDisplayPeaks;
-  double _cachedWidth = 0;
   TextStyle? _labelStyle;
   String _formattedTotalTime = '0:00';
 
@@ -57,21 +57,23 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   Timer? _deferTimer;
   int _loadToken = 0;
 
-  /// Whether the collapse→full reveal has already run, so a later uncached
-  /// partial (which lands mid-reveal or after) does not restart it.
-  bool _revealed = false;
-
   @override
   void initState() {
     super.initState();
-    _barAnimationController = AnimationController(
+    _revealController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 350),
-      value: 1.0,
+      duration: const Duration(milliseconds: 240),
+      value: 0.0,
     );
-    _barAnimation = CurvedAnimation(
-      parent: _barAnimationController,
+    _scrubController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      value: 0.0,
+    );
+    _scrubAnimation = CurvedAnimation(
+      parent: _scrubController,
       curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _scheduleWaveformLoad();
@@ -84,7 +86,9 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     _waveformSubscription?.cancel();
     _deferTimer?.cancel();
     _loadToken++;
-    _barAnimationController.dispose();
+    _revealController.dispose();
+    _scrubController.dispose();
+    _scrubDeltaNotifier.dispose();
     _positionSubscription?.cancel();
     _positionNotifier.dispose();
     _dragPositionNotifier.dispose();
@@ -114,12 +118,10 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       _waveformSubscription?.cancel();
       _waveformSubscription = null;
       _positionNotifier.value = Duration.zero;
-      _cachedDisplayPeaks = null;
-      _cachedWidth = 0;
       _labelStyle = null;
       _peaks = null;
-      _revealed = false;
-      _barAnimationController.value = 1.0;
+      _revealController.stop();
+      _revealController.value = 0.0;
 
       _scheduleWaveformLoad();
     }
@@ -141,16 +143,13 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     final token = ++_loadToken;
     final waveformService = ref.read(waveformServiceProvider);
 
-    // Already decoded this session: paint it on the very first frame instead of
-    // waiting on an async/disk lookup.
+    // Already decoded this session: paint it immediately with a fast left-to-right sweep
     final inMemory = waveformService.cachedWaveformSync(currentFilename);
     if (inMemory != null && inMemory.isNotEmpty && mounted) {
       setState(() {
         _peaks = inMemory;
-        _cachedDisplayPeaks = null;
-        _cachedWidth = 0;
       });
-      _revealWaveform();
+      _animateRevealFast();
       return;
     }
 
@@ -159,34 +158,30 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       return;
     }
 
-    // Cached on disk: load now — no waiting.
+    // Cached on disk: load now with fast sweep
     if (isCached) {
-      await _loadWaveform();
+      await _loadWaveform(isCached: true);
       return;
     }
 
-    // Uncached: give the player a brief head start, then decode. The stream
-    // fills left-to-right as FFmpeg writes the PCM.
+    // Uncached: give the audio playback a brief head start, then smoothly expand as CPU decodes
     _deferTimer = Timer(const Duration(milliseconds: 300), () async {
       if (!mounted ||
           widget.filename != currentFilename ||
           token != _loadToken) {
         return;
       }
-      await _loadWaveform();
+      await _loadWaveform(isCached: false);
     });
   }
 
-  Future<void> _loadWaveform() async {
+  Future<void> _loadWaveform({required bool isCached}) async {
     if (widget.filename.isEmpty || widget.path.isEmpty) return;
 
     final token = _loadToken;
     final currentFilename = widget.filename;
     final waveformService = ref.read(waveformServiceProvider);
 
-    // Each emission is a newer snapshot of the same decode: partial lists
-    // while the file is still being read, then the complete waveform. A cached
-    // song emits exactly once.
     _waveformSubscription?.cancel();
     _waveformSubscription = waveformService
         .getWaveformProgressive(widget.filename, widget.path, widget.total)
@@ -197,35 +192,65 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
         return;
       }
 
-      // A poll that was already in flight when the decode finished can land
-      // after the final full emission. The waveform only ever grows, so a
-      // shorter snapshot never wins — otherwise the bar could settle back to
-      // a partial width with nothing left to re-emit the complete one.
+      // Shorter snapshot should never replace a longer one
       if (_peaks != null && peaks.length < _peaks!.length) return;
 
       setState(() {
         _peaks = peaks;
-        _cachedDisplayPeaks = null;
-        _cachedWidth = 0;
       });
 
-      _revealWaveform();
+      if (isCached || peaks.length >= WaveformService.targetWaveformSamples) {
+        // Full waveform available: fast left-to-right sweep
+        if (_revealController.value < 1.0) {
+          if (isCached && _revealController.value == 0.0) {
+            _animateRevealFast();
+          } else {
+            _animateRevealTo(1.0, isComplete: true);
+          }
+        }
+      } else {
+        // Progressive CPU decode in real-time: smooth expansion to current fraction
+        final target = (peaks.length / WaveformService.targetWaveformSamples)
+            .clamp(0.0, 1.0);
+        if (target > _revealController.value) {
+          _animateRevealTo(target, isComplete: false);
+        }
+      }
     }, onError: (e) {
       debugPrint('WaveformProgressBar: load failed: $e');
     });
   }
 
-  /// Subtle collapse→full reveal on the first real emission. Later uncached
-  /// partials land mid-reveal (or after it has finished) and leave the running
-  /// animation alone, so the bars keep growing left-to-right instead of
-  /// restarting a bounce each poll.
-  void _revealWaveform() {
-    if (_revealed) return;
-    _revealed = true;
-    // Grow the bars in from zero: each new set of peaks (its own snapshot, and
-    // uncached partials filling left-to-right) holds the bar heights at the
-    // running value until the reveal finishes, then stays fully grown.
-    unawaited(_barAnimationController.forward(from: 0.0));
+  /// Really fast left-to-right sweep for cached waveforms
+  void _animateRevealFast() {
+    _revealController.stop();
+    _revealController.value = 0.0;
+    _revealController.animateTo(
+      1.0,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// Smoothly advances the expansion front as CPU yields new PCM data
+  void _animateRevealTo(double target, {required bool isComplete}) {
+    final current = _revealController.value;
+    if (target <= current) return;
+    final delta = (target - current).clamp(0.0, 1.0);
+    final int ms;
+    final Curve curve;
+    if (isComplete) {
+      ms = (delta * 400).clamp(140, 260).round();
+      curve = Curves.easeOutCubic;
+    } else {
+      ms = (delta * 550).clamp(90, 220).round();
+      curve = Curves.easeOutQuad;
+    }
+    _revealController.animateTo(
+      target,
+      duration: Duration(milliseconds: ms),
+      curve: curve,
+    );
   }
 
   String _formatDuration(Duration duration) {
@@ -242,6 +267,17 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     final totalBars = (width / 3.0).floor();
     if (totalBars <= 0) return 0;
     return (x.clamp(0.0, width) / 3.0).floor().clamp(0, totalBars - 1);
+  }
+
+  void _updateScrubDelta(double targetPercent) {
+    if (widget.total.inMilliseconds <= 0) {
+      _scrubDeltaNotifier.value = 0;
+      return;
+    }
+    final targetMs = (widget.total.inMilliseconds * targetPercent).round();
+    final deltaMs = targetMs - _dragOriginDuration.inMilliseconds;
+    final deltaSec = (deltaMs / 1000).round();
+    _scrubDeltaNotifier.value = deltaSec;
   }
 
   @override
@@ -267,6 +303,9 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             final x = details.localPosition.dx;
             _dragPosition = (x / box.size.width).clamp(0.0, 1.0);
             _dragPositionNotifier.value = _dragPosition;
+            _dragOriginDuration = _positionNotifier.value;
+            _updateScrubDelta(_dragPosition!);
+            _scrubController.forward();
             _lastHapticBarIndex = _calculateBarIndex(x, box.size.width);
           },
           onHorizontalDragUpdate: (details) {
@@ -274,6 +313,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             final x = details.localPosition.dx;
             _dragPosition = (x / box.size.width).clamp(0.0, 1.0);
             _dragPositionNotifier.value = _dragPosition;
+            _updateScrubDelta(_dragPosition!);
             final currentBar = _calculateBarIndex(x, box.size.width);
             if (_lastHapticBarIndex != null &&
                 currentBar != _lastHapticBarIndex) {
@@ -285,24 +325,30 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
           },
           onHorizontalDragEnd: (details) {
             _lastHapticBarIndex = null;
+            _scrubController.reverse();
             if (_dragPosition != null) {
               widget.onSeek(widget.total * _dragPosition!);
             }
             _dragPosition = null;
             _dragPositionNotifier.value = null;
+            _scrubDeltaNotifier.value = null;
           },
           onHorizontalDragCancel: () {
             _lastHapticBarIndex = null;
+            _scrubController.reverse();
             _dragPosition = null;
             _dragPositionNotifier.value = null;
+            _scrubDeltaNotifier.value = null;
           },
           onTapUp: (details) {
             _lastHapticBarIndex = null;
+            _scrubController.reverse();
             final box = context.findRenderObject() as RenderBox;
             final x = details.localPosition.dx.clamp(0.0, box.size.width);
             final percent = (x / box.size.width).clamp(0.0, 1.0);
             _dragPosition = null;
             _dragPositionNotifier.value = null;
+            _scrubDeltaNotifier.value = null;
             widget.onSeek(widget.total * percent);
           },
           onTapDown: (details) {
@@ -311,12 +357,17 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             final percent = (x / box.size.width).clamp(0.0, 1.0);
             _dragPosition = percent;
             _dragPositionNotifier.value = percent;
+            _dragOriginDuration = _positionNotifier.value;
+            _updateScrubDelta(percent);
+            _scrubController.forward();
             _lastHapticBarIndex = _calculateBarIndex(x, box.size.width);
           },
           onTapCancel: () {
             _lastHapticBarIndex = null;
+            _scrubController.reverse();
             _dragPosition = null;
             _dragPositionNotifier.value = null;
+            _scrubDeltaNotifier.value = null;
           },
           child: Container(
             height: 60,
@@ -324,50 +375,18 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             padding: const EdgeInsets.symmetric(vertical: 5),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final peaks = _peaks;
-                if (peaks == null || peaks.isEmpty) {
-                  return CustomPaint(
-                    size: Size(
-                      constraints.maxWidth,
-                      constraints.maxHeight,
-                    ),
-                    painter: WaveformPainter(
-                      peaks: null,
-                      positionNotifier: _positionNotifier,
-                      dragPositionNotifier: _dragPositionNotifier,
-                      total: widget.total,
-                      color: primaryColor,
-                      animationValue: _collapsedAmplitude,
-                      isCollapsedPlaceholder: true,
-                    ),
-                  );
-                }
-
-                final width = constraints.maxWidth;
-                if (_cachedWidth != width || _cachedDisplayPeaks == null) {
-                  _cachedWidth = width;
-                  final totalBars = (width / 3).floor();
-                  // Progressive partials carry fewer bars than the full
-                  // waveform; draw only that share of the width so the bars
-                  // grow left-to-right as the decode fills in.
-                  final fraction =
-                      peaks.length / WaveformService.targetWaveformSamples;
-                  final drawBars = math.max(1, (totalBars * fraction).round());
-                  _cachedDisplayPeaks = _downsample(peaks, drawBars);
-                }
-
                 return AnimatedBuilder(
-                  animation: _barAnimation,
+                  animation: _revealController,
                   builder: (context, child) {
                     return CustomPaint(
                       size: Size(constraints.maxWidth, constraints.maxHeight),
                       painter: WaveformPainter(
-                        peaks: _cachedDisplayPeaks,
+                        peaks: _peaks,
+                        revealProgress: _revealController.value,
                         positionNotifier: _positionNotifier,
                         dragPositionNotifier: _dragPositionNotifier,
                         total: widget.total,
                         color: primaryColor,
-                        animationValue: _barAnimation.value,
                       ),
                     );
                   },
@@ -376,62 +395,96 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            ValueListenableBuilder<double?>(
-              valueListenable: _dragPositionNotifier,
-              builder: (context, dragPos, child) {
-                if (dragPos != null) {
-                  return Text(
-                    _formatDuration(widget.total * dragPos),
-                    style: _labelStyle,
-                  );
-                }
-                return ValueListenableBuilder<Duration>(
-                  valueListenable: _positionNotifier,
-                  builder: (context, position, child) {
-                    return Text(
-                      _formatDuration(position),
-                      style: _labelStyle,
-                    );
-                  },
-                );
-              },
-            ),
-            Text(
-              _formattedTotalTime,
-              style: _labelStyle,
-            ),
-          ],
+        const SizedBox(height: 6),
+        AnimatedBuilder(
+          animation: _scrubAnimation,
+          builder: (context, child) {
+            final animValue = _scrubAnimation.value;
+            final yOffset = animValue * 11.0;
+
+            return Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
+              children: [
+                if (animValue > 0.01)
+                  Positioned(
+                    top: -3.0,
+                    child: Opacity(
+                      opacity: animValue.clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: 0.85 + (0.15 * animValue),
+                        child: ValueListenableBuilder<int?>(
+                          valueListenable: _scrubDeltaNotifier,
+                          builder: (context, deltaSec, _) {
+                            final delta = deltaSec ?? 0;
+                            final deltaText =
+                                '${delta >= 0 ? '+' : ''}${delta}s';
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 1.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: primaryColor.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: primaryColor.withValues(alpha: 0.35),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                deltaText,
+                                style: TextStyle(
+                                  color: primaryColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                Transform.translate(
+                  offset: Offset(0, yOffset),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      ValueListenableBuilder<double?>(
+                        valueListenable: _dragPositionNotifier,
+                        builder: (context, dragPos, child) {
+                          if (dragPos != null) {
+                            return Text(
+                              _formatDuration(widget.total * dragPos),
+                              style: _labelStyle,
+                            );
+                          }
+                          return ValueListenableBuilder<Duration>(
+                            valueListenable: _positionNotifier,
+                            builder: (context, position, child) {
+                              return Text(
+                                _formatDuration(position),
+                                style: _labelStyle,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      Text(
+                        _formattedTotalTime,
+                        style: _labelStyle,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
-  }
-
-  List<double> _downsample(List<double> samples, int targetCount) {
-    if (samples.length == targetCount) return samples;
-
-    final result = <double>[];
-    final stepSize = samples.length / targetCount;
-    for (var i = 0; i < targetCount; i++) {
-      var start = (i * stepSize).floor();
-      var end = ((i + 1) * stepSize).floor();
-      if (end > samples.length) end = samples.length;
-
-      if (start >= end) {
-        result.add(samples[start.clamp(0, samples.length - 1)]);
-        continue;
-      }
-
-      var max = 0.0;
-      for (var j = start; j < end; j++) {
-        if (samples[j] > max) max = samples[j];
-      }
-      result.add(max);
-    }
-    return result;
   }
 }
 
@@ -452,21 +505,19 @@ double calibrateWaveformAmplitude(double amplitude) {
 
 class WaveformPainter extends CustomPainter {
   final List<double>? peaks;
+  final double revealProgress;
   final ValueNotifier<Duration> positionNotifier;
   final ValueNotifier<double?> dragPositionNotifier;
   final Duration total;
   final Color color;
-  final double animationValue;
-  final bool isCollapsedPlaceholder;
 
   WaveformPainter({
     required this.peaks,
+    required this.revealProgress,
     required this.positionNotifier,
     required this.dragPositionNotifier,
     required this.total,
     required this.color,
-    required this.animationValue,
-    this.isCollapsedPlaceholder = false,
   }) : super(
           repaint: Listenable.merge([positionNotifier, dragPositionNotifier]),
         );
@@ -492,78 +543,85 @@ class WaveformPainter extends CustomPainter {
           : 0.0;
     }
 
-    final inactiveColor = Colors.white.withValues(alpha: 0.15);
+    final inactiveColor = Colors.white.withValues(alpha: 0.18);
+    const compressedBarHeight = 2.5;
 
-    final peakData = peaks;
-    if (isCollapsedPlaceholder || peakData == null || peakData.isEmpty) {
-      final progressBarIndex = progress * totalBarsCount;
-      final heightScale =
-          (animationValue / _collapsedAmplitude).clamp(0.35, 1.0);
-      final barHeight = size.height * 0.05 * heightScale;
-      final y = (size.height - barHeight) / 2;
-
-      for (var i = 0; i < totalBarsCount; i++) {
-        final distanceFromProgress = (i - progressBarIndex).abs();
-        final isActive = i < progressBarIndex;
-
-        if (distanceFromProgress >= 2) {
-          paint.color = isActive ? color : inactiveColor;
-        } else {
-          final colorIntensity =
-              isActive ? 1.0 : (2 - distanceFromProgress) / 2;
-          paint.color = Color.lerp(inactiveColor, color, colorIntensity)!;
-        }
-
-        final x = i * (barWidth + spacing) + spacing / 2;
-
-        canvas.drawRRect(
-          RRect.fromLTRBR(
-            x,
-            y,
-            x + barWidth,
-            y + barHeight,
-            const Radius.circular(1.0),
-          ),
-          paint,
-        );
-      }
-      return;
-    }
-
-    // The playhead lives on the full-width bar grid, not on peakData.length:
-    // a progressive emission draws only the left share of the bars while the
-    // decode fills in, and the playhead must stay where it belongs in the song
-    // regardless. For a complete waveform peakData.length == totalBarsCount, so
-    // this is identical to the old math.
     final barOffset = 2.35 / totalBarsCount;
     final adjustedProgress = (progress - barOffset).clamp(0.0, 1.0);
     final progressBarIndex = adjustedProgress * totalBarsCount;
 
-    for (var i = 0; i < peakData.length; i++) {
-      final v = peakData[i];
+    final peakData = peaks;
+    final hasPeaks = peakData != null && peakData.isNotEmpty;
+    final frontSpan = 3.0 / totalBarsCount;
+
+    for (var i = 0; i < totalBarsCount; i++) {
+      final barFraction = (i + 0.5) / totalBarsCount;
+
+      // Reveal factor: 0.0 (compressed baseline) -> 1.0 (fully expanded peak)
+      final double revealFactor;
+      if (revealProgress <= 0.0 || !hasPeaks) {
+        revealFactor = 0.0;
+      } else if (barFraction <= revealProgress) {
+        final edgeDelta = (revealProgress - barFraction) / frontSpan;
+        revealFactor =
+            (edgeDelta * edgeDelta * (3.0 - 2.0 * edgeDelta)).clamp(0.0, 1.0);
+      } else {
+        revealFactor = 0.0;
+      }
+
+      final double targetHeight;
+      if (hasPeaks) {
+        final samplePos =
+            (i / totalBarsCount) * WaveformService.targetWaveformSamples;
+        final startIndex = samplePos.floor();
+        final endIndex =
+            (((i + 1) / totalBarsCount) * WaveformService.targetWaveformSamples)
+                .ceil();
+
+        double maxAmp = 0.0;
+        if (startIndex < peakData.length) {
+          final sliceEnd = math.min(endIndex, peakData.length);
+          for (var s = startIndex; s < sliceEnd; s++) {
+            if (peakData[s] > maxAmp) maxAmp = peakData[s];
+          }
+          if (maxAmp == 0.0 && startIndex < peakData.length) {
+            maxAmp = peakData[startIndex];
+          }
+        }
+        targetHeight = calculateWaveformBarHeight(maxAmp, size.height);
+      } else {
+        targetHeight = compressedBarHeight;
+      }
+
+      final barHeight =
+          ui.lerpDouble(compressedBarHeight, targetHeight, revealFactor)!;
+
       final distanceFromProgress = (i - progressBarIndex).abs();
       final isActive = i < progressBarIndex;
 
+      final Color baseColor;
       if (distanceFromProgress >= 2) {
-        paint.color = isActive ? color : inactiveColor;
+        baseColor = isActive ? color : inactiveColor;
       } else {
         final colorIntensity = isActive ? 1.0 : (2 - distanceFromProgress) / 2;
-        paint.color = Color.lerp(inactiveColor, color, colorIntensity)!;
+        baseColor = Color.lerp(inactiveColor, color, colorIntensity)!;
       }
 
-      final animatedHeight =
-          calculateWaveformBarHeight(v, size.height) * animationValue;
+      // Subtle opacity scaling for compressed bars ahead of the generation front
+      final double alphaScale = ui.lerpDouble(0.65, 1.0, revealFactor)!;
+      paint.color = baseColor.withValues(
+          alpha: (baseColor.a * alphaScale).clamp(0.0, 1.0));
 
       final x = i * (barWidth + spacing) + spacing / 2;
-      final y = (size.height - animatedHeight) / 2;
+      final y = (size.height - barHeight) / 2;
 
       canvas.drawRRect(
         RRect.fromLTRBR(
           x,
           y,
           x + barWidth,
-          y + animatedHeight,
-          const Radius.circular(1.0),
+          y + barHeight,
+          const Radius.circular(1.2),
         ),
         paint,
       );
@@ -573,8 +631,7 @@ class WaveformPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant WaveformPainter oldDelegate) {
     return oldDelegate.peaks != peaks ||
-        oldDelegate.animationValue != animationValue ||
-        oldDelegate.isCollapsedPlaceholder != isCollapsedPlaceholder ||
+        oldDelegate.revealProgress != revealProgress ||
         oldDelegate.color != color ||
         oldDelegate.total != total;
   }

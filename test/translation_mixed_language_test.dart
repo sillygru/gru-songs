@@ -215,6 +215,48 @@ void main() {
     });
   });
 
+  group('LingvaTranslateService.lyricsNeedTranslation', () {
+    test('English lyrics targeting English do not need translation', () {
+      expect(
+        LingvaTranslateService.lyricsNeedTranslation(
+          '[00:01.00]I walk a lonely road\n[00:04.00]The only one that I have ever known',
+          'en',
+        ),
+        isFalse,
+      );
+    });
+
+    test('Japanese lyrics targeting English need translation', () {
+      expect(
+        LingvaTranslateService.lyricsNeedTranslation(
+          '[00:01.00]こんにちは世界\n[00:04.00]さようなら',
+          'en',
+        ),
+        isTrue,
+      );
+    });
+
+    test('English lyrics targeting Japanese need translation', () {
+      expect(
+        LingvaTranslateService.lyricsNeedTranslation(
+          '[00:01.00]Hello world\n[00:04.00]Goodbye',
+          'ja',
+        ),
+        isTrue,
+      );
+    });
+
+    test('Japanese lyrics targeting Japanese do not need translation', () {
+      expect(
+        LingvaTranslateService.lyricsNeedTranslation(
+          '[00:01.00]こんにちは世界\n[00:04.00]さようなら',
+          'ja',
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('LingvaTranslateService.translateLyrics', () {
     test('all lines already in the target script skip without translating',
         () async {

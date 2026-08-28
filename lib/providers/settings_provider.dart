@@ -45,6 +45,7 @@ class SettingsState {
   final String lyricsTargetLanguage;
   final bool lyricsAutoTranslate;
   final String lyricsTranslationMode;
+  final bool lyricsSimulatedRichSyncEnabled;
   final bool autoSyncEnabled;
   final bool syncSettingsEnabled;
 
@@ -89,6 +90,7 @@ class SettingsState {
     this.lyricsTargetLanguage = 'es',
     this.lyricsAutoTranslate = false,
     this.lyricsTranslationMode = 'subtext',
+    this.lyricsSimulatedRichSyncEnabled = true,
     this.autoSyncEnabled = true,
     this.syncSettingsEnabled = true,
   }) : quickActionConfig = quickActionConfig ?? QuickActionConfig.defaults;
@@ -134,6 +136,7 @@ class SettingsState {
     String? lyricsTargetLanguage,
     bool? lyricsAutoTranslate,
     String? lyricsTranslationMode,
+    bool? lyricsSimulatedRichSyncEnabled,
     bool? autoSyncEnabled,
     bool? syncSettingsEnabled,
   }) {
@@ -197,6 +200,8 @@ class SettingsState {
       lyricsAutoTranslate: lyricsAutoTranslate ?? this.lyricsAutoTranslate,
       lyricsTranslationMode:
           lyricsTranslationMode ?? this.lyricsTranslationMode,
+      lyricsSimulatedRichSyncEnabled:
+          lyricsSimulatedRichSyncEnabled ?? this.lyricsSimulatedRichSyncEnabled,
       autoSyncEnabled: autoSyncEnabled ?? this.autoSyncEnabled,
       syncSettingsEnabled: syncSettingsEnabled ?? this.syncSettingsEnabled,
     );
@@ -247,6 +252,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _keyLyricsTargetLanguage = 'lyrics_target_language';
   static const _keyLyricsAutoTranslate = 'lyrics_auto_translate';
   static const _keyLyricsTranslationMode = 'lyrics_translation_mode';
+  static const _keyLyricsSimulatedRichSyncEnabled =
+      'lyrics_simulated_rich_sync_enabled';
   static const String _keyAutoSyncEnabled = 'auto_sync_enabled';
   static const String _keySyncSettingsEnabled = 'sync_settings_enabled';
   static const double maxDelayDuration = 12.0;
@@ -362,6 +369,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
       lyricsAutoTranslate: prefs.getBool(_keyLyricsAutoTranslate) ?? false,
       lyricsTranslationMode:
           prefs.getString(_keyLyricsTranslationMode) ?? 'subtext',
+      lyricsSimulatedRichSyncEnabled:
+          prefs.getBool(_keyLyricsSimulatedRichSyncEnabled) ?? true,
       autoSyncEnabled: prefs.getBool(_keyAutoSyncEnabled) ?? true,
       syncSettingsEnabled: prefs.getBool(_keySyncSettingsEnabled) ?? true,
     );
@@ -393,6 +402,12 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(lyricsTranslationMode: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyLyricsTranslationMode, value);
+  }
+
+  Future<void> setLyricsSimulatedRichSyncEnabled(bool enabled) async {
+    state = state.copyWith(lyricsSimulatedRichSyncEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyLyricsSimulatedRichSyncEnabled, enabled);
   }
 
   Future<void> setFadeInDuration(double value) async {

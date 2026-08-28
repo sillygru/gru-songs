@@ -108,6 +108,30 @@ class LingvaTranslateService {
     return count / meaningful < 0.5;
   }
 
+  /// Checks whether raw [lyrics] contains any text line that needs translation
+  /// to [targetLang].
+  static bool lyricsNeedTranslation(String lyrics, String targetLang) {
+    if (lyrics.trim().isEmpty) return false;
+    final lines = lyrics.split('\n');
+    final timeExp = RegExp(r'^((?:\[[0-9]+:[0-9]+\.?[0-9]*\])+)(.*)$');
+    final metaExp = RegExp(r'^\[[a-zA-Z]+:.+\]$');
+
+    for (final raw in lines) {
+      final lineText = raw.trim();
+      if (lineText.isEmpty || metaExp.hasMatch(lineText)) continue;
+      var cleanText = lineText;
+      final timeMatch = timeExp.firstMatch(lineText);
+      if (timeMatch != null) {
+        cleanText = (timeMatch.group(2) ?? '').trim();
+      }
+      if (cleanText.isEmpty) continue;
+      if (lineNeedsTranslation(cleanText, targetLang)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Splices translated lines back into their original positions. Entries that
   /// did not need translation (already in the target language) keep their
   /// original text; [translatedLines] must hold exactly one entry per line
@@ -331,15 +355,15 @@ class LingvaTranslateService {
     // not shift every following lyric when one endpoint collapses a line: fall
     // back to one request per line, where the response cannot be ambiguous.
     if (splitLines.length != batch.length) {
-      final individualResults = await Future.wait(
-        batch.map(
-          (item) => _raceTranslation(
-            query: item.text,
-            targetLang: targetLang,
-            sourceLang: sourceLang,
-          ),
-        ),
-      );
+      final individualResults = <TranslationResponse>[];
+      for (final item in batch) {
+        final res = await _raceTranslation(
+          query: item.text,
+          targetLang: targetLang,
+          sourceLang: sourceLang,
+        );
+        individualResults.add(res);
+      }
       return _BatchResult(
         lines: [
           for (int i = 0; i < batch.length; i++)
@@ -382,10 +406,21 @@ class LingvaTranslateService {
     late final List<Future<TranslationResponse> Function(HttpClient)> starters;
 
     starters = [
-      for (final h in hosts)
-        (client) => _fetchFromLingvaHost(
+      (client) => _fetchFromGoogleClients5(
+            client: client,
+            query: query,
+            targetLang: targetLang,
+            sourceLang: sourceLang,
+          ),
+      (client) => _fetchFromGoogleMobile(
+            client: client,
+            query: query,
+            targetLang: targetLang,
+            sourceLang: sourceLang,
+          ),
+      if (query.length <= _myMemoryMaxChars)
+        (client) => _fetchFromMyMemory(
               client: client,
-              host: h,
               query: query,
               targetLang: targetLang,
               sourceLang: sourceLang,
@@ -396,15 +431,10 @@ class LingvaTranslateService {
             targetLang: targetLang,
             sourceLang: sourceLang,
           ),
-      (client) => _fetchFromGoogleClients5(
-            client: client,
-            query: query,
-            targetLang: targetLang,
-            sourceLang: sourceLang,
-          ),
-      if (query.length <= _myMemoryMaxChars)
-        (client) => _fetchFromMyMemory(
+      for (final h in hosts)
+        (client) => _fetchFromLingvaHost(
               client: client,
+              host: h,
               query: query,
               targetLang: targetLang,
               sourceLang: sourceLang,
@@ -522,7 +552,8 @@ class LingvaTranslateService {
     );
 
     final request = await client.getUrl(uri);
-    request.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+    request.headers.set(HttpHeaders.userAgentHeader,
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
     final response = await request.close().timeout(_timeout);
 
@@ -557,26 +588,29 @@ class LingvaTranslateService {
     );
   }
 
-  /// Alternate Google free endpoint used by Chrome's dictionary extension.
+  /// Free Google dictionary endpoint used by Chrome extensions, accessed via POST.
   Future<TranslationResponse> _fetchFromGoogleClients5({
     required HttpClient client,
     required String query,
     required String targetLang,
     required String sourceLang,
   }) async {
-    final uri = Uri.https(
-      'clients5.google.com',
-      '/translate_a/t',
-      {
-        'client': 'dict-chrome-ex',
-        'sl': sourceLang,
-        'tl': targetLang,
-        'q': query,
-      },
+    final uri = Uri.parse(
+      'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${Uri.encodeComponent(sourceLang)}&tl=${Uri.encodeComponent(targetLang)}',
     );
 
-    final request = await client.getUrl(uri);
-    request.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+    final request = await client.postUrl(uri);
+    request.headers.set(
+      HttpHeaders.userAgentHeader,
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    );
+    request.headers.set(
+      HttpHeaders.contentTypeHeader,
+      'application/x-www-form-urlencoded; charset=utf-8',
+    );
+    final bodyBytes = utf8.encode('q=${Uri.encodeQueryComponent(query)}');
+    request.contentLength = bodyBytes.length;
+    request.add(bodyBytes);
 
     final response = await request.close().timeout(_timeout);
 
@@ -617,6 +651,54 @@ class LingvaTranslateService {
       text: buffer.toString(),
       detectedSourceLang: detected,
     );
+  }
+
+  /// Google lightweight mobile translation endpoint fallback.
+  Future<TranslationResponse> _fetchFromGoogleMobile({
+    required HttpClient client,
+    required String query,
+    required String targetLang,
+    required String sourceLang,
+  }) async {
+    final uri = Uri.parse('https://translate.google.com/m');
+    final request = await client.postUrl(uri);
+    request.headers.set(
+      HttpHeaders.userAgentHeader,
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    );
+    request.headers.set(
+      HttpHeaders.contentTypeHeader,
+      'application/x-www-form-urlencoded; charset=utf-8',
+    );
+    final bodyBytes = utf8.encode(
+      'sl=${Uri.encodeQueryComponent(sourceLang)}&tl=${Uri.encodeQueryComponent(targetLang)}&q=${Uri.encodeQueryComponent(query)}',
+    );
+    request.contentLength = bodyBytes.length;
+    request.add(bodyBytes);
+
+    final response = await request.close().timeout(_timeout);
+    if (response.statusCode != 200) {
+      throw HttpException('Google Mobile HTTP ${response.statusCode}');
+    }
+
+    final body = await response.transform(utf8.decoder).join();
+    final match = RegExp(
+      r'class="result-container">([^<]*)<',
+      dotAll: true,
+    ).firstMatch(body);
+    if (match == null || match.group(1) == null) {
+      throw const FormatException('Invalid Google Mobile translation format');
+    }
+
+    var text = match.group(1)!;
+    text = text
+        .replaceAll('&#39;', "'")
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
+
+    return TranslationResponse(text: text);
   }
 
   Future<TranslationResponse> _fetchFromMyMemory({

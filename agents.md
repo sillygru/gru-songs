@@ -2,7 +2,7 @@
 
 ## Critical Rules
 
-- **No git commands** - Never run write git operations. Git commands are for reading only.
+- **No git commands** - Never run write git operations. NEVER run `git checkout`, `git reset`, `git revert`, `git clean`, or any file/branch-discarding git commands. Parallel agents work simultaneously on different files, and running destructive git operations will destroy their work. Git commands are strictly for reading only (`git status`, `git diff`, `git log`).
 - **No building** - Do not run `flutter build` or `flutter run` unless explicitly requested
 - **No emojis** - Never use emojis in code, comments, or messages
 - **File-based identity** - User data (favorites, stats) is linked to filenames. Do not change this

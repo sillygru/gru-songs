@@ -158,7 +158,8 @@ class LyricsLine extends StatelessWidget {
                       crossAxisAlignment: crossAxisAlignment,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _buildPrimaryText(primaryText, lineOpacity, textAlign),
+                        ..._buildLyricLines(
+                            primaryText, lineOpacity, textAlign),
                         if (showSubtext) ...[
                           const SizedBox(height: PlayerTokens.s1),
                           Text(
@@ -190,19 +191,125 @@ class LyricsLine extends StatelessWidget {
     );
   }
 
-  Widget _buildPrimaryText(
+  List<Widget> _buildLyricLines(
     String primaryText,
     double lineOpacity,
     TextAlign textAlign,
   ) {
+    final isDuetTag = primaryText.trim().startsWith('(Both)') ||
+        primaryText.trim().startsWith('(All)') ||
+        primaryText.trim().startsWith('[Both]') ||
+        primaryText.trim().startsWith('[All]');
+
     final timedLine = wordLine;
     final translation = translatedText?.trim();
     final isReplace = translationMode == 'replace' &&
         translation != null &&
         translation.isNotEmpty;
-    if (isReplace || timedLine == null || timedLine.words.isEmpty) {
-      return Text(primaryText, textAlign: textAlign);
+
+    if (!isReplace && timedLine != null && timedLine.words.isNotEmpty) {
+      if (!isDuetTag &&
+          primaryText.contains('(') &&
+          primaryText.contains(')')) {
+        final mainWords = <RichLyricWord>[];
+        final backingWords = <RichLyricWord>[];
+        var inParen = false;
+
+        for (final word in timedLine.words) {
+          final hasOpen = word.text.contains('(');
+          final hasClose = word.text.contains(')');
+
+          if (hasOpen && !hasClose) {
+            inParen = true;
+            backingWords.add(word);
+          } else if (hasClose && inParen) {
+            backingWords.add(word);
+            inParen = false;
+          } else if (inParen || (hasOpen && hasClose)) {
+            backingWords.add(word);
+          } else {
+            mainWords.add(word);
+          }
+        }
+
+        if (mainWords.isNotEmpty && backingWords.isNotEmpty) {
+          return [
+            _buildWordSpans(mainWords, lineOpacity, textAlign,
+                isBacking: false),
+            const SizedBox(height: PlayerTokens.s1),
+            _buildWordSpans(backingWords, lineOpacity * 0.88, textAlign,
+                isBacking: true),
+          ];
+        } else if (mainWords.isEmpty && backingWords.isNotEmpty) {
+          return [
+            _buildWordSpans(backingWords, lineOpacity * 0.88, textAlign,
+                isBacking: true),
+          ];
+        }
+      }
+
+      return [
+        _buildWordSpans(timedLine.words, lineOpacity, textAlign,
+            isBacking: false),
+      ];
     }
+
+    // Static text path
+    if (!isDuetTag && primaryText.contains('(') && primaryText.contains(')')) {
+      final backingMatches = RegExp(r'\([^)]+\)').allMatches(primaryText);
+      if (backingMatches.isNotEmpty) {
+        final backingText = backingMatches.map((m) => m.group(0)!).join(' ');
+        final mainText =
+            primaryText.replaceAll(RegExp(r'\s*\([^)]+\)\s*'), ' ').trim();
+
+        final backingStyle = TextStyle(
+          fontSize: PlayerTokens.lyricsFontSize * 0.72,
+          fontWeight: FontWeight.w600,
+          color: Colors.white.withValues(alpha: lineOpacity * 0.88),
+          height: 1.25,
+          letterSpacing: -0.2,
+        );
+
+        if (mainText.isNotEmpty && backingText.isNotEmpty) {
+          return [
+            Text(mainText, textAlign: textAlign),
+            const SizedBox(height: PlayerTokens.s1),
+            Text(backingText, textAlign: textAlign, style: backingStyle),
+          ];
+        } else if (mainText.isEmpty && backingText.isNotEmpty) {
+          return [
+            Text(backingText, textAlign: textAlign, style: backingStyle),
+          ];
+        }
+      }
+    }
+
+    return [
+      Text(primaryText, textAlign: textAlign),
+    ];
+  }
+
+  Widget _buildWordSpans(
+    List<RichLyricWord> words,
+    double lineOpacity,
+    TextAlign textAlign, {
+    required bool isBacking,
+  }) {
+    final style = isBacking
+        ? TextStyle(
+            fontSize: PlayerTokens.lyricsFontSize * 0.72,
+            fontWeight: FontWeight.w600,
+            height: 1.25,
+            letterSpacing: -0.2,
+            color: Colors.white.withValues(alpha: lineOpacity),
+          )
+        : TextStyle(
+            fontSize: PlayerTokens.lyricsFontSize,
+            fontWeight: FontWeight.w800,
+            height: 1.28,
+            letterSpacing: -0.4,
+            color: Colors.white.withValues(alpha: lineOpacity),
+          );
 
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(end: playbackPosition.inMicroseconds.toDouble()),
@@ -212,9 +319,11 @@ class LyricsLine extends StatelessWidget {
         final position = Duration(microseconds: animatedMicros.round());
         final spans = <InlineSpan>[];
 
-        for (var index = 0; index < timedLine.words.length; index++) {
-          final word = timedLine.words[index];
-          final wordSuffix = index < timedLine.words.length - 1 ? ' ' : '';
+        for (var index = 0; index < words.length; index++) {
+          final word = words[index];
+          final wordSuffix = index < words.length - 1
+              ? (word.text.endsWith('-') ? '' : ' ')
+              : '';
 
           spans.add(
             WidgetSpan(
@@ -227,12 +336,7 @@ class LyricsLine extends StatelessWidget {
                 lineOpacity: lineOpacity,
                 isActive: isActive,
                 wordSuffix: wordSuffix,
-                textStyle: const TextStyle(
-                  fontSize: PlayerTokens.lyricsFontSize,
-                  fontWeight: FontWeight.w800,
-                  height: 1.28,
-                  letterSpacing: -0.4,
-                ),
+                textStyle: style,
               ),
             ),
           );

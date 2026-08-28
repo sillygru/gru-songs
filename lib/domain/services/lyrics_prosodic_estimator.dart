@@ -1,3 +1,5 @@
+// @dart=3.7
+// dart format off
 import 'dart:math' as math;
 import '../models/rich_lyrics.dart';
 

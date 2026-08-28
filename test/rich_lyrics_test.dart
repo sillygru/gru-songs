@@ -371,4 +371,37 @@ void main() {
     // In a slow ballad (5s interval), singing should occupy >= 4.3s
     expect(vocalSpan, greaterThan(const Duration(milliseconds: 4300)));
   });
+
+  test('splits compound hyphenated words into distinct timed sub-words', () {
+    const lines = [
+      LyricLine(
+        time: Duration(seconds: 0),
+        text: 'I am twenty-one years old',
+        isSynced: true,
+      ),
+      LyricLine(
+        time: Duration(seconds: 4),
+        text: 'End',
+        isSynced: true,
+      ),
+    ];
+
+    final rich = RichLyrics.fromLyricLines(lines);
+    final words = rich.lines.first.words;
+
+    // "twenty-one" should be split into "twenty-" and "one"
+    expect(words, hasLength(6));
+    expect(words.map((w) => w.text).toList(), [
+      'I',
+      'am',
+      'twenty-',
+      'one',
+      'years',
+      'old',
+    ]);
+    expect(words[2].text, 'twenty-');
+    expect(words[3].text, 'one');
+    expect(words[3].start, greaterThanOrEqualTo(words[2].start));
+    expect(words[3].end, greaterThan(words[2].end));
+  });
 }

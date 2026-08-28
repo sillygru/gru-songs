@@ -760,16 +760,64 @@ class _TransportDock extends ConsumerWidget {
             );
           },
         ),
-        Pressable(
-          onTap: canSkipNext ? player.seekToNext : null,
-          child: Padding(
-            padding: const EdgeInsets.all(PlayerTokens.s3),
-            child: Icon(
-              Icons.skip_next_rounded,
-              size: 34,
-              color: canSkipNext ? Colors.white : disabled,
-            ),
-          ),
+        ValueListenableBuilder<bool>(
+          valueListenable: audioManager.fastForwardNotifier,
+          builder: (context, isFastForward, child) {
+            return Pressable(
+              onTap: canSkipNext ? player.seekToNext : null,
+              onLongPressStart: (_) => audioManager.startFastForward(),
+              onLongPressEnd: (_) => audioManager.stopFastForward(),
+              onLongPressCancel: () => audioManager.stopFastForward(),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(PlayerTokens.s3),
+                    child: Icon(
+                      isFastForward
+                          ? Icons.fast_forward_rounded
+                          : Icons.skip_next_rounded,
+                      size: 34,
+                      color: isFastForward
+                          ? accent
+                          : (canSkipNext ? Colors.white : disabled),
+                    ),
+                  ),
+                  if (isFastForward)
+                    Positioned(
+                      top: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: accent,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.5),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '2x',
+                          style: TextStyle(
+                            color: PlayerTokens.onAccent(accent),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
         IconButton(
           tooltip: 'Share',

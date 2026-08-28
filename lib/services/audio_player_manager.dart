@@ -172,6 +172,29 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       ValueNotifier(PlaybackMediaMode.audio);
   final ValueNotifier<PlaybackMediaMode> effectiveMediaModeNotifier =
       ValueNotifier(PlaybackMediaMode.audio);
+  final ValueNotifier<bool> fastForwardNotifier = ValueNotifier(false);
+
+  bool get isFastForwarding => fastForwardNotifier.value;
+
+  Future<void> startFastForward({double speed = 2.0}) async {
+    if (fastForwardNotifier.value) return;
+    fastForwardNotifier.value = true;
+    try {
+      await _player.setSpeed(speed);
+    } catch (e) {
+      debugPrint('AudioPlayerManager: failed to set fast forward speed: $e');
+    }
+  }
+
+  Future<void> stopFastForward() async {
+    if (!fastForwardNotifier.value) return;
+    fastForwardNotifier.value = false;
+    try {
+      await _player.setSpeed(1.0);
+    } catch (e) {
+      debugPrint('AudioPlayerManager: failed to reset speed: $e');
+    }
+  }
 
   AudioPlayerManager(this._statsService, this._storageService, [this._ref]) {
     WidgetsBinding.instance.addObserver(this);
@@ -508,7 +531,8 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       final currentIndex = state.currentIndex;
       if (currentIndex != null && _effectiveQueue.isNotEmpty) {
         if (currentIndex >= _effectiveQueue.length - 2) {
-          if (_shuffleState.config.enabled &&
+          if (!_isBackground &&
+              _shuffleState.config.enabled &&
               _player.loopMode == LoopMode.off) {
             _generateOfflineNext();
           }
@@ -731,6 +755,10 @@ class AudioPlayerManager extends WidgetsBindingObserver {
   }
 
   void _generateOfflineNext() async {
+    // Queue extension is speculative work; let uninterrupted playback use the
+    // existing queue while the app is backgrounded and resume generation when
+    // it returns to the foreground.
+    if (_isBackground) return;
     if (_isGeneratingNext) return;
     if (_player.loopMode != LoopMode.off) return;
     if (_allSongs.isEmpty) return;
@@ -2846,6 +2874,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     unawaited(savePlaybackState());
     _player.dispose();
     shuffleNotifier.dispose();
+    fastForwardNotifier.dispose();
     preferredMediaModeNotifier.dispose();
     effectiveMediaModeNotifier.dispose();
   }

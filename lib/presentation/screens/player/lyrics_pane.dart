@@ -311,14 +311,21 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         ? const <LyricLine>[]
         : LyricLine.parse(content);
 
-    final generatedWords = RichLyrics.fromLyricLines(
-      parsed,
-      songDuration: widget.song.duration,
-    );
+    final settings = ref.read(settingsProvider);
+    final List<RichLyricLine?> generatedWordLines;
+    if (settings.lyricsSimulatedRichSyncEnabled) {
+      final generatedWords = RichLyrics.fromLyricLines(
+        parsed,
+        songDuration: widget.song.duration,
+      );
+      generatedWordLines = generatedWords.lines;
+    } else {
+      generatedWordLines = const [];
+    }
 
     setState(() {
       _lyrics = parsed;
-      _wordLines = generatedWords.lines;
+      _wordLines = generatedWordLines;
       _richSyncAvailable = false;
       _rawLyricsContent = content;
       _translatedLyrics = null;
@@ -688,6 +695,34 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     // elsewhere is invisible from here. The revision counter is the signal.
     ref.listen(lyricsRevisionProvider, (_, __) => _load());
 
+    ref.listen(
+      settingsProvider.select((s) => s.lyricsSimulatedRichSyncEnabled),
+      (_, enabled) {
+        final lyrics = _lyrics;
+        if (lyrics != null && lyrics.isNotEmpty && !_richSyncAvailable) {
+          setState(() {
+            if (enabled) {
+              final generatedWords = RichLyrics.fromLyricLines(
+                lyrics,
+                songDuration: widget.song.duration,
+              );
+              _wordLines = generatedWords.lines;
+            } else {
+              _wordLines = const [];
+            }
+          });
+        }
+      },
+    );
+
+    final targetLang = ref.watch(settingsProvider).lyricsTargetLanguage;
+    final showTranslateButton = _hasCachedTranslation ||
+        (_rawLyricsContent != null &&
+            LingvaTranslateService.lyricsNeedTranslation(
+              _rawLyricsContent!,
+              targetLang,
+            ));
+
     return Stack(
       children: [
         Positioned.fill(child: _buildContent(context)),
@@ -726,24 +761,25 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
                     ),
                   ),
                 ),
-              IconButton(
-                icon: _translating
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        _hasCachedTranslation
-                            ? Icons.g_translate_rounded
-                            : Icons.translate_rounded,
-                      ),
-                color: _hasCachedTranslation
-                    ? widget.accent
-                    : Colors.white.withValues(alpha: PlayerTokens.aSecondary),
-                tooltip: 'Translate lyrics',
-                onPressed: _translating ? null : _openTranslationSheet,
-              ),
+              if (showTranslateButton)
+                IconButton(
+                  icon: _translating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          _hasCachedTranslation
+                              ? Icons.g_translate_rounded
+                              : Icons.translate_rounded,
+                        ),
+                  color: _hasCachedTranslation
+                      ? widget.accent
+                      : Colors.white.withValues(alpha: PlayerTokens.aSecondary),
+                  tooltip: 'Translate lyrics',
+                  onPressed: _translating ? null : _openTranslationSheet,
+                ),
               IconButton(
                 icon: const Icon(Icons.travel_explore_rounded),
                 color: Colors.white.withValues(alpha: PlayerTokens.aSecondary),

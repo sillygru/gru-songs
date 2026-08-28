@@ -12,6 +12,7 @@ import '../routes/player_route.dart';
 import '../tokens/app_tokens.dart';
 import 'audio_visualizer.dart';
 import '../components/app_icon.dart';
+import '../components/pressable.dart';
 import '../tokens/app_icons.dart';
 
 class NowPlayingBar extends ConsumerStatefulWidget {
@@ -269,15 +270,25 @@ class _NowPlayingContent extends ConsumerWidget {
                         );
                       },
                     ),
-                    IconButton(
-                      constraints: const BoxConstraints(),
-                      padding: const EdgeInsets.all(8),
-                      icon: AppIcon(
-                        AppIcons.skipNext,
-                        size: compact ? 24 : 28,
-                        color: Colors.white,
+                    Pressable(
+                      onTap: player.hasNext ? player.seekToNext : null,
+                      onLongPressStart: (_) => ref
+                          .read(audioPlayerManagerProvider)
+                          .startFastForward(),
+                      onLongPressEnd: (_) => ref
+                          .read(audioPlayerManagerProvider)
+                          .stopFastForward(),
+                      onLongPressCancel: () => ref
+                          .read(audioPlayerManagerProvider)
+                          .stopFastForward(),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: AppIcon(
+                          AppIcons.skipNext,
+                          size: compact ? 24 : 28,
+                          color: Colors.white,
+                        ),
                       ),
-                      onPressed: player.hasNext ? player.seekToNext : null,
                     ),
                   ],
                 ),

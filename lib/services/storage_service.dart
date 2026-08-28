@@ -545,6 +545,10 @@ class StorageService {
     'play_fade_duration',
     'pause_fade_duration',
     'keep_screen_awake_on_lyrics',
+    'lyrics_simulated_rich_sync_enabled',
+    'lyrics_target_language',
+    'lyrics_auto_translate',
+    'lyrics_translation_mode',
     'cover_sizing_mode',
     'lyrics_blur_overlay_enabled',
     'beat_reactive_cover_enabled',
@@ -670,6 +674,10 @@ class StorageService {
     'auto_pause_on_volume_zero',
     'auto_resume_on_volume_restore',
     'keep_screen_awake_on_lyrics',
+    'lyrics_simulated_rich_sync_enabled',
+    'lyrics_target_language',
+    'lyrics_auto_translate',
+    'lyrics_translation_mode',
   ];
 
   static const List<String> _uiSettingsKeys = [

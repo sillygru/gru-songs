@@ -42,6 +42,10 @@ class Pressable extends StatefulWidget {
 
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final GestureLongPressStartCallback? onLongPressStart;
+  final GestureLongPressEndCallback? onLongPressEnd;
+  final VoidCallback? onLongPressCancel;
+  final VoidCallback? onLongPressUp;
 
   /// The spring driving the dip and rebound. [AppTokens.springSnappy] is the
   /// default; use [AppTokens.springGentle] for larger surfaces that can carry a
@@ -63,6 +67,10 @@ class Pressable extends StatefulWidget {
     required this.child,
     this.onTap,
     this.onLongPress,
+    this.onLongPressStart,
+    this.onLongPressEnd,
+    this.onLongPressCancel,
+    this.onLongPressUp,
     this.spring = AppTokens.springSnappy,
     this.pressedScale = AppTokens.pressScale,
     this.haptic = PressHaptic.light,
@@ -77,7 +85,13 @@ class _PressableState extends State<Pressable>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
-  bool get _interactive => widget.onTap != null || widget.onLongPress != null;
+  bool get _interactive =>
+      widget.onTap != null ||
+      widget.onLongPress != null ||
+      widget.onLongPressStart != null ||
+      widget.onLongPressEnd != null ||
+      widget.onLongPressCancel != null ||
+      widget.onLongPressUp != null;
 
   @override
   void initState() {
@@ -117,6 +131,23 @@ class _PressableState extends State<Pressable>
     widget.onLongPress!.call();
   }
 
+  void _handleLongPressStart(LongPressStartDetails details) {
+    HapticFeedback.mediumImpact();
+    widget.onLongPressStart?.call(details);
+  }
+
+  void _handleLongPressEnd(LongPressEndDetails details) {
+    widget.onLongPressEnd?.call(details);
+  }
+
+  void _handleLongPressCancel() {
+    widget.onLongPressCancel?.call();
+  }
+
+  void _handleLongPressUp() {
+    widget.onLongPressUp?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scaled = AnimatedBuilder(
@@ -138,6 +169,13 @@ class _PressableState extends State<Pressable>
       onTapCancel: _handleTapCancel,
       onTap: _handleTap,
       onLongPress: widget.onLongPress == null ? null : _handleLongPress,
+      onLongPressStart:
+          widget.onLongPressStart == null ? null : _handleLongPressStart,
+      onLongPressEnd:
+          widget.onLongPressEnd == null ? null : _handleLongPressEnd,
+      onLongPressCancel:
+          widget.onLongPressCancel == null ? null : _handleLongPressCancel,
+      onLongPressUp: widget.onLongPressUp == null ? null : _handleLongPressUp,
       child: scaled,
     );
   }

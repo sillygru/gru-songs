@@ -5,6 +5,8 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit_config.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -177,50 +179,78 @@ class WaveformService {
     }
   }
 
-  Future<List<double>> _extractWaveformFast(String path) async {
-    return _extractWaveformDirect(path, targetWaveformSamples);
+  Future<List<double>> _extractWaveformFast(String path) {
+    return _extractWaveformStream(
+      path: path,
+      total: Duration.zero,
+      onPartial: null,
+    );
   }
 
-  /// Direct waveform extraction without delay-inducing filters.
-  ///
-  /// Uses a single FFmpeg thread and 16-bit mono PCM so decode stays cheap
-  /// enough not to underrun playback on the same device.
-  Future<List<double>> _extractWaveformDirect(
+  Future<List<double>> _extractWaveformProgressive(
     String path,
-    int targetSamples,
-  ) async {
-    File? raw;
-    try {
-      final outputPath = await _prepareTempOutputPath();
-      final decodeSucceeded = await _decodeToPcmFile(path, outputPath);
-      if (!decodeSucceeded) {
-        debugPrint('FFmpeg failed to extract waveform');
-        return generateWaveformPlaceholderSamples(targetSamples);
-      }
+    Duration total,
+    void Function(List<double>) onPartial,
+  ) {
+    return _extractWaveformStream(
+      path: path,
+      total: total,
+      onPartial: onPartial,
+    );
+  }
 
-      raw = File(outputPath);
-      if (!await raw.exists()) {
-        return generateWaveformPlaceholderSamples(targetSamples);
-      }
+  /// Streams 16-bit mono PCM directly from FFmpeg's output pipe without writing
+  /// uncompressed temp files to disk or polling file sizes.
+  Future<List<double>> _extractWaveformStream({
+    required String path,
+    required Duration total,
+    void Function(List<double>)? onPartial,
+  }) {
+    return MediaDecodeGate.run(
+      () => _runWaveformStreamDecode(
+        path: path,
+        total: total,
+        onPartial: onPartial,
+      ),
+      priority: MediaDecodePriority.high,
+    );
+  }
 
-      final rawPath = raw.path;
-      return await _isolateExtractPeaks(rawPath, targetSamples);
-    } catch (e) {
-      debugPrint('Error in direct waveform extraction: $e');
-      return generateWaveformPlaceholderSamples(targetSamples);
-    } finally {
-      try {
-        if (raw != null && await raw.exists()) await raw.delete();
-      } catch (_) {}
+  Future<List<double>> _runWaveformStreamDecode({
+    required String path,
+    required Duration total,
+    void Function(List<double>)? onPartial,
+  }) async {
+    final targetSamples = targetWaveformSamples;
+    final expectedBytes =
+        total.inSeconds > 0 ? total.inSeconds * _pcmBytesPerSecond : 0;
+
+    if (FFmpegService.usesSystemProcess) {
+      return _decodeViaSystemProcessPipe(
+        path: path,
+        targetSamples: targetSamples,
+        expectedBytes: expectedBytes,
+        onPartial: onPartial,
+      );
+    } else {
+      return _decodeViaMobilePipeOrFallback(
+        path: path,
+        targetSamples: targetSamples,
+        expectedBytes: expectedBytes,
+        onPartial: onPartial,
+      );
     }
   }
 
-  /// The single source of the waveform decode settings, so the direct and the
-  /// progressive paths cannot drift apart: one FFmpeg thread to keep headroom
-  /// for the audio callback, 16-bit mono PCM at 4 kHz, no delay-inducing
-  /// filters.
-  static List<String> _waveformDecodeArgs(String path, String outputPath) {
-    return [
+  /// Decodes directly from FFmpeg's stdout stream pipe on Desktop/Linux.
+  /// 100% event-driven push, zero disk writes, zero polling.
+  Future<List<double>> _decodeViaSystemProcessPipe({
+    required String path,
+    required int targetSamples,
+    required int expectedBytes,
+    void Function(List<double>)? onPartial,
+  }) async {
+    final args = [
       '-threads',
       '1',
       '-i',
@@ -232,134 +262,206 @@ class WaveformService {
       '4000',
       '-f',
       's16le',
-      '-y',
-      outputPath,
+      '-',
     ];
+
+    final process = await FFmpegService.instance.startFFmpeg(args);
+    if (process == null) {
+      debugPrint('FFmpegService: Failed to start ffmpeg process for streaming');
+      return generateWaveformPlaceholderSamples(targetSamples);
+    }
+
+    final builder = BytesBuilder(copy: false);
+    var lastEmittedBytes = 0;
+    const int emitThresholdBytes = 3200;
+
+    final completer = Completer<void>();
+    final sub = process.stdout.listen(
+      (chunk) {
+        builder.add(chunk);
+        if (onPartial != null && expectedBytes > 0) {
+          final currentLen = builder.length;
+          if (currentLen - lastEmittedBytes >= emitThresholdBytes) {
+            lastEmittedBytes = currentLen;
+            final bytesSnapshot = builder.toBytes();
+            final peaks = progressiveWaveformPeaksFromS16Bytes(
+              bytesSnapshot,
+              targetSamples,
+              expectedBytes,
+            );
+            if (peaks.isNotEmpty) onPartial(peaks);
+          }
+        }
+      },
+      onError: (e) {
+        debugPrint('Waveform pipe stream error: $e');
+      },
+      onDone: () {
+        if (!completer.isCompleted) completer.complete();
+      },
+      cancelOnError: false,
+    );
+
+    // Drain stderr in background so the process never blocks on full pipe buffer
+    unawaited(process.stderr.drain().catchError((_) {}));
+
+    final exitCode = await process.exitCode;
+    await completer.future;
+    await sub.cancel();
+
+    if (exitCode != 0) {
+      debugPrint('FFmpeg streaming exited with code $exitCode');
+      return generateWaveformPlaceholderSamples(targetSamples);
+    }
+
+    final fullBytes = builder.toBytes();
+    if (fullBytes.length < 2) {
+      return generateWaveformPlaceholderSamples(targetSamples);
+    }
+
+    return extractWaveformPeaksFromS16Bytes(fullBytes, targetSamples);
   }
 
-  /// Decodes [path] to raw 16-bit mono PCM at the waveform sample rate.
-  ///
-  /// Only the FFmpeg session is serialized through the shared gate: a waveform
-  /// must not decode the same file while a beat analysis is mid-decode, on top
-  /// of just_audio buffering it. High priority because it is the seek bar the
-  /// user is looking at: any still-queued beat prefetch yields to it.
-  Future<bool> _decodeToPcmFile(String path, String outputPath) {
-    return MediaDecodeGate.run(
-      () async {
-        final result = await FFmpegService.instance.executeFFmpeg(
-          _waveformDecodeArgs(path, outputPath),
-        );
-        return result.isSuccess;
-      },
-      priority: MediaDecodePriority.high,
+  /// Decodes via named pipe on mobile platforms (iOS/Android), or falls back to temp file.
+  Future<List<double>> _decodeViaMobilePipeOrFallback({
+    required String path,
+    required int targetSamples,
+    required int expectedBytes,
+    void Function(List<double>)? onPartial,
+  }) async {
+    String? pipePath;
+    try {
+      pipePath = await FFmpegKitConfig.registerNewFFmpegPipe();
+    } catch (_) {
+      pipePath = null;
+    }
+
+    if (pipePath != null) {
+      try {
+        final args = [
+          '-threads',
+          '1',
+          '-i',
+          path,
+          '-vn',
+          '-ac',
+          '1',
+          '-ar',
+          '4000',
+          '-f',
+          's16le',
+          '-y',
+          pipePath,
+        ];
+
+        final builder = BytesBuilder(copy: false);
+        var lastEmittedBytes = 0;
+        const int emitThresholdBytes = 3200;
+
+        final sessionCompleter = Completer<bool>();
+        await FFmpegKit.executeWithArgumentsAsync(args, (session) async {
+          final returnCode = await session.getReturnCode();
+          sessionCompleter.complete(returnCode?.isValueSuccess() ?? false);
+        });
+
+        final pipeFile = File(pipePath);
+        final stream = pipeFile.openRead();
+
+        await for (final chunk in stream) {
+          builder.add(chunk);
+          if (onPartial != null && expectedBytes > 0) {
+            final currentLen = builder.length;
+            if (currentLen - lastEmittedBytes >= emitThresholdBytes) {
+              lastEmittedBytes = currentLen;
+              final bytesSnapshot = builder.toBytes();
+              final peaks = progressiveWaveformPeaksFromS16Bytes(
+                bytesSnapshot,
+                targetSamples,
+                expectedBytes,
+              );
+              if (peaks.isNotEmpty) onPartial(peaks);
+            }
+          }
+        }
+
+        final isSuccess = await sessionCompleter.future;
+        if (!isSuccess) {
+          return generateWaveformPlaceholderSamples(targetSamples);
+        }
+
+        final fullBytes = builder.toBytes();
+        if (fullBytes.length < 2) {
+          return generateWaveformPlaceholderSamples(targetSamples);
+        }
+        return extractWaveformPeaksFromS16Bytes(fullBytes, targetSamples);
+      } catch (e) {
+        debugPrint('Mobile pipe decode error: $e');
+      } finally {
+        try {
+          await FFmpegKitConfig.closeFFmpegPipe(pipePath);
+        } catch (_) {}
+      }
+    }
+
+    // Fallback if named pipe unsupported
+    return _decodeWithTempFileFallback(
+      path: path,
+      targetSamples: targetSamples,
     );
   }
 
-  /// Decodes [path] while yielding partial peak lists as the PCM grows.
-  ///
-  /// The decode runs inside the shared gate; meanwhile a timer watches the
-  /// temp file, and each time it has grown it buckets the bytes decoded so far
-  /// into the *first* [targetWaveformSamples] fraction of the bars (the song
-  /// duration gives the expected final byte count). Returns the complete
-  /// waveform once the session finishes.
-  Future<List<double>> _extractWaveformProgressive(
-    String path,
-    Duration total,
-    void Function(List<double>) onPartial,
-  ) async {
-    final targetSamples = targetWaveformSamples;
-    final expectedBytes =
-        total.inSeconds > 0 ? total.inSeconds * _pcmBytesPerSecond : 0;
-
+  Future<List<double>> _decodeWithTempFileFallback({
+    required String path,
+    required int targetSamples,
+  }) async {
     File? raw;
     try {
-      final outputPath = await _prepareTempOutputPath();
-      final rawFile = File(outputPath);
-      raw = rawFile;
-      var lastYieldedBytes = 0;
-
-      final decodeSucceeded = await MediaDecodeGate.run(
-        () async {
-          final args = _waveformDecodeArgs(path, outputPath);
-          Timer? poller;
-          void startPoller() {
-            if (expectedBytes <= 0) return;
-            var yielding = false;
-            poller = Timer.periodic(const Duration(milliseconds: 250), (_) {
-              if (yielding) return;
-              yielding = true;
-              unawaited(() async {
-                try {
-                  final length = await rawFile.length();
-                  if (length <= lastYieldedBytes) return;
-                  lastYieldedBytes = length;
-                  final rawPath = rawFile.path;
-                  final peaks = await _isolateProgressivePeaks(
-                    rawPath,
-                    targetSamples,
-                    expectedBytes,
-                  );
-                  if (peaks.isNotEmpty) onPartial(peaks);
-                } catch (_) {
-                  // A read racing the session's final flush is not worth
-                  // surfacing; the final extraction below is authoritative.
-                } finally {
-                  yielding = false;
-                }
-              }());
-            });
-          }
-
-          try {
-            if (FFmpegService.usesSystemProcess) {
-              final process = await FFmpegService.instance.startFFmpeg(args);
-              if (process == null) return false;
-              startPoller();
-              final exitCode = await process.exitCode;
-              return exitCode == 0;
-            } else {
-              startPoller();
-              final result = await FFmpegService.instance.executeFFmpeg(args);
-              return result.isSuccess;
-            }
-          } finally {
-            poller?.cancel();
-          }
-        },
-        priority: MediaDecodePriority.high,
+      final supportDir = await getApplicationSupportDirectory();
+      final tempDir = Directory(p.join(supportDir.path, 'waveform_temp'));
+      if (!await tempDir.exists()) {
+        await tempDir.create(recursive: true);
+      }
+      final outputPath = p.join(
+        tempDir.path,
+        'waveform_${DateTime.now().microsecondsSinceEpoch}.raw',
       );
 
-      if (!decodeSucceeded) {
-        debugPrint('FFmpeg failed to extract waveform');
-        return generateWaveformPlaceholderSamples(targetSamples);
-      }
-      if (!await rawFile.exists() || await rawFile.length() == 0) {
+      final args = [
+        '-threads',
+        '1',
+        '-i',
+        path,
+        '-vn',
+        '-ac',
+        '1',
+        '-ar',
+        '4000',
+        '-f',
+        's16le',
+        '-y',
+        outputPath,
+      ];
+
+      final result = await FFmpegService.instance.executeFFmpeg(args);
+      if (!result.isSuccess) {
         return generateWaveformPlaceholderSamples(targetSamples);
       }
 
-      final rawPath = rawFile.path;
-      return await _isolateExtractPeaks(rawPath, targetSamples);
+      raw = File(outputPath);
+      if (!await raw.exists()) {
+        return generateWaveformPlaceholderSamples(targetSamples);
+      }
+
+      final bytes = await raw.readAsBytes();
+      return extractWaveformPeaksFromS16Bytes(bytes, targetSamples);
     } catch (e) {
-      debugPrint('Error in progressive waveform extraction: $e');
+      debugPrint('Fallback waveform extraction failed: $e');
       return generateWaveformPlaceholderSamples(targetSamples);
     } finally {
       try {
         if (raw != null && await raw.exists()) await raw.delete();
       } catch (_) {}
     }
-  }
-
-  /// Creates the temp decode directory and a fresh output path for it.
-  Future<String> _prepareTempOutputPath() async {
-    final supportDir = await getApplicationSupportDirectory();
-    final tempDir = Directory(p.join(supportDir.path, 'waveform_temp'));
-    if (!await tempDir.exists()) {
-      await tempDir.create(recursive: true);
-    }
-    return p.join(
-      tempDir.path,
-      'waveform_${DateTime.now().microsecondsSinceEpoch}.raw',
-    );
   }
 
   void dispose() {}
@@ -369,41 +471,8 @@ Future<void> _isolateWriteWaveformCache(String path, List<double> samples) {
   return Isolate.run(() => writeWaveformCacheFile(path, samples));
 }
 
-Future<List<double>> _isolateExtractPeaks(String path, int targetSamples) {
-  return Isolate.run(
-      () => extractWaveformPeaksFromS16File(path, targetSamples));
-}
-
-Future<List<double>> _isolateProgressivePeaks(
-  String path,
-  int targetSamples,
-  int expectedBytes,
-) {
-  return Isolate.run(
-    () => progressiveWaveformPeaksFromS16File(
-      path,
-      targetSamples,
-      expectedBytes,
-    ),
-  );
-}
-
 void writeWaveformCacheFile(String path, List<double> samples) {
   File(path).writeAsStringSync(jsonEncode(samples));
-}
-
-/// Reads PCM and buckets peaks entirely off the UI isolate.
-List<double> extractWaveformPeaksFromS16File(String path, int targetSamples) {
-  try {
-    final bytes = File(path).readAsBytesSync();
-    if (bytes.length < 2) {
-      return generateWaveformPlaceholderSamples(targetSamples);
-    }
-    return extractWaveformPeaksFromS16Bytes(bytes, targetSamples);
-  } catch (e) {
-    debugPrint('Error extracting peaks from PCM: $e');
-    return generateWaveformPlaceholderSamples(targetSamples);
-  }
 }
 
 /// Buckets 16-bit mono PCM [bytes] into [targetSamples] peak bars.
@@ -461,25 +530,6 @@ List<double> progressiveWaveformPeaksFromS16Bytes(
       expectedBytes > 0 ? (bytes.length / expectedBytes).clamp(0.0, 1.0) : 1.0;
   final filled = (fraction * targetSamples).round().clamp(1, targetSamples);
   return extractWaveformPeaksFromS16Bytes(bytes, filled);
-}
-
-/// File-reading twin of [progressiveWaveformPeaksFromS16Bytes], for Isolate.run.
-List<double> progressiveWaveformPeaksFromS16File(
-  String path,
-  int targetSamples,
-  int expectedBytes,
-) {
-  try {
-    final bytes = File(path).readAsBytesSync();
-    if (bytes.length < 2) return const [];
-    return progressiveWaveformPeaksFromS16Bytes(
-      bytes,
-      targetSamples,
-      expectedBytes,
-    );
-  } catch (_) {
-    return const [];
-  }
 }
 
 List<double> generateWaveformPlaceholderSamples(int count) {
