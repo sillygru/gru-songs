@@ -222,8 +222,9 @@ class WaveformService {
     void Function(List<double>)? onPartial,
   }) async {
     final targetSamples = targetWaveformSamples;
-    final expectedBytes =
-        total.inSeconds > 0 ? total.inSeconds * _pcmBytesPerSecond : 0;
+    final expectedBytes = total.inMilliseconds > 0
+        ? (total.inMilliseconds * _pcmBytesPerSecond) ~/ 1000
+        : (total.inSeconds > 0 ? total.inSeconds * _pcmBytesPerSecond : 0);
 
     if (FFmpegService.usesSystemProcess) {
       return _decodeViaSystemProcessPipe(
@@ -273,6 +274,7 @@ class WaveformService {
 
     final builder = BytesBuilder(copy: false);
     var lastEmittedBytes = 0;
+    var lastEmitTime = DateTime.fromMillisecondsSinceEpoch(0);
     const int emitThresholdBytes = 3200;
 
     final completer = Completer<void>();
@@ -281,7 +283,10 @@ class WaveformService {
         builder.add(chunk);
         if (onPartial != null && expectedBytes > 0) {
           final currentLen = builder.length;
-          if (currentLen - lastEmittedBytes >= emitThresholdBytes) {
+          final now = DateTime.now();
+          if (currentLen - lastEmittedBytes >= emitThresholdBytes &&
+              now.difference(lastEmitTime).inMilliseconds >= 32) {
+            lastEmitTime = now;
             lastEmittedBytes = currentLen;
             final bytesSnapshot = builder.toBytes();
             final peaks = progressiveWaveformPeaksFromS16Bytes(
@@ -356,6 +361,7 @@ class WaveformService {
 
         final builder = BytesBuilder(copy: false);
         var lastEmittedBytes = 0;
+        var lastEmitTime = DateTime.fromMillisecondsSinceEpoch(0);
         const int emitThresholdBytes = 3200;
 
         final sessionCompleter = Completer<bool>();
@@ -371,7 +377,10 @@ class WaveformService {
           builder.add(chunk);
           if (onPartial != null && expectedBytes > 0) {
             final currentLen = builder.length;
-            if (currentLen - lastEmittedBytes >= emitThresholdBytes) {
+            final now = DateTime.now();
+            if (currentLen - lastEmittedBytes >= emitThresholdBytes &&
+                now.difference(lastEmitTime).inMilliseconds >= 32) {
+              lastEmitTime = now;
               lastEmittedBytes = currentLen;
               final bytesSnapshot = builder.toBytes();
               final peaks = progressiveWaveformPeaksFromS16Bytes(

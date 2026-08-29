@@ -54,7 +54,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   String _formattedTotalTime = '0:00';
 
   StreamSubscription<List<double>>? _waveformSubscription;
-  Timer? _deferTimer;
   int _loadToken = 0;
 
   @override
@@ -84,7 +83,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   @override
   void dispose() {
     _waveformSubscription?.cancel();
-    _deferTimer?.cancel();
     _loadToken++;
     _revealController.dispose();
     _scrubController.dispose();
@@ -114,7 +112,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.filename != widget.filename) {
       _loadToken++;
-      _deferTimer?.cancel();
       _waveformSubscription?.cancel();
       _waveformSubscription = null;
       _positionNotifier.value = Duration.zero;
@@ -136,7 +133,6 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
   }
 
   Future<void> _scheduleWaveformLoad() async {
-    _deferTimer?.cancel();
     if (widget.filename.isEmpty || widget.path.isEmpty) return;
 
     final currentFilename = widget.filename;
@@ -164,15 +160,8 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
       return;
     }
 
-    // Uncached: give the audio playback a brief head start, then smoothly expand as CPU decodes
-    _deferTimer = Timer(const Duration(milliseconds: 300), () async {
-      if (!mounted ||
-          widget.filename != currentFilename ||
-          token != _loadToken) {
-        return;
-      }
-      await _loadWaveform(isCached: false);
-    });
+    // Uncached: start decoding in real-time immediately as playback begins
+    await _loadWaveform(isCached: false);
   }
 
   Future<void> _loadWaveform({required bool isCached}) async {
@@ -221,7 +210,7 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     });
   }
 
-  /// Really fast left-to-right sweep for cached waveforms
+  /// Fast left-to-right sweep for cached waveforms
   void _animateRevealFast() {
     _revealController.stop();
     _revealController.value = 0.0;
@@ -240,10 +229,10 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
     final int ms;
     final Curve curve;
     if (isComplete) {
-      ms = (delta * 400).clamp(140, 260).round();
+      ms = (delta * 350).clamp(120, 240).round();
       curve = Curves.easeOutCubic;
     } else {
-      ms = (delta * 550).clamp(90, 220).round();
+      ms = (delta * 500).clamp(80, 200).round();
       curve = Curves.easeOutQuad;
     }
     _revealController.animateTo(
@@ -561,12 +550,16 @@ class WaveformPainter extends CustomPainter {
       final double revealFactor;
       if (revealProgress <= 0.0 || !hasPeaks) {
         revealFactor = 0.0;
-      } else if (barFraction <= revealProgress) {
+      } else if (revealProgress >= 1.0) {
+        revealFactor = 1.0;
+      } else if (barFraction >= revealProgress) {
+        revealFactor = 0.0;
+      } else if (barFraction <= revealProgress - frontSpan) {
+        revealFactor = 1.0;
+      } else {
         final edgeDelta = (revealProgress - barFraction) / frontSpan;
         revealFactor =
             (edgeDelta * edgeDelta * (3.0 - 2.0 * edgeDelta)).clamp(0.0, 1.0);
-      } else {
-        revealFactor = 0.0;
       }
 
       final double targetHeight;
