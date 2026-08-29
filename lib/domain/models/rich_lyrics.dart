@@ -1,5 +1,6 @@
 import '../../models/song.dart';
 import '../services/lyrics_prosodic_estimator.dart';
+import '../services/lyrics_style_router.dart';
 
 /// One word or syllable segment in a rich-synchronized lyric line.
 class RichLyricWord {
@@ -130,9 +131,15 @@ class RichLyrics {
   factory RichLyrics.fromLyricLines(
     List<LyricLine> source, {
     Duration? songDuration,
+    Song? song,
+    bool useMoe = true,
   }) {
     final lines = <RichLyricLine>[];
-    final songCps = _estimateSongCadence(source);
+    var songCps = _estimateSongCadence(source, songDuration: songDuration);
+    if (useMoe) {
+      final (_, expert) = LyricsStyleRouter.detectStyle(source, song: song);
+      songCps *= expert.linguisticTempoScale;
+    }
 
     for (var index = 0; index < source.length; index++) {
       final line = source[index];
@@ -246,28 +253,32 @@ class RichLyrics {
     return null;
   }
 
-  static double _estimateSongCadence(List<LyricLine> source) {
-    final speeds = <double>[];
+  static double _estimateSongCadence(
+    List<LyricLine> source, {
+    Duration? songDuration,
+  }) {
+    final cpsList = <double>[];
     for (var index = 0; index < source.length; index++) {
       final line = source[index];
       if (!line.isSynced) continue;
       final nextTimed = _nextTimedLine(source, index);
-      if (nextTimed == null) continue;
-
-      final deltaSeconds = (nextTimed - line.time).inMicroseconds / 1000000.0;
-      if (deltaSeconds < 0.6 || deltaSeconds > 6.5) continue;
-
-      final cleanChars = line.text.replaceAll(RegExp(r'\s+'), '').length;
-      if (cleanChars >= 3) {
-        speeds.add(cleanChars / deltaSeconds);
-      }
+      final lineEnd = nextTimed ?? songDuration ?? line.time + const Duration(seconds: 4);
+      final durS = (lineEnd - line.time).inMicroseconds / 1000000.0;
+      if (durS < 0.1) continue;
+      // Match ultra_fast: chars = sum(len(token)) including punctuation length (same as clean without spaces)
+      final tokens = line.text.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+      final chars = tokens.fold<int>(0, (s, t) => s + t.length);
+      if (chars == 0) continue;
+      cpsList.add(chars / durS);
     }
 
-    if (speeds.isEmpty) return 13.5;
+    if (cpsList.isEmpty) return 13.5;
 
-    speeds.sort();
-    final median = speeds[speeds.length ~/ 2];
-    return median.clamp(8.0, 22.0);
+    cpsList.sort();
+    // 75th percentile like np.percentile 75
+    final idx = ((cpsList.length - 1) * 0.75).round().clamp(0, cpsList.length - 1);
+    final p75 = cpsList[idx];
+    return p75.clamp(6.0, 22.0);
   }
 
   static double? _number(Object? value) {

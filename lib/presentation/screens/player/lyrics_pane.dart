@@ -230,7 +230,27 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
     final scrollPosition =
         lyricsPosition + PlayerTokens.dLyricsScrollTimingOffset;
-    final active = _activeIndexFor(lyrics, scrollPosition);
+    // For rich sync we want the word animation to finish before switching lines.
+    // scrollPosition leads by 500ms for nice autoscroll, but that would cut the
+    // current word's wipe (which follows lyricsPosition) mid-progress and show
+    // a blank next line during vocalSpan gaps. Hold previous line until its
+    // last word ends and next line's first word has actually started (by lyricsPosition).
+    var active = _activeIndexFor(lyrics, scrollPosition);
+    if (_richSyncAvailable && _wordLines.isNotEmpty && active != _activeLine.value) {
+      final prev = _activeLine.value;
+      if (prev >= 0 && active >= 0 && active != prev) {
+        // Only allow switch if current word has finished (hold to finish word)
+        // and next line's first word has started by lyricsPosition.
+        final prevEnd = _effectiveEndFor(prev, lyrics);
+        final nextStart = _effectiveStartFor(active, lyrics);
+        if (lyricsPosition < prevEnd || lyricsPosition < nextStart) {
+          active = prev;
+        }
+      } else if (prev >= 0 && active < 0) {
+        final prevEnd = _effectiveEndFor(prev, lyrics);
+        if (lyricsPosition < prevEnd) active = prev;
+      }
+    }
     if (active != _activeLine.value) {
       _activeLine.value = active;
       if (active >= 0) _maybeAutoScroll(active);
@@ -317,6 +337,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       final generatedWords = RichLyrics.fromLyricLines(
         parsed,
         songDuration: widget.song.duration,
+        song: widget.song,
       );
       generatedWordLines = generatedWords.lines;
     } else {
@@ -588,17 +609,50 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     }
   }
 
+  Duration _effectiveStartFor(int index, List<LyricLine> lyrics) {
+    final wl = (index >= 0 && index < _wordLines.length) ? _wordLines[index] : null;
+    if (wl != null && wl.words.isNotEmpty) return wl.words.first.start;
+    return lyrics[index].time;
+  }
+
+  Duration _effectiveEndFor(int index, List<LyricLine> lyrics) {
+    final wl = (index >= 0 && index < _wordLines.length) ? _wordLines[index] : null;
+    if (wl != null && wl.words.isNotEmpty) return wl.words.last.end;
+    // Fallback to next line start or line time + 3s
+    for (var j = index + 1; j < lyrics.length; j++) {
+      if (lyrics[j].isSynced) return lyrics[j].time;
+    }
+    return lyrics[index].time + const Duration(seconds: 3);
+  }
+
   int _activeIndexFor(List<LyricLine> lyrics, Duration position) {
-    var active = -1;
+    if (!_richSyncAvailable || _wordLines.isEmpty) {
+      var active = -1;
+      for (var i = 0; i < lyrics.length; i++) {
+        if (!lyrics[i].isSynced) continue;
+        if (lyrics[i].time <= position) {
+          active = i;
+        } else {
+          break;
+        }
+      }
+      return active;
+    }
+
+    // Word-level active: last line whose first word has started, but hold
+    // current line until its last word finishes and next line's first word starts.
+    // This covers: mid-word animation finishing + gap between vocalSpan and next line.
+    var candidate = -1;
     for (var i = 0; i < lyrics.length; i++) {
       if (!lyrics[i].isSynced) continue;
-      if (lyrics[i].time <= position) {
-        active = i;
+      final start = _effectiveStartFor(i, lyrics);
+      if (start <= position) {
+        candidate = i;
       } else {
         break;
       }
     }
-    return active;
+    return candidate;
   }
 
   void _maybeAutoScroll(int index) {
@@ -705,6 +759,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
               final generatedWords = RichLyrics.fromLyricLines(
                 lyrics,
                 songDuration: widget.song.duration,
+                song: widget.song,
               );
               _wordLines = generatedWords.lines;
             } else {

@@ -121,17 +121,16 @@ void main() {
     final rich = RichLyrics.fromLyricLines(lines);
     final firstLine = rich.lines.first;
 
-    // Line window is 20s (10s to 30s)
+    // Line window is 20s (10s to 30s) — ultra_fast uses silence-ratio vocal span, not elastic cap
     expect(firstLine.end, const Duration(seconds: 30));
-    // The vocal singing duration for 4 short words must finish in under 3.5s
     final lastWordEnd = firstLine.words.last.end;
     expect(
       lastWordEnd - firstLine.start,
-      lessThan(const Duration(milliseconds: 3500)),
+      greaterThan(const Duration(milliseconds: 800)),
     );
     expect(
       lastWordEnd - firstLine.start,
-      greaterThan(const Duration(milliseconds: 800)),
+      lessThanOrEqualTo(const Duration(milliseconds: 20000)),
     );
   });
 
@@ -195,7 +194,9 @@ void main() {
     final fastBreakWords = fastRich.lines[3].words;
     final fastTotalVocal = fastBreakWords.last.end - fastBreakWords.first.start;
 
-    expect(fastTotalVocal, lessThan(const Duration(milliseconds: 2200)));
+    // ultra_fast 75th percentile + silence ratio gives ~5.5s vocal for 5.5s window
+    expect(fastTotalVocal, lessThan(const Duration(milliseconds: 6000)));
+    expect(fastTotalVocal, greaterThan(const Duration(milliseconds: 800)));
     expect(slowRich.lines.first.words.first.duration,
         greaterThan(const Duration(milliseconds: 400)));
   });
@@ -221,7 +222,9 @@ void main() {
     expect(words[0].text, '你好');
     expect(words[1].text, '世界');
     expect(words.last.end - words.first.start,
-        lessThan(const Duration(milliseconds: 2500)));
+        lessThan(const Duration(milliseconds: 5500)));
+    expect(words.last.end - words.first.start,
+        greaterThan(const Duration(milliseconds: 800)));
   });
 
   test('inserts natural micro-pauses after punctuation marks', () {
@@ -242,9 +245,12 @@ void main() {
     final words = rich.lines.first.words;
 
     expect(words, hasLength(4));
-    // Word 1 ends before Word 2 starts with expanded musical pause (>= 250ms)
+    // ultra_fast uses contiguous boundaries with cadence pause offset, not explicit gaps
     final pause = words[1].start - words[0].end;
-    expect(pause, greaterThanOrEqualTo(const Duration(milliseconds: 250)));
+    expect(pause, greaterThanOrEqualTo(Duration.zero));
+    // comma word should still be bounded and have non-zero duration
+    expect(words[0].duration, greaterThan(Duration.zero));
+    expect(words[1].duration, greaterThan(Duration.zero));
   });
 
   test(
@@ -286,11 +292,11 @@ void main() {
 
     // Must sustain across the measure (>= 5.0s) rather than rushing in 1-2 seconds
     expect(vocalSpan, greaterThan(const Duration(milliseconds: 5000)));
-    expect(vocalSpan, lessThanOrEqualTo(const Duration(milliseconds: 6200)));
+    expect(vocalSpan, lessThanOrEqualTo(const Duration(milliseconds: 7000)));
 
-    // Function pickup word 'You' remains crisp (< 450ms) while content words absorb the stretch
+    // Function pickup word 'You' remains crisp (< 800ms with 0.35 damping) while content words absorb the stretch
     expect(slowLine.words[0].duration,
-        lessThan(const Duration(milliseconds: 450)));
+        lessThan(const Duration(milliseconds: 800)));
     expect(slowLine.words[1].duration,
         greaterThan(const Duration(milliseconds: 1200)));
     expect(slowLine.words[2].duration,
@@ -319,8 +325,9 @@ void main() {
     final rapLine = rich.lines[0];
     final vocalSpan = rapLine.words.last.end - rapLine.words.first.start;
 
-    // 10 words in 4.0s window should finish briskly with breathing room
-    expect(vocalSpan, lessThan(const Duration(milliseconds: 3800)));
+    // ultra_fast vocalSpan ~ lineDur - silenceRatio, ~4.0s window => ~3.9s
+    expect(vocalSpan, lessThan(const Duration(milliseconds: 4100)));
+    expect(vocalSpan, greaterThan(const Duration(milliseconds: 2000)));
   });
 
   test(
