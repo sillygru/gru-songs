@@ -267,7 +267,29 @@ class LyricsProsodicEstimator {
     Duration lineEnd, {
     double songCps = 13.5,
   }) {
-    final tokens = text.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    final rawTokens =
+        text.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    final tokens = <String>[];
+    for (final raw in rawTokens) {
+      if (raw.contains('-') && raw.length > 1) {
+        final parts = raw.split('-');
+        final nonEmpty = <String>[];
+        for (final p in parts) {
+          if (p.isNotEmpty) nonEmpty.add(p);
+        }
+        if (nonEmpty.length > 1) {
+          for (var i = 0; i < nonEmpty.length; i++) {
+            if (i < nonEmpty.length - 1) {
+              tokens.add('${nonEmpty[i]}-');
+            } else {
+              tokens.add(nonEmpty[i]);
+            }
+          }
+          continue;
+        }
+      }
+      tokens.add(raw);
+    }
     final n = tokens.length;
     if (n == 0) return const [];
     if (n == 1) {
