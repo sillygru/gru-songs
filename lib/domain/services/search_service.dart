@@ -98,11 +98,23 @@ class SearchService {
       ));
     }
 
-    // Sort results: title matches first, then artist, then album, then lyrics
+    // Sort results: title matches first, then artist, then album, then lyrics.
+    // Within the same field, exact word matches (e.g. "hot") rank above
+    // substring matches (e.g. "shot", "hotlines").
     results.sort((a, b) {
       final priorityA = _getMatchPriority(a);
       final priorityB = _getMatchPriority(b);
-      return priorityA.compareTo(priorityB);
+      if (priorityA != priorityB) return priorityA.compareTo(priorityB);
+
+      final wordScoreA = _getWordMatchScore(a, lowerQuery);
+      final wordScoreB = _getWordMatchScore(b, lowerQuery);
+      if (wordScoreA != wordScoreB) return wordScoreA.compareTo(wordScoreB);
+
+      final posA = _getMatchPosition(a, lowerQuery);
+      final posB = _getMatchPosition(b, lowerQuery);
+      if (posA != posB) return posA.compareTo(posB);
+
+      return a.song.title.toLowerCase().compareTo(b.song.title.toLowerCase());
     });
 
     return results;
@@ -115,6 +127,44 @@ class SearchService {
     if (result.matchedAlbum) return 2;
     if (result.hasLyricsMatch) return 3;
     return 4;
+  }
+
+  /// Returns 0 if query appears as whole word, 1 if only as substring
+  int _getWordMatchScore(SearchResult result, String lowerQuery) {
+    String text;
+    if (result.hasLyricsMatch && result.lyricsMatch != null) {
+      text = result.lyricsMatch!.fullLine.toLowerCase();
+    } else if (result.matchedTitle) {
+      text = result.song.title.toLowerCase();
+    } else if (result.matchedArtist) {
+      text = result.song.artist.toLowerCase();
+    } else if (result.matchedAlbum) {
+      text = result.song.album.toLowerCase();
+    } else {
+      return 1;
+    }
+    if (text.isEmpty || !text.contains(lowerQuery)) return 1;
+    final escaped = RegExp.escape(lowerQuery);
+    final wordPattern = RegExp('\\b$escaped\\b');
+    return wordPattern.hasMatch(text) ? 0 : 1;
+  }
+
+  /// Earliest index of query in matched text, or large value if not found
+  int _getMatchPosition(SearchResult result, String lowerQuery) {
+    String text;
+    if (result.hasLyricsMatch && result.lyricsMatch != null) {
+      text = result.lyricsMatch!.fullLine.toLowerCase();
+    } else if (result.matchedTitle) {
+      text = result.song.title.toLowerCase();
+    } else if (result.matchedArtist) {
+      text = result.song.artist.toLowerCase();
+    } else if (result.matchedAlbum) {
+      text = result.song.album.toLowerCase();
+    } else {
+      return 999999;
+    }
+    final idx = text.indexOf(lowerQuery);
+    return idx == -1 ? 999999 : idx;
   }
 
   /// Groups search results by artist

@@ -19,11 +19,16 @@ class LyricsGapLoader extends StatefulWidget {
   /// Fits the now-playing peek's single-line height instead of a full lyrics row.
   final bool compact;
 
+  /// When non-null, shows a larger musical symbol filling bottom-to-top
+  /// instead of the three pulsing dots. The string is a single glyph like "♪".
+  final String? symbol;
+
   const LyricsGapLoader({
     super.key,
     required this.progress,
     required this.accent,
     this.compact = false,
+    this.symbol,
   });
 
   @override
@@ -57,6 +62,9 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
   double get _glowPad => widget.compact ? 3.0 : 6.0;
   double get _minSlot => widget.compact ? 12.0 : 22.0;
 
+  double get _noteSize => widget.compact ? 18.0 : 42.0;
+  double get _noteSlot => widget.compact ? 24.0 : 52.0;
+
   @override
   void initState() {
     super.initState();
@@ -74,6 +82,7 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
 
   @override
   Widget build(BuildContext context) {
+    final useNote = widget.symbol != null && widget.symbol!.isNotEmpty;
     final content = Align(
       alignment: Alignment.centerLeft,
       child: TweenAnimationBuilder<double>(
@@ -103,18 +112,20 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
               alignment: Alignment.centerLeft,
               child: AnimatedBuilder(
                 animation: _pulse,
-                builder: (context, _) => Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(
-                    _dotCount,
-                    (index) => Padding(
-                      padding: EdgeInsets.only(
-                        right: index == _dotCount - 1 ? 0 : _dotGap,
+                builder: (context, _) => useNote
+                    ? _buildNote(widget.symbol!, p)
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(
+                          _dotCount,
+                          (index) => Padding(
+                            padding: EdgeInsets.only(
+                              right: index == _dotCount - 1 ? 0 : _dotGap,
+                            ),
+                            child: _buildDot(index, p),
+                          ),
+                        ),
                       ),
-                      child: _buildDot(index, p),
-                    ),
-                  ),
-                ),
               ),
             ),
           );
@@ -149,6 +160,66 @@ class _LyricsGapLoaderState extends State<LyricsGapLoader>
       glowPad: _glowPad,
       minSlot: _minSlot,
       accent: widget.accent,
+    );
+  }
+
+  Widget _buildNote(String glyph, double p) {
+    final fillRaw = (p / _fillEnd).clamp(0.0, 1.0);
+    final fill = Curves.easeOutCubic.transform(fillRaw);
+    final phase = _pulse.value * 2 * math.pi;
+    final breath = math.sin(phase) * fill * 0.08;
+
+    final glowAlpha = fill * 0.14;
+    final glowSize = _noteSize + _glowPad + breath * 4;
+
+    return SizedBox(
+      width: _noteSlot,
+      height: _noteSlot,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (glowAlpha > 0)
+            Container(
+              width: glowSize,
+              height: glowSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.accent.withValues(alpha: glowAlpha),
+              ),
+            ),
+          SizedBox(
+            width: _noteSize,
+            height: _noteSize,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Text(
+                  glyph,
+                  style: TextStyle(
+                    fontSize: _noteSize,
+                    height: 1.0,
+                    color: Colors.white.withValues(alpha: _idleAlpha),
+                  ),
+                ),
+                ClipRect(
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    heightFactor: fill.clamp(0.0, 1.0),
+                    child: Text(
+                      glyph,
+                      style: TextStyle(
+                        fontSize: _noteSize,
+                        height: 1.0,
+                        color: widget.accent.withValues(alpha: _filledAlpha),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

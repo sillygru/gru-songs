@@ -1,5 +1,32 @@
 import '../../models/song.dart';
 
+const _musicalGapSymbols = {
+  '♪',
+  '♫',
+  '♩',
+  '♬',
+  '♭',
+  '♮',
+  '♯',
+  '𝄞',
+  '🎵',
+  '🎶',
+  '🎼',
+};
+
+/// Returns the first musical symbol found in any synced lyric line, or null
+/// when the song has no lyric-like symbols and should use the dot loader.
+String? detectInstrumentalGapSymbol(List<LyricLine> lyrics) {
+  for (final line in lyrics) {
+    if (!line.isSynced) continue;
+    for (final rune in line.text.runes) {
+      final ch = String.fromCharCode(rune);
+      if (_musicalGapSymbols.contains(ch)) return ch;
+    }
+  }
+  return null;
+}
+
 class LyricsGapLoaderState {
   final bool shouldShow;
   final int insertBeforeLyricIndex;

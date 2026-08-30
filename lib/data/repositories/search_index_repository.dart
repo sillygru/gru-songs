@@ -294,8 +294,28 @@ class SearchIndexRepository {
     }
 
     final lowerQuery = query.toLowerCase();
-    final results = <SearchMatch>[];
-    final seenFilenames = <String>{};
+    final Map<String, SearchMatch> bestMatches = {};
+
+    int rankForType(SearchMatchType type) {
+      switch (type) {
+        case SearchMatchType.title:
+          return 0;
+        case SearchMatchType.artist:
+          return 1;
+        case SearchMatchType.album:
+          return 2;
+        case SearchMatchType.lyrics:
+          return 3;
+      }
+    }
+
+    void considerMatch(SearchMatch candidate) {
+      final existing = bestMatches[candidate.filename];
+      if (existing == null ||
+          rankForType(candidate.matchType) < rankForType(existing.matchType)) {
+        bestMatches[candidate.filename] = candidate;
+      }
+    }
 
     // Search titles
     if (searchTitles) {
@@ -307,13 +327,11 @@ class SearchIndexRepository {
       );
       for (final row in titleResults) {
         final filename = row['filename'] as String;
-        if (seenFilenames.add(filename)) {
-          results.add(SearchMatch(
-            filename: filename,
-            matchType: SearchMatchType.title,
-            matchedText: _extractMatchText(row['title'] as String, lowerQuery),
-          ));
-        }
+        considerMatch(SearchMatch(
+          filename: filename,
+          matchType: SearchMatchType.title,
+          matchedText: _extractMatchText(row['title'] as String, lowerQuery),
+        ));
       }
     }
 
@@ -327,13 +345,11 @@ class SearchIndexRepository {
       );
       for (final row in artistResults) {
         final filename = row['filename'] as String;
-        if (seenFilenames.add(filename)) {
-          results.add(SearchMatch(
-            filename: filename,
-            matchType: SearchMatchType.artist,
-            matchedText: _extractMatchText(row['artist'] as String, lowerQuery),
-          ));
-        }
+        considerMatch(SearchMatch(
+          filename: filename,
+          matchType: SearchMatchType.artist,
+          matchedText: _extractMatchText(row['artist'] as String, lowerQuery),
+        ));
       }
     }
 
@@ -347,13 +363,11 @@ class SearchIndexRepository {
       );
       for (final row in albumResults) {
         final filename = row['filename'] as String;
-        if (seenFilenames.add(filename)) {
-          results.add(SearchMatch(
-            filename: filename,
-            matchType: SearchMatchType.album,
-            matchedText: _extractMatchText(row['album'] as String, lowerQuery),
-          ));
-        }
+        considerMatch(SearchMatch(
+          filename: filename,
+          matchType: SearchMatchType.album,
+          matchedText: _extractMatchText(row['album'] as String, lowerQuery),
+        ));
       }
     }
 
@@ -371,22 +385,18 @@ class SearchIndexRepository {
         if (lyrics != null) {
           final match = _findLyricsMatch(lyrics, lowerQuery);
           if (match != null) {
-            // Remove from seen if already exists (lyrics match takes priority for display)
-            seenFilenames.remove(filename);
-            results.removeWhere((r) => r.filename == filename);
-            results.add(SearchMatch(
+            considerMatch(SearchMatch(
               filename: filename,
               matchType: SearchMatchType.lyrics,
               matchedText: match.matchedText,
               fullLine: match.fullLine,
             ));
-            seenFilenames.add(filename);
           }
         }
       }
     }
 
-    return results;
+    return bestMatches.values.toList();
   }
 
   /// Extracts the matching portion of text with surrounding context

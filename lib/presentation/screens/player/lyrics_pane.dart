@@ -116,6 +116,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   bool _loading = true;
   bool _hasSynced = false;
   String? _loadedFilename;
+  String? _gapSymbol;
 
   /// The playhead is followed off a subscription rather than a `StreamBuilder`
   /// around the list.
@@ -374,6 +375,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       _hasCachedTranslation = false;
       _translating = false;
       _hasSynced = parsed.any((l) => l.isSynced);
+      _gapSymbol = detectInstrumentalGapSymbol(parsed);
       _loading = false;
     });
 
@@ -445,6 +447,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         _wordLines = rich.lines;
         _richSyncAvailable = rich.lines.any((line) => line.words.isNotEmpty);
         _hasSynced = true;
+        _gapSymbol = detectInstrumentalGapSymbol(onlineLines);
         _loading = false;
       });
     } else {
@@ -1012,6 +1015,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
                             builder: (context, progress, _) => LyricsGapLoader(
                               progress: progress,
                               accent: widget.accent,
+                              symbol: _gapSymbol,
                             ),
                           ),
                         )
