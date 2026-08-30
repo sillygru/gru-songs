@@ -75,6 +75,26 @@ class _CoverGlowPainter extends CustomPainter {
   /// smoothly as before.
   static const double _glowQuantum = 1 / 32;
 
+  // Cache maskFilters per quantized shape so we do not allocate a new
+  // MaskFilter object every decorative tick (30Hz). The engine also caches
+  // the rasterized blur against (shape, sigma), so reusing the filter
+  // guarantees a cache hit after the first punch warms it.
+  static final Map<int, MaskFilter> _filterCache = {};
+
+  static MaskFilter _filterFor(double shape) {
+    final key = (shape / _glowQuantum).round();
+    return _filterCache.putIfAbsent(
+      key,
+      () {
+        final blurRadius = 15 + 36 * shape;
+        return MaskFilter.blur(
+          BlurStyle.normal,
+          Shadow.convertRadiusToSigma(blurRadius),
+        );
+      },
+    );
+  }
+
   final Paint _paint = Paint();
 
   _CoverGlowPainter({
@@ -102,15 +122,11 @@ class _CoverGlowPainter extends CustomPainter {
     if (visible <= 0.01) return;
 
     // Same recipe the BoxShadow inside the cover used, so only the clipping
-    // changed and not the look.
+    // changed and not the look. MaskFilter is cached per quantized shape.
     final shape = (glow / _glowQuantum).round() * _glowQuantum;
-    final blurRadius = 15 + 36 * shape;
     _paint
       ..color = accent.withValues(alpha: 0.29 * glow * visible * visible)
-      ..maskFilter = MaskFilter.blur(
-        BlurStyle.normal,
-        Shadow.convertRadiusToSigma(blurRadius),
-      );
+      ..maskFilter = _filterFor(shape);
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(

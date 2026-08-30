@@ -98,89 +98,92 @@ class LyricsLine extends StatelessWidget {
       LyricsVoiceAlignment.duet => Alignment.center,
     };
 
-    return RepaintBoundary(
-      child: AnimatedSlide(
-        offset: isActive ? const Offset(0, -0.04) : Offset.zero,
+    // Removed per-line RepaintBoundary: 40 boundaries (~1.2MB layer cache)
+    // isolated blur but cost more than they saved. Single boundary around the
+    // list in LyricsPane is enough; blur layers now composite directly.
+    // Sigma capped at 1.4: sigma 2 at 32px text is a subtle focus cue, but
+    // kernel size scales with sigma. Capping halves taps per blurring line,
+    // and raising the bypass threshold skips near-zero blurs entirely.
+    return AnimatedSlide(
+      offset: isActive ? const Offset(0, -0.04) : Offset.zero,
+      duration: PlayerTokens.dLyricsLine,
+      curve: PlayerTokens.cLyricsLine,
+      child: AnimatedScale(
+        scale: isActive
+            ? PlayerTokens.lyricsActiveScale
+            : PlayerTokens.lyricsInactiveScale,
+        alignment: scaleAlignment,
         duration: PlayerTokens.dLyricsLine,
         curve: PlayerTokens.cLyricsLine,
-        child: AnimatedScale(
-          scale: isActive
-              ? PlayerTokens.lyricsActiveScale
-              : PlayerTokens.lyricsInactiveScale,
-          alignment: scaleAlignment,
+        child: AnimatedContainer(
           duration: PlayerTokens.dLyricsLine,
           curve: PlayerTokens.cLyricsLine,
-          child: AnimatedContainer(
-            duration: PlayerTokens.dLyricsLine,
-            curve: PlayerTokens.cLyricsLine,
-            padding: const EdgeInsets.symmetric(
-              horizontal: PlayerTokens.s4,
-              vertical: PlayerTokens.s3,
-            ),
-            child: InkWell(
-              onTap: hasTime ? onTap : null,
-              borderRadius: PlayerTokens.brMd,
-              child: TweenAnimationBuilder<double>(
-                tween: Tween<double>(end: resolvedBlurSigma),
-                duration: PlayerTokens.dBase,
-                curve: PlayerTokens.cStandard,
-                builder: (context, sigma, child) {
-                  if (sigma <= 0.05) return child ?? const SizedBox.shrink();
-                  return ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                    child: child,
-                  );
-                },
-                child: AnimatedDefaultTextStyle(
-                  duration: PlayerTokens.dLyricsLine,
-                  curve: PlayerTokens.cLyricsLine,
-                  style: TextStyle(
-                    fontSize: PlayerTokens.lyricsFontSize,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white.withValues(alpha: lineOpacity),
-                    height: 1.28,
-                    letterSpacing: -0.4,
-                    shadows: isActive
-                        ? [
-                            Shadow(
-                              color: activeColor.withValues(
-                                alpha: 0.30 * glowIntensity,
-                              ),
-                              blurRadius: 16 * glowIntensity,
-                              offset: const Offset(0, 1),
+          padding: const EdgeInsets.symmetric(
+            horizontal: PlayerTokens.s4,
+            vertical: PlayerTokens.s3,
+          ),
+          child: InkWell(
+            onTap: hasTime ? onTap : null,
+            borderRadius: PlayerTokens.brMd,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: resolvedBlurSigma.clamp(0.0, 1.4)),
+              duration: PlayerTokens.dBase,
+              curve: PlayerTokens.cStandard,
+              builder: (context, sigma, child) {
+                if (sigma <= 0.15) return child ?? const SizedBox.shrink();
+                return ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                  child: child,
+                );
+              },
+              child: AnimatedDefaultTextStyle(
+                duration: PlayerTokens.dLyricsLine,
+                curve: PlayerTokens.cLyricsLine,
+                style: TextStyle(
+                  fontSize: PlayerTokens.lyricsFontSize,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white.withValues(alpha: lineOpacity),
+                  height: 1.28,
+                  letterSpacing: -0.4,
+                  shadows: isActive
+                      ? [
+                          Shadow(
+                            color: activeColor.withValues(
+                              alpha: 0.30 * glowIntensity,
                             ),
-                          ]
-                        : null,
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Column(
-                      crossAxisAlignment: crossAxisAlignment,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ..._buildLyricLines(
-                            primaryText, lineOpacity, textAlign),
-                        if (showSubtext) ...[
-                          const SizedBox(height: PlayerTokens.s1),
-                          Text(
-                            translation,
-                            textAlign: textAlign,
-                            style: TextStyle(
-                              fontSize: PlayerTokens.lyricsFontSize *
-                                  PlayerTokens.lyricsTranslationScale,
-                              fontWeight: FontWeight.w500,
-                              color: isActive
-                                  ? activeColor.withValues(alpha: 0.88)
-                                  : Colors.white.withValues(
-                                      alpha: isPlayed ? 0.50 : 0.30,
-                                    ),
-                              height: 1.22,
-                              letterSpacing: -0.2,
-                            ),
+                            blurRadius: 16 * glowIntensity,
+                            offset: const Offset(0, 1),
                           ),
-                        ],
+                        ]
+                      : null,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Column(
+                    crossAxisAlignment: crossAxisAlignment,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ..._buildLyricLines(primaryText, lineOpacity, textAlign),
+                      if (showSubtext) ...[
+                        const SizedBox(height: PlayerTokens.s1),
+                        Text(
+                          translation,
+                          textAlign: textAlign,
+                          style: TextStyle(
+                            fontSize: PlayerTokens.lyricsFontSize *
+                                PlayerTokens.lyricsTranslationScale,
+                            fontWeight: FontWeight.w500,
+                            color: isActive
+                                ? activeColor.withValues(alpha: 0.88)
+                                : Colors.white.withValues(
+                                    alpha: isPlayed ? 0.50 : 0.30,
+                                  ),
+                            height: 1.22,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),

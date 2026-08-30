@@ -39,30 +39,35 @@ class PlayerGlassSurface extends StatelessWidget {
         ? Color.alphaBlend(tint!.withValues(alpha: 0.10), baseFill)
         : baseFill;
 
+    // RepaintBoundary isolates the saveLayer so the blur does not repaint
+    // the list underneath every frame. The glass is only used for the undo
+    // bar today, but keeping the boundary here protects any future callers.
     return ClipRRect(
       borderRadius: radius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: PlayerTokens.glassBlur,
-          sigmaY: PlayerTokens.glassBlur,
-        ),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: Color.alphaBlend(
-              Colors.black.withValues(alpha: fillAlpha),
-              fill,
-            ),
-            borderRadius: radius,
-            border: bordered
-                ? Border.all(
-                    color: Colors.white
-                        .withValues(alpha: PlayerTokens.glassBorderAlpha),
-                    width: 0.8,
-                  )
-                : null,
+      child: RepaintBoundary(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: PlayerTokens.glassBlur,
+            sigmaY: PlayerTokens.glassBlur,
           ),
-          child: child,
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(
+                Colors.black.withValues(alpha: fillAlpha),
+                fill,
+              ),
+              borderRadius: radius,
+              border: bordered
+                  ? Border.all(
+                      color: Colors.white
+                          .withValues(alpha: PlayerTokens.glassBorderAlpha),
+                      width: 0.8,
+                    )
+                  : null,
+            ),
+            child: child,
+          ),
         ),
       ),
     );

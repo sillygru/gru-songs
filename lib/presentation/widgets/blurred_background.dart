@@ -144,6 +144,14 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
   }
 
   Widget _buildImageLayers({double? squareSize}) {
+    // Cache the decoded blur at roughly the size it is drawn: avoids decoding a
+    // 1080p-3000px file for a box that is a few hundred points wide, and keeps
+    // the image cache from evicting list thumbnails.
+    final int? cacheDim = squareSize == null
+        ? null
+        : (squareSize * MediaQuery.devicePixelRatioOf(context))
+            .round()
+            .clamp(512, 1024);
     final child = Stack(
       children: [
         // Base layer: Low-res album art (always there as fallback)
@@ -170,6 +178,8 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.low,
                 gaplessPlayback: true,
+                cacheWidth: cacheDim,
+                cacheHeight: cacheDim,
               ),
             ),
           ),
@@ -189,22 +199,29 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
         clipBehavior: Clip.none,
         children: [
           // Blur layers displayed in a square OverflowBox so no rectangular
-          // borders show during rotation.
+          // borders show during rotation. The rotating subtree is isolated in
+          // its own RepaintBoundary so the compositor can cache it as a
+          // texture layer: rotation then becomes a GPU transform, not a
+          // full raster, and the static gradient/glass above do not repaint.
           LayoutBuilder(
             builder: (context, constraints) {
-              // Square big enough that its corners, when rotated, stay
-              // outside the viewport on every device.
-              final squareSize =
-                  math.max(constraints.maxWidth, constraints.maxHeight) *
-                      math.sqrt2;
+              // Diagonal of the viewport covers 45deg rotation; 1.02 accounts
+              // for the 1.5% breathing scale so corners never clip.
+              final viewportMax =
+                  math.max(constraints.maxWidth, constraints.maxHeight);
+              final squareSize = viewportMax * math.sqrt2 * 1.02;
               return OverflowBox(
                 maxWidth: squareSize,
                 maxHeight: squareSize,
                 alignment: Alignment.center,
-                child: _ThrottledSpin(
-                  key: ValueKey(widget.filename),
-                  enabled: widget.slowSpin,
-                  child: _buildImageLayers(squareSize: squareSize),
+                child: ClipRect(
+                  child: RepaintBoundary(
+                    child: _ThrottledSpin(
+                    key: ValueKey(widget.filename),
+                    enabled: widget.slowSpin,
+                    child: _buildImageLayers(squareSize: squareSize),
+                  ),
+                  ),
                 ),
               );
             },

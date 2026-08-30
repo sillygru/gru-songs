@@ -40,12 +40,13 @@ class BeatReactiveCover extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!enabled) return child;
 
-    return ListenableBuilder(
-      listenable: controller,
-      // The artwork subtree is passed through untouched, so a beat repaints the
-      // transform without rebuilding the image.
-      child: child,
-      builder: (context, child) {
+    return RepaintBoundary(
+      child: ListenableBuilder(
+        listenable: controller,
+        // The artwork subtree is passed through untouched, so a beat repaints the
+        // transform without rebuilding the image.
+        child: child,
+        builder: (context, child) {
         final frame = controller.frame;
         final spec = controller.coverSpec;
 
@@ -69,6 +70,7 @@ class BeatReactiveCover extends StatelessWidget {
           child: child,
         );
       },
+      ),
     );
   }
 }
