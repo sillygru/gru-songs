@@ -116,7 +116,6 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   bool _loading = true;
   bool _hasSynced = false;
   String? _loadedFilename;
-  String? _gapSymbol;
 
   /// The playhead is followed off a subscription rather than a `StreamBuilder`
   /// around the list.
@@ -349,9 +348,10 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
     if (!mounted || _loadedFilename != filename) return;
 
-    final parsed = (content == null || content.trim().isEmpty)
+    final rawParsed = (content == null || content.trim().isEmpty)
         ? const <LyricLine>[]
         : LyricLine.parse(content);
+    final parsed = filterMusicalSymbolLines(rawParsed);
 
     final settings = ref.read(settingsProvider);
     final List<RichLyricLine?> generatedWordLines;
@@ -375,7 +375,6 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       _hasCachedTranslation = false;
       _translating = false;
       _hasSynced = parsed.any((l) => l.isSynced);
-      _gapSymbol = detectInstrumentalGapSymbol(parsed);
       _loading = false;
     });
 
@@ -433,21 +432,23 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     if (hasLocalLyrics && aligned.whereType<RichLyricLine>().isEmpty) return;
 
     if (!hasLocalLyrics) {
-      final onlineLines = rich.lines
-          .where((line) => line.text.trim().isNotEmpty)
+      final filteredRich = rich.lines
+          .where((line) =>
+              line.text.trim().isNotEmpty && !containsMusicalSymbol(line.text))
+          .toList();
+      if (filteredRich.isEmpty) return;
+      final onlineLines = filteredRich
           .map((line) => LyricLine(
                 time: line.start,
                 text: line.text,
                 isSynced: true,
               ))
           .toList();
-      if (onlineLines.isEmpty) return;
       setState(() {
         _lyrics = onlineLines;
-        _wordLines = rich.lines;
-        _richSyncAvailable = rich.lines.any((line) => line.words.isNotEmpty);
+        _wordLines = filteredRich;
+        _richSyncAvailable = filteredRich.any((line) => line.words.isNotEmpty);
         _hasSynced = true;
-        _gapSymbol = detectInstrumentalGapSymbol(onlineLines);
         _loading = false;
       });
     } else {
@@ -1015,7 +1016,6 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
                             builder: (context, progress, _) => LyricsGapLoader(
                               progress: progress,
                               accent: widget.accent,
-                              symbol: _gapSymbol,
                             ),
                           ),
                         )

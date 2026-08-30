@@ -56,7 +56,6 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
   List<LyricLine?> _translatedLines = const [];
   bool _hasSynced = false;
   String? _loadedFilename;
-  String? _gapSymbol;
 
   /// The line currently being sung.
   ///
@@ -208,14 +207,14 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
         );
     if (!mounted || _loadedFilename != filename) return;
 
-    final parsed = (content == null || content.trim().isEmpty)
+    final rawParsed = (content == null || content.trim().isEmpty)
         ? const <LyricLine>[]
         : LyricLine.parse(content);
+    final parsed = filterMusicalSymbolLines(rawParsed);
 
     setState(() {
       _lines = parsed;
       _hasSynced = parsed.any((l) => l.isSynced);
-      _gapSymbol = detectInstrumentalGapSymbol(parsed);
     });
 
     // Load translated lyrics if available
@@ -302,7 +301,6 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
                         progress: progress,
                         accent: widget.accent,
                         compact: true,
-                        symbol: _gapSymbol,
                       ),
                     )
                   : text.isEmpty

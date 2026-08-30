@@ -14,17 +14,17 @@ const _musicalGapSymbols = {
   '🎼',
 };
 
-/// Returns the first musical symbol found in any synced lyric line, or null
-/// when the song has no lyric-like symbols and should use the dot loader.
-String? detectInstrumentalGapSymbol(List<LyricLine> lyrics) {
-  for (final line in lyrics) {
-    if (!line.isSynced) continue;
-    for (final rune in line.text.runes) {
-      final ch = String.fromCharCode(rune);
-      if (_musicalGapSymbols.contains(ch)) return ch;
-    }
+bool containsMusicalSymbol(String text) {
+  for (final rune in text.runes) {
+    if (_musicalGapSymbols.contains(String.fromCharCode(rune))) return true;
   }
-  return null;
+  return false;
+}
+
+/// Lines that are only musical symbols (or whitespace) should not be shown.
+/// The gap loader handles the instrumental break instead.
+List<LyricLine> filterMusicalSymbolLines(List<LyricLine> lyrics) {
+  return lyrics.where((line) => !containsMusicalSymbol(line.text)).toList();
 }
 
 class LyricsGapLoaderState {
