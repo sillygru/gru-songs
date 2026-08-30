@@ -39,7 +39,8 @@ void main() {
       expect(picture, isNotNull);
     });
 
-    test('bars past the reveal front remain fully expanded to respective heights',
+    test(
+        'bars past the reveal front remain fully expanded to respective heights',
         () {
       final peaks = List<double>.generate(2000, (i) => 0.8);
       final posNotifier = ValueNotifier(Duration.zero);
@@ -121,7 +122,8 @@ void main() {
       expect(find.byType(WaveformProgressBar), findsOneWidget);
     });
 
-    testWidgets('progressive uncached stream reveals left to right in real time',
+    testWidgets(
+        'progressive uncached stream reveals left to right in real time',
         (tester) async {
       final controller = StreamController<List<double>>.broadcast();
       final mockService = _MockProgressiveWaveformService(controller.stream);
@@ -177,8 +179,7 @@ void main() {
 class _MockCachedWaveformService extends WaveformService {
   final List<double> cachedPeaks;
 
-  _MockCachedWaveformService(this.cachedPeaks)
-      : super(CacheService.instance);
+  _MockCachedWaveformService(this.cachedPeaks) : super(CacheService.instance);
 
   @override
   List<double>? cachedWaveformSync(String filename) => cachedPeaks;

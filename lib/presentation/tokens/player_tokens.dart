@@ -45,6 +45,10 @@ class PlayerTokens {
   static const Duration dLyricsRichSyncTimingOffset =
       Duration(milliseconds: 150);
   static const Duration dLyricsScrollTimingOffset = Duration(milliseconds: 500);
+  static const Duration dLyricsSimulatedRichSyncLineHold =
+      Duration(milliseconds: 320);
+  static const Duration dLyricsSimulatedRichSyncMaxOverlap =
+      Duration(milliseconds: 350);
   static const Duration dLyricsLoaderTransition = Duration(milliseconds: 600);
   static const Duration dLyricsInstrumentalFill = Duration(milliseconds: 150);
   static const Duration dLyricsInstrumentalOscillation =

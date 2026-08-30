@@ -50,13 +50,15 @@ class LyricsStyleRouter {
           break;
         }
       }
-      final tokens = l.text.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+      final tokens =
+          l.text.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
       final chars = tokens.fold<int>(0, (s, t) => s + t.length);
       double durS;
       if (nextTime != null) {
         durS = math.max(0.1, (nextTime - l.time).inMicroseconds / 1000000.0);
       } else if (song?.duration != null) {
-        durS = math.max(0.1, (song!.duration! - l.time).inMicroseconds / 1000000.0);
+        durS = math.max(
+            0.1, (song!.duration! - l.time).inMicroseconds / 1000000.0);
       } else {
         durS = 3.0;
       }
@@ -70,9 +72,12 @@ class LyricsStyleRouter {
 
     // 75th percentile like ultra_fast
     final sorted = List<double>.from(cpsList)..sort();
-    final idx = ((sorted.length - 1) * 0.75).round().clamp(0, sorted.length - 1);
+    final idx =
+        ((sorted.length - 1) * 0.75).round().clamp(0, sorted.length - 1);
     final tempoCps = sorted[idx];
-    final meanDur = durList.isEmpty ? 3.0 : durList.reduce((a, b) => a + b) / durList.length;
+    final meanDur = durList.isEmpty
+        ? 3.0
+        : durList.reduce((a, b) => a + b) / durList.length;
 
     double totDurS = 1.0;
     final firstSynced = lines.where((l) => l.isSynced).toList();
@@ -80,7 +85,9 @@ class LyricsStyleRouter {
       final last = firstSynced.last;
       final first = firstSynced.first;
       Duration end = last.time + const Duration(seconds: 3);
-      if (song != null && song.duration != null && song.duration! > last.time) end = song.duration!;
+      if (song != null && song.duration != null && song.duration! > last.time) {
+        end = song.duration!;
+      }
       // if last has next timed? approximate with nextTime above else song duration
       totDurS = math.max(1.0, (end - first.time).inMicroseconds / 1000000.0);
     }

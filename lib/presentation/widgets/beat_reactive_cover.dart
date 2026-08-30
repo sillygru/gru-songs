@@ -47,29 +47,29 @@ class BeatReactiveCover extends StatelessWidget {
         // transform without rebuilding the image.
         child: child,
         builder: (context, child) {
-        final frame = controller.frame;
-        final spec = controller.coverSpec;
+          final frame = controller.frame;
+          final spec = controller.coverSpec;
 
-        // One matrix rather than nested Transforms: three stacked transforms
-        // would mean three layers for what is one gesture.
-        final displacement = frame.displacement * (0.85 + 0.3 * frame.bass);
-        final scale = 1.0 +
-            frame.breath * spec.coverBreath +
-            displacement * spec.coverPunch;
+          // One matrix rather than nested Transforms: three stacked transforms
+          // would mean three layers for what is one gesture.
+          final displacement = frame.displacement * (0.85 + 0.3 * frame.bass);
+          final scale = 1.0 +
+              frame.breath * spec.coverBreath +
+              displacement * spec.coverPunch;
 
-        final matrix = Matrix4.identity()
-          // Negative Y is up: the cover rides up on the punch and sinks into
-          // the anticipation.
-          ..translateByDouble(0, -displacement * spec.coverLift, 0, 1)
-          ..rotateZ(frame.sway * spec.coverSway)
-          ..scaleByDouble(scale, scale, 1, 1);
+          final matrix = Matrix4.identity()
+            // Negative Y is up: the cover rides up on the punch and sinks into
+            // the anticipation.
+            ..translateByDouble(0, -displacement * spec.coverLift, 0, 1)
+            ..rotateZ(frame.sway * spec.coverSway)
+            ..scaleByDouble(scale, scale, 1, 1);
 
-        return Transform(
-          transform: matrix,
-          alignment: Alignment.center,
-          child: child,
-        );
-      },
+          return Transform(
+            transform: matrix,
+            alignment: Alignment.center,
+            child: child,
+          );
+        },
       ),
     );
   }

@@ -235,20 +235,41 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     // current word's wipe (which follows lyricsPosition) mid-progress and show
     // a blank next line during vocalSpan gaps. Hold previous line until its
     // last word ends and next line's first word has actually started (by lyricsPosition).
+    // For simulated richsync the estimator leaves a silence gap (vocalSpan < line interval)
+    // so the last word completes early; add a short artificial hold so the current line
+    // fully finishes while still leaving time for the next line's first word.
     var active = _activeIndexFor(lyrics, scrollPosition);
-    if (_richSyncAvailable && _wordLines.isNotEmpty && active != _activeLine.value) {
+    if (_richSyncAvailable &&
+        _wordLines.isNotEmpty &&
+        active != _activeLine.value) {
       final prev = _activeLine.value;
       if (prev >= 0 && active >= 0 && active != prev) {
         // Only allow switch if current word has finished (hold to finish word)
         // and next line's first word has started by lyricsPosition.
         final prevEnd = _effectiveEndFor(prev, lyrics);
         final nextStart = _effectiveStartFor(active, lyrics);
-        if (lyricsPosition < prevEnd || lyricsPosition < nextStart) {
+        final isSimulated =
+            prev < _wordLines.length && _wordLines[prev]?.isSimulated == true;
+        var holdEnd = prevEnd;
+        if (isSimulated) {
+          holdEnd = prevEnd + PlayerTokens.dLyricsSimulatedRichSyncLineHold;
+          // Cap overlap so we still switch early enough for the next line to start.
+          final cap =
+              nextStart + PlayerTokens.dLyricsSimulatedRichSyncMaxOverlap;
+          if (holdEnd > cap) holdEnd = cap;
+        }
+        if (lyricsPosition < holdEnd || lyricsPosition < nextStart) {
           active = prev;
         }
       } else if (prev >= 0 && active < 0) {
         final prevEnd = _effectiveEndFor(prev, lyrics);
-        if (lyricsPosition < prevEnd) active = prev;
+        final isSimulated =
+            prev < _wordLines.length && _wordLines[prev]?.isSimulated == true;
+        var holdEnd = prevEnd;
+        if (isSimulated) {
+          holdEnd = prevEnd + PlayerTokens.dLyricsSimulatedRichSyncLineHold;
+        }
+        if (lyricsPosition < holdEnd) active = prev;
       }
     }
     if (active != _activeLine.value) {
@@ -610,13 +631,15 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   }
 
   Duration _effectiveStartFor(int index, List<LyricLine> lyrics) {
-    final wl = (index >= 0 && index < _wordLines.length) ? _wordLines[index] : null;
+    final wl =
+        (index >= 0 && index < _wordLines.length) ? _wordLines[index] : null;
     if (wl != null && wl.words.isNotEmpty) return wl.words.first.start;
     return lyrics[index].time;
   }
 
   Duration _effectiveEndFor(int index, List<LyricLine> lyrics) {
-    final wl = (index >= 0 && index < _wordLines.length) ? _wordLines[index] : null;
+    final wl =
+        (index >= 0 && index < _wordLines.length) ? _wordLines[index] : null;
     if (wl != null && wl.words.isNotEmpty) return wl.words.last.end;
     // Fallback to next line start or line time + 3s
     for (var j = index + 1; j < lyrics.length; j++) {

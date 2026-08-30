@@ -217,10 +217,10 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
                 child: ClipRect(
                   child: RepaintBoundary(
                     child: _ThrottledSpin(
-                    key: ValueKey(widget.filename),
-                    enabled: widget.slowSpin,
-                    child: _buildImageLayers(squareSize: squareSize),
-                  ),
+                      key: ValueKey(widget.filename),
+                      enabled: widget.slowSpin,
+                      child: _buildImageLayers(squareSize: squareSize),
+                    ),
                   ),
                 ),
               );
