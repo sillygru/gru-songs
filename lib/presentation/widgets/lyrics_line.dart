@@ -102,8 +102,9 @@ class LyricsLine extends StatelessWidget {
     // isolated blur but cost more than they saved. Single boundary around the
     // list in LyricsPane is enough; blur layers now composite directly.
     // Sigma capped at 1.4: sigma 2 at 32px text is a subtle focus cue, but
-    // kernel size scales with sigma. Capping halves taps per blurring line,
-    // and raising the bypass threshold skips near-zero blurs entirely.
+    // kernel size scales with sigma. Capping halves taps per blurring line.
+    // Bypass raised to 0.6: only the two nearest off-screen lines keep blur,
+    // farther ones use opacity alone — same focus cue, 3x fewer saveLayers.
     return AnimatedSlide(
       offset: isActive ? const Offset(0, -0.04) : Offset.zero,
       duration: PlayerTokens.dLyricsLine,
@@ -130,7 +131,7 @@ class LyricsLine extends StatelessWidget {
               duration: PlayerTokens.dBase,
               curve: PlayerTokens.cStandard,
               builder: (context, sigma, child) {
-                if (sigma <= 0.15) return child ?? const SizedBox.shrink();
+                if (sigma <= 0.60) return child ?? const SizedBox.shrink();
                 return ImageFiltered(
                   imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
                   child: child,
@@ -404,7 +405,9 @@ class _LyricWordWidget extends StatelessWidget {
       ),
     );
 
-    // Active theme-colored wipe layer with luminous leading crest
+    // Active wipe: ClipRect avoids ShaderMask saveLayer per word. The
+    // luminous crest is preserved as a solid active color wipe; the wobble
+    // lift remains. Saves one saveLayer per animating word (~5-8 concurrent).
     if (isActive && progress > 0.0) {
       Widget activeText;
       if (progress >= 1.0) {
@@ -416,41 +419,26 @@ class _LyricWordWidget extends StatelessWidget {
           ),
         );
       } else {
-        final s0 = (progress - 0.14).clamp(0.0, 1.0);
-        final s1 = math.max(s0 + 0.001, progress.clamp(0.0, 1.0));
-        final s2 = math.max(s1 + 0.001, (progress + 0.16).clamp(0.0, 1.0));
-        final crestColor =
-            Color.lerp(activeColor, Colors.white, 0.65) ?? Colors.white;
-
-        activeText = ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) {
-            return LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              stops: [0.0, s0, s1, s2, 1.0],
-              colors: [
-                activeColor,
-                activeColor,
-                crestColor,
-                Colors.transparent,
-                Colors.transparent,
-              ],
-            ).createShader(bounds);
-          },
-          child: Text(
-            displayText,
-            style: textStyle.copyWith(
-              color: Colors.white,
-              shadows: null,
+        final clipped = ClipRect(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: progress.clamp(0.0, 1.0),
+            child: Text(
+              displayText,
+              style: textStyle.copyWith(
+                color: fullActiveColor,
+                shadows: null,
+              ),
+              overflow: TextOverflow.clip,
+              softWrap: false,
+              maxLines: 1,
             ),
           ),
         );
-
         final lift = -2.2 * math.sin(progress * math.pi);
         activeText = Transform.translate(
           offset: Offset(0, lift),
-          child: activeText,
+          child: clipped,
         );
       }
 

@@ -76,7 +76,7 @@ class _CoverGlowPainter extends CustomPainter {
   static const double _glowQuantum = 1 / 32;
 
   // Cache maskFilters per quantized shape so we do not allocate a new
-  // MaskFilter object every decorative tick (30Hz). The engine also caches
+  // MaskFilter object every decorative tick. The engine also caches
   // the rasterized blur against (shape, sigma), so reusing the filter
   // guarantees a cache hit after the first punch warms it.
   static final Map<int, MaskFilter> _filterCache = {};
@@ -97,6 +97,14 @@ class _CoverGlowPainter extends CustomPainter {
 
   final Paint _paint = Paint();
 
+  // Throttle glow to 30Hz and cache cover rect: a soft 15-51px blur at
+  // 30Hz is indistinguishable from 60Hz, and getTransformTo(null) per frame
+  // hits the render tree. Caching avoids both.
+  static const Duration _glowMinInterval = Duration(microseconds: 33333);
+  Duration? _lastPaintElapsed;
+  Rect? _cachedRect;
+  Duration? _cachedRectAt;
+
   _CoverGlowPainter({
     required this.controller,
     required this.coverKey,
@@ -111,7 +119,32 @@ class _CoverGlowPainter extends CustomPainter {
     final glow = controller.frame.pulse;
     if (glow < 0.01) return;
 
-    final rect = _coverRect();
+    // 30Hz throttle: glow envelope attack is 18ms, decay 80-220ms, so 33ms
+    // still captures the punch smoothly while halving large-kernel blurs.
+    final now = controller.elapsed;
+    final last = _lastPaintElapsed;
+    if (last != null && now - last < _glowMinInterval && glow < 0.95) {
+      // Still need to honor size changes; use cached rect path.
+      final cached = _cachedRect;
+      if (cached == null || cached.isEmpty) return;
+      final visible = _visibleFraction(cached, size);
+      if (visible <= 0.01) return;
+      final shape = (glow / _glowQuantum).round() * _glowQuantum;
+      _paint
+        ..color = accent.withValues(alpha: 0.29 * glow * visible * visible)
+        ..maskFilter = _filterFor(shape);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          cached.inflate(5 * shape),
+          const Radius.circular(PlayerTokens.rLg),
+        ),
+        _paint,
+      );
+      return;
+    }
+    _lastPaintElapsed = now;
+
+    final rect = _coverRectCached(now);
     if (rect == null || rect.isEmpty) return;
 
     // Swiping to Lyrics or Queue carries the artwork a page off screen, and a
@@ -151,7 +184,15 @@ class _CoverGlowPainter extends CustomPainter {
   /// Resolved through the root rather than with `getTransformTo(shellBox)`:
   /// during a Hero flight the artwork is re-parented into the overlay and is no
   /// longer a descendant of the shell, which that form asserts on.
-  Rect? _coverRect() {
+  Rect? _coverRectCached(Duration? now) {
+    // Cache rect for 32ms so swipe/Hero at 60Hz still tracks, but we avoid
+    // getTransformTo on every glow tick.
+    if (now != null &&
+        _cachedRect != null &&
+        _cachedRectAt != null &&
+        now - _cachedRectAt! < _glowMinInterval) {
+      return _cachedRect;
+    }
     final cover = coverKey.currentContext?.findRenderObject();
     final shell = shellKey.currentContext?.findRenderObject();
     if (cover is! RenderBox || shell is! RenderBox) return null;
@@ -162,7 +203,10 @@ class _CoverGlowPainter extends CustomPainter {
       cover.getTransformTo(null),
       Offset.zero & cover.size,
     );
-    return global.shift(-shell.localToGlobal(Offset.zero));
+    final rect = global.shift(-shell.localToGlobal(Offset.zero));
+    _cachedRect = rect;
+    if (now != null) _cachedRectAt = now;
+    return rect;
   }
 
   @override

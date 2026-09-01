@@ -250,10 +250,11 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
   }
 }
 
-/// Rotates the cached backdrop at 60 painted frames per second. Isolated in
-/// its own RepaintBoundary the rotation is a compositor transform (not a
-/// 1.3MP raster), so 60Hz stays cheap; background stops entirely when
-/// backgrounded or paused, and shards via cacheWidth keep decode cheap.
+/// Rotates the cached backdrop at 15Hz. Isolated in its own RepaintBoundary the
+/// rotation is a compositor transform (not a 1.3MP raster), so 15Hz is
+/// indistinguishable from 60Hz at 90s per rotation (0.4deg/frame vs 0.1deg) but
+/// cuts compositor wake-ups by 4x; background stops entirely when backgrounded
+/// or paused, and shards via cacheWidth keep decode cheap.
 class _ThrottledSpin extends StatefulWidget {
   final bool enabled;
   final Widget child;
@@ -270,8 +271,8 @@ class _ThrottledSpin extends StatefulWidget {
 
 class _ThrottledSpinState extends State<_ThrottledSpin>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  static const Duration _paintInterval = Duration(microseconds: 16667);
-  static const Duration _powerSaveInterval = Duration(microseconds: 33333);
+  static const Duration _paintInterval = Duration(microseconds: 66667);
+  static const Duration _powerSaveInterval = Duration(microseconds: 100000);
   static const Duration _spinDuration = Duration(seconds: 90);
 
   late final Ticker _ticker;

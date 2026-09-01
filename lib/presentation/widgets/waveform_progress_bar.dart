@@ -367,15 +367,19 @@ class _WaveformProgressBarState extends ConsumerState<WaveformProgressBar>
                 return AnimatedBuilder(
                   animation: _revealController,
                   builder: (context, child) {
-                    return CustomPaint(
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
-                      painter: WaveformPainter(
-                        peaks: _peaks,
-                        revealProgress: _revealController.value,
-                        positionNotifier: _positionNotifier,
-                        dragPositionNotifier: _dragPositionNotifier,
-                        total: widget.total,
-                        color: primaryColor,
+                    return RepaintBoundary(
+                      child: CustomPaint(
+                        size: Size(constraints.maxWidth, constraints.maxHeight),
+                        painter: WaveformPainter(
+                          peaks: _peaks,
+                          revealProgress: _revealController.value,
+                          positionNotifier: _positionNotifier,
+                          dragPositionNotifier: _dragPositionNotifier,
+                          total: widget.total,
+                          color: primaryColor,
+                        ),
+                        isComplex: true,
+                        willChange: false,
                       ),
                     );
                   },

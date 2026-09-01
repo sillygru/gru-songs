@@ -55,10 +55,10 @@ class _BeatParticleFieldState extends State<BeatParticleField> {
     return IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
-          // Decorative runs at 60Hz (throttled to 30Hz only in power-save /
-          // background stops entirely) so surge tau 0.18s and 18ms attack stay
-          // smooth; other GPU wins (RepaintBoundary, cached blur, limited halo)
-          // keep it cool without halving fidelity.
+          // Decorative runs at 60Hz (30Hz power-save) so surge tau 0.18s and
+          // 18ms attack stay smooth; other GPU wins (RepaintBoundary,
+          // batched saveLayer, limited halo) keep it cool without halving
+          // fidelity. willChange false lets the raster cache hold when still.
           painter: _ParticlePainter(
             controller: widget.controller,
             system: _system,
@@ -66,7 +66,7 @@ class _BeatParticleFieldState extends State<BeatParticleField> {
           ),
           size: Size.infinite,
           isComplex: true,
-          willChange: true,
+          willChange: false,
         ),
       ),
     );
@@ -176,6 +176,10 @@ class Particle {
   /// particle, so a flare is not the same fixed diagonal smear everywhere.
   final double splitAngle;
 
+  /// Cached cos/sin of [splitAngle] to avoid per-frame trig for flare splits.
+  final double splitCos;
+  final double splitSin;
+
   /// Wall-clock seconds this particle appeared, how long it takes to reach full
   /// brightness, how long it lives and how long it takes to leave — so the
   /// field materialises, renews itself and never pops.
@@ -204,6 +208,8 @@ class Particle {
     required this.twinkleRate,
     required this.wobblePhase,
     required this.splitAngle,
+    required this.splitCos,
+    required this.splitSin,
     required this.bornAt,
     required this.fadeInSeconds,
     required this.lifeSeconds,
@@ -403,6 +409,7 @@ class ParticleSystem {
     final headingWeight = 0.10 + _random.nextDouble() * 0.15;
     final swirlBias = (_random.nextBool() ? 1.0 : -1.0) *
         (0.45 + _random.nextDouble() * 0.85);
+    final splitAngle = _random.nextDouble() * math.pi * 2;
     return Particle(
       x: _random.nextDouble(),
       y: _random.nextDouble(),
@@ -424,7 +431,9 @@ class ParticleSystem {
       twinklePhase: _random.nextDouble() * math.pi * 2,
       twinkleRate: 1.4 + _random.nextDouble() * 2.6,
       wobblePhase: _random.nextDouble() * math.pi * 2,
-      splitAngle: _random.nextDouble() * math.pi * 2,
+      splitAngle: splitAngle,
+      splitCos: math.cos(splitAngle),
+      splitSin: math.sin(splitAngle),
       bornAt: _now,
       fadeInSeconds: isSoundBoosted
           ? 0.15 + _random.nextDouble() * 0.25
@@ -839,11 +848,12 @@ class _ParticlePainter extends CustomPainter {
   final ParticleSystem system;
   final Color accent;
 
-  // Additive blend restores pre-optimization glow — keeps the bright mote
-  // look at no extra count. Cost is offset by RepaintBoundary isolation,
-  // cached MaskFilter, and 60Hz cap on 120Hz displays.
-  final Paint _corePaint = Paint()..blendMode = BlendMode.plus;
-  final Paint _haloPaint = Paint()..blendMode = BlendMode.plus;
+  // Single outer saveLayer with BlendMode.plus composites once; inner draws
+  // use srcOver to avoid per-circle read-modify-write. Keeps the glowy look
+  // at roughly half the GPU cost.
+  final Paint _layerPaint = Paint()..blendMode = BlendMode.plus;
+  final Paint _corePaint = Paint()..blendMode = BlendMode.srcOver;
+  final Paint _haloPaint = Paint()..blendMode = BlendMode.srcOver;
 
   /// Accent split into two hue-shifted tints. Drawing the same mote in both,
   /// slightly offset, is what reads as light refracting — and it costs two
@@ -892,6 +902,9 @@ class _ParticlePainter extends CustomPainter {
     // together.
     final shimmer = 0.15 + 0.35 * frame.air;
 
+    // Batch all motes into one additive layer: one composite instead of
+    // N per-circle plus blends.
+    canvas.saveLayer(Offset.zero & size, _layerPaint);
     for (final particle in system.particles) {
       final fade = system.fadeOf(particle) * system.edgeFadeOf(particle);
       if (fade < 0.01) continue;
@@ -932,12 +945,14 @@ class _ParticlePainter extends CustomPainter {
         canvas.drawCircle(position, radius * 2.6, _haloPaint);
       }
 
-      if (flare > 0.08) {
+      // Gate chromatic splits to near-field flaring motes only: far/dim motes
+      // at flare 0.08-0.12 are barely visible but cost 2 extra circles each.
+      if (flare > 0.12 && particle.depth > 0.45) {
         // Thrown along this mote's own axis, so a flare is a scatter of little
         // prisms rather than one diagonal smear repeated across the screen.
         final split = radius * 0.9 * flare;
-        final dx = math.cos(particle.splitAngle) * split;
-        final dy = math.sin(particle.splitAngle) * split;
+        final dx = particle.splitCos * split;
+        final dy = particle.splitSin * split;
         _corePaint.color = _warmTint.withValues(alpha: alpha * 0.55 * flare);
         canvas.drawCircle(position.translate(dx, dy), radius, _corePaint);
         _corePaint.color = _coolTint.withValues(alpha: alpha * 0.55 * flare);
@@ -947,6 +962,7 @@ class _ParticlePainter extends CustomPainter {
       _corePaint.color = accent.withValues(alpha: alpha);
       canvas.drawCircle(position, radius, _corePaint);
     }
+    canvas.restore();
   }
 
   @override
