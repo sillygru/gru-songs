@@ -23,6 +23,7 @@ class MainActivity : AudioServiceActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private lateinit var volumeMonitorPlugin: VolumeMonitorPlugin
     private lateinit var powerStatePlugin: PowerStatePlugin
+    private lateinit var displayRefreshPlugin: DisplayRefreshPlugin
 
     /**
      * Handlers that stream whole audio files run here instead of on the platform
@@ -78,6 +79,9 @@ class MainActivity : AudioServiceActivity() {
         // Battery saver state, used to thin out the player's animation
         powerStatePlugin = PowerStatePlugin()
         powerStatePlugin.initialize(flutterEngine, this)
+
+        displayRefreshPlugin = DisplayRefreshPlugin()
+        displayRefreshPlugin.initialize(flutterEngine, this)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
@@ -514,6 +518,9 @@ class MainActivity : AudioServiceActivity() {
         }
         if (::powerStatePlugin.isInitialized) {
             powerStatePlugin.cleanup()
+        }
+        if (::displayRefreshPlugin.isInitialized) {
+            displayRefreshPlugin.cleanup()
         }
     }
 }

@@ -50,6 +50,8 @@ class BeatCoverGlow extends StatelessWidget {
             accent: accent,
           ),
           size: Size.infinite,
+          isComplex: true,
+          willChange: true,
         ),
       ),
     );
@@ -131,7 +133,7 @@ class _CoverGlowPainter extends CustomPainter {
       if (visible <= 0.01) return;
       final shape = (glow / _glowQuantum).round() * _glowQuantum;
       _paint
-        ..color = accent.withValues(alpha: 0.29 * glow * visible * visible)
+        ..color = accent.withValues(alpha: 0.24 * glow * visible * visible)
         ..maskFilter = _filterFor(shape);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -158,7 +160,7 @@ class _CoverGlowPainter extends CustomPainter {
     // changed and not the look. MaskFilter is cached per quantized shape.
     final shape = (glow / _glowQuantum).round() * _glowQuantum;
     _paint
-      ..color = accent.withValues(alpha: 0.29 * glow * visible * visible)
+      ..color = accent.withValues(alpha: 0.24 * glow * visible * visible)
       ..maskFilter = _filterFor(shape);
 
     canvas.drawRRect(

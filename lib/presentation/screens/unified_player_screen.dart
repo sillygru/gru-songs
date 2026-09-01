@@ -9,6 +9,7 @@ import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/audio_player_manager.dart';
+import '../../services/display_refresh_service.dart';
 import '../../services/power_state_service.dart';
 import '../../services/screen_wake_lock_service.dart';
 import '../../theme/app_theme.dart';
@@ -111,24 +112,35 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     final manager = ref.read(audioPlayerManagerProvider);
     _motion = PlayerMotionController(player: manager.player)..attach(this);
     manager.currentSongNotifier.addListener(_onSongChanged);
+    manager.playingNotifier.addListener(_syncWakeLock);
+    manager.playingNotifier.addListener(_syncRefresh);
     PowerStateService.instance.powerSave.addListener(_syncMotionSettings);
+    PowerStateService.instance.powerSave.addListener(_syncRefresh);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _syncWakeLock();
       _syncMotionSettings();
+      _syncRefresh();
       _onSongChanged();
     });
+    // Enter player refresh hint: 60Hz when playing, 30Hz when paused/power-save.
+    DisplayRefreshService.instance.enterPlayer(
+      playing: manager.playingNotifier.value,
+      powerSave: PowerStateService.instance.powerSave.value,
+    );
   }
 
   @override
   void dispose() {
+    DisplayRefreshService.instance.leavePlayer();
     WidgetsBinding.instance.removeObserver(this);
-    ref
-        .read(audioPlayerManagerProvider)
-        .currentSongNotifier
-        .removeListener(_onSongChanged);
+    final manager = ref.read(audioPlayerManagerProvider);
+    manager.currentSongNotifier.removeListener(_onSongChanged);
+    manager.playingNotifier.removeListener(_syncWakeLock);
+    manager.playingNotifier.removeListener(_syncRefresh);
     PowerStateService.instance.powerSave.removeListener(_syncMotionSettings);
+    PowerStateService.instance.powerSave.removeListener(_syncRefresh);
     _motion.dispose();
     _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
@@ -162,9 +174,11 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     if (_appActive) {
       _nowPlayingVisible.value = _isNowPlayingVisible(_pagePosition.value);
       _lyricsVisible.value = _isLyricsVisible(_pagePosition.value);
+      _syncRefresh();
     } else {
       _nowPlayingVisible.value = false;
       _lyricsVisible.value = false;
+      DisplayRefreshService.instance.leavePlayer();
     }
   }
 
@@ -240,9 +254,15 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   void _onPageScroll() {
     final page = _pageController.page;
     if (page == null) return;
+    final prev = _pagePosition.value;
     _pagePosition.value = page;
     _nowPlayingVisible.value = _appActive && _isNowPlayingVisible(page);
     _lyricsVisible.value = _appActive && _isLyricsVisible(page);
+
+    // Boost to 120Hz while actively swiping (your 30/60/90/120 dynamic panel).
+    if ((page - prev).abs() > 0.005 && _appActive) {
+      DisplayRefreshService.instance.boost120();
+    }
 
     // Deliberately no setState: nothing in build() depends on _pane, and
     // rebuilding the shell mid-swipe would re-render the backdrop and dock,
@@ -254,12 +274,33 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     }
   }
 
-  /// Holds the screen awake only while the Lyrics pane is showing and the
-  /// setting is on. The service is reason-counted, so acquire/release must stay
-  /// balanced — [_wakeLockHeld] is what guarantees that.
+  void _syncRefresh() {
+    if (!_appActive) return;
+    final playing = ref.read(audioPlayerManagerProvider).playingNotifier.value;
+    final powerSave = PowerStateService.instance.powerSave.value;
+    if (playing && !powerSave) {
+      // Stay at 60Hz idle; boost120() will temporarily lift to 120Hz.
+      DisplayRefreshService.instance.enterPlayer(
+        playing: true,
+        powerSave: false,
+      );
+    } else {
+      DisplayRefreshService.instance.enterPlayer(
+        playing: playing,
+        powerSave: powerSave,
+      );
+    }
+  }
+
+  /// Holds the screen awake only while the Lyrics pane is showing, the
+  /// setting is on, and playback is active. The service is reason-counted, so
+  /// acquire/release must stay balanced — [_wakeLockHeld] is what guarantees
+  /// that.
   void _syncWakeLock() {
+    final playing = ref.read(audioPlayerManagerProvider).playingNotifier.value;
     final wanted = _pane == PlayerPane.lyrics.index &&
-        ref.read(settingsProvider).keepScreenAwakeOnLyrics;
+        ref.read(settingsProvider).keepScreenAwakeOnLyrics &&
+        playing;
 
     if (wanted && !_wakeLockHeld) {
       _wakeLockHeld = true;
@@ -276,6 +317,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
   }
 
   void _goToPane(int index) {
+    DisplayRefreshService.instance.boost120();
     _pageController.animateToPage(
       index,
       duration: PlayerTokens.dBase,
@@ -549,10 +591,10 @@ class _PlayerBackdrop extends ConsumerWidget {
       builder: (context, color) {
         final gradientColors = [
           Color.alphaBlend(
-            color.withValues(alpha: 0.22),
-            Colors.black.withValues(alpha: 0.62),
+            color.withValues(alpha: 0.18),
+            Colors.black.withValues(alpha: 0.68),
           ),
-          Colors.black.withValues(alpha: 0.92),
+          Colors.black.withValues(alpha: 0.94),
         ];
         // The spin follows playback rather than running forever. Rotating and
         // scaling a full-screen image repaints the whole backdrop every frame,

@@ -13,6 +13,7 @@ import '../../../providers/providers.dart';
 import '../../../providers/queue_history_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/audio_player_manager.dart';
+import '../../../services/display_refresh_service.dart';
 import '../../components/player_glass_surface.dart';
 import '../../components/player_section_header.dart';
 import '../../components/player_segmented_pill.dart';
@@ -104,9 +105,13 @@ class _QueuePaneState extends ConsumerState<QueuePane>
   }
 
   /// Notifications bubble up from whichever list is currently showing, so one
-  /// listener here covers both segments.
+  /// listener here covers both segments. Boost to 120Hz while actively
+  /// scrolling on 30/60/90/120 dynamic panels.
   bool _onUserScroll(UserScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification.direction != ScrollDirection.idle) {
+      DisplayRefreshService.instance.boost120();
+    }
 
     // The one preference governs the app bars and this chrome: with auto-hide
     // off the chrome stays put, so nothing here may touch it.

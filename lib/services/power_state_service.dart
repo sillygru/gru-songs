@@ -21,8 +21,11 @@ import 'package:flutter/services.dart';
 /// build, a test without the mock — leaves this at `false` forever, which is
 /// exactly the pre-existing behaviour.
 class PowerStateService {
-  static const MethodChannel _channel = MethodChannel('gru_songs/power');
-  static const EventChannel _eventChannel =
+  static const MethodChannel _channel = MethodChannel('wispie/power');
+  static const EventChannel _eventChannel = EventChannel('wispie/power_events');
+  // Legacy names for backward compat with older installs/tests.
+  static const MethodChannel _legacyChannel = MethodChannel('gru_songs/power');
+  static const EventChannel _legacyEventChannel =
       EventChannel('gru_songs/power_events');
 
   static final PowerStateService instance = PowerStateService._();
@@ -41,27 +44,64 @@ class PowerStateService {
     _started = true;
 
     try {
-      powerSave.value =
-          await _channel.invokeMethod<bool>('isPowerSaveMode') ?? false;
+      final primary = await _channel.invokeMethod<bool>('isPowerSaveMode');
+      if (primary != null) {
+        powerSave.value = primary;
+      } else {
+        // Try legacy channel.
+        powerSave.value =
+            await _legacyChannel.invokeMethod<bool>('isPowerSaveMode') ?? false;
+      }
     } on MissingPluginException {
-      // No implementation on this platform. Nothing more to do — not even the
-      // event subscription, which would fail the same way.
-      return;
+      // Try legacy channel before giving up.
+      try {
+        powerSave.value =
+            await _legacyChannel.invokeMethod<bool>('isPowerSaveMode') ?? false;
+      } on MissingPluginException {
+        return;
+      } catch (e) {
+        debugPrint('PowerStateService: initial read failed: $e');
+      }
+      // Fall through to event subscription with legacy.
     } catch (e) {
       debugPrint('PowerStateService: initial read failed: $e');
     }
 
+    // Prefer wispie channel, fall back to legacy.
     try {
       _subscription = _eventChannel.receiveBroadcastStream().listen(
         (event) {
           if (event is bool) powerSave.value = event;
         },
-        onError: (Object e) {
-          debugPrint('PowerStateService: event stream error: $e');
+        onError: (Object _) async {
+          // Fall back to legacy stream.
+          try {
+            _subscription = _legacyEventChannel.receiveBroadcastStream().listen(
+              (event) {
+                if (event is bool) powerSave.value = event;
+              },
+              onError: (Object e) {
+                debugPrint('PowerStateService: legacy event error: $e');
+              },
+            );
+          } catch (e) {
+            debugPrint('PowerStateService: failed to subscribe: $e');
+          }
         },
       );
     } catch (e) {
       debugPrint('PowerStateService: failed to subscribe: $e');
+      // Try legacy directly.
+      try {
+        _subscription = _legacyEventChannel.receiveBroadcastStream().listen(
+          (event) {
+            if (event is bool) powerSave.value = event;
+          },
+          onError: (Object err) {
+            debugPrint('PowerStateService: legacy event error: $err');
+          },
+        );
+      } catch (_) {}
     }
   }
 

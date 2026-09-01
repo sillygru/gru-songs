@@ -167,7 +167,7 @@ class MotionIntensitySpec {
     coverSway: 0.0078,
     particleCount: 108,
     particleImpulse: 1.28,
-    particleOpacity: 0.43,
+    particleOpacity: 0.36,
     particleDrift: 1.06,
   );
 

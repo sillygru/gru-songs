@@ -10,6 +10,7 @@ import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/database_service.dart';
+import '../../../services/display_refresh_service.dart';
 import '../../../services/lingva_translate_service.dart';
 import '../../../services/lrclib_service.dart';
 import '../../components/app_feedback.dart';
@@ -307,6 +308,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     if (_autoScrolling || !_scrollController.hasClients) return;
     if (_scrollController.position.userScrollDirection !=
         ScrollDirection.idle) {
+      DisplayRefreshService.instance.boost120();
       _lastManualScroll = DateTime.now();
       if (!_autoscrollPaused.value) {
         _autoscrollPaused.value = true;

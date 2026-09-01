@@ -114,6 +114,20 @@ class TestEnvironment {
       (ByteData? message) async => null,
     );
 
+    // Mock power channels (wispie + legacy gru_songs) for PowerStateService.
+    for (final name in ['wispie/power', 'gru_songs/power']) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(MethodChannel(name),
+              (MethodCall call) async {
+        if (call.method == 'isPowerSaveMode') return false;
+        return null;
+      });
+    }
+    for (final name in ['wispie/power_events', 'gru_songs/power_events']) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMessageHandler(name, (ByteData? m) async => null);
+    }
+
     // Mock SharedPreferences
     SharedPreferencesStorePlatform.instance = MockSharedPreferencesStore();
 
@@ -147,6 +161,14 @@ class TestEnvironment {
       'wispie/volume_events',
       null,
     );
+    for (final name in ['wispie/power', 'gru_songs/power']) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(MethodChannel(name), null);
+    }
+    for (final name in ['wispie/power_events', 'gru_songs/power_events']) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMessageHandler(name, null);
+    }
 
     // Restore original path provider platform instance to avoid leaking
     // the mock into subsequent test files in the same session.
