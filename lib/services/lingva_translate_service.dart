@@ -274,15 +274,24 @@ class LingvaTranslateService {
     final translatedLines = <String>[
       for (final batchResult in batchResults) ...batchResult.lines,
     ];
-    final spliced = spliceTranslations(
+    // Splice plain texts first, then re-attach LRC timestamps where needed.
+    // [_translateBatch] returns bare text without its time prefix; the prefix
+    // lives in [pendingTextLines]. Without re-adding it, synced lines become
+    // plain and [LyricLine.alignTranslation] buckets miss, leaving translations
+    // invisible.
+    final splicedPlain = spliceTranslations(
       originalLines: [
-        for (final p in pendingTextLines) '${p.timePrefix}${p.text}',
+        for (final p in pendingTextLines) p.text,
       ],
       needsTranslation: needsTranslation,
       translatedLines: translatedLines,
     );
     for (int i = 0; i < pendingTextLines.length; i++) {
-      resultLines[pendingTextLines[i].index] = spliced[i];
+      final prefix = pendingTextLines[i].timePrefix;
+      final splicedText = splicedPlain[i];
+      // [originalLines] for the splice was plain text, so [splicedPlain] is
+      // also plain. Re-attach the LRC prefix that was stripped before batching.
+      resultLines[pendingTextLines[i].index] = '$prefix$splicedText';
     }
 
     final fullText = resultLines.whereType<String>().join('\n');

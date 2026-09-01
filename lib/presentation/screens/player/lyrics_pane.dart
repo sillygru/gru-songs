@@ -114,6 +114,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   List<LyricLine?>? _translatedLyrics;
   bool _translating = false;
   bool _hasCachedTranslation = false;
+  bool _isSameLanguage = false;
   bool _loading = true;
   bool _hasSynced = false;
   String? _loadedFilename;
@@ -375,6 +376,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       _rawLyricsContent = content;
       _translatedLyrics = null;
       _hasCachedTranslation = false;
+      _isSameLanguage = false;
       _translating = false;
       _hasSynced = parsed.any((l) => l.isSynced);
       _loading = false;
@@ -396,6 +398,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         setState(() {
           _translatedLyrics = null;
           _hasCachedTranslation = false;
+          _isSameLanguage = true;
         });
       } else if (cached != null &&
           cached.trim().isNotEmpty &&
@@ -406,16 +409,28 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
             LyricLine.parse(cached),
           );
           _hasCachedTranslation = true;
+          _isSameLanguage = false;
         });
       } else {
         if (cached != null && cached.trim() == content?.trim()) {
           await DatabaseService.instance
               .deleteTranslatedLyrics(filename, settings.lyricsTargetLanguage);
+          // Stale entry that duplicates the source blocks the translation UI
+          // from rebuilding through the revision notifier.
+          ref.read(translationRevisionProvider.notifier).bump();
         }
         if (settings.lyricsAutoTranslate &&
             content != null &&
             content.trim().isNotEmpty) {
           _performTranslation(settings.lyricsTargetLanguage, silent: true);
+        } else {
+          // No cache and not auto-translating — ensure the button is visible
+          // until an API round-trip proves the lyrics are already in target.
+          if (mounted && _loadedFilename == filename) {
+            setState(() {
+              _isSameLanguage = false;
+            });
+          }
         }
       }
     }
@@ -525,6 +540,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       setState(() {
         _translatedLyrics = null;
         _hasCachedTranslation = false;
+        _isSameLanguage = false;
       });
       ref.read(translationRevisionProvider.notifier).bump();
       if (mounted) {
@@ -553,15 +569,30 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       sourceContent: content,
     );
     if (!mounted || _loadedFilename != filename) return;
-    if (cached == '[SAME_LANG]' ||
-        cached == null ||
-        cached.trim().isEmpty ||
-        cached.trim() == content.trim()) {
+    if (cached == '[SAME_LANG]') {
       setState(() {
         _translatedLyrics = null;
         _hasCachedTranslation = false;
+        _isSameLanguage = true;
+      });
+      return;
+    }
+    if (cached == null ||
+        cached.trim().isEmpty ||
+        cached.trim() == content.trim()) {
+      if (cached != null && cached.trim() == content.trim()) {
+        await DatabaseService.instance
+            .deleteTranslatedLyrics(filename, targetLang);
+        ref.read(translationRevisionProvider.notifier).bump();
+      }
+      setState(() {
+        _translatedLyrics = null;
+        _hasCachedTranslation = false;
+        _isSameLanguage = false;
       });
       final settings = ref.read(settingsProvider);
+      // For auto-translate we keep the original offline gate, but the button
+      // itself stays visible (via _isSameLanguage) until API proves same-lang.
       if (settings.lyricsAutoTranslate &&
           LingvaTranslateService.lyricsNeedTranslation(content, targetLang)) {
         _performTranslation(targetLang, silent: true);
@@ -574,6 +605,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         LyricLine.parse(cached),
       );
       _hasCachedTranslation = true;
+      _isSameLanguage = false;
     });
   }
 
@@ -595,6 +627,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       setState(() {
         _translatedLyrics = null;
         _hasCachedTranslation = false;
+        _isSameLanguage = true;
       });
       return;
     }
@@ -609,6 +642,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
           LyricLine.parse(cached),
         );
         _hasCachedTranslation = true;
+        _isSameLanguage = false;
       });
       return;
     }
@@ -624,7 +658,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       );
       if (!mounted || _loadedFilename != filename) return;
 
-      final isUnchanged = response.text.trim() == content.trim();
+      final isUnchanged = _isSameLanguageResponse(
+        response: response,
+        original: content,
+        targetLang: targetLang,
+      );
 
       if (isUnchanged) {
         await DatabaseService.instance.saveTranslatedLyrics(
@@ -638,6 +676,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         setState(() {
           _translatedLyrics = null;
           _hasCachedTranslation = false;
+          _isSameLanguage = true;
         });
         ref.read(translationRevisionProvider.notifier).bump();
         if (!silent) {
@@ -659,6 +698,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
             LyricLine.parse(response.text),
           );
           _hasCachedTranslation = true;
+          _isSameLanguage = false;
         });
         ref.read(translationRevisionProvider.notifier).bump();
         if (!silent) {
@@ -684,6 +724,35 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         });
       }
     }
+  }
+
+  bool _isSameLanguageResponse({
+    required TranslationResponse response,
+    required String original,
+    required String targetLang,
+  }) {
+    final detected = response.detectedSourceLang?.toLowerCase().trim();
+    final target = targetLang.toLowerCase().trim();
+    if (detected != null && detected.isNotEmpty) {
+      if (detected == target ||
+          detected.startsWith('$target-') ||
+          target.startsWith('$detected-')) {
+        return true;
+      }
+    }
+    if (response.text.trim() == original.trim()) return true;
+    // Normalized whitespace compare catches backends that echo with different
+    // spacing while still meaning "already in target".
+    String normalize(String s) =>
+        s.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+    if (normalize(response.text) == normalize(original)) return true;
+    // Strip timestamps before comparing so an LRC that only changed in
+    // whitespace still counts as unchanged.
+    if (LyricLine.extractPlainText(response.text).trim() ==
+        LyricLine.extractPlainText(original).trim()) {
+      return true;
+    }
+    return false;
   }
 
   Duration _effectiveStartFor(int index, List<LyricLine> lyrics) {
@@ -854,13 +923,13 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
       },
     );
 
-    final targetLang = ref.watch(settingsProvider).lyricsTargetLanguage;
-    final showTranslateButton = _hasCachedTranslation ||
-        (_rawLyricsContent != null &&
-            LingvaTranslateService.lyricsNeedTranslation(
-              _rawLyricsContent!,
-              targetLang,
-            ));
+    final hasContent =
+        _rawLyricsContent != null && _rawLyricsContent!.trim().isNotEmpty;
+    // Show the button whenever we have lyrics, except when an API round-trip
+    // proved the whole file is already in the target language (SAME_LANG).
+    // For mixed-language lyrics we keep the button and splice per-line.
+    final showTranslateButton =
+        _hasCachedTranslation || (hasContent && !_isSameLanguage);
 
     return Stack(
       children: [

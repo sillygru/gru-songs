@@ -180,6 +180,12 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
     if (translated == null || translated.text.trim().isEmpty) {
       return _lines[activeIndex].text.trim();
     }
+    // Avoid showing a "translation" that is identical to the original — this
+    // happens for mixed-language tracks where only foreign lines are translated
+    // and the rest are echoed back. Duplicating it in the peek would flicker.
+    if (translated.text.trim() == _lines[activeIndex].text.trim()) {
+      return _lines[activeIndex].text.trim();
+    }
 
     // Both 'replace' and 'subtext' modes show the translated text in the peek
     // (the full pane shows subtext alongside the original; the peek is
@@ -241,14 +247,23 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
       if (translatedContent != null &&
           translatedContent != '[SAME_LANG]' &&
           translatedContent.trim().isNotEmpty) {
-        final translatedParsed = LyricLine.alignTranslation(
-          parsed,
-          LyricLine.parse(translatedContent),
-        );
-        if (mounted) {
-          setState(() {
-            _translatedLines = translatedParsed;
-          });
+        // Stale cache that duplicates the source can be left over from the
+        // timestamp-stripping bug. Pane owns the deletion, but handle it here
+        // too so a direct peek load does not briefly show mis-aligned plain
+        // lines when no pane is alive.
+        if (translatedContent.trim() == content?.trim()) {
+          await DatabaseService.instance
+              .deleteTranslatedLyrics(filename, settings.lyricsTargetLanguage);
+        } else {
+          final translatedParsed = LyricLine.alignTranslation(
+            parsed,
+            LyricLine.parse(translatedContent),
+          );
+          if (mounted) {
+            setState(() {
+              _translatedLines = translatedParsed;
+            });
+          }
         }
       }
     }
