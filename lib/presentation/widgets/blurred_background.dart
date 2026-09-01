@@ -7,6 +7,7 @@ import 'album_art_image.dart';
 import '../../services/cache_service.dart';
 import '../../services/cover_refresh_service.dart';
 import '../../services/ffmpeg_service.dart';
+import '../../services/power_state_service.dart';
 
 class BlurredBackground extends StatefulWidget {
   final String url;
@@ -249,9 +250,10 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
   }
 }
 
-/// Rotates the cached backdrop at 30 painted frames per second. The background
-/// remains visually continuous at this size and speed, while avoiding repeated
-/// full-screen raster work on high-refresh-rate phones.
+/// Rotates the cached backdrop at 60 painted frames per second. Isolated in
+/// its own RepaintBoundary the rotation is a compositor transform (not a
+/// 1.3MP raster), so 60Hz stays cheap; background stops entirely when
+/// backgrounded or paused, and shards via cacheWidth keep decode cheap.
 class _ThrottledSpin extends StatefulWidget {
   final bool enabled;
   final Widget child;
@@ -268,7 +270,8 @@ class _ThrottledSpin extends StatefulWidget {
 
 class _ThrottledSpinState extends State<_ThrottledSpin>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  static const Duration _paintInterval = Duration(microseconds: 33333);
+  static const Duration _paintInterval = Duration(microseconds: 16667);
+  static const Duration _powerSaveInterval = Duration(microseconds: 33333);
   static const Duration _spinDuration = Duration(seconds: 90);
 
   late final Ticker _ticker;
@@ -285,6 +288,7 @@ class _ThrottledSpinState extends State<_ThrottledSpin>
     _appActive = WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     _ticker = createTicker(_onTick);
+    PowerStateService.instance.powerSave.addListener(_onPowerSaveChanged);
     _syncTicker();
   }
 
@@ -313,9 +317,17 @@ class _ThrottledSpinState extends State<_ThrottledSpin>
     }
   }
 
+  void _onPowerSaveChanged() {
+    // No restart needed — interval is checked on next tick.
+    if (mounted) setState(() {});
+  }
+
   void _onTick(Duration elapsed) {
     final last = _lastPaint;
-    if (last != null && elapsed - last < _paintInterval) return;
+    final interval = PowerStateService.instance.powerSave.value
+        ? _powerSaveInterval
+        : _paintInterval;
+    if (last != null && elapsed - last < interval) return;
     _lastPaint = elapsed;
     _lastElapsed = elapsed;
     final totalElapsed = _elapsedBase + elapsed;
@@ -326,6 +338,7 @@ class _ThrottledSpinState extends State<_ThrottledSpin>
 
   @override
   void dispose() {
+    PowerStateService.instance.powerSave.removeListener(_onPowerSaveChanged);
     WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
     super.dispose();

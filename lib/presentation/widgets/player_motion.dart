@@ -307,13 +307,12 @@ class PlayerMotionController extends ChangeNotifier {
   /// Shortest gap between two emitted frames, at normal power and in power-save.
   ///
   /// The ticker fires at the display refresh rate, which is 120 Hz on a good
-  /// share of current phones. The cover keeps the 60 Hz output cap, while the
-  /// full-screen glow and particle field use [decorativeRepaint] below to paint
-  /// at 30 Hz. Only the notification is skipped; [_elapsed] still advances on
-  /// every tick so decorative simulation speed and beat timing stay unchanged.
+  /// share of current phones. Both cover and decorative layers are capped at
+  /// 60 Hz (16.6ms) — plenty for the 18ms attack envelope — while power-save
+  /// halves to 30 Hz. Only the notification is skipped; [_elapsed] still
+  /// advances on every tick so decorative simulation speed and beat timing stay
+  /// unchanged. Background stops entirely via [_syncTicker] / `appActive`.
   static const Duration _frameInterval = Duration(microseconds: 16667);
-  static const Duration _decorativeFrameInterval =
-      Duration(microseconds: 33333);
   static const Duration _powerSaveFrameInterval = Duration(microseconds: 33333);
 
   final ChangeNotifier _decorativeRepaint = ChangeNotifier();
@@ -348,9 +347,9 @@ class PlayerMotionController extends ChangeNotifier {
   Duration? _lastEmitted;
   Duration? _lastDecorativeEmitted;
 
-  /// Repaint signal for expensive decorative layers. It intentionally runs at
-  /// half the cover rate; the controller still exposes its normal 60 Hz signal
-  /// for small, user-focused motion such as the artwork transform.
+  /// Repaint signal for decorative layers (glow, particles). Runs at the same
+  /// 60 Hz as the cover normally, throttled to 30 Hz only in power-save. The
+  /// background is not throttled — it stops entirely when appActive is false.
   Listenable get decorativeRepaint => _decorativeRepaint;
 
   /// How much of the beat-driven motion is faded in, 0..1.
@@ -452,7 +451,7 @@ class PlayerMotionController extends ChangeNotifier {
     final base = _coverIntensityEnum == PlayerMotionIntensity.custom
         ? MotionIntensitySpec.custom(_coverCustomIntensity)
         : MotionIntensitySpec.of(_coverIntensityEnum);
-    _coverSpec = _powerSave ? base.dimmed() : base;
+    _coverSpec = base;
     notifyListeners();
   }
 
@@ -460,7 +459,7 @@ class PlayerMotionController extends ChangeNotifier {
     final base = _particleIntensityEnum == PlayerMotionIntensity.custom
         ? MotionIntensitySpec.custom(_particleCustomIntensity)
         : MotionIntensitySpec.of(_particleIntensityEnum);
-    _particleSpec = _powerSave ? base.dimmed() : base;
+    _particleSpec = base;
     notifyListeners();
   }
 
@@ -481,15 +480,13 @@ class PlayerMotionController extends ChangeNotifier {
     _syncTicker();
   }
 
-  /// Follows the OS power-save / Low Power Mode flag. Halves the frame rate and
-  /// thins the motion rather than stopping it, so the screen still answers the
-  /// music on a phone the user is trying to nurse through the evening.
+  /// Follows the OS power-save / Low Power Mode flag. Halves the frame rate
+  /// to 30 Hz while keeping full particle count and punch — same look, fewer
+  /// repaints.
   set powerSave(bool value) {
     if (_powerSave == value) return;
     _powerSave = value;
     _minFrameInterval = value ? _powerSaveFrameInterval : _frameInterval;
-    _applyCoverSpec();
-    _applyParticleSpec();
   }
 
   void _onPlayerState(PlayerState state) {
@@ -553,8 +550,12 @@ class PlayerMotionController extends ChangeNotifier {
     notifyListeners();
 
     final lastDecorative = _lastDecorativeEmitted;
-    if (lastDecorative == null ||
-        _elapsed - lastDecorative >= _decorativeFrameInterval) {
+    // Same half-tick tolerance as the main emit so an exactly-60Hz display
+    // does not drop every third decorative frame due to 8333*2 = 16666 < 16667.
+    final decorativeDue = lastDecorative == null ||
+        (_elapsed - lastDecorative) + (_elapsed - previous) ~/ 2 >=
+            _minFrameInterval;
+    if (decorativeDue) {
       _lastDecorativeEmitted = _elapsed;
       _decorativeRepaint.notifyListeners();
     }

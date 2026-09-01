@@ -91,9 +91,8 @@ class FileManagerService {
         'FileManager: updateSongTitle called for ${song.filename} -> $newTitle');
 
     try {
-      // 1. Update locally
       debugPrint('FileManager: Starting local metadata update...');
-      await updateMetadataInternal(song.url, title: newTitle);
+      await updateSongMetadata(song, newTitle, song.artist, song.album);
       debugPrint('FileManager: Local metadata update successful');
     } catch (e) {
       debugPrint('FileManager: updateSongTitle failed: $e');
@@ -101,12 +100,150 @@ class FileManagerService {
     }
   }
 
-  /// Updates all metadata for a song.
+  /// Updates all metadata for a song using FFmpeg with `-c copy` so no
+  /// existing tag, cover or lyrics is dropped and no re-encode occurs.
+  ///
+  /// Falls back to the legacy `MetadataGod` path only on desktop when
+  /// `ffmpeg` is not available.
   Future<void> updateSongMetadata(
       Song song, String title, String artist, String album) async {
-    // 1. Update locally
-    await updateMetadataInternal(song.url,
-        title: title, artist: artist, album: album);
+    return _serializeTagWrite(
+        () => _updateTextMetadataSerialized(song.url, title, artist, album));
+  }
+
+  Future<void> _updateTextMetadataSerialized(
+      String fileUrl, String title, String artist, String album) async {
+    final lock = await _acquireExclusiveLock(fileUrl);
+    try {
+      try {
+        await _updateTextWithFFmpeg(fileUrl,
+            title: title, artist: artist, album: album);
+        debugPrint(
+            'FileManager: text metadata updated via FFmpeg for $fileUrl');
+      } catch (e) {
+        // Desktop fallback when ffmpeg is not installed: keep old behaviour
+        // rather than failing hard. On mobile ffmpeg is bundled, so rethrow.
+        final usesSystem = FFmpegService.usesSystemProcess;
+        final available =
+            usesSystem ? await FFmpegService().isFFmpegAvailable() : true;
+        if (usesSystem && !available) {
+          debugPrint(
+              'FileManager: FFmpeg unavailable, falling back to MetadataGod: $e');
+          await _updateTextWithMetadataGod(fileUrl,
+              title: title, artist: artist, album: album);
+          return;
+        }
+        rethrow;
+      }
+    } finally {
+      await _releaseLock(lock);
+    }
+  }
+
+  Future<void> _updateTextWithFFmpeg(String fileUrl,
+      {required String title,
+      required String artist,
+      required String album}) async {
+    final matchingFolder = await _getMatchingMusicFolder(fileUrl);
+    final treeUri = matchingFolder?['treeUri'];
+    final rootPath = matchingFolder?['path'];
+
+    final tempDir = await Directory.systemTemp.createTemp('gru_text_');
+    final ext = p.extension(fileUrl).toLowerCase();
+    final tempOut = File(p.join(tempDir.path, 'out$ext'));
+    final ffmpeg = FFmpegService();
+
+    try {
+      await ffmpeg.updateTextMetadata(
+        inputPath: fileUrl,
+        outputPath: tempOut.path,
+        title: title,
+        artist: artist,
+        album: album,
+      );
+
+      final hasAudio = await ffmpeg.hasAudioStream(tempOut.path);
+      if (!hasAudio) {
+        throw Exception('Validation failed: output has no audio stream');
+      }
+
+      if (Platform.isAndroid &&
+          treeUri != null &&
+          treeUri.isNotEmpty &&
+          rootPath != null &&
+          rootPath.isNotEmpty) {
+        if (!p.isWithin(rootPath, fileUrl) &&
+            !p.equals(rootPath, p.dirname(fileUrl))) {
+          throw Exception('Source file is outside the music folder.');
+        }
+        final sourceRelativePath = p.relative(fileUrl, from: rootPath);
+        await AndroidStorageService.writeFileFromPath(
+          treeUri: treeUri,
+          sourceRelativePath: sourceRelativePath,
+          sourcePath: tempOut.path,
+        );
+      } else {
+        await replaceFileAtomically(source: tempOut, targetPath: fileUrl);
+      }
+    } finally {
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _updateTextWithMetadataGod(String fileUrl,
+      {required String title,
+      required String artist,
+      required String album}) async {
+    // Legacy path: copy to temp, mutate via _updateMetadataWithLibraries,
+    // then publish atomically. Preserved for desktop without ffmpeg.
+    final tempDir = await Directory.systemTemp.createTemp('gru_meta_');
+    final tempFile = File(p.join(tempDir.path, p.basename(fileUrl)));
+    try {
+      await File(fileUrl).copy(tempFile.path);
+      await _updateMetadataWithLibraries(
+        tempFile: tempFile,
+        tempDir: tempDir,
+        title: title,
+        artist: artist,
+        album: album,
+      );
+
+      final hasAudio = await FFmpegService().hasAudioStream(tempFile.path);
+      if (!hasAudio) {
+        // If ffmpeg is available we validated; if not, skip strict check.
+        debugPrint(
+            'FileManager: MetadataGod output validation skipped (no ffprobe)');
+      }
+
+      if (Platform.isAndroid) {
+        final matchingFolder = await _getMatchingMusicFolder(fileUrl);
+        final treeUri = matchingFolder?['treeUri'];
+        final rootPath = matchingFolder?['path'];
+        if (treeUri != null &&
+            treeUri.isNotEmpty &&
+            rootPath != null &&
+            rootPath.isNotEmpty) {
+          if (!p.isWithin(rootPath, fileUrl) &&
+              !p.equals(rootPath, p.dirname(fileUrl))) {
+            throw Exception('Source file is outside the music folder.');
+          }
+          final sourceRelativePath = p.relative(fileUrl, from: rootPath);
+          await AndroidStorageService.writeFileFromPath(
+            treeUri: treeUri,
+            sourceRelativePath: sourceRelativePath,
+            sourcePath: tempFile.path,
+          );
+          return;
+        }
+      }
+      await replaceFileAtomically(source: tempFile, targetPath: fileUrl);
+    } finally {
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {}
+    }
   }
 
   /// Updates lyrics for a song by embedding them into the audio file metadata.

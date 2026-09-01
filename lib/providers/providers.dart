@@ -219,6 +219,17 @@ class LyricsRevisionNotifier extends Notifier<int> {
 final lyricsRevisionProvider =
     NotifierProvider<LyricsRevisionNotifier, int>(LyricsRevisionNotifier.new);
 
+class TranslationRevisionNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state = state + 1;
+}
+
+final translationRevisionProvider =
+    NotifierProvider<TranslationRevisionNotifier, int>(
+        TranslationRevisionNotifier.new);
+
 final updateCheckProvider =
     NotifierProvider<UpdateCheckNotifier, UpdateCheckState>(
         UpdateCheckNotifier.new);
@@ -1136,6 +1147,7 @@ class SongsNotifier extends AsyncNotifier<List<Song>> {
     } catch (e) {
       notifier.error();
       debugPrint('Failed to update song metadata: $e');
+      rethrow;
     }
   }
 

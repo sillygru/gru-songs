@@ -524,6 +524,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         _translatedLyrics = null;
         _hasCachedTranslation = false;
       });
+      ref.read(translationRevisionProvider.notifier).bump();
       if (mounted) {
         appSnack(context, 'Cached translation cleared', tone: AppTone.info);
       }
@@ -532,7 +533,46 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
     if (config.translateNow) {
       await _performTranslation(config.targetLanguage);
+    } else {
+      // Language/mode changed without explicit translate — refresh cached
+      // translation for the new target so subtext/replace switches instantly.
+      await _reloadTranslation();
     }
+  }
+
+  Future<void> _reloadTranslation() async {
+    final filename = widget.song.filename;
+    final content = _rawLyricsContent;
+    if (content == null || content.trim().isEmpty || _lyrics == null) return;
+    final targetLang = ref.read(settingsProvider).lyricsTargetLanguage;
+    final cached = await DatabaseService.instance.getTranslatedLyrics(
+      filename,
+      targetLang,
+      sourceContent: content,
+    );
+    if (!mounted || _loadedFilename != filename) return;
+    if (cached == '[SAME_LANG]' ||
+        cached == null ||
+        cached.trim().isEmpty ||
+        cached.trim() == content.trim()) {
+      setState(() {
+        _translatedLyrics = null;
+        _hasCachedTranslation = false;
+      });
+      final settings = ref.read(settingsProvider);
+      if (settings.lyricsAutoTranslate &&
+          LingvaTranslateService.lyricsNeedTranslation(content, targetLang)) {
+        _performTranslation(targetLang, silent: true);
+      }
+      return;
+    }
+    setState(() {
+      _translatedLyrics = LyricLine.alignTranslation(
+        _lyrics ?? const <LyricLine>[],
+        LyricLine.parse(cached),
+      );
+      _hasCachedTranslation = true;
+    });
   }
 
   Future<void> _performTranslation(String targetLang,
@@ -597,6 +637,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
           _translatedLyrics = null;
           _hasCachedTranslation = false;
         });
+        ref.read(translationRevisionProvider.notifier).bump();
         if (!silent) {
           appSnack(context, 'Lyrics are already in target language',
               tone: AppTone.info);
@@ -617,13 +658,22 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
           );
           _hasCachedTranslation = true;
         });
+        ref.read(translationRevisionProvider.notifier).bump();
         if (!silent) {
           appSnack(context, 'Lyrics translated', tone: AppTone.success);
         }
       }
     } catch (e) {
       if (mounted) {
-        appSnack(context, 'Translation failed: $e', tone: AppTone.danger);
+        final lang = targetLang;
+        appSnack(
+          context,
+          'Translation failed: $e',
+          tone: AppTone.danger,
+          actionLabel: 'Retry',
+          onAction: () => _performTranslation(lang),
+          duration: const Duration(seconds: 5),
+        );
       }
     } finally {
       if (mounted) {
@@ -775,6 +825,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     // Lyrics live in the audio file, not in provider state, so a write
     // elsewhere is invisible from here. The revision counter is the signal.
     ref.listen(lyricsRevisionProvider, (_, __) => _load());
+    ref.listen(translationRevisionProvider, (_, __) => _reloadTranslation());
+    ref.listen(
+      settingsProvider.select((s) => s.lyricsTargetLanguage),
+      (_, __) => _reloadTranslation(),
+    );
 
     ref.listen(
       settingsProvider.select((s) => s.lyricsSimulatedRichSyncEnabled),

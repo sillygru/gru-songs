@@ -386,6 +386,85 @@ class FFmpegService {
     }
   }
 
+  /// Updates text metadata (title/artist/album) without re-encoding audio and
+  /// without dropping existing tags, cover or lyrics.
+  ///
+  /// Uses `ffmpeg -c copy -map_metadata 0` so every tag not explicitly
+  /// overwritten is preserved. `-map 0:v?` preserves attached pictures that
+  /// would otherwise be lost when only the title changes. An empty string
+  /// clears the tag (`-metadata title=`); `null` leaves it untouched (not
+  /// passed). Validates the output still contains an audio stream before
+  /// returning.
+  Future<void> updateTextMetadata({
+    required String inputPath,
+    required String outputPath,
+    String? title,
+    String? artist,
+    String? album,
+  }) async {
+    await _ensurePlatformSupported();
+    final hasVideo = await hasVideoStream(inputPath);
+    final ext = p.extension(inputPath).toLowerCase();
+    final isMp3 = ext == '.mp3';
+
+    // Normalise: trim but keep empty to allow clearing. Null means "don't touch".
+    String? normalize(String? value) {
+      if (value == null) return null;
+      return value.trim();
+    }
+
+    final nTitle = normalize(title);
+    final nArtist = normalize(artist);
+    final nAlbum = normalize(album);
+
+    final args = [
+      '-y',
+      '-i',
+      inputPath,
+      '-map',
+      '0:a?',
+      if (hasVideo) ...[
+        '-map',
+        '0:v?',
+        '-disposition:v:0',
+        'attached_pic',
+      ],
+      '-c',
+      'copy',
+      if (isMp3) ...[
+        '-id3v2_version',
+        '3',
+      ],
+      '-map_metadata',
+      '0',
+      if (nTitle != null) ...[
+        '-metadata',
+        'title=$nTitle',
+      ],
+      if (nArtist != null) ...[
+        '-metadata',
+        'artist=$nArtist',
+      ],
+      if (nAlbum != null) ...[
+        '-metadata',
+        'album=$nAlbum',
+      ],
+      outputPath,
+    ];
+
+    final result = await executeFFmpeg(args);
+    if (!result.isSuccess) {
+      throw Exception(
+          'FFmpeg text metadata write failed: ${result.returnCode}\n${result.logs}');
+    }
+
+    final outFile = File(outputPath);
+    if (!await outFile.exists() || await outFile.length() == 0) {
+      throw Exception(
+          'FFmpeg text metadata write produced empty output: $outputPath');
+    }
+  }
+
   /// Checks if the file contains a video/artwork stream.
   Future<bool> hasVideoStream(String filePath) async {
     try {

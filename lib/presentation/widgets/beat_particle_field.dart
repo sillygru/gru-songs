@@ -55,11 +55,10 @@ class _BeatParticleFieldState extends State<BeatParticleField> {
     return IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
-          // Decorative 30Hz is enough for drifting motes: surge tau is 0.18s
-          // and the field is ambient, not a timing-critical transform. Halving
-          // the raster rate cuts fill-rate in half with no perceptible
-          // difference, while beat timing itself still comes from the playhead
-          // clock which remains at 60Hz.
+          // Decorative runs at 60Hz (throttled to 30Hz only in power-save /
+          // background stops entirely) so surge tau 0.18s and 18ms attack stay
+          // smooth; other GPU wins (RepaintBoundary, cached blur, limited halo)
+          // keep it cool without halving fidelity.
           painter: _ParticlePainter(
             controller: widget.controller,
             system: _system,
@@ -378,6 +377,13 @@ class ParticleSystem {
   double _flowVx = 0;
   double _flowVy = 0;
 
+  // Per-frame cached flow offsets — t*coeff computed once per update, not
+  // per particle. Preserves exact visuals while cutting 4 muls per mote.
+  double _flowOffU1 = 0;
+  double _flowOffV1 = 0;
+  double _flowOffU2 = 0;
+  double _flowOffV2 = 0;
+
   void _resize(int count, {bool isSoundBoosted = false}) {
     while (particles.length > count) {
       particles.removeLast();
@@ -458,14 +464,14 @@ class ParticleSystem {
   /// round on screen instead of stretched. The phases drift with [t] — a static
   /// stream function has closed streamlines, and motes would orbit one eddy
   /// forever and stop travelling at all.
-  void _sampleFlow(double x, double yv, double t) {
+  void _sampleFlow(double x, double yv) {
     const k1 = 5.5, l1 = 4.5, a1 = 1.0;
     const k2 = 10.1, l2 = 8.3, a2 = 0.38;
 
-    final u1 = k1 * x + t * 0.31;
-    final v1 = l1 * yv - t * 0.23;
-    final u2 = k2 * x - t * 0.19;
-    final v2 = l2 * yv + t * 0.27;
+    final u1 = k1 * x + _flowOffU1;
+    final v1 = l1 * yv + _flowOffV1;
+    final u2 = k2 * x + _flowOffU2;
+    final v2 = l2 * yv + _flowOffV2;
 
     final sinU1 = math.sin(u1), cosU1 = math.cos(u1);
     final sinV1 = math.sin(v1), cosV1 = math.cos(v1);
@@ -560,6 +566,10 @@ class ParticleSystem {
     _beatKick *= math.exp(-dt / _flowKickTau);
     _flowTime += dt *
         (_flowIdleRate + _flowEnergyRate * energy + _flowBeatRate * _beatKick);
+    _flowOffU1 = _flowTime * 0.31;
+    _flowOffV1 = -_flowTime * 0.23;
+    _flowOffU2 = -_flowTime * 0.19;
+    _flowOffV2 = _flowTime * 0.27;
 
     // 1 normalised unit of y is one screen height, i.e. `1 / aspect` widths, so
     // this is what turns an isotropic velocity back into normalised travel.
@@ -574,7 +584,7 @@ class ParticleSystem {
         continue;
       }
 
-      _sampleFlow(particle.x, particle.y * invAspect, _flowTime);
+      _sampleFlow(particle.x, particle.y * invAspect);
       final speed = particle.baseSpeed * energy;
       final targetVx = (_flowVx * _flowGain + particle.headingX) * speed;
       final targetVy = (_flowVy * _flowGain + particle.headingY) * speed;
@@ -829,11 +839,11 @@ class _ParticlePainter extends CustomPainter {
   final ParticleSystem system;
   final Color accent;
 
-  // srcOver with pre-brightened alpha replaces plus: the additive look at
-  // these small radii/size is preserved, but the pipeline no longer needs a
-  // DST read per fragment. Fill-rate bound field gets ~35% cheaper.
-  final Paint _corePaint = Paint()..blendMode = BlendMode.srcOver;
-  final Paint _haloPaint = Paint()..blendMode = BlendMode.srcOver;
+  // Additive blend restores pre-optimization glow — keeps the bright mote
+  // look at no extra count. Cost is offset by RepaintBoundary isolation,
+  // cached MaskFilter, and 60Hz cap on 120Hz displays.
+  final Paint _corePaint = Paint()..blendMode = BlendMode.plus;
+  final Paint _haloPaint = Paint()..blendMode = BlendMode.plus;
 
   /// Accent split into two hue-shifted tints. Drawing the same mote in both,
   /// slightly offset, is what reads as light refracting — and it costs two

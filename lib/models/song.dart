@@ -291,6 +291,17 @@ class LyricLine extends Equatable {
               (!sourceLine.isSynced || sourceLine.time == translated[i].time)) {
             return translated[i];
           }
+          // Tolerant fallback for small timestamp drift (e.g. 10.00 vs 10.01
+          // from parsing rounding). Only when times are close; a truly missing
+          // line (1s gap) stays null so shifted indexes don't mis-align.
+          if (source.length == translated.length &&
+              i < translated.length &&
+              sourceLine.isSynced == translated[i].isSynced &&
+              sourceLine.isSynced) {
+            final drift =
+                (sourceLine.time - translated[i].time).abs().inMilliseconds;
+            if (drift <= 150) return translated[i];
+          }
           return null;
         }(),
     ];

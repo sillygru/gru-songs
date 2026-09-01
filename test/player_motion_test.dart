@@ -395,7 +395,17 @@ void main() {
       expect(frames, closeTo(30, 1));
     });
 
-    test('decorative layers emit about 30 frames at 120 Hz', () {
+    test('decorative layers emit about 60 frames at 120 Hz', () {
+      var decorativeFrames = 0;
+      controller.decorativeRepaint.addListener(() => decorativeFrames++);
+
+      tickFor(hz: 120);
+
+      expect(decorativeFrames, closeTo(60, 1));
+    });
+
+    test('decorative layers halve to about 30 in power save', () {
+      controller.powerSave = true;
       var decorativeFrames = 0;
       controller.decorativeRepaint.addListener(() => decorativeFrames++);
 
@@ -404,13 +414,13 @@ void main() {
       expect(decorativeFrames, closeTo(30, 1));
     });
 
-    test('power save thins the field without emptying it', () {
+    test('power save keeps full particle count — throttles rate only', () {
       controller.particleIntensity = PlayerMotionIntensity.bold;
       final full = controller.particleSpec.particleCount;
 
       controller.powerSave = true;
 
-      expect(controller.particleSpec.particleCount, lessThan(full));
+      expect(controller.particleSpec.particleCount, full);
       expect(controller.particleSpec.particleCount, greaterThan(0));
     });
 

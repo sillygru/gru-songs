@@ -168,11 +168,11 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
 
   /// Resolves what text to display for the active lyric line, considering
   /// translated lyrics and the user's translation mode.
-  String _resolveText(int activeIndex) {
+  String _resolveText(int activeIndex, {String? modeOverride}) {
     if (activeIndex < 0 || activeIndex >= _lines.length) return '';
 
-    final settings = ref.read(settingsProvider);
-    final mode = settings.lyricsTranslationMode;
+    final mode =
+        modeOverride ?? ref.read(settingsProvider).lyricsTranslationMode;
     final translated =
         _translatedLines.isNotEmpty && activeIndex < _translatedLines.length
             ? _translatedLines[activeIndex]
@@ -189,6 +189,15 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
     }
 
     return _lines[activeIndex].text.trim();
+  }
+
+  void _refreshActiveLine() {
+    if (!_hasSynced || _gapVisible.value) return;
+    final active = _activeIndexFor(
+      ref.read(audioPlayerManagerProvider).player.position,
+    );
+    final resolved = active >= 0 ? _resolveText(active) : '';
+    if (resolved != _line.value) _line.value = resolved;
   }
 
   Future<void> _load() async {
@@ -266,6 +275,15 @@ class _NowPlayingLyricPeekState extends ConsumerState<NowPlayingLyricPeek> {
     // Lyrics live in the audio file, not in provider state. Same signal the
     // lyrics pane uses so a freshly fetched track shows up without reopening.
     ref.listen(lyricsRevisionProvider, (_, __) => _load());
+    ref.listen(translationRevisionProvider, (_, __) => _load());
+    ref.listen(
+      settingsProvider.select((s) => s.lyricsTargetLanguage),
+      (_, __) => _load(),
+    );
+    ref.listen(
+      settingsProvider.select((s) => s.lyricsTranslationMode),
+      (_, __) => _refreshActiveLine(),
+    );
 
     if (!_hasSynced) return const SizedBox.shrink();
 

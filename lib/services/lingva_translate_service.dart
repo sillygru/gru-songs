@@ -405,27 +405,16 @@ class LingvaTranslateService {
 
     late final List<Future<TranslationResponse> Function(HttpClient)> starters;
 
+    // Order by observed reliability: GTX (POST-safe) first, then
+    // Clients5, Lingva, Mobile, MyMemory last (short-query only).
     starters = [
-      (client) => _fetchFromGoogleClients5(
-            client: client,
-            query: query,
-            targetLang: targetLang,
-            sourceLang: sourceLang,
-          ),
-      (client) => _fetchFromGoogleMobile(
-            client: client,
-            query: query,
-            targetLang: targetLang,
-            sourceLang: sourceLang,
-          ),
-      if (query.length <= _myMemoryMaxChars)
-        (client) => _fetchFromMyMemory(
-              client: client,
-              query: query,
-              targetLang: targetLang,
-              sourceLang: sourceLang,
-            ),
       (client) => _fetchFromGTX(
+            client: client,
+            query: query,
+            targetLang: targetLang,
+            sourceLang: sourceLang,
+          ),
+      (client) => _fetchFromGoogleClients5(
             client: client,
             query: query,
             targetLang: targetLang,
@@ -439,11 +428,26 @@ class LingvaTranslateService {
               targetLang: targetLang,
               sourceLang: sourceLang,
             ),
+      (client) => _fetchFromGoogleMobile(
+            client: client,
+            query: query,
+            targetLang: targetLang,
+            sourceLang: sourceLang,
+          ),
+      if (query.length <= _myMemoryMaxChars)
+        (client) => _fetchFromMyMemory(
+              client: client,
+              query: query,
+              targetLang: targetLang,
+              sourceLang: sourceLang,
+            ),
     ];
 
     void settleFailure(Object error) {
       lastError = error;
       failures += 1;
+      debugPrint(
+          'Translation starter failed ($failures/${starters.length}): $error');
       if (failures >= starters.length && !completer.isCompleted) {
         completer.completeError(
           HttpException(
@@ -543,6 +547,49 @@ class LingvaTranslateService {
     required String targetLang,
     required String sourceLang,
   }) async {
+    // Use POST for long payloads to avoid 414 URI Too Long; GET is fine for
+    // short queries and keeps the request observable in logs.
+    final usePost = query.length > 1200;
+    if (usePost) {
+      final uri = Uri.parse(
+        'https://translate.googleapis.com/translate_a/single?client=gtx&sl=${Uri.encodeComponent(sourceLang)}&tl=${Uri.encodeComponent(targetLang)}&dt=t',
+      );
+      final request = await client.postUrl(uri);
+      request.headers.set(HttpHeaders.userAgentHeader,
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'application/x-www-form-urlencoded; charset=utf-8',
+      );
+      final bodyBytes = utf8.encode('q=${Uri.encodeQueryComponent(query)}');
+      request.contentLength = bodyBytes.length;
+      request.add(bodyBytes);
+      final response = await request.close().timeout(_timeout);
+      if (response.statusCode != 200) {
+        throw HttpException('GTX HTTP ${response.statusCode}');
+      }
+      final body = await response.transform(utf8.decoder).join();
+      final List<dynamic> data = jsonDecode(body) as List<dynamic>;
+      if (data.isEmpty || data.first == null || data.first is! List) {
+        throw const FormatException('Invalid GTX translation format');
+      }
+      final List<dynamic> segments = data.first as List<dynamic>;
+      final StringBuffer buffer = StringBuffer();
+      for (final segment in segments) {
+        if (segment is List && segment.isNotEmpty && segment.first is String) {
+          buffer.write(segment.first as String);
+        }
+      }
+      String? detected;
+      if (data.length > 2 && data[2] is String) {
+        detected = data[2] as String;
+      }
+      return TranslationResponse(
+        text: buffer.toString(),
+        detectedSourceLang: detected,
+      );
+    }
+
     final encodedSource = Uri.encodeComponent(sourceLang);
     final encodedTarget = Uri.encodeComponent(targetLang);
     final encodedQuery = Uri.encodeComponent(query);
