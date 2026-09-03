@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/rich_lyrics.dart';
+import '../../../domain/services/lyrics_session.dart';
 import '../../../models/song.dart';
 import '../../../providers/providers.dart';
 import '../../../providers/settings_provider.dart';
@@ -104,7 +105,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
 
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
-  final LingvaTranslateService _translateService = LingvaTranslateService();
+  final LyricsSession _lyricsSession = LyricsSession();
   final LrclibService _lrclibService = LrclibService();
 
   List<LyricLine>? _lyrics;
@@ -652,52 +653,29 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
     });
 
     try {
-      final response = await _translateService.translateLyrics(
-        lyrics: content,
+      // Deep module: per-line cap (3s) so fallback does not stall.
+      final result = await _lyricsSession.translate(
+        filename: filename,
         targetLang: targetLang,
+        perLineCap: const Duration(seconds: 3),
       );
       if (!mounted || _loadedFilename != filename) return;
 
-      final isUnchanged = _isSameLanguageResponse(
-        response: response,
-        original: content,
-        targetLang: targetLang,
-      );
-
-      if (isUnchanged) {
-        await DatabaseService.instance.saveTranslatedLyrics(
-          filename,
-          targetLang,
-          '[SAME_LANG]',
-          sourceContent: content,
-        );
-
-        if (!mounted || _loadedFilename != filename) return;
+      if (result.isSameLanguage) {
+        if (!silent) {
+          appSnack(context, 'Lyrics are already in target language',
+              tone: AppTone.info);
+        }
         setState(() {
           _translatedLyrics = null;
           _hasCachedTranslation = false;
           _isSameLanguage = true;
         });
         ref.read(translationRevisionProvider.notifier).bump();
-        if (!silent) {
-          appSnack(context, 'Lyrics are already in target language',
-              tone: AppTone.info);
-        }
-      } else if (response.text.trim().isNotEmpty) {
-        await DatabaseService.instance.saveTranslatedLyrics(
-          filename,
-          targetLang,
-          response.text,
-          sourceContent: content,
-        );
-
-        if (!mounted || _loadedFilename != filename) return;
+      } else if (result.lines != null) {
         setState(() {
-          _translatedLyrics = LyricLine.alignTranslation(
-            _lyrics ?? const <LyricLine>[],
-            LyricLine.parse(response.text),
-          );
-          _hasCachedTranslation = true;
+          _translatedLyrics = result.lines;
+          _hasCachedTranslation = result.isCached || true;
           _isSameLanguage = false;
         });
         ref.read(translationRevisionProvider.notifier).bump();
@@ -724,35 +702,6 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         });
       }
     }
-  }
-
-  bool _isSameLanguageResponse({
-    required TranslationResponse response,
-    required String original,
-    required String targetLang,
-  }) {
-    final detected = response.detectedSourceLang?.toLowerCase().trim();
-    final target = targetLang.toLowerCase().trim();
-    if (detected != null && detected.isNotEmpty) {
-      if (detected == target ||
-          detected.startsWith('$target-') ||
-          target.startsWith('$detected-')) {
-        return true;
-      }
-    }
-    if (response.text.trim() == original.trim()) return true;
-    // Normalized whitespace compare catches backends that echo with different
-    // spacing while still meaning "already in target".
-    String normalize(String s) =>
-        s.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-    if (normalize(response.text) == normalize(original)) return true;
-    // Strip timestamps before comparing so an LRC that only changed in
-    // whitespace still counts as unchanged.
-    if (LyricLine.extractPlainText(response.text).trim() ==
-        LyricLine.extractPlainText(original).trim()) {
-      return true;
-    }
-    return false;
   }
 
   Duration _effectiveStartFor(int index, List<LyricLine> lyrics) {

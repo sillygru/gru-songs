@@ -18,6 +18,7 @@ import '../components/pressable.dart';
 import '../components/song_actions.dart';
 import '../tokens/player_tokens.dart';
 import '../widgets/basic_progress_bar.dart';
+import '../motion/player_motion_ensemble.dart';
 import '../widgets/beat_cover_glow.dart';
 import '../widgets/beat_particle_field.dart';
 import '../widgets/blurred_background.dart';
@@ -63,8 +64,10 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
 
   /// Drives every beat-reactive element on this screen. Owned by the shell so
   /// the cover and the particle field share one ticker and one playhead clock
-  /// rather than each running their own.
+  /// rather than each running their own. Wrapped in the ensemble so the
+  /// ensemble's single scheduler is the seam — one budget, N consumers.
   late final PlayerMotionController _motion;
+  late final PlayerMotionEnsemble _ensemble;
 
   /// Continuous page position, so the pill thumb tracks the swipe rather than
   /// snapping once the page settles.
@@ -111,6 +114,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
 
     final manager = ref.read(audioPlayerManagerProvider);
     _motion = PlayerMotionController(player: manager.player)..attach(this);
+    _ensemble = PlayerMotionEnsemble(controller: _motion);
     manager.currentSongNotifier.addListener(_onSongChanged);
     manager.playingNotifier.addListener(_syncWakeLock);
     manager.playingNotifier.addListener(_syncRefresh);
@@ -141,7 +145,7 @@ class _UnifiedPlayerScreenState extends ConsumerState<UnifiedPlayerScreen>
     manager.playingNotifier.removeListener(_syncRefresh);
     PowerStateService.instance.powerSave.removeListener(_syncMotionSettings);
     PowerStateService.instance.powerSave.removeListener(_syncRefresh);
-    _motion.dispose();
+    _ensemble.dispose();
     _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
     _pagePosition.dispose();

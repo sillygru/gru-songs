@@ -4,9 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'album_art_image.dart';
+import '../../domain/models/cover_key.dart';
+import '../../domain/services/media_decode.dart';
 import '../../services/cache_service.dart';
 import '../../services/cover_refresh_service.dart';
-import '../../services/ffmpeg_service.dart';
 import '../../services/power_state_service.dart';
 
 class BlurredBackground extends StatefulWidget {
@@ -110,7 +111,7 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
         (!coverUrl.startsWith('content://') &&
             !coverUrl.startsWith('http://') &&
             !coverUrl.startsWith('https://') &&
-            !await File(_normalizeFilePath(coverUrl)).exists());
+            !await File(CoverKey.normalizePath(coverUrl)).exists());
     if (needsCoverRefresh && filename.isNotEmpty) {
       coverUrl =
           await CoverRefreshService.instance.ensureCoverForSong(filename) ??
@@ -118,7 +119,7 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
     }
     if (coverUrl.isEmpty) return;
 
-    final success = await FFmpegService().generateBlurredImage(
+    final success = await MediaDecode().generateBlurredImage(
       inputPath: coverUrl,
       outputPath: blurFile.path,
     );
@@ -134,15 +135,6 @@ class _BlurredBackgroundState extends State<BlurredBackground> {
   }
 
   bool get _hasBlurredBackground => _blurFile != null && _blurFileExists;
-
-  String _normalizeFilePath(String path) {
-    if (path.startsWith('file://')) {
-      try {
-        return Uri.parse(path).toFilePath();
-      } catch (_) {}
-    }
-    return path;
-  }
 
   Widget _buildImageLayers({double? squareSize}) {
     // Cache the decoded blur at roughly the size it is drawn: avoids decoding a
