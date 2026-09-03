@@ -135,6 +135,12 @@ QueuePlan? planMoveUpcomingToTop(
 ///
 /// An entry already in the upcoming queue is *moved* rather than duplicated.
 /// Pass [allowDuplicate] to force a second copy anyway.
+///
+/// Merged siblings are **not** treated as a move. If [mergedSiblings] contains
+/// a filename already in the upcoming queue, this returns an insertion plan for
+/// [candidate] — the caller (AudioPlayerManager) is expected to remove the
+/// sibling first so the requested file lands in "Play Next", rather than
+/// silently moving the sibling.
 QueuePlan planPlayNext(
   List<QueueItem> queue,
   int currentIndex,
@@ -145,11 +151,11 @@ QueuePlan planPlayNext(
 }) {
   int existingIdx = -1;
   if (!allowDuplicate) {
-    existingIdx = findInQueue(
-      queue,
-      candidate.song.filename,
-      mergedSiblings: mergedSiblings,
-    );
+    // Only the exact filename triggers a move. A sibling match (same merged
+    // group) is reported as not-found so the caller can replace the sibling
+    // with the requested file instead of moving the wrong file.
+    existingIdx = queue
+        .indexWhere((item) => item.song.filename == candidate.song.filename);
   }
 
   if (existingIdx > currentIndex) {

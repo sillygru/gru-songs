@@ -1893,6 +1893,14 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _pendingQueuePlaylistId = null;
     pendingQueueNotifier.value = false;
 
+    // Shuffle weighting (affinities, anti-repeat) must reflect the freshest
+    // DB state. Without this, two rapid shuffles within the 30s cache window
+    // would reuse the identical playHistory and could surface the same songs
+    // again even though the previous queue's songs should now be penalised
+    // via the queue overlay in _loadShuffleModel. Invalidate so the DB side
+    // is re-read and the overlay is prepended correctly.
+    _invalidateShuffleCache();
+
     // Set up fresh queue (always replaces current queue entirely)
     _originalQueue = songs.map((s) => QueueItem(song: s)).toList();
     _isRestrictedToOriginal = isRestricted;
@@ -2262,12 +2270,67 @@ class AudioPlayerManager extends WidgetsBindingObserver {
       _shuffleCacheTimestamp = now;
     }
 
-    // Position in recent history, 0 = most recently played. First occurrence
-    // wins, so a song's *latest* play is what anti-repeat measures.
+    // Anti-repeat must survive across queue regenerations. DB playHistory
+    // only reflects songs that have been *played* and flushed; a queue that was
+    // just displayed but not yet played, or a song that is still playing and
+    // not yet flushed, would otherwise appear as "never played" on the next
+    // shuffle. We prepend the current queue's recent order so a new shuffle
+    // immediately after the previous one still penalises songs the listener
+    // just saw/heard, regardless of flush timing or the 30s affinity cache.
     final historyIndex = <String, int>{};
+    final queueRecency = <String>[];
+    if (_effectiveQueue.isNotEmpty) {
+      final rawIdx = _player.currentIndex;
+      final currentIdx =
+          (rawIdx != null && rawIdx >= 0 && rawIdx < _effectiveQueue.length)
+              ? rawIdx
+              : (_effectiveQueue.isEmpty ? -1 : 0);
+      if (currentIdx >= 0) {
+        queueRecency.add(_effectiveQueue[currentIdx].song.filename);
+        for (int i = currentIdx - 1; i >= 0; i--) {
+          queueRecency.add(_effectiveQueue[i].song.filename);
+        }
+        for (int i = currentIdx + 1; i < _effectiveQueue.length; i++) {
+          queueRecency.add(_effectiveQueue[i].song.filename);
+        }
+      } else {
+        for (final item in _effectiveQueue) {
+          queueRecency.add(item.song.filename);
+        }
+      }
+    }
+
+    var nextIdx = 0;
+    for (final filename in queueRecency) {
+      if (nextIdx >= _shuffleState.config.historyLimit) break;
+      if (historyIndex.containsKey(filename)) continue;
+      // Expand to merged siblings so every variant of the same logical track
+      // shares the queue-based recency.
+      final groupId = _filenameToGroupId[filename];
+      final siblings = groupId != null ? _mergedGroups[groupId] : null;
+      if (siblings != null) {
+        for (final s in siblings) {
+          historyIndex.putIfAbsent(s, () => nextIdx);
+        }
+      }
+      historyIndex.putIfAbsent(filename, () => nextIdx);
+      nextIdx++;
+    }
+
     final playHistory = _cachedPlayHistory!;
     for (int i = 0; i < playHistory.length; i++) {
-      historyIndex.putIfAbsent(playHistory[i].filename, () => i);
+      final filename = playHistory[i].filename;
+      if (historyIndex.containsKey(filename)) continue;
+      final groupId = _filenameToGroupId[filename];
+      final siblings = groupId != null ? _mergedGroups[groupId] : null;
+      if (siblings != null) {
+        for (final s in siblings) {
+          historyIndex.putIfAbsent(s, () => nextIdx);
+        }
+      }
+      historyIndex.putIfAbsent(filename, () => nextIdx);
+      nextIdx++;
+      if (nextIdx >= _shuffleState.config.historyLimit) break;
     }
 
     return (affinities: _cachedAffinities!, historyIndex: historyIndex);
@@ -2607,7 +2670,7 @@ class AudioPlayerManager extends WidgetsBindingObserver {
 
   Future<void> playNext(Song song, {bool allowDuplicate = false}) async {
     await _runSerializedQueueMutation(() async {
-      final currentIndex = _player.currentIndex ?? -1;
+      var currentIndex = _player.currentIndex ?? -1;
       final preventMerged =
           _ref?.read(settingsProvider).preventMergedDuplicates ?? true;
       final checkMergedSiblings = !allowDuplicate && preventMerged;
@@ -2617,12 +2680,44 @@ class AudioPlayerManager extends WidgetsBindingObserver {
           : const <String>[];
 
       final candidate = QueueItem(song: song);
+
+      // Merged-group fix: if a sibling of the requested song already sits in
+      // the upcoming section, remove that sibling and insert the *requested*
+      // file instead of moving the sibling (which was the previous bug).
+      if (mergedSiblings.isNotEmpty) {
+        final directExists =
+            _effectiveQueue.any((item) => item.song.filename == song.filename);
+        if (!directExists) {
+          var siblingIdx = -1;
+          for (final sibling in mergedSiblings) {
+            siblingIdx = _effectiveQueue
+                .indexWhere((item) => item.song.filename == sibling);
+            if (siblingIdx != -1) break;
+          }
+          if (siblingIdx > currentIndex) {
+            final siblingQueueId = _effectiveQueue[siblingIdx].queueId;
+            _effectiveQueue.removeAt(siblingIdx);
+            try {
+              await _player.removeAudioSourceAt(siblingIdx);
+            } catch (e) {
+              debugPrint('playNext: failed to remove merged sibling: $e');
+            }
+            _sessionTopOrder =
+                _sessionTopOrder.where((id) => id != siblingQueueId).toList();
+            // currentIndex unchanged because removal was after it, but clamp
+            // defensively if the player index was affected.
+            currentIndex = (_player.currentIndex ?? currentIndex)
+                .clamp(-1, _effectiveQueue.length - 1);
+          }
+        }
+      }
+
       final plan = queue_ops.planPlayNext(
         _effectiveQueue,
         currentIndex,
         candidate,
         sessionTopOrder: _sessionTopOrder,
-        mergedSiblings: mergedSiblings,
+        mergedSiblings: const [],
         allowDuplicate: allowDuplicate,
       );
 
