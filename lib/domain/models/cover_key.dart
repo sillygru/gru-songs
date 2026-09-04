@@ -1,5 +1,8 @@
 import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
+
+import '../value_objects/filename.dart';
 
 /// Typed identifier for cover and derived caches.
 ///
@@ -25,7 +28,9 @@ class CoverKey {
   /// Normalized cache key for notification covers (basename of cover file).
   static String notificationKeyForCoverPath(String coverPath) {
     final base = coverPath.split('/').last.split('\\').last;
-    return base.replaceAll(RegExp(r'[^\w\-]'), '_');
+    final sanitized = base.replaceAll(RegExp(r'[^\w\-]'), '_');
+    if (sanitized.isEmpty || sanitized == '_') return 'cover';
+    return sanitized;
   }
 
   /// Normalize a possibly `file://` URI to a filesystem path.
@@ -39,6 +44,9 @@ class CoverKey {
     }
     return path;
   }
+
+  factory CoverKey.fromFilePath(String path) =>
+      CoverKey(Filename.fromUrl(normalizePath(path)));
 
   @override
   bool operator ==(Object other) =>

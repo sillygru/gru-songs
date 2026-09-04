@@ -1,9 +1,9 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
+import '../domain/value_objects/filename.dart';
 import 'providers.dart';
 import 'session_history_provider.dart';
 import '../services/database_service.dart';
@@ -48,14 +48,15 @@ class UserDataState {
         _filenameToGroupId =
             filenameToGroupId ?? _buildFilenameToGroupId(mergedGroups);
 
-  static Set<String> _buildFilenameKeys(List<String> filenames) {
-    if (filenames.isEmpty) return const <String>{};
-    final keys = <String>{};
-    for (final f in filenames) {
-      keys.add(f.toLowerCase());
-      keys.add(p.basename(f).toLowerCase());
+  static Set<String> _buildFilenameKeys(Iterable<String> filenames) =>
+      {for (final f in filenames) Filename.normalize(f)};
+
+  static String _actualMatch(String query, List<String> candidates) {
+    final n = Filename.normalize(query);
+    for (final c in candidates) {
+      if (Filename.normalize(c) == n) return c;
     }
-    return keys;
+    return query;
   }
 
   static Map<String, String> _buildFilenameToGroupId(
@@ -70,23 +71,14 @@ class UserDataState {
     return map;
   }
 
-  bool isFavorite(String filename) {
-    final lower = filename.toLowerCase();
-    return _favoriteKeys.contains(lower) ||
-        _favoriteKeys.contains(p.basename(lower));
-  }
+  bool isFavorite(String filename) =>
+      _favoriteKeys.contains(Filename.normalize(filename));
 
-  bool isSuggestLess(String filename) {
-    final lower = filename.toLowerCase();
-    return _suggestLessKeys.contains(lower) ||
-        _suggestLessKeys.contains(p.basename(lower));
-  }
+  bool isSuggestLess(String filename) =>
+      _suggestLessKeys.contains(Filename.normalize(filename));
 
-  bool isHidden(String filename) {
-    final lower = filename.toLowerCase();
-    return _hiddenKeys.contains(lower) ||
-        _hiddenKeys.contains(p.basename(lower));
-  }
+  bool isHidden(String filename) =>
+      _hiddenKeys.contains(Filename.normalize(filename));
 
   /// Checks if a song is part of a merged group
   bool isMerged(String filename) => _filenameToGroupId.containsKey(filename);
@@ -294,17 +286,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
     final isFav = state.isFavorite(songFilename);
     final isSL = state.isSuggestLess(songFilename);
 
-    // Find actual match in list (for case-insensitive scenarios)
-    String actualFilename = songFilename;
-    if (isFav) {
-      actualFilename = state.favorites.firstWhere(
-        (f) =>
-            f.toLowerCase() == songFilename.toLowerCase() ||
-            p.basename(f).toLowerCase() ==
-                p.basename(songFilename).toLowerCase(),
-        orElse: () => songFilename,
-      );
-    }
+    final actualFilename = isFav
+        ? UserDataState._actualMatch(songFilename, state.favorites)
+        : songFilename;
 
     // Update local database
     final newFavs = List<String>.from(state.favorites);
@@ -319,13 +303,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
       // Remove from suggestLess if present
       if (isSL) {
-        final actualSLMatch = state.suggestLess.firstWhere(
-          (sl) =>
-              sl.toLowerCase() == songFilename.toLowerCase() ||
-              p.basename(sl).toLowerCase() ==
-                  p.basename(songFilename).toLowerCase(),
-          orElse: () => songFilename,
-        );
+        final actualSLMatch =
+            UserDataState._actualMatch(songFilename, state.suggestLess);
         newSL.remove(actualSLMatch);
         await DatabaseService.instance.removeSuggestLess(actualSLMatch);
       }
@@ -339,17 +318,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> toggleSuggestLess(String songFilename) async {
     final isSL = state.isSuggestLess(songFilename);
 
-    // Find actual match
-    String actualFilename = songFilename;
-    if (isSL) {
-      actualFilename = state.suggestLess.firstWhere(
-        (sl) =>
-            sl.toLowerCase() == songFilename.toLowerCase() ||
-            p.basename(sl).toLowerCase() ==
-                p.basename(songFilename).toLowerCase(),
-        orElse: () => songFilename,
-      );
-    }
+    final actualFilename = isSL
+        ? UserDataState._actualMatch(songFilename, state.suggestLess)
+        : songFilename;
 
     // Update local database
     final newSL = List<String>.from(state.suggestLess);
@@ -370,17 +341,9 @@ class UserDataNotifier extends Notifier<UserDataState> {
   Future<void> toggleHidden(String songFilename) async {
     final isHidden = state.isHidden(songFilename);
 
-    // Find actual match
-    String actualFilename = songFilename;
-    if (isHidden) {
-      actualFilename = state.hidden.firstWhere(
-        (h) =>
-            h.toLowerCase() == songFilename.toLowerCase() ||
-            p.basename(h).toLowerCase() ==
-                p.basename(songFilename).toLowerCase(),
-        orElse: () => songFilename,
-      );
-    }
+    final actualFilename = isHidden
+        ? UserDataState._actualMatch(songFilename, state.hidden)
+        : songFilename;
 
     // Update local database
     final newHidden = List<String>.from(state.hidden);
@@ -410,23 +373,14 @@ class UserDataNotifier extends Notifier<UserDataState> {
 
         // Remove from suggestLess if present
         if (state.isSuggestLess(filename)) {
-          final actualSLMatch = state.suggestLess.firstWhere(
-            (sl) =>
-                sl.toLowerCase() == filename.toLowerCase() ||
-                p.basename(sl).toLowerCase() ==
-                    p.basename(filename).toLowerCase(),
-            orElse: () => filename,
-          );
+          final actualSLMatch =
+              UserDataState._actualMatch(filename, state.suggestLess);
           newSL.remove(actualSLMatch);
           await DatabaseService.instance.removeSuggestLess(actualSLMatch);
         }
       } else if (!favorite && isCurrentlyFav) {
-        final actualFilename = state.favorites.firstWhere(
-          (f) =>
-              f.toLowerCase() == filename.toLowerCase() ||
-              p.basename(f).toLowerCase() == p.basename(filename).toLowerCase(),
-          orElse: () => filename,
-        );
+        final actualFilename =
+            UserDataState._actualMatch(filename, state.favorites);
         newFavs.remove(actualFilename);
         await DatabaseService.instance.removeFavorite(actualFilename);
       }
@@ -446,12 +400,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
         newHidden.add(filename);
         await DatabaseService.instance.addHidden(filename);
       } else if (!hide && isCurrentlyHidden) {
-        final actualFilename = state.hidden.firstWhere(
-          (h) =>
-              h.toLowerCase() == filename.toLowerCase() ||
-              p.basename(h).toLowerCase() == p.basename(filename).toLowerCase(),
-          orElse: () => filename,
-        );
+        final actualFilename =
+            UserDataState._actualMatch(filename, state.hidden);
         newHidden.remove(actualFilename);
         await DatabaseService.instance.removeHidden(actualFilename);
       }
@@ -472,13 +422,8 @@ class UserDataNotifier extends Notifier<UserDataState> {
         newSL.add(filename);
         await DatabaseService.instance.addSuggestLess(filename);
       } else if (!suggestLess && isCurrentlySL) {
-        final actualSLMatch = state.suggestLess.firstWhere(
-          (sl) =>
-              sl.toLowerCase() == filename.toLowerCase() ||
-              p.basename(sl).toLowerCase() ==
-                  p.basename(filename).toLowerCase(),
-          orElse: () => filename,
-        );
+        final actualSLMatch =
+            UserDataState._actualMatch(filename, state.suggestLess);
         newSL.remove(actualSLMatch);
         await DatabaseService.instance.removeSuggestLess(actualSLMatch);
       }

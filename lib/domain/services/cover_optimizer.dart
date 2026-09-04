@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -20,10 +21,8 @@ class CoverOptimizer {
   static const int fastPathByteLimit = 250 * 1024;
 
   /// Computes a content-addressable hash key for [bytes].
-  static String computeContentKey(Uint8List bytes) {
-    final hash = sha1.convert(bytes).toString();
-    return 'c_$hash';
-  }
+  static String computeContentKey(Uint8List bytes) =>
+      'c_${sha1.convert(bytes).toString()}';
 
   /// Checks whether a deduplicated cover already exists in [coversDirPath] for [contentKey].
   static String? findExistingCover(String coversDirPath, String contentKey) {

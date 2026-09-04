@@ -5,8 +5,8 @@ import 'dart:isolate';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'wispie_paths.dart';
 
@@ -380,9 +380,8 @@ class CacheService {
     }
   }
 
-  static String _cacheKey(String value) {
-    return sha1.convert(utf8.encode(value)).toString();
-  }
+  static String _cacheKey(String value) =>
+      sha1.convert(utf8.encode(value)).toString();
 }
 
 Future<void> _pruneCachesInIsolate(Map<String, dynamic> payload) async {

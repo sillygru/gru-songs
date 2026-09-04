@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -7,17 +7,12 @@ import '../../services/ffmpeg_service.dart';
 import '../../services/media_decode_gate.dart';
 import '../models/cover_key.dart';
 
-/// Unified decode seam for all full-file media work.
+/// Decode and cache seam for media work.
 ///
-/// [MediaDecode] is the deep module behind the two former shallow frontends
-/// ([FFmpegService] + [WaveformService]). It owns the gate, pipe lifetime,
-/// and cache invalidation so callers do not race on `closeFFmpegPipe` or
-/// duplicate queuing (`_chain` vs gate vs progressive map).
-///
-/// The interface is the test surface: one seam, two adapters (system
-/// `Process` on desktop vs `FFmpegKit` on mobile, plus an in-memory fake
-/// in tests). Deletion test: deleting this module concentrates decode
-/// policy instead of scattering it across waveform, beat, and cover code.
+/// Waveform decode is currently cache-only here; actual PCM decoding lives
+/// in [WaveformService] until the adapter move lands. Cover/video extraction
+/// is serialized through [MediaDecodeGate] so FFmpeg work does not overlap.
+/// Cache invalidation is unified behind [CoverKey].
 class MediaDecode {
   final CacheService _cache;
   final FFmpegService _ffmpeg;
@@ -26,30 +21,36 @@ class MediaDecode {
       : _cache = cache ?? CacheService.instance,
         _ffmpeg = ffmpeg ?? FFmpegService.instance;
 
-  /// Decode waveform peaks for [path] keyed by [key].
+  /// Returns cached waveform peaks for [key], if present.
   ///
-  /// Runs through [MediaDecodeGate] with high priority so the seek bar
-  /// jumps ahead of background beat work. The caller provides progress
-  /// via [onPartial] if it wants left-to-right reveal.
+  /// Cache-only helper; actual PCM decoding and progressive emission live
+  /// in [WaveformService]. Does not hold [MediaDecodeGate].
+  Future<List<double>> getCachedWaveform(CoverKey key) async {
+    if (key.isEmpty) return const <double>[];
+    final cacheFile = await _cache.getWaveformCacheFile(key.filename);
+    if (!await cacheFile.exists()) return const <double>[];
+    try {
+      final content = await cacheFile.readAsString();
+      if (content.isEmpty) return const <double>[];
+      final decoded = await compute(_decodeJson, content);
+      if (decoded.isEmpty) return const <double>[];
+      return decoded.map((e) => (e as num).toDouble()).toList();
+    } catch (e) {
+      debugPrint(
+          'MediaDecode: waveform cache read failed for ${key.filename}: $e');
+      return const <double>[];
+    }
+  }
+
+  /// Deprecated alias kept for any out-of-tree callers.
+  @Deprecated('Use getCachedWaveform(CoverKey) instead')
   Future<List<double>> decodeWaveform({
     required CoverKey key,
     required String path,
     required Duration total,
     void Function(List<double>)? onPartial,
-  }) {
-    if (key.isEmpty || path.isEmpty || path.startsWith('http')) {
-      return Future.value(const <double>[]);
-    }
-    return MediaDecodeGate.run(
-      () => _decodeWaveformInternal(
-        key: key,
-        path: path,
-        total: total,
-        onPartial: onPartial,
-      ),
-      priority: MediaDecodePriority.high,
-    );
-  }
+  }) =>
+      getCachedWaveform(key);
 
   /// Extract an attached-picture cover from [inputPath] to [outputPath].
   ///
@@ -86,6 +87,8 @@ class MediaDecode {
 
   /// Blur helper seam — callers run `generateBlurredImageBytes` in
   /// `Isolate.run` directly so this module does not depend on `image`.
+  /// Bypasses [MediaDecodeGate] because blurring is image work, not FFmpeg
+  /// pipe work.
   Future<bool> generateBlurredImage({
     required String inputPath,
     required String outputPath,
@@ -100,44 +103,6 @@ class MediaDecode {
         height: height,
         blurSigma: blurSigma,
       );
-
-  /// Single place for pipe-aware waveform decode, replacing the duplicated
-  /// SystemProcess vs mobile-pipe branching that lived in WaveformService.
-  Future<List<double>> _decodeWaveformInternal({
-    required CoverKey key,
-    required String path,
-    required Duration total,
-    void Function(List<double>)? onPartial,
-  }) async {
-    // WaveformService already owns the full decode branching and
-    // progressive emission; delegate via its stream helper so the gate
-    // remains the sole queue. This keeps the change incremental: the
-    // deep module owns scheduling, WaveformService owns PCM bucketing.
-    // Future step: move PCM bucketing into this module.
-    final completer = Completer<List<double>>();
-    final chunks = <double>[];
-    try {
-      // Minimal re-use: call FFmpeg directly for cache check, then
-      // delegate to WaveformService's private path would duplicate.
-      // For now, ensure the gate is the only queue by running the
-      // existing cache lookup inside the gate.
-      final cacheFile = await _cache.getWaveformCacheFile(key.filename);
-      if (await cacheFile.exists()) {
-        try {
-          final content = await cacheFile.readAsString();
-          final json = (await compute(_decodeJson, content)).cast<double>();
-          return json;
-        } catch (_) {
-          // fall through to decode
-        }
-      }
-      chunks;
-      completer.complete(chunks);
-    } catch (e, st) {
-      completer.completeError(e, st);
-    }
-    return completer.future;
-  }
 
   /// Cache invalidation unified behind CoverKey so callers do not pass
   /// raw strings with varying `file://` handling.
@@ -157,24 +122,12 @@ class MediaDecode {
 }
 
 List<dynamic> _decodeJson(String content) {
-  // run in isolate via compute
-  // ignore: avoid_dynamic_calls
-  return (content.isNotEmpty) ? (content as dynamic) : <dynamic>[];
-}
-
-/// Decode adapter seam for testing.
-///
-/// Two adapters justify the seam: [SystemProcessDecodeAdapter] (prod on
-/// desktop) and [FFmpegKitDecodeAdapter] (prod on mobile), plus
-/// [FakeMediaDecode] in tests. The module above selects between them
-/// via [FFmpegService.usesSystemProcess] today; a future step lifts
-/// that branch into these adapters.
-abstract class MediaDecodeAdapter {
-  Future<List<double>> decodeWaveform({
-    required String path,
-    required Duration total,
-    void Function(List<double>)? onPartial,
-  });
+  if (content.isEmpty) return <dynamic>[];
+  try {
+    final decoded = jsonDecode(content);
+    if (decoded is List) return decoded;
+  } catch (_) {}
+  return <dynamic>[];
 }
 
 /// In-memory fake for tests — no FFmpeg, no files.
@@ -184,15 +137,8 @@ class FakeMediaDecode extends MediaDecode {
   FakeMediaDecode() : super(cache: CacheService.instance);
 
   @override
-  Future<List<double>> decodeWaveform({
-    required CoverKey key,
-    required String path,
-    required Duration total,
-    void Function(List<double>)? onPartial,
-  }) async {
-    final peaks = waveforms[key.filename] ?? List.filled(200, 0.5);
-    if (onPartial != null) onPartial(peaks.take(20).toList());
-    return peaks;
+  Future<List<double>> getCachedWaveform(CoverKey key) async {
+    return waveforms[key.filename] ?? List.filled(200, 0.5);
   }
 
   @override

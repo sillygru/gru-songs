@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+import '../data/migrations.dart';
 import '../models/playlist.dart';
 import '../models/queue_snapshot.dart';
 import '../models/song.dart';
@@ -25,222 +26,54 @@ class DatabaseService {
 
   Database? _statsDatabase;
   Database? _userDataDatabase;
-  Completer<void>? _initCompleter;
+  Future<void>? _initFuture;
 
   DatabaseService._init();
 
   @visibleForTesting
   DatabaseService.forTest();
 
-  Future<void> init() async {
-    if (_initCompleter != null && !_initCompleter!.isCompleted) {
-      await _initCompleter!.future;
-      return;
-    }
+  Future<void> init() {
+    final existing = _initFuture;
+    if (existing != null) return existing;
+    _initFuture = _initAsync().catchError((Object e) {
+      _initFuture = null;
+      throw e;
+    });
+    return _initFuture!;
+  }
 
-    _initCompleter = Completer<void>();
-
+  Future<void> _initAsync() async {
     try {
-      // Open local databases (create schema if needed)
-      _statsDatabase = await _openDatabase('wispie_stats.db', _statsSchema);
-      _userDataDatabase =
-          await _openDatabase('wispie_data.db', _userDataSchema);
-
-      // Ensure tables and columns exist
-      await _ensureStatsTables(_statsDatabase!);
-      await _ensureTablesAndColumns(_userDataDatabase!);
-
-      _initCompleter!.complete();
+      _statsDatabase = await _openDatabaseWithMigrations(
+        'wispie_stats.db',
+        version: kStatsDbVersion,
+        onCreate: (db, v) async => createStatsSchema(db),
+        onUpgrade: (db, oldV, newV) async {},
+      );
+      _userDataDatabase = await _openDatabaseWithMigrations(
+        'wispie_data.db',
+        version: kUserDataDbVersion,
+        onCreate: (db, v) async => createUserDataSchema(db),
+        onUpgrade: (db, oldV, newV) async {
+          if (oldV < 2) await upgradeUserDataFrom1To2(db);
+        },
+      );
     } catch (e) {
       debugPrint('Database initialization failed: $e');
-      _initCompleter!.completeError(e);
       rethrow;
     }
   }
 
-  Future<void> _ensureStatsTables(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS playsession (
-        id TEXT PRIMARY KEY,
-        start_time REAL,
-        end_time REAL,
-        platform TEXT,
-        device_id TEXT
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS playevent (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT,
-        song_filename TEXT,
-        timestamp REAL,
-        duration_played REAL,
-        total_length REAL,
-        play_ratio REAL,
-        foreground_duration REAL,
-        background_duration REAL,
-        FOREIGN KEY (session_id) REFERENCES playsession (id)
-      )
-    ''');
-  }
-
-  Future<void> _ensureTablesAndColumns(Database db) async {
-    // 1. Ensure Tables exist
-    await db.execute(
-        'CREATE TABLE IF NOT EXISTS favorite (filename TEXT PRIMARY KEY, added_at REAL)');
-    await db.execute(
-        'CREATE TABLE IF NOT EXISTS suggestless (filename TEXT PRIMARY KEY, added_at REAL)');
-    await db.execute(
-        'CREATE TABLE IF NOT EXISTS hidden (filename TEXT PRIMARY KEY, hidden_at REAL)');
-    // Negative cache for cover art. Without it, a song that genuinely has no
-    // artwork is re-probed (whole-file byte scan + FFmpeg) every time a list
-    // tile for it is built.
-    await db.execute(
-        'CREATE TABLE IF NOT EXISTS cover_miss (filename TEXT PRIMARY KEY, file_mtime REAL, checked_at REAL)');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS song (
-          filename TEXT PRIMARY KEY,
-          title TEXT,
-          artist TEXT,
-          album TEXT,
-          url TEXT,
-          cover_url TEXT,
-          has_lyrics INTEGER,
-          play_count INTEGER,
-          duration_ms INTEGER,
-          mtime REAL,
-          created_epoch_sec REAL,
-          song_date_epoch_sec REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS playlist (
-          id TEXT PRIMARY KEY,
-          name TEXT,
-          description TEXT,
-          is_recommendation INTEGER DEFAULT 0,
-          created_at REAL,
-          updated_at REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS playlist_song (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          playlist_id TEXT,
-          song_filename TEXT,
-          added_at REAL,
-          FOREIGN KEY (playlist_id) REFERENCES playlist (id)
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS merged_song_group (
-          id TEXT PRIMARY KEY,
-          priority_filename TEXT,
-          created_at REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS merged_song (
-          filename TEXT PRIMARY KEY,
-          group_id TEXT,
-          added_at REAL,
-          FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS recommendation_preference (
-          id TEXT PRIMARY KEY,
-          custom_title TEXT,
-          is_pinned INTEGER DEFAULT 0,
-          updated_at REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS recommendation_removal (
-          id TEXT PRIMARY KEY,
-          removed_at REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS queue_snapshot (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          created_at REAL NOT NULL,
-          source TEXT NOT NULL,
-          song_count INTEGER NOT NULL DEFAULT 0
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS queue_snapshot_song (
-          snapshot_id TEXT NOT NULL,
-          song_filename TEXT NOT NULL,
-          position INTEGER NOT NULL,
-          PRIMARY KEY (snapshot_id, position),
-          FOREIGN KEY (snapshot_id) REFERENCES queue_snapshot (id) ON DELETE CASCADE
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS artist_art (
-          artist_name TEXT PRIMARY KEY,
-          image_url TEXT,
-          local_path TEXT,
-          source TEXT,
-          updated_at REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS album_art (
-          album_key TEXT PRIMARY KEY,
-          album_name TEXT,
-          artist_name TEXT,
-          image_url TEXT,
-          local_path TEXT,
-          source TEXT,
-          updated_at REAL
-        )
-    ''');
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS translated_lyrics (
-          filename TEXT,
-          target_lang TEXT,
-          translated_content TEXT,
-          source_hash TEXT,
-          updated_at REAL,
-          PRIMARY KEY (filename, target_lang)
-        )
-    ''');
-
-    final translatedColumns = await db.rawQuery(
-      'PRAGMA table_info(translated_lyrics)',
-    );
-    if (!translatedColumns.any((column) => column['name'] == 'source_hash')) {
-      await db.execute(
-        'ALTER TABLE translated_lyrics ADD COLUMN source_hash TEXT',
-      );
-    }
-
-    // 2. Create indexes for the song table
-    await db
-        .execute('CREATE INDEX IF NOT EXISTS idx_song_artist ON song(artist)');
-    await db
-        .execute('CREATE INDEX IF NOT EXISTS idx_song_album ON song(album)');
-    await db
-        .execute('CREATE INDEX IF NOT EXISTS idx_song_mtime ON song(mtime)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_song_created_epoch_sec ON song(created_epoch_sec)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_song_date_epoch_sec ON song(song_date_epoch_sec)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_queue_snapshot_created_at ON queue_snapshot(created_at)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_queue_snapshot_song_snapshot_id ON queue_snapshot_song(snapshot_id)');
-  }
+  // Schema is canonical in lib/data/migrations.dart; legacy imperative
+  // ensure helpers removed.
 
   Future<void> _ensureInitialized() async {
-    if (_initCompleter == null) {
+    final f = _initFuture;
+    if (f == null) {
       throw Exception('DatabaseService not initialized. Call init() first.');
     }
-    return _initCompleter!.future;
+    return f;
   }
 
   /// Ensures the database is initialized
@@ -261,17 +94,32 @@ class DatabaseService {
     return _userDataDatabase;
   }
 
-  Future<Database> _openDatabase(String name, String schema) async {
+  Future<Database> _openDatabaseWithMigrations(
+    String name, {
+    required int version,
+    required Future<void> Function(Database, int) onCreate,
+    required Future<void> Function(Database, int, int) onUpgrade,
+  }) async {
     final wispieDir = await getWispieDirectory();
     final path = join(wispieDir.path, name);
-    return await openDatabase(
+    return openDatabase(
+      path,
+      version: version,
+      onCreate: onCreate,
+      onUpgrade: onUpgrade,
+    );
+  }
+
+  // Kept for tests that open temp DBs directly
+  @visibleForTesting
+  Future<Database> openTestDatabase(String path, String schema) async {
+    return openDatabase(
       path,
       version: 1,
-      onCreate: (db, version) async {
-        for (final statement in schema.split(';')) {
-          if (statement.trim().isNotEmpty) {
-            await db.execute(statement);
-          }
+      onCreate: (db, v) async {
+        for (final s in schema.split(';')) {
+          final t = s.trim();
+          if (t.isNotEmpty) await db.execute(t);
         }
       },
     );
@@ -2563,78 +2411,6 @@ class DatabaseService {
     return idx == -1 ? filename : filename.substring(0, idx);
   }
 
-  // ==========================================================================
-  // SCHEMA DEFINITIONS
-  // ==========================================================================
-
-  static const String _statsSchema = '''
-    CREATE TABLE IF NOT EXISTS playsession (
-      id TEXT PRIMARY KEY,
-      start_time REAL,
-      end_time REAL,
-      platform TEXT,
-      device_id TEXT
-    );
-    CREATE TABLE IF NOT EXISTS playevent (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT,
-      song_filename TEXT,
-      timestamp REAL,
-      duration_played REAL,
-      total_length REAL,
-      play_ratio REAL,
-      foreground_duration REAL,
-      background_duration REAL,
-      FOREIGN KEY (session_id) REFERENCES playsession (id)
-    );
-  ''';
-
-  static const String _userDataSchema = '''
-    CREATE TABLE IF NOT EXISTS userdata (
-      username TEXT PRIMARY KEY,
-      password_hash TEXT,
-      created_at REAL
-    );
-    CREATE TABLE IF NOT EXISTS favorite (
-      filename TEXT PRIMARY KEY,
-      added_at REAL
-    );
-    CREATE TABLE IF NOT EXISTS suggestless (
-      filename TEXT PRIMARY KEY,
-      added_at REAL
-    );
-    CREATE TABLE IF NOT EXISTS hidden (
-      filename TEXT PRIMARY KEY,
-      hidden_at REAL
-    );
-    CREATE TABLE IF NOT EXISTS playlist (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      description TEXT,
-      is_recommendation INTEGER DEFAULT 0,
-      created_at REAL,
-      updated_at REAL
-    );
-    CREATE TABLE IF NOT EXISTS playlist_song (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      playlist_id TEXT,
-      song_filename TEXT,
-      added_at REAL,
-      FOREIGN KEY (playlist_id) REFERENCES playlist (id)
-    );
-    CREATE TABLE IF NOT EXISTS merged_song_group (
-      id TEXT PRIMARY KEY,
-      priority_filename TEXT,
-      created_at REAL
-    );
-    CREATE TABLE IF NOT EXISTS merged_song (
-      filename TEXT PRIMARY KEY,
-      group_id TEXT,
-      added_at REAL,
-      FOREIGN KEY (group_id) REFERENCES merged_song_group (id) ON DELETE CASCADE
-    );
-  ''';
-
   Future<void> importData({
     required String statsDbPath,
     required String dataDbPath,
@@ -3689,6 +3465,6 @@ class DatabaseService {
     await _userDataDatabase?.close();
     _statsDatabase = null;
     _userDataDatabase = null;
-    _initCompleter = null;
+    _initFuture = null;
   }
 }
