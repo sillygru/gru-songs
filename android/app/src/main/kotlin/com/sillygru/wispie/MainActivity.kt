@@ -86,6 +86,7 @@ class MainActivity : AudioServiceActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "getSdkInt" -> result.success(android.os.Build.VERSION.SDK_INT)
                     // pickTree must stay on the main thread: it starts an
                     // activity and is completed from onActivityResult.
                     "pickTree" -> handlePickTree(result)

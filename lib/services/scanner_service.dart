@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:image/image.dart' as img;
 import 'dart:convert';
-import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
 import 'database_service.dart';
 import '../domain/services/cover_optimizer.dart';
@@ -18,6 +17,7 @@ import 'storage_service.dart';
 import 'ffmpeg_service.dart';
 import 'cover_refresh_service.dart';
 import 'media_decode_gate.dart';
+import 'permission_service.dart';
 
 /// Why a scan produced the songs it did.
 ///
@@ -321,17 +321,11 @@ class ScannerService {
   }) async {
     // Check for storage permission
     if (Platform.isAndroid) {
-      final statusAll = await Permission.manageExternalStorage.status;
-      if (statusAll.isGranted) {
-        // All files access granted: proceed without storage/audio checks.
-      } else {
-        var statusStorage = await Permission.storage.status;
-        var statusAudio = await Permission.audio.status;
-
-        if (!statusStorage.isGranted && !statusAudio.isGranted) {
-          debugPrint('Storage permissions not granted. Cannot scan directory.');
-          return const ScanResult.failed(ScanStatus.noPermission);
-        }
+      final hasPermission =
+          await PermissionService.instance.hasStoragePermission();
+      if (!hasPermission) {
+        debugPrint('Storage permissions not granted. Cannot scan directory.');
+        return const ScanResult.failed(ScanStatus.noPermission);
       }
     }
 
@@ -455,11 +449,12 @@ class ScannerService {
     bool includeVideos = true,
     int minimumFileSizeBytes = 0,
   }) async {
-    // Check for all files access permission
+    // Check for storage access permission
     if (Platform.isAndroid) {
-      final status = await Permission.manageExternalStorage.status;
-      if (!status.isGranted) {
-        debugPrint('All files access permission not granted. Cannot scan.');
+      final hasPermission =
+          await PermissionService.instance.hasStoragePermission();
+      if (!hasPermission) {
+        debugPrint('Storage access permission not granted. Cannot scan.');
         return [];
       }
     }

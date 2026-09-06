@@ -10,24 +10,91 @@ import '../tokens/app_tokens.dart';
 /// App bar action button that displays a shuffle icon by default, but replaces
 /// it with a circular progress indicator following the app theme whenever library
 /// scanning / analyzing is in progress.
-class HeaderShuffleButton extends ConsumerWidget {
+///
+/// A long press opens a small menu anchored to the button with deferred
+/// variants of the same shuffle — after the current song, or after the
+/// current queue. Tap always shuffles immediately.
+class HeaderShuffleButton extends ConsumerStatefulWidget {
   final VoidCallback? onShufflePressed;
+  final VoidCallback? onShuffleAfterSong;
+  final VoidCallback? onShuffleAfterQueue;
   final String tooltip;
   final Color? color;
 
   const HeaderShuffleButton({
     super.key,
     this.onShufflePressed,
+    this.onShuffleAfterSong,
+    this.onShuffleAfterQueue,
     this.tooltip = 'Shuffle all',
     this.color,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HeaderShuffleButton> createState() =>
+      _HeaderShuffleButtonState();
+}
+
+class _HeaderShuffleButtonState extends ConsumerState<HeaderShuffleButton> {
+  final MenuController _menuController = MenuController();
+
+  void _openHoldMenu() {
+    if (_menuController.isOpen) return;
+    _menuController.open();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isScanning = ref.watch(isScanningProvider);
     final scanProgress = ref.watch(scanProgressProvider);
     final accent = AppTokens.accentOf(context, ref);
-    final effectiveColor = color ?? accent;
+    final effectiveColor = widget.color ?? accent;
+
+    final hasHoldActions =
+        widget.onShuffleAfterSong != null || widget.onShuffleAfterQueue != null;
+
+    Widget button = IconButton(
+      key: const ValueKey('header_shuffle_button'),
+      tooltip: widget.tooltip,
+      icon: AppIcon(AppIcons.shuffle, color: effectiveColor),
+      onPressed: widget.onShufflePressed,
+      onLongPress: hasHoldActions ? _openHoldMenu : null,
+    );
+
+    if (hasHoldActions) {
+      button = MenuAnchor(
+        controller: _menuController,
+        alignmentOffset: const Offset(0, AppTokens.s2),
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(AppTokens.surface(2)),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: AppTokens.brMd),
+          ),
+        ),
+        menuChildren: [
+          if (widget.onShuffleAfterSong != null)
+            MenuItemButton(
+              leadingIcon: const AppIcon(AppIcons.skipNext),
+              onPressed: widget.onShuffleAfterSong,
+              child: Text(
+                'Shuffle after current song',
+                style: AppTokens.rowTitle(context),
+              ),
+            ),
+          if (widget.onShuffleAfterQueue != null)
+            MenuItemButton(
+              leadingIcon: const AppIcon(AppIcons.queue),
+              onPressed: widget.onShuffleAfterQueue,
+              child: Text(
+                'Shuffle after current queue',
+                style: AppTokens.rowTitle(context),
+              ),
+            ),
+        ],
+        builder: (context, controller, child) => child!,
+        child: button,
+      );
+    }
 
     return AnimatedSwitcher(
       duration: AppTokens.dBase,
@@ -39,12 +106,7 @@ class HeaderShuffleButton extends ConsumerWidget {
               progress: scanProgress,
               color: effectiveColor,
             )
-          : IconButton(
-              key: const ValueKey('header_shuffle_button'),
-              tooltip: tooltip,
-              icon: AppIcon(AppIcons.shuffle, color: effectiveColor),
-              onPressed: onShufflePressed,
-            ),
+          : button,
     );
   }
 }

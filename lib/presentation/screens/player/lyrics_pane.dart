@@ -223,21 +223,19 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
   /// Runs off the widget tree entirely: nothing here rebuilds unless one of the
   /// values changed.
   void _onPosition(Duration position) {
-    final timingOffset = _richSyncAvailable
-        ? PlayerTokens.dLyricsRichSyncTimingOffset
-        : PlayerTokens.dLyricsTimingOffset;
-    final lyricsPosition = position + timingOffset;
+    // Word wipe follows the playhead exactly; the active line + autoscroll
+    // lag by dLyricsScrollTimingOffset so the switch lands late on purpose.
+    final lyricsPosition = position;
     _playbackPosition.value = lyricsPosition;
     final lyrics = _lyrics;
     if (lyrics == null || lyrics.isEmpty || !_hasSynced) return;
 
     final scrollPosition =
-        lyricsPosition + PlayerTokens.dLyricsScrollTimingOffset;
+        lyricsPosition - PlayerTokens.dLyricsScrollTimingOffset;
     // For rich sync we want the word animation to finish before switching lines.
-    // scrollPosition leads by 500ms for nice autoscroll, but that would cut the
-    // current word's wipe (which follows lyricsPosition) mid-progress and show
-    // a blank next line during vocalSpan gaps. Hold previous line until its
-    // last word ends and next line's first word has actually started (by lyricsPosition).
+    // scrollPosition lags by 500ms, so the hold below only guards the
+    // vocalSpan gaps: hold previous line until its last word ends and next
+    // line's first word has actually started (by lyricsPosition).
     // For simulated richsync the estimator leaves a silence gap (vocalSpan < line interval)
     // so the last word completes early; add a short artificial hold so the current line
     // fully finishes while still leaving time for the next line's first word.
@@ -256,7 +254,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane>
         var holdEnd = prevEnd;
         if (isSimulated) {
           holdEnd = prevEnd + PlayerTokens.dLyricsSimulatedRichSyncLineHold;
-          // Cap overlap so we still switch early enough for the next line to start.
+          // Cap overlap so we still switch in time for the next line to start.
           final cap =
               nextStart + PlayerTokens.dLyricsSimulatedRichSyncMaxOverlap;
           if (holdEnd > cap) holdEnd = cap;

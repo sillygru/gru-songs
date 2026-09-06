@@ -167,6 +167,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                                       isRestricted: false);
                                 }
                               },
+                              onShuffleAfterSong: () {
+                                if (songs.isNotEmpty) {
+                                  audioManager.shuffleAfterCurrentSong(songs);
+                                }
+                              },
+                              onShuffleAfterQueue: () {
+                                if (songs.isNotEmpty) {
+                                  audioManager.shuffleAfterCurrentQueue(songs);
+                                }
+                              },
                             ),
                           ],
                         ),

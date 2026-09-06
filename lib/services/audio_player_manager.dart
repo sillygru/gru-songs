@@ -1933,6 +1933,93 @@ class AudioPlayerManager extends WidgetsBindingObserver {
     _savePlaybackState();
   }
 
+  /// Same shuffle as [shuffleAndPlay], but the current song keeps playing and
+  /// the freshly shuffled library replaces everything after it.
+  Future<void> shuffleAfterCurrentSong(List<Song> songs) async {
+    if (songs.isEmpty) return;
+
+    final rawIndex = _player.currentIndex;
+    if (_effectiveQueue.isEmpty ||
+        rawIndex == null ||
+        rawIndex < 0 ||
+        rawIndex >= _effectiveQueue.length) {
+      return shuffleAndPlay(songs);
+    }
+
+    _shuffleState = _shuffleState.copyWith(
+      config: _shuffleState.config.copyWith(enabled: true),
+    );
+    shuffleNotifier.value = true;
+    shuffleStateNotifier.value = _shuffleState;
+    _saveShuffleState();
+    _invalidateShuffleCache();
+
+    final currentItem = _effectiveQueue[rawIndex];
+    final candidates = songs
+        .where((s) => s.filename != currentItem.song.filename)
+        .map((s) => QueueItem(song: s))
+        .toList();
+    if (candidates.isEmpty) return;
+
+    final shuffled = await _weightedShuffle(
+      candidates,
+      lastItem: currentItem,
+    );
+    if (shuffled.isEmpty) return;
+
+    await _runSerializedQueueMutation(() async {
+      if (_effectiveQueue.isEmpty) return;
+      final currentIndex =
+          (_player.currentIndex ?? 0).clamp(0, _effectiveQueue.length - 1);
+      _effectiveQueue = [
+        ..._effectiveQueue.sublist(0, currentIndex + 1),
+        ...shuffled,
+      ];
+      await _mutateQueueAfterIndex(currentIndex);
+      _warmThemePalettesAroundIndex(currentIndex);
+      _updateQueueNotifier();
+      await _updateCurrentSnapshotSongs();
+      _savePlaybackState();
+    });
+  }
+
+  /// Same shuffle as [shuffleAndPlay], but the whole current queue plays out
+  /// first and the freshly shuffled library is appended at the end.
+  Future<void> shuffleAfterCurrentQueue(List<Song> songs) async {
+    if (songs.isEmpty) return;
+    if (_effectiveQueue.isEmpty) return shuffleAndPlay(songs);
+
+    _shuffleState = _shuffleState.copyWith(
+      config: _shuffleState.config.copyWith(enabled: true),
+    );
+    shuffleNotifier.value = true;
+    shuffleStateNotifier.value = _shuffleState;
+    _saveShuffleState();
+    _invalidateShuffleCache();
+
+    final shuffled = await _weightedShuffle(
+      songs.map((s) => QueueItem(song: s)).toList(),
+      lastItem: _effectiveQueue.last,
+    );
+    if (shuffled.isEmpty) return;
+
+    await _runSerializedQueueMutation(() async {
+      for (final item in shuffled) {
+        _effectiveQueue.add(item);
+        try {
+          final source = await _createAudioSource(item);
+          await _player.addAudioSource(source);
+        } catch (e) {
+          _effectiveQueue.remove(item);
+          rethrow;
+        }
+      }
+      _updateQueueNotifier();
+      await _updateCurrentSnapshotSongs();
+      _savePlaybackState();
+    });
+  }
+
   Future<void> toggleShuffle() async {
     final isShuffle = !shuffleNotifier.value;
     shuffleNotifier.value = isShuffle;

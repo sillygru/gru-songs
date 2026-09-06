@@ -490,6 +490,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           songs,
                           isRestricted: false,
                         ),
+                        onShuffleAfterSong: () =>
+                            audioManager.shuffleAfterCurrentSong(songs),
+                        onShuffleAfterQueue: () =>
+                            audioManager.shuffleAfterCurrentQueue(songs),
                       ),
                       IconButton(
                         tooltip: 'Search',

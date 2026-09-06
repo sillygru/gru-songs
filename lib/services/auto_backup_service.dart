@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'backup_service.dart';
+import 'permission_service.dart';
 
 class AutoBackupResult {
   final bool success;
@@ -128,21 +129,11 @@ class AutoBackupService {
       return true;
     }
     try {
-      final status = await Permission.manageExternalStorage.status;
-      if (status.isGranted) {
+      final isGranted = await PermissionService.instance.hasStoragePermission();
+      if (isGranted) {
         return true;
       }
-
-      if (status.isDenied) {
-        final requested = await Permission.manageExternalStorage.request();
-        return requested.isGranted;
-      }
-
-      if (status.isPermanentlyDenied) {
-        return false;
-      }
-
-      return false;
+      return await PermissionService.instance.requestStoragePermission();
     } catch (e) {
       debugPrint('Error checking storage permission: $e');
       return false;
@@ -151,7 +142,7 @@ class AutoBackupService {
 
   Future<void> requestStoragePermission() async {
     try {
-      await Permission.manageExternalStorage.request();
+      await PermissionService.instance.requestStoragePermission();
     } catch (e) {
       debugPrint('Error requesting storage permission: $e');
     }
@@ -214,13 +205,17 @@ class AutoBackupService {
 
   Future<String?> getPermissionErrorMessage() async {
     try {
-      final status = await Permission.manageExternalStorage.status;
-      if (status.isPermanentlyDenied) {
-        return 'Wispie needs access to all files to create backups. Please grant permission in system settings.';
-      } else if (status.isDenied) {
+      final isGranted = await PermissionService.instance.hasStoragePermission();
+      if (isGranted) {
+        return null;
+      }
+      final isPermanentlyDenied = await PermissionService.instance
+          .isStoragePermissionPermanentlyDenied();
+      if (isPermanentlyDenied) {
+        return 'Wispie needs storage access to create backups. Please grant permission in system settings.';
+      } else {
         return 'Storage permission is required to create backups.';
       }
-      return null;
     } catch (e) {
       debugPrint('Error getting permission status: $e');
       return null;

@@ -11,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/providers.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/setup_provider.dart';
+import '../../services/permission_service.dart';
 import '../../services/storage_service.dart';
 import '../components/ambient_scaffold.dart';
 import '../components/app_feedback.dart';
@@ -79,13 +80,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
   }
 
   Future<void> _checkPermissionStatus() async {
-    if (Platform.isAndroid) {
-      final status = await Permission.manageExternalStorage.status;
-      if (mounted) {
-        setState(() => _permissionGranted = status.isGranted);
-      }
-    } else {
-      setState(() => _permissionGranted = true);
+    final granted = await PermissionService.instance.hasStoragePermission();
+    if (mounted) {
+      setState(() => _permissionGranted = granted);
     }
   }
 
@@ -200,8 +197,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
 
     setState(() => _isLoading = true);
 
-    var status = await Permission.manageExternalStorage.status;
-    if (status.isGranted) {
+    var isGranted = await PermissionService.instance.hasStoragePermission();
+    if (isGranted) {
       setState(() {
         _permissionGranted = true;
         _isLoading = false;
@@ -209,23 +206,30 @@ class _SetupScreenState extends ConsumerState<SetupScreen>
       return;
     }
 
-    if (status.isPermanentlyDenied) {
+    final isPermanentlyDenied =
+        await PermissionService.instance.isStoragePermissionPermanentlyDenied();
+    if (isPermanentlyDenied) {
       setState(() {
         _permissionDeniedOnce = true;
         _isLoading = false;
       });
       await openAppSettings();
-      status = await Permission.manageExternalStorage.status;
-      if (status.isGranted && mounted) {
+      isGranted = await PermissionService.instance.hasStoragePermission();
+      if (isGranted && mounted) {
         setState(() => _permissionGranted = true);
+      }
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
       return;
     }
 
-    status = await Permission.manageExternalStorage.request();
-    if (status.isGranted && mounted) {
+    final granted = await PermissionService.instance.requestStoragePermission();
+    if (granted && mounted) {
       setState(() => _permissionGranted = true);
-    } else if (status.isPermanentlyDenied && mounted) {
+    } else if (await PermissionService.instance
+            .isStoragePermissionPermanentlyDenied() &&
+        mounted) {
       setState(() => _permissionDeniedOnce = true);
     } else if (mounted) {
       appSnack(
